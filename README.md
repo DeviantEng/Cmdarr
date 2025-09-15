@@ -1,6 +1,6 @@
 # Cmdarr
 
-> *Held together with duct tape, zip ties, hopes, and dreams*
+> *Running commands, hoping for exit code 0*
 
 A modular music automation platform that bridges services for your self-hosted media setup. Cmdarr connects Lidarr to various music services like Last.fm, MusicBrainz, ListenBrainz, Plex, and Jellyfin to discover, organize, and enhance your music library with intelligent automation.
 
@@ -509,4 +509,4 @@ MIT License - See LICENSE file for details
 
 ---
 
-*Because sometimes the best solutions are the ones that just work, even if they're held together with duct tape.*
+*Because sometimes the best solutions are the ones that execute reliably, even if the code looks questionable.*

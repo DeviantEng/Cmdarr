@@ -28,7 +28,7 @@ logger = get_logger('cmdarr.app')
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-        logger.info("Starting Cmdarr FastAPI application")
+    logger.info("Starting Cmdarr FastAPI application")
     
     # Initialize database
     try:
