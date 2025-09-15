@@ -1,0 +1,189 @@
+/* Custom styles for Cmdarr */
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Loading animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Custom focus styles */
+.focus\:ring-blue-500:focus {
+    --tw-ring-color: rgb(59 130 246 / 0.5);
+}
+
+.focus\:border-blue-500:focus {
+    --tw-border-color: rgb(59 130 246);
+}
+
+/* Custom button styles */
+.btn-primary {
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-300 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+    @apply inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed;
+}
+
+.btn-danger {
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-300 disabled:cursor-not-allowed;
+}
+
+/* Custom form styles */
+.form-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500;
+}
+
+.form-textarea {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500;
+}
+
+.form-checkbox {
+    @apply rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50;
+}
+
+/* Status indicators */
+.status-indicator {
+    @apply w-2 h-2 rounded-full;
+}
+
+.status-healthy {
+    @apply bg-green-400;
+}
+
+.status-unhealthy {
+    @apply bg-red-400;
+}
+
+.status-warning {
+    @apply bg-yellow-400;
+}
+
+.status-unknown {
+    @apply bg-gray-400;
+}
+
+/* Card styles */
+.card {
+    @apply bg-white rounded-lg shadow;
+}
+
+.card-header {
+    @apply px-6 py-4 border-b border-gray-200;
+}
+
+.card-body {
+    @apply p-6;
+}
+
+/* Table styles */
+.table {
+    @apply min-w-full divide-y divide-gray-200;
+}
+
+.table th {
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+}
+
+.table td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+    .mobile-hidden {
+        display: none;
+    }
+}
+
+/* Dark mode support */
+.dark {
+    color-scheme: dark;
+}
+
+.dark body {
+    background-color: #111827;
+    color: #f9fafb;
+}
+
+.dark .bg-white {
+    background-color: #1f2937;
+}
+
+.dark .bg-gray-50 {
+    background-color: #111827;
+}
+
+.dark .bg-gray-100 {
+    background-color: #1f2937;
+}
+
+.dark .text-gray-900 {
+    color: #f9fafb;
+}
+
+.dark .text-gray-700 {
+    color: #d1d5db;
+}
+
+.dark .text-gray-600 {
+    color: #9ca3af;
+}
+
+.dark .text-gray-500 {
+    color: #6b7280;
+}
+
+.dark .border-gray-200 {
+    border-color: #374151;
+}
+
+.dark .border-gray-300 {
+    border-color: #4b5563;
+}
+
+.dark .shadow {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-sm {
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-xl {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}

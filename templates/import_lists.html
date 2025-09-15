@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Import Lists - Cmdarr{% endblock %}
+
+{% block content %}
+<div x-data="importLists()" x-init="loadImportLists()">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Import Lists</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-400">Available import list endpoints for Lidarr integration and music discovery automation.</p>
+    </div>
+
+    <!-- Import Lists Section -->
+    <div class="space-y-6">
+        <!-- Last.fm Discovery -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">🎵 Last.fm Discovery</h2>
+                <div class="flex items-center space-x-2">
+                    <span x-show="lastfmMetrics.exists" 
+                          class="px-2 py-1 text-xs font-medium rounded-full"
+                          :class="{
+                              'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': lastfmMetrics.status === 'fresh',
+                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': lastfmMetrics.status === 'stale',
+                              'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': lastfmMetrics.status === 'very_stale' || lastfmMetrics.status === 'empty',
+                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200': lastfmMetrics.status === 'empty'
+                          }"
+                          x-text="lastfmMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span>
+                    <span x-show="!lastfmMetrics.exists" 
+                          class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                        Not Available
+                    </span>
+                </div>
+            </div>
+            
+            <p class="text-gray-600 dark:text-gray-400 mb-4">
+                Similar artists discovered via Last.fm and MusicBrainz fuzzy matching
+            </p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
+                <div class="flex items-center space-x-2">
+                    <input type="text" 
+                           :value="baseUrl + '/discovery_lastfm'"
+                           readonly
+                           class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-mono text-gray-900 dark:text-white">
+                    <button @click="copyToClipboard(baseUrl + '/discovery_lastfm')"
+                            class="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
+                        Copy
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Stats -->
+            <div x-show="lastfmMetrics.exists" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">File Statistics</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="lastfmMetrics.entry_count.toLocaleString()"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Artists</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="formatFileSize(lastfmMetrics.file_size)"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">File Size</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="lastfmMetrics.age_human"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Last Updated</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" 
+                             :class="{
+                                 'text-green-600 dark:text-green-400': lastfmMetrics.status === 'fresh',
+                                 'text-yellow-600 dark:text-yellow-400': lastfmMetrics.status === 'stale',
+                                 'text-red-600 dark:text-red-400': lastfmMetrics.status === 'very_stale',
+                                 'text-gray-600 dark:text-gray-400': lastfmMetrics.status === 'empty'
+                             }"
+                             x-text="lastfmMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Status</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ListenBrainz Discovery -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">🎵 ListenBrainz Discovery</h2>
+                <div class="flex items-center space-x-2">
+                    <span x-show="listenbrainzMetrics.exists" 
+                          class="px-2 py-1 text-xs font-medium rounded-full"
+                          :class="{
+                              'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': listenbrainzMetrics.status === 'fresh',
+                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': listenbrainzMetrics.status === 'stale',
+                              'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': listenbrainzMetrics.status === 'very_stale',
+                              'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200': listenbrainzMetrics.status === 'no_new_artists',
+                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200': listenbrainzMetrics.status === 'empty'
+                          }"
+                          x-text="listenbrainzMetrics.status === 'no_new_artists' ? 'No New Artists' : listenbrainzMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span>
+                    <span x-show="!listenbrainzMetrics.exists" 
+                          class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                        Not Available
+                    </span>
+                </div>
+            </div>
+            
+            <p class="text-gray-600 dark:text-gray-400 mb-4">
+                Artists from your ListenBrainz Weekly Discovery playlist, filtered to exclude existing library content.
+                <span class="text-sm text-gray-500 dark:text-gray-500">
+                    Note: "No New Artists" is normal when all artists in this week's playlist are already in your library.
+                </span>
+            </p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
+                <div class="flex items-center space-x-2">
+                    <input type="text" 
+                           :value="baseUrl + '/discovery_listenbrainz'"
+                           readonly
+                           class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-mono text-gray-900 dark:text-white">
+                    <button @click="copyToClipboard(baseUrl + '/discovery_listenbrainz')"
+                            class="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
+                        Copy
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Stats -->
+            <div x-show="listenbrainzMetrics.exists" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">File Statistics</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="listenbrainzMetrics.entry_count.toLocaleString()"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Artists</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="formatFileSize(listenbrainzMetrics.file_size)"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">File Size</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="listenbrainzMetrics.age_human"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Last Updated</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" 
+                             :class="{
+                                 'text-green-600 dark:text-green-400': listenbrainzMetrics.status === 'fresh',
+                                 'text-yellow-600 dark:text-yellow-400': listenbrainzMetrics.status === 'stale',
+                                 'text-red-600 dark:text-red-400': listenbrainzMetrics.status === 'very_stale',
+                                 'text-gray-600 dark:text-gray-400': listenbrainzMetrics.status === 'empty'
+                             }"
+                             x-text="listenbrainzMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">Status</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lidarr Integration Guide -->
+    <div class="mt-8 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-6">
+        <h3 class="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4">🎵 Lidarr Integration Guide</h3>
+        <p class="text-blue-800 dark:text-blue-200 mb-4">To add Cmdarr import lists in Lidarr:</p>
+        
+        <div class="space-y-3 text-blue-800 dark:text-blue-200">
+            <div class="flex items-start space-x-3">
+                <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-medium">1</span>
+                <span>Go to <strong>Settings → Import Lists</strong></span>
+            </div>
+            <div class="flex items-start space-x-3">
+                <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-medium">2</span>
+                <span>Click <strong>Add → Custom List</strong></span>
+            </div>
+            <div class="flex items-start space-x-3">
+                <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-medium">3</span>
+                <span>Set <strong>URL</strong> to one of:</span>
+            </div>
+            <div class="ml-9 space-y-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-blue-600 dark:text-blue-400">•</span>
+                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/discovery_lastfm'"></code>
+                    <span class="text-sm">(Last.fm similar artists)</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-blue-600 dark:text-blue-400">•</span>
+                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/discovery_listenbrainz'"></code>
+                    <span class="text-sm">(ListenBrainz weekly discovery)</span>
+                </div>
+            </div>
+            <div class="flex items-start space-x-3">
+                <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-medium">4</span>
+                <span>Configure sync interval as desired (recommend 24-48 hours)</span>
+            </div>
+            <div class="flex items-start space-x-3">
+                <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-medium">5</span>
+                <span>Save and test the configuration</span>
+            </div>
+        </div>
+        
+        <div class="mt-4 p-3 bg-blue-100 dark:bg-blue-800 rounded-md">
+            <p class="text-blue-900 dark:text-blue-100 text-sm">
+                <strong>💡 Pro Tip:</strong> You can add multiple import lists for different discovery sources! Each provides unique recommendations based on different algorithms.
+            </p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function importLists() {
+    return {
+        // Data
+        lastfmMetrics: {
+            exists: false,
+            entry_count: 0,
+            file_size: 0,
+            age_human: 'Not available',
+            status: 'missing'
+        },
+        listenbrainzMetrics: {
+            exists: false,
+            entry_count: 0,
+            file_size: 0,
+            age_human: 'Not available',
+            status: 'missing'
+        },
+        baseUrl: '',
+        
+        // Initialize
+        async loadImportLists() {
+            try {
+                // Get base URL
+                this.baseUrl = window.location.origin;
+                
+                // Load import list metrics
+                const response = await this.apiCall('/api/import_lists/metrics');
+                this.lastfmMetrics = response.lastfm || this.lastfmMetrics;
+                this.listenbrainzMetrics = response.listenbrainz || this.listenbrainzMetrics;
+            } catch (error) {
+                console.error('Failed to load import lists:', error);
+                this.showFlash('Failed to load import list metrics', 'error');
+            }
+        },
+        
+        // Utility functions
+        formatFileSize(sizeBytes) {
+            if (sizeBytes < 1024) {
+                return `${sizeBytes} B`;
+            } else if (sizeBytes < 1024 * 1024) {
+                return `${(sizeBytes / 1024).toFixed(1)} KB`;
+            } else {
+                return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+            }
+        },
+        
+        async copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                this.showFlash('URL copied to clipboard', 'success');
+            } catch (error) {
+                console.error('Failed to copy to clipboard:', error);
+                this.showFlash('Failed to copy URL', 'error');
+            }
+        },
+        
+        // API call helper
+        async apiCall(endpoint) {
+            const response = await fetch(endpoint);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return await response.json();
+        },
+        
+        // Flash message helper
+        showFlash(message, type = 'info') {
+            // This would integrate with your flash message system
+            console.log(`Flash: ${type} - ${message}`);
+        }
+    }
+}
+</script>
+{% endblock %}

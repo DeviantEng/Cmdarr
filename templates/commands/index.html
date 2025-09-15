@@ -1,0 +1,861 @@
+{% extends "base.html" %}
+
+{% block title %}Commands - Cmdarr{% endblock %}
+
+{% block content %}
+<div x-data="commandManager()" x-init="loadCommands()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Commands</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-400">Manage and monitor your Cmdarr commands</p>
+    </div>
+
+    <!-- Commands Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        <template x-for="command in commands" :key="command.command_name">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
+                <div class="p-6">
+                    <!-- Command Header -->
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-white" x-text="command.display_name"></h3>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-text="command.description || 'No description available'"></p>
+                        </div>
+                        <div class="ml-4 flex-shrink-0">
+                            <button @click="toggleCommand(command)" 
+                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                                    :class="command.enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'">
+                                <span class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                      :class="command.enabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Command Status -->
+                    <div class="mt-4 flex items-center space-x-4">
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 rounded-full mr-2"
+                                 :class="command.enabled ? 'bg-green-400' : 'bg-gray-400 dark:bg-gray-500'"></div>
+                            <span class="text-sm text-gray-600 dark:text-gray-400" x-text="command.enabled ? 'Enabled' : 'Disabled'"></span>
+                        </div>
+                        <div x-show="command.schedule_hours" class="flex items-center">
+                            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span class="text-sm text-gray-600 dark:text-gray-400" x-text="`Every ${command.schedule_hours}h`"></span>
+                        </div>
+                    </div>
+
+                    <!-- Last Run Info -->
+                    <div class="mt-4 space-y-2">
+                        <div x-show="command.last_run">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Last run: </span>
+                            <span class="text-xs text-gray-900 dark:text-white" x-text="formatDate(command.last_run)"></span>
+                        </div>
+                        <div x-show="command.next_run">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Next run: </span>
+                            <span class="text-xs text-gray-900 dark:text-white" x-text="formatDate(command.next_run)"></span>
+                        </div>
+                        <div x-show="command.last_duration">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Duration: </span>
+                            <span class="text-xs text-gray-900 dark:text-white" x-text="formatDuration(command.last_duration)"></span>
+                        </div>
+                        <div x-show="command.last_success !== null">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Status: </span>
+                            <span class="text-xs font-medium"
+                                  :class="command.last_success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                  x-text="command.last_success ? 'Success' : 'Failed'"></span>
+                        </div>
+                        <div x-show="command.last_error">
+                            <span class="text-xs text-red-500 dark:text-red-400">Error: </span>
+                            <span class="text-xs text-red-600 dark:text-red-400" x-text="command.last_error"></span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="mt-6 flex space-x-3">
+                        <button @click="executeCommand(command)" 
+                                :disabled="!command.enabled"
+                                class="flex-1 inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m-6-8h8a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                            </svg>
+                            Execute Now
+                        </button>
+                        <button @click="editCommand(command)" 
+                                class="flex-1 inline-flex items-center justify-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Recent Executions -->
+    <div class="mt-8">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg transition-colors duration-200">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Recent Executions</h3>
+                <div class="flex space-x-2">
+                    <button @click="cleanupExecutions()"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 rounded-md transition-colors">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Cleanup Old
+                    </button>
+                </div>
+            </div>
+            <div class="p-6">
+                <div x-show="!recentExecutions.length" class="text-center py-8">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No executions yet</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Command executions will appear here once they run.</p>
+                </div>
+                
+                <div x-show="recentExecutions.length" class="space-y-4">
+                    <template x-for="execution in recentExecutions" :key="execution.id">
+                        <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-200">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex-shrink-0">
+                                        <!-- Status Icon -->
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center"
+                                             :class="{
+                                                 'bg-green-100 dark:bg-green-900': execution.status === 'completed',
+                                                 'bg-red-100 dark:bg-red-900': execution.status === 'failed',
+                                                 'bg-yellow-100 dark:bg-yellow-900': execution.status === 'running',
+                                                 'bg-gray-100 dark:bg-gray-700': execution.status === 'cancelled'
+                                             }">
+                                            <!-- Success Icon -->
+                                            <svg x-show="execution.status === 'completed'" 
+                                                 class="w-4 h-4 text-green-600 dark:text-green-400" 
+                                                 fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                            </svg>
+                                            <!-- Failed Icon -->
+                                            <svg x-show="execution.status === 'failed'" 
+                                                 class="w-4 h-4 text-red-600 dark:text-red-400" 
+                                                 fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                            </svg>
+                                            <!-- Running Icon (Spinner) -->
+                                            <svg x-show="execution.status === 'running'" 
+                                                 class="w-4 h-4 text-yellow-600 dark:text-yellow-400 animate-spin" 
+                                                 fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <!-- Cancelled Icon -->
+                                            <svg x-show="execution.status === 'cancelled'" 
+                                                 class="w-4 h-4 text-gray-600 dark:text-gray-400" 
+                                                 fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-900 dark:text-white" x-text="getCommandDisplayName(execution.command_name)"></p>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="formatDate(execution.started_at)"></p>
+                                        <p x-show="execution.target && execution.target !== 'unknown'" class="text-xs text-blue-600 dark:text-blue-400 font-medium" x-text="'Target: ' + execution.target.toUpperCase()"></p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="flex items-center space-x-2">
+                                        <p class="text-sm font-medium text-gray-900 dark:text-white" 
+                                           :class="{
+                                               'text-green-600 dark:text-green-400': execution.status === 'completed',
+                                               'text-red-600 dark:text-red-400': execution.status === 'failed',
+                                               'text-yellow-600 dark:text-yellow-400': execution.status === 'running',
+                                               'text-gray-600 dark:text-gray-400': execution.status === 'cancelled'
+                                           }"
+                                           x-text="execution.status === 'running' ? 'Running...' : (execution.status === 'completed' ? 'Success' : (execution.status === 'cancelled' ? 'Cancelled' : 'Failed'))"></p>
+                                        
+                                        <!-- Kill Button for Running Executions -->
+                                        <button x-show="execution.status === 'running'"
+                                                @click="killExecution(execution.id)"
+                                                class="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800 rounded-md transition-colors"
+                                                :disabled="killingExecutions.includes(execution.id)">
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                            <span x-text="killingExecutions.includes(execution.id) ? 'Killing...' : 'Kill'"></span>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400" x-text="execution.duration ? formatDuration(execution.duration) : 'In Progress'"></p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400" x-text="execution.triggered_by"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Error Message (if failed) -->
+                            <div x-show="execution.status === 'failed' && execution.error_message" 
+                                 class="mt-3 p-3 bg-red-50 dark:bg-red-900 rounded-md">
+                                <p class="text-sm text-red-800 dark:text-red-200" x-text="execution.error_message"></p>
+                            </div>
+                            
+                            <!-- Execution Summary (if completed) -->
+                            <div x-show="execution.status === 'completed'" 
+                                 class="mt-3 p-3 bg-green-50 dark:bg-green-900 rounded-md">
+                                <p class="text-sm text-green-800 dark:text-green-200">
+                                    <span x-text="getCommandDisplayName(execution.command_name)"></span> completed successfully in 
+                                    <span x-text="formatDuration(execution.duration)"></span>
+                                </p>
+                            </div>
+                            
+                            <!-- Expandable Details -->
+                            <div class="mt-3">
+                                <button @click="toggleExecutionDetails(execution.id)"
+                                        class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                                    <span x-text="executionDetailsOpen[execution.id] ? 'Hide Details' : 'Show Details'"></span>
+                                    <svg class="w-4 h-4 transition-transform duration-200"
+                                         :class="{ 'rotate-180': executionDetailsOpen[execution.id] }"
+                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+                                
+                                <div x-show="executionDetailsOpen[execution.id]" 
+                                     x-transition:enter="transition ease-out duration-200"
+                                     x-transition:enter-start="opacity-0 transform scale-95"
+                                     x-transition:enter-end="opacity-100 transform scale-100"
+                                     x-transition:leave="transition ease-in duration-150"
+                                     x-transition:leave-start="opacity-100 transform scale-100"
+                                     x-transition:leave-end="opacity-0 transform scale-95"
+                                     class="mt-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
+                                    <div class="space-y-2 text-sm">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Execution ID:</span>
+                                            <span class="text-gray-900 dark:text-white font-mono" x-text="execution.id"></span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Started:</span>
+                                            <span class="text-gray-900 dark:text-white" x-text="formatDate(execution.started_at)"></span>
+                                        </div>
+                                        <div x-show="execution.completed_at" class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Completed:</span>
+                                            <span class="text-gray-900 dark:text-white" x-text="formatDate(execution.completed_at)"></span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Duration:</span>
+                                            <span class="text-gray-900 dark:text-white" x-text="formatDuration(execution.duration)"></span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Triggered by:</span>
+                                            <span class="text-gray-900 dark:text-white capitalize" x-text="execution.triggered_by"></span>
+                                        </div>
+                                        <div x-show="execution.error_message" class="flex justify-between">
+                                            <span class="text-gray-600 dark:text-gray-400">Error:</span>
+                                            <span class="text-red-600 dark:text-red-400 text-right" x-text="execution.error_message"></span>
+                                        </div>
+                                        
+                                        <!-- Delete Button -->
+                                        <div x-show="execution.status !== 'running'" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                            <button @click="deleteExecution(execution.id)"
+                                                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800 rounded-md transition-colors">
+                                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                                Delete Execution
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Command-specific summary -->
+                                    <div x-show="execution.status === 'completed'" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                        <h5 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Execution Summary</h5>
+                                        <div x-show="execution.command_name === 'playlist_sync_listenbrainz_curated' && execution.output_summary" 
+                                             class="text-sm text-gray-700 dark:text-gray-300">
+                                            <div x-html="formatPlaylistSyncSummary(execution.output_summary)"></div>
+                                        </div>
+                                        <div x-show="execution.command_name !== 'playlist_sync_listenbrainz_curated' || !execution.output_summary" 
+                                             x-text="execution.output_summary || getExecutionSummary(execution)" 
+                                             class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Command Edit Modal -->
+    <div x-show="showEditModal" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto" 
+         style="display: none;">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-gray-500 dark:bg-gray-800 bg-opacity-75 dark:bg-opacity-75 transition-opacity" 
+                 @click="showEditModal = false"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
+                
+                <!-- Modal header -->
+                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900 sm:mx-0 sm:h-10 sm:w-10">
+                            <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" x-text="`Edit ${editingCommand?.display_name || 'Command'}`"></h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500 dark:text-gray-400" x-text="editingCommand?.description || 'Configure command settings'"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal body -->
+                <div class="bg-white dark:bg-gray-800 px-4 pb-4 sm:p-6">
+                    <div class="space-y-4">
+                        <!-- Enabled Toggle -->
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Enabled</label>
+                            <button @click="editingCommand.enabled = !editingCommand.enabled" 
+                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                                    :class="editingCommand.enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'">
+                                <span class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                      :class="editingCommand.enabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                            </button>
+                        </div>
+
+                        <!-- Schedule Hours -->
+                        <div>
+                            <label for="schedule_hours" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Schedule (hours)</label>
+                            <input type="number" 
+                                   id="schedule_hours"
+                                   x-model="editingCommand.schedule_hours"
+                                   min="1" 
+                                   max="168"
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">How often to run this command automatically (1-168 hours)</p>
+                        </div>
+
+                        <!-- Timeout Minutes -->
+                        <div>
+                            <label for="timeout_minutes" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Timeout (minutes)</label>
+                            <input type="number" 
+                                   id="timeout_minutes"
+                                   x-model="editingCommand.timeout_minutes"
+                                   min="1" 
+                                   max="1440"
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Maximum time to allow command to run before timing out (1-1440 minutes)</p>
+                        </div>
+
+                        <!-- Command Configuration -->
+                        <div x-show="editingCommand.config_json">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Configuration</label>
+                            <div class="space-y-4">
+                                <!-- Last.fm Discovery Configuration -->
+                                <div x-show="editingCommand.command_name === 'discovery_lastfm'">
+                                    <div>
+                                        <label for="config_limit" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Limit</label>
+                                        <input type="number" 
+                                               id="config_limit"
+                                               x-model.number="editingCommand.config_json.limit"
+                                               min="1" 
+                                               max="50"
+                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">The number of artists to add to the import list</p>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label for="config_similar_count" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Similar Count</label>
+                                        <input type="number" 
+                                               id="config_similar_count"
+                                               x-model.number="editingCommand.config_json.similar_count"
+                                               min="1" 
+                                               max="10"
+                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">How many similar artists to pull from Last.fm from each Lidarr artist</p>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label for="config_min_match_score" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Min Match Score</label>
+                                        <input type="number" 
+                                               id="config_min_match_score"
+                                               x-model.number="editingCommand.config_json.min_match_score"
+                                               min="0" 
+                                               max="1"
+                                               step="0.1"
+                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Minimum similarity score required for artist matches (0.0-1.0)</p>
+                                    </div>
+                                </div>
+
+                                <!-- ListenBrainz Discovery Configuration -->
+                                <div x-show="editingCommand.command_name === 'discovery_listenbrainz'">
+                                    <div>
+                                        <label for="config_limit" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Limit</label>
+                                        <input type="number" 
+                                               id="config_limit"
+                                               x-model.number="editingCommand.config_json.limit"
+                                               min="1" 
+                                               max="50"
+                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">The number of artists to add to the import list from ListenBrainz playlists</p>
+                                    </div>
+                                </div>
+
+                                <!-- ListenBrainz Playlist Sync Configuration -->
+                                <div x-show="editingCommand.command_name === 'playlist_sync_listenbrainz_curated'">
+                                    <div>
+                                        <label for="config_target" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Target</label>
+                                        <select id="config_target"
+                                                x-model="editingCommand.config_json.target"
+                                                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                            <option value="plex">Plex</option>
+                                            <option value="jellyfin">Jellyfin</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Target music player for playlist synchronization</p>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Playlists</label>
+                                        <div class="space-y-2">
+                                            <div class="flex items-center">
+                                                <input type="checkbox" 
+                                                       id="config_weekly_exploration"
+                                                       x-model="editingCommand.config_json.weekly_exploration"
+                                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                                <label for="config_weekly_exploration" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Exploration</label>
+                                            </div>
+                                            <div class="flex items-center">
+                                                <input type="checkbox" 
+                                                       id="config_weekly_jams"
+                                                       x-model="editingCommand.config_json.weekly_jams"
+                                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                                <label for="config_weekly_jams" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Jams</label>
+                                            </div>
+                                            <div class="flex items-center">
+                                                <input type="checkbox" 
+                                                       id="config_daily_jams"
+                                                       x-model="editingCommand.config_json.daily_jams"
+                                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                                <label for="config_daily_jams" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Daily Jams</label>
+                                            </div>
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select which ListenBrainz playlists to sync</p>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <label for="config_playlist_cleanup" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Playlist Cleanup</label>
+                                        <select id="config_playlist_cleanup"
+                                                x-model="editingCommand.config_json.playlist_cleanup"
+                                                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                            <option value="true">True</option>
+                                            <option value="false">False</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Enable automatic cleanup of old playlists</p>
+                                    </div>
+
+                                    <!-- Retention Settings (shown when cleanup is enabled) -->
+                                    <div x-show="editingCommand.config_json.playlist_cleanup === true || editingCommand.config_json.playlist_cleanup === 'true'" class="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Playlist Retention</h4>
+                                        <div class="space-y-3">
+                                            <div x-show="editingCommand.config_json.weekly_exploration === true || editingCommand.config_json.weekly_exploration === 'true'">
+                                                <label for="config_weekly_exploration_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Weekly Exploration Keep</label>
+                                                <input type="number" 
+                                                       id="config_weekly_exploration_keep"
+                                                       x-model.number="editingCommand.config_json.weekly_exploration_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Weekly Exploration playlists to keep</p>
+                                            </div>
+                                            <div x-show="editingCommand.config_json.weekly_jams === true || editingCommand.config_json.weekly_jams === 'true'">
+                                                <label for="config_weekly_jams_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Weekly Jams Keep</label>
+                                                <input type="number" 
+                                                       id="config_weekly_jams_keep"
+                                                       x-model.number="editingCommand.config_json.weekly_jams_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Weekly Jams playlists to keep</p>
+                                            </div>
+                                            <div x-show="editingCommand.config_json.daily_jams === true || editingCommand.config_json.daily_jams === 'true'">
+                                                <label for="config_daily_jams_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Daily Jams Keep</label>
+                                                <input type="number" 
+                                                       id="config_daily_jams_keep"
+                                                       x-model.number="editingCommand.config_json.daily_jams_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Daily Jams playlists to keep</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal footer -->
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button @click="saveCommand()" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Save Changes
+                    </button>
+                    <button @click="showEditModal = false" 
+                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-600 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function commandManager() {
+    return {
+        // Data
+        commands: [],
+        recentExecutions: [],
+        showEditModal: false,
+        editingCommand: null,
+        websocket: null,
+        executionLogs: {}, // Store logs for each execution
+        executionDetailsOpen: {}, // Track which execution details are open
+        killingExecutions: [], // Track which executions are being killed
+        
+        // Methods
+        init() {
+            this.setupWebSocket();
+            this.loadCommands();
+        },
+        
+        setupWebSocket() {
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                this.websocket = new WebSocket(wsUrl);
+                
+                this.websocket.onopen = () => {
+                    console.log('WebSocket connected');
+                };
+                
+                this.websocket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Failed to parse WebSocket message:', error);
+                    }
+                };
+                
+                this.websocket.onclose = () => {
+                    console.log('WebSocket disconnected, attempting to reconnect...');
+                    setTimeout(() => this.setupWebSocket(), 5000);
+                };
+                
+                this.websocket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+                
+            } catch (error) {
+                console.error('Failed to setup WebSocket:', error);
+            }
+        },
+        
+        handleWebSocketMessage(data) {
+            if (data.type === 'command_update') {
+                this.updateCommandExecution(data.command_name, data.data);
+            }
+        },
+        
+        updateCommandExecution(commandName, data) {
+            // Update recent executions
+            const executionIndex = this.recentExecutions.findIndex(exec => 
+                exec.command_name === commandName && exec.id === data.execution_id
+            );
+            
+            if (data.status === 'started') {
+                // Add new execution
+                const newExecution = {
+                    id: data.execution_id,
+                    command_name: commandName,
+                    started_at: data.started_at,
+                    triggered_by: data.triggered_by,
+                    success: null,
+                    duration: null,
+                    error_message: null,
+                    completed_at: null,
+                    status: 'running'
+                };
+                
+                if (executionIndex >= 0) {
+                    this.recentExecutions[executionIndex] = newExecution;
+                } else {
+                    this.recentExecutions.unshift(newExecution);
+                    // Keep only last 10 executions
+                    this.recentExecutions = this.recentExecutions.slice(0, 10);
+                }
+                
+                // Initialize logs for this execution
+                this.executionLogs[data.execution_id] = [];
+                
+            } else if (data.status === 'completed') {
+                // Update existing execution
+                if (executionIndex >= 0) {
+                    this.recentExecutions[executionIndex].success = data.success;
+                    this.recentExecutions[executionIndex].duration = data.duration;
+                    this.recentExecutions[executionIndex].completed_at = data.completed_at;
+                    this.recentExecutions[executionIndex].error_message = data.error_message;
+                    this.recentExecutions[executionIndex].status = data.success ? 'completed' : 'failed';
+                }
+            }
+        },
+        
+        getCommandDisplayName(commandName) {
+            const command = this.commands.find(cmd => cmd.command_name === commandName);
+            return command ? command.display_name : commandName;
+        },
+        
+        toggleExecutionDetails(executionId) {
+            this.executionDetailsOpen[executionId] = !this.executionDetailsOpen[executionId];
+        },
+        
+        getExecutionSummary(execution) {
+            // Generate a summary based on the command type and execution data
+            const commandName = execution.command_name;
+            const duration = execution.duration;
+            
+            if (commandName === 'discovery_lastfm') {
+                return `Last.fm Discovery completed successfully in ${this.formatDuration(duration)}.
+
+This command discovered similar artists from Last.fm and MusicBrainz for Lidarr import. The results have been saved to the import list file and are ready for Lidarr to consume.`;
+            } else if (commandName === 'discovery_listenbrainz') {
+                return `ListenBrainz Discovery completed successfully in ${this.formatDuration(duration)}.
+
+This command fetched artists from your ListenBrainz Weekly Discovery playlist and filtered them to exclude existing library content. The filtered results have been saved to the import list file.`;
+            } else if (commandName === 'playlist_sync_listenbrainz_curated') {
+                return `ListenBrainz Playlist Sync completed successfully in ${this.formatDuration(duration)}.
+
+This command synchronized ListenBrainz curated playlists to your configured music player. Playlists have been updated with the latest tracks from ListenBrainz.`;
+            } else {
+                return `Command completed successfully in ${this.formatDuration(duration)}.
+
+The command executed without errors and completed its intended operation.`;
+            }
+        },
+        
+        formatPlaylistSyncSummary(summary) {
+            if (!summary) return '';
+            
+            const lines = summary.split('\n');
+            let html = '';
+            
+            for (const line of lines) {
+                if (line.trim() === '') {
+                    html += '<br>';
+                } else if (line.includes('Target:') || line.includes('Source:')) {
+                    html += `<div class="mb-1"><strong>${line}</strong></div>`;
+                } else if (line.includes('Playlists Configured:') || line.includes('Successful Syncs:') || line.includes('Failed Syncs:')) {
+                    html += `<div class="mb-1">${line}</div>`;
+                } else if (line.includes('Total Tracks') || line.includes('Total Sync Time:') || line.includes('Track Success Rate:')) {
+                    html += `<div class="mb-1"><strong>${line}</strong></div>`;
+                } else if (line.includes('Individual Playlist Results:')) {
+                    html += `<div class="mb-2 mt-2"><strong>${line}</strong></div>`;
+                } else if (line.includes('•')) {
+                    html += `<div class="ml-4 mb-1 text-green-600 dark:text-green-400">${line}</div>`;
+                } else {
+                    html += `<div class="mb-1">${line}</div>`;
+                }
+            }
+            
+            return html;
+        },
+        
+        async loadCommands() {
+            try {
+                // Load commands
+                const commandsResponse = await this.apiCall('/api/commands/');
+                this.commands = commandsResponse;
+                
+                // Load recent executions
+                const executionsResponse = await this.apiCall('/api/status/executions/recent?limit=10');
+                this.recentExecutions = executionsResponse.executions || [];
+                
+            } catch (error) {
+                console.error('Failed to load commands:', error);
+                this.showFlash('Failed to load commands', 'error');
+            }
+        },
+        
+        async toggleCommand(command) {
+            try {
+                await this.apiCall(`/api/commands/${command.command_name}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        enabled: !command.enabled
+                    })
+                });
+                
+                command.enabled = !command.enabled;
+                this.showFlash(`Command ${command.enabled ? 'enabled' : 'disabled'}`, 'success');
+                
+            } catch (error) {
+                console.error('Failed to toggle command:', error);
+                this.showFlash('Failed to update command', 'error');
+            }
+        },
+        
+        async executeCommand(command) {
+            try {
+                const response = await this.apiCall(`/api/commands/${command.command_name}/execute`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        triggered_by: 'manual'
+                    })
+                });
+                
+                this.showFlash(`Command ${command.display_name} execution started`, 'success');
+                
+                // Refresh recent executions
+                await this.loadCommands();
+                
+            } catch (error) {
+                console.error('Failed to execute command:', error);
+                this.showFlash('Failed to execute command', 'error');
+            }
+        },
+        
+        async killExecution(executionId) {
+            try {
+                // Add to killing list to show loading state
+                this.killingExecutions.push(executionId);
+                
+                const response = await this.apiCall(`/api/commands/executions/${executionId}/kill`, {
+                    method: 'POST'
+                });
+                
+                this.showFlash(`Execution ${executionId} cancelled successfully`, 'success');
+                
+                // Refresh recent executions to show updated status
+                await this.loadCommands();
+                
+            } catch (error) {
+                console.error('Failed to kill execution:', error);
+                this.showFlash('Failed to kill execution', 'error');
+            } finally {
+                // Remove from killing list
+                this.killingExecutions = this.killingExecutions.filter(id => id !== executionId);
+            }
+        },
+        
+        editCommand(command) {
+            // Deep clone the command to avoid modifying the original
+            this.editingCommand = JSON.parse(JSON.stringify(command));
+            
+            // Ensure timeout_minutes has a default value if not set
+            if (!this.editingCommand.timeout_minutes) {
+                this.editingCommand.timeout_minutes = 120;
+            }
+            
+            this.showEditModal = true;
+        },
+        
+        async saveCommand() {
+            try {
+                await this.apiCall(`/api/commands/${this.editingCommand.command_name}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        enabled: this.editingCommand.enabled,
+                        schedule_hours: this.editingCommand.schedule_hours,
+                        timeout_minutes: this.editingCommand.timeout_minutes,
+                        config_json: this.editingCommand.config_json
+                    })
+                });
+                
+                // Update the original command in the list
+                const originalCommand = this.commands.find(c => c.command_name === this.editingCommand.command_name);
+                if (originalCommand) {
+                    Object.assign(originalCommand, this.editingCommand);
+                }
+                
+                this.showEditModal = false;
+                this.editingCommand = null;
+                this.showFlash('Command updated successfully', 'success');
+                
+            } catch (error) {
+                console.error('Failed to save command:', error);
+                this.showFlash('Failed to update command', 'error');
+            }
+        },
+        
+        async deleteExecution(executionId) {
+            if (!confirm('Are you sure you want to delete this execution? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                await this.apiCall(`/api/commands/executions/${executionId}`, {
+                    method: 'DELETE'
+                });
+                
+                this.showFlash('Execution deleted successfully', 'success');
+                
+                // Refresh recent executions to remove the deleted one
+                await this.loadCommands();
+                
+            } catch (error) {
+                console.error('Failed to delete execution:', error);
+                
+                // If execution not found (404), refresh data and show appropriate message
+                if (error.status === 404) {
+                    this.showFlash('Execution was already deleted or no longer exists', 'info');
+                    // Refresh data to get current state
+                    await this.loadCommands();
+                } else {
+                    this.showFlash('Failed to delete execution', 'error');
+                }
+            }
+        },
+        
+        async cleanupExecutions() {
+            if (!confirm('This will delete old executions, keeping only the most recent ones. Continue?')) {
+                return;
+            }
+            
+            try {
+                const response = await this.apiCall('/api/commands/executions/cleanup', {
+                    method: 'POST'
+                });
+                
+                this.showFlash(response.message, 'success');
+                
+                // Refresh recent executions to show updated list
+                await this.loadCommands();
+                
+            } catch (error) {
+                console.error('Failed to cleanup executions:', error);
+                this.showFlash('Failed to cleanup executions', 'error');
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

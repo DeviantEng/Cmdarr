@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block title %}Status - Cmdarr{% endblock %}
+
+{% block content %}
+<div x-data="statusManager()" x-init="loadStatus()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">System Status</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-400">Comprehensive system health and configuration overview</p>
+            </div>
+            <button @click="showRawConfig = true" 
+                    class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Show Raw Config
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Overview Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <!-- System Health -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 transition-colors duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center"
+                         :class="systemHealth === 'healthy' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'">
+                        <svg class="w-5 h-5" 
+                             :class="systemHealth === 'healthy' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                             fill="currentColor" viewBox="0 0 20 20">
+                            <path x-show="systemHealth === 'healthy'" fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            <path x-show="systemHealth !== 'healthy'" fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">System Health</h3>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="systemHealth || 'Loading...'"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Status -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 transition-colors duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center"
+                         :class="databaseStatus === 'connected' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'">
+                        <svg class="w-5 h-5" 
+                             :class="databaseStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                             fill="currentColor" viewBox="0 0 20 20">
+                            <path x-show="databaseStatus === 'connected'" fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            <path x-show="databaseStatus !== 'connected'" fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Database</h3>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="databaseStatus || 'Loading...'"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Status -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 transition-colors duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center"
+                         :class="configStatus === 'valid' ? 'bg-green-100 dark:bg-green-900' : 'bg-yellow-100 dark:bg-yellow-900'">
+                        <svg class="w-5 h-5" 
+                             :class="configStatus === 'valid' ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'"
+                             fill="currentColor" viewBox="0 0 20 20">
+                            <path x-show="configStatus === 'valid'" fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            <path x-show="configStatus !== 'valid'" fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Configuration</h3>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="configStatus || 'Loading...'"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uptime -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 transition-colors duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                        <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Uptime</h3>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="uptime || 'Loading...'"></p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- System Information -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- System Details -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">System Details</h3>
+            </div>
+            <div class="p-6">
+                <dl class="space-y-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Application</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="systemInfo.app_name || 'Loading...'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Version</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="systemInfo.version || 'Loading...'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Python Version</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="systemInfo.python_version || 'Loading...'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Platform</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="systemInfo.platform || 'Loading...'"></dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Resource Usage -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Resource Usage</h3>
+            </div>
+            <div class="p-6">
+                <dl class="space-y-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Memory Usage</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="memoryUsage || 'Loading...'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU Usage</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="cpuUsage || 'Loading...'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Disk Usage</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white" x-text="diskUsage || 'Loading...'"></dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Music Library Cache Details -->
+    <div class="mt-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Plex Library Cache -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Plex Library Cache</h2>
+                        <button @click="refreshCache('plex')" 
+                                :disabled="cacheRefreshing.plex"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                                :class="cacheRefreshing.plex ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
+                            <svg x-show="!cacheRefreshing.plex" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <svg x-show="cacheRefreshing.plex" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                            <span x-text="cacheRefreshing.plex ? 'Refreshing...' : 'Refresh'"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Status -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Status</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.status || 'Not Available'"></p>
+                        </div>
+                        
+                        <!-- Track Count -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Track Count</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.object_count ? plexCacheInfo.object_count.toLocaleString() : '0'"></p>
+                        </div>
+                        
+                        <!-- Cache Size -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Size</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.size_mb ? plexCacheInfo.size_mb + ' MB' : '0 MB'"></p>
+                        </div>
+                        
+                        <!-- Last Generated -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Last Generated</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.last_generated ? new Date(plexCacheInfo.last_generated * 1000).toLocaleString() : 'Never'"></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Cache Statistics -->
+                    <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Cache Statistics</h3>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Hits</h4>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.cache_hits || 0"></p>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Misses</h4>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="plexCacheInfo.cache_misses || 0"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jellyfin Library Cache -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
+                <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Jellyfin Library Cache</h2>
+                        <button @click="refreshCache('jellyfin')" 
+                                :disabled="cacheRefreshing.jellyfin"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                                :class="cacheRefreshing.jellyfin ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
+                            <svg x-show="!cacheRefreshing.jellyfin" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <svg x-show="cacheRefreshing.jellyfin" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <span x-text="cacheRefreshing.jellyfin ? 'Refreshing...' : 'Refresh'"></span>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Status -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Status</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.status || 'Not Available'"></p>
+                        </div>
+                        
+                        <!-- Track Count -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Track Count</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.object_count ? jellyfinCacheInfo.object_count.toLocaleString() : '0'"></p>
+                        </div>
+                        
+                        <!-- Cache Size -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Size</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.size_mb ? jellyfinCacheInfo.size_mb + ' MB' : '0 MB'"></p>
+                        </div>
+                        
+                        <!-- Last Generated -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Last Generated</h3>
+                            <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.last_generated ? new Date(jellyfinCacheInfo.last_generated * 1000).toLocaleString() : 'Never'"></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Cache Statistics -->
+                    <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Cache Statistics</h3>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Hits</h4>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.cache_hits || 0"></p>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Cache Misses</h4>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="jellyfinCacheInfo.cache_misses || 0"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw Config Modal -->
+    <div x-show="showRawConfig" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto" 
+         style="display: none;">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+                 @click="showRawConfig = false"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                    Raw Configuration
+                                </h3>
+                                <button @click="showRawConfig = false" 
+                                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="bg-gray-900 rounded-lg p-4 max-h-96 overflow-auto">
+                                <pre class="text-green-400 text-sm" x-text="JSON.stringify(configSummary, null, 2)"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button @click="showRawConfig = false" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function statusManager() {
+    return {
+        // Data
+        systemHealth: null,
+        databaseStatus: null,
+        configStatus: null,
+        uptime: null,
+        plexCacheInfo: {},
+        jellyfinCacheInfo: {},
+        systemInfo: {},
+        memoryUsage: null,
+        cpuUsage: null,
+        diskUsage: null,
+        configSummary: {},
+        showRawConfig: false,
+        cacheRefreshing: {
+            plex: false,
+            jellyfin: false
+        },
+        
+        // Load status data
+        async loadStatus() {
+            try {
+                // Load system status
+                const systemData = await this.apiCall('/api/status/system');
+                this.systemInfo = systemData;
+                this.memoryUsage = `${systemData.memory?.percent_used || 0}% (${systemData.memory?.used_mb || 0} MB)`;
+                this.cpuUsage = `${systemData.cpu?.percent_used || 0}%`;
+                this.diskUsage = `${systemData.disk?.percent_used || 0}% (${systemData.disk?.used_gb || 0} GB)`;
+                
+                // Load health status
+                const healthData = await this.apiCall('/api/status/health');
+                this.systemHealth = healthData.overall_status;
+                this.databaseStatus = healthData.checks?.database?.status === 'healthy' ? 'connected' : 'disconnected';
+                this.configStatus = healthData.checks?.configuration?.status === 'healthy' ? 'valid' : 'incomplete';
+                
+                // Load configuration summary
+                const statusData = await this.apiCall('/api/status/raw');
+                this.configSummary = statusData.configuration || {};
+                
+                // Load cache status for both Plex and Jellyfin
+                try {
+                    const plexCacheData = await this.apiCall('/api/status/cache?target=plex');
+                    this.plexCacheInfo = plexCacheData;
+                } catch (error) {
+                    console.warn('Failed to load Plex cache data:', error);
+                    this.plexCacheInfo = { status: 'Not Available' };
+                }
+                
+                try {
+                    const jellyfinCacheData = await this.apiCall('/api/status/cache?target=jellyfin');
+                    this.jellyfinCacheInfo = jellyfinCacheData;
+                } catch (error) {
+                    console.warn('Failed to load Jellyfin cache data:', error);
+                    this.jellyfinCacheInfo = { status: 'Not Available' };
+                }
+                
+                // Calculate uptime
+                if (systemData.uptime_seconds) {
+                    this.uptime = this.formatDuration(systemData.uptime_seconds);
+                }
+                
+            } catch (error) {
+                console.error('Failed to load status:', error);
+                this.systemHealth = 'error';
+                this.databaseStatus = 'error';
+                this.configStatus = 'error';
+            }
+        },
+        
+        // Cache refresh functionality
+        async refreshCache(target) {
+            if (this.cacheRefreshing[target]) return;
+            
+            this.cacheRefreshing[target] = true;
+            
+            try {
+                // Trigger cache refresh via API
+                const response = await this.apiCall(`/api/commands/library_cache_builder/execute`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        target: target,
+                        force_refresh: true
+                    })
+                });
+                
+                if (response.success) {
+                    this.showFlash(`${target.charAt(0).toUpperCase() + target.slice(1)} cache refreshed successfully`, 'success');
+                    // Reload cache data
+                    await this.loadCacheData(target);
+                } else {
+                    this.showFlash(`Failed to refresh ${target} cache: ${response.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error(`Failed to refresh ${target} cache:`, error);
+                this.showFlash(`Failed to refresh ${target} cache: ${error.message}`, 'error');
+            } finally {
+                this.cacheRefreshing[target] = false;
+            }
+        },
+        
+        async loadCacheData(target) {
+            try {
+                const cacheData = await this.apiCall(`/api/status/cache?target=${target}`);
+                if (target === 'plex') {
+                    this.plexCacheInfo = cacheData;
+                } else if (target === 'jellyfin') {
+                    this.jellyfinCacheInfo = cacheData;
+                }
+            } catch (error) {
+                console.warn(`Failed to load ${target} cache data:`, error);
+            }
+        },
+        
+        // Utility functions
+        formatDuration(seconds) {
+            if (!seconds || seconds < 0) return '0s';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,80 @@
+name: Build and Publish Docker image
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: devianteng/cmdarr
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version from __version__.py
+        id: version
+        run: |
+          VERSION=$(python -c "from __version__ import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Parse semantic version (e.g., 0.1.0 -> 0, 0.1, 0.1.0)
+          IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
+          MAJOR="${VERSION_PARTS[0]}"
+          MINOR="${VERSION_PARTS[0]}.${VERSION_PARTS[1]}"
+          PATCH="$VERSION"
+          
+          echo "MAJOR=v$MAJOR" >> $GITHUB_OUTPUT
+          echo "MINOR=v$MINOR" >> $GITHUB_OUTPUT
+          echo "PATCH=v$PATCH" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=${{ steps.version.outputs.MAJOR }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.MINOR }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.PATCH }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix={{branch}}-
+          labels: |
+            org.opencontainers.image.title=Cmdarr
+            org.opencontainers.image.description=Modular music automation platform
+            org.opencontainers.image.version=${{ steps.version.outputs.VERSION }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

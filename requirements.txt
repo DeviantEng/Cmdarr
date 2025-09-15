@@ -1,0 +1,33 @@
+# Core HTTP client for async requests
+aiohttp>=3.8.0
+
+# Synchronous HTTP client for Plex API (proven working approach)
+requests>=2.28.0
+
+# Additional aiohttp components for SSL/TLS handling
+aiofiles>=23.0.0
+
+# System process and memory monitoring for library cache management
+psutil>=5.9.0
+
+# FastAPI and web framework dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.0
+python-multipart>=0.0.6
+
+# Database and ORM
+sqlalchemy>=2.0.0
+
+# Pydantic for data validation
+pydantic>=2.0.0
+
+# For enhanced logging and formatting
+# colorlog>=6.7.0
+
+# For future scheduling functionality
+# apscheduler>=3.10.0
+
+# Development and testing (optional)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0

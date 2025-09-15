@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - Cmdarr{% endblock %}
+
+{% block content %}
+<div x-data="configManager()" x-init="loadConfiguration()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Configuration</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-400">Manage your Cmdarr configuration settings</p>
+    </div>
+
+    <!-- Configuration Categories -->
+    <div class="mb-6">
+        <div class="flex flex-wrap gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+            <button @click="selectedCategory = 'all'" 
+                    class="px-3 py-2 text-sm font-medium rounded-md transition-colors"
+                    :class="selectedCategory === 'all' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">
+                All Settings
+            </button>
+            <template x-for="category in categories" :key="category">
+                <button @click="selectedCategory = category" 
+                        class="px-3 py-2 text-sm font-medium rounded-md transition-colors capitalize"
+                        :class="selectedCategory === category ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">
+                    <span x-text="category"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg transition-colors duration-200">
+        <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Configuration Settings</h3>
+                <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+                    <button @click="saveAllChanges()" 
+                            :disabled="!hasChanges"
+                            class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Save All Changes
+                    </button>
+                    <button @click="resetChanges()" 
+                            :disabled="!hasChanges"
+                            class="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-4 sm:p-6">
+            <div class="space-y-6">
+                <template x-for="setting in filteredSettings" :key="setting.key">
+                    <div class="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-700 transition-colors duration-200">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-start space-x-2 flex-wrap">
+                                    <h4 class="text-sm font-medium text-gray-900 dark:text-white break-words flex-1 min-w-0" x-text="setting.key"></h4>
+                                    <div class="flex items-center space-x-2 flex-shrink-0">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                              :class="setting.is_required ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' : 'bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200'"
+                                              x-text="setting.is_required ? 'Required' : 'Optional'"></span>
+                                        <span x-show="setting.is_sensitive" 
+                                              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
+                                            Sensitive
+                                        </span>
+                                    </div>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-text="setting.description || 'No description available'"></p>
+                                <div class="mt-2">
+                                    <span class="text-xs text-gray-400 dark:text-gray-500">Category: </span>
+                                    <span class="text-xs text-gray-600 dark:text-gray-300 capitalize" x-text="setting.category"></span>
+                                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-4">Type: </span>
+                                    <span class="text-xs text-gray-600 dark:text-gray-300" x-text="setting.data_type"></span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <!-- String Input -->
+                            <div x-show="setting.data_type === 'string'">
+                                <input type="text" 
+                                       x-model="setting.value"
+                                       @input="markAsChanged(setting)"
+                                       :placeholder="setting.default_value"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                       :class="setting.is_sensitive ? 'font-mono' : ''">
+                            </div>
+                            
+                            <!-- Integer Input -->
+                            <div x-show="setting.data_type === 'int'">
+                                <input type="number" 
+                                       x-model.number="setting.value"
+                                       @input="markAsChanged(setting)"
+                                       :placeholder="setting.default_value"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                            </div>
+                            
+                            <!-- Float Input -->
+                            <div x-show="setting.data_type === 'float'">
+                                <input type="number" 
+                                       step="0.1"
+                                       x-model.number="setting.value"
+                                       @input="markAsChanged(setting)"
+                                       :placeholder="setting.default_value"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                            </div>
+                            
+                            <!-- Boolean Input -->
+                            <div x-show="setting.data_type === 'bool'">
+                                <select x-model="setting.value"
+                                        @change="markAsChanged(setting)"
+                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                    <option value="true">True</option>
+                                    <option value="false">False</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Dropdown Input -->
+                            <div x-show="setting.data_type === 'dropdown'">
+                                <select x-model="setting.value"
+                                        @change="markAsChanged(setting)"
+                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                    <template x-for="option in setting.options" :key="option">
+                                        <option :value="option" x-text="option"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            
+                            <!-- JSON Input -->
+                            <div x-show="setting.data_type === 'json'">
+                                <textarea x-model="setting.value"
+                                          @input="markAsChanged(setting)"
+                                          :placeholder="setting.default_value"
+                                          rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Current Value Display -->
+                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>Current value: </span>
+                            <span class="font-mono" x-text="setting.effective_value || 'Not set'"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function configManager() {
+    return {
+        // Data
+        settings: [],
+        categories: [],
+        selectedCategory: 'all',
+        changedSettings: new Set(),
+        
+        // Computed
+        get filteredSettings() {
+            if (this.selectedCategory === 'all') {
+                return this.settings;
+            }
+            return this.settings.filter(setting => setting.category === this.selectedCategory);
+        },
+        
+        get hasChanges() {
+            return this.changedSettings.size > 0;
+        },
+        
+        // Methods
+        async loadConfiguration() {
+            try {
+                // Load all settings
+                const response = await this.apiCall('/api/config/');
+                this.settings = Object.entries(response.settings).map(([key, value]) => ({
+                    key,
+                    value: value,
+                    effective_value: value,
+                    data_type: 'string', // Will be updated from details
+                    category: 'unknown',
+                    description: '',
+                    is_required: false,
+                    is_sensitive: false,
+                    default_value: ''
+                }));
+                
+                // Load detailed information for each setting
+                for (let setting of this.settings) {
+                    try {
+                        const details = await this.apiCall(`/api/config/details/${setting.key}`);
+                        Object.assign(setting, details);
+                        
+                        // Convert boolean values to strings for proper dropdown display
+                        if (setting.data_type === 'bool') {
+                            setting.value = String(setting.value).toLowerCase();
+                        }
+                        
+                        // Ensure dropdown values are properly set
+                        if (setting.data_type === 'dropdown' && setting.value) {
+                            // Force reactivity by ensuring the value is properly set
+                            setting.value = String(setting.value);
+                        }
+                        
+                        // Force Alpine.js to update the DOM for this setting
+                        this.$nextTick(() => {
+                            // Trigger reactivity update
+                            setting.value = setting.value;
+                        });
+                    } catch (error) {
+                        console.warn(`Failed to load details for ${setting.key}:`, error);
+                    }
+                }
+                
+                // Extract categories
+                this.categories = [...new Set(this.settings.map(s => s.category))].sort();
+                
+            } catch (error) {
+                console.error('Failed to load configuration:', error);
+                this.showFlash('Failed to load configuration', 'error');
+            }
+        },
+        
+        markAsChanged(setting) {
+            this.changedSettings.add(setting.key);
+        },
+        
+        async saveAllChanges() {
+            try {
+                const promises = Array.from(this.changedSettings).map(key => {
+                    const setting = this.settings.find(s => s.key === key);
+                    
+                    // Convert boolean string values back to actual booleans for saving
+                    let value = setting.value;
+                    if (setting.data_type === 'bool') {
+                        value = setting.value === 'true';
+                    }
+                    
+                    return this.apiCall(`/api/config/${key}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            value: value,
+                            data_type: setting.data_type
+                        })
+                    });
+                });
+                
+                await Promise.all(promises);
+                
+                this.changedSettings.clear();
+                this.showFlash('Configuration saved successfully', 'success');
+                
+                // Reload to get updated effective values
+                await this.loadConfiguration();
+                
+            } catch (error) {
+                console.error('Failed to save configuration:', error);
+                this.showFlash('Failed to save configuration', 'error');
+            }
+        },
+        
+        resetChanges() {
+            this.changedSettings.clear();
+            // Reload original values
+            this.loadConfiguration();
+            this.showFlash('Changes reset', 'success');
+        }
+    }
+}
+</script>
+{% endblock %}
