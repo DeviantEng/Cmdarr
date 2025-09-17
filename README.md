@@ -297,6 +297,15 @@ Monitor command execution and web server performance:
 
 ---
 
+## Version 0.1.1 Release Notes
+
+### 🔧 Stability & Performance Improvements
+- **Enhanced cache management**: Added client-specific cache refresh/rebuild options with improved UI dropdown controls
+- **Improved track matching**: Fixed Jellyfin search parameters and URL encoding for 100% playlist sync success rate
+- **Performance optimizations**: Resolved async/sync execution conflicts and implemented centralized cache utility for 5x faster sync operations
+
+---
+
 ## Technical Architecture (For Developers)
 
 ### Architecture Overview
