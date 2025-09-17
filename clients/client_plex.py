@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from urllib.parse import quote_plus
 from cache_manager import get_cache_manager
 from .client_base import BaseAPIClient
+from utils.cache_client import create_cache_client
 
 
 class PlexClient(BaseAPIClient):
@@ -31,12 +32,28 @@ class PlexClient(BaseAPIClient):
         
         self.token = config.PLEX_TOKEN
         
-        # Initialize cache if enabled
-        self.cache_enabled = config.CACHE_ENABLED
-        if self.cache_enabled:
-            self.cache = get_cache_manager()
-        else:
-            self.cache = None
+        # Initialize cache - enable based on library cache setting
+        self.cache_enabled = config.get('LIBRARY_CACHE_PLEX_ENABLED', False)
+        self.cache = get_cache_manager() if self.cache_enabled else None
+        
+        # Initialize centralized cache client
+        self.cache_client = create_cache_client('plex', config)
+        
+        # Register with library cache manager for per-client stats if library cache is enabled
+        if config.get('LIBRARY_CACHE_PLEX_ENABLED', False):
+            self._register_with_cache_manager()
+    
+    def _register_with_cache_manager(self) -> None:
+        """Register this client with the library cache manager for per-client stats"""
+        self.cache_client.register_with_cache_manager(self)
+    
+    def _record_cache_hit(self) -> None:
+        """Record a library cache hit"""
+        self.cache_client.record_cache_hit()
+    
+    def _record_cache_miss(self) -> None:
+        """Record a library cache miss"""
+        self.cache_client.record_cache_miss()
     
     # ==== LIBRARY CACHE INTERFACE METHODS ====
     # Required by LibraryCacheManager for optimization
@@ -348,15 +365,26 @@ class PlexClient(BaseAPIClient):
         Search for a track by name and artist with cache-first approach
         Enhanced with optimized library cache for dramatic performance improvements
         """
-        # Try cached search first if available
-        if cached_data:
+        # Check if library cache is enabled for this client
+        library_cache_enabled = self.config.get('LIBRARY_CACHE_PLEX_ENABLED', False)
+        
+        # Try cached search first if available and library cache is enabled
+        if cached_data and library_cache_enabled:
             cached_result = self.search_cached_library(track_name, artist_name, cached_data)
             if cached_result:
                 self.logger.debug(f"Cache hit: {artist_name} - {track_name}")
+                # Record cache hit
+                self._record_cache_hit()
                 return cached_result
         
         # Fallback to live API search (original implementation)
-        self.logger.debug(f"Cache miss, using live API search: {artist_name} - {track_name}")
+        if library_cache_enabled:
+            self.logger.debug(f"Cache miss, using live API search: {artist_name} - {track_name}")
+            # Record cache miss
+            self._record_cache_miss()
+        else:
+            self.logger.debug(f"Using live API search: {artist_name} - {track_name}")
+        
         return self._search_for_track_live(track_name, artist_name, mbids)
     
     def _search_for_track_live(self, track_name, artist_name, mbids=None):
@@ -402,9 +430,7 @@ class PlexClient(BaseAPIClient):
 
         return None
     
-    def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", 
-                      library_key: str = None, update_existing: bool = True,
-                      library_cache_manager=None) -> Tuple[bool, int, int]:
+    def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", **kwargs) -> Dict[str, Any]:
         """
         Sync a playlist to Plex with optimized library cache
         
@@ -412,15 +438,18 @@ class PlexClient(BaseAPIClient):
             title: Playlist title
             tracks: List of track dictionaries with 'artist', 'album', 'track' keys
             summary: Playlist description
-            library_key: Plex library key (auto-detected if None)
-            update_existing: Whether to update existing playlists
-            library_cache_manager: LibraryCacheManager instance for optimization
+            **kwargs: Additional parameters (library_key, update_existing, library_cache_manager)
             
         Returns:
-            Tuple of (success, tracks_found, tracks_total)
+            Dict with keys: success, action, total_tracks, found_tracks, message
         """
         try:
             self.logger.info(f"Syncing playlist '{title}' with {len(tracks)} tracks")
+
+            # Extract kwargs
+            library_key = kwargs.get('library_key')
+            update_existing = kwargs.get('update_existing', True)
+            library_cache_manager = kwargs.get('library_cache_manager')
 
             # Get optimized library cache if available
             cached_data = None
@@ -483,10 +512,22 @@ class PlexClient(BaseAPIClient):
                 
                 if cleanup_empty:
                     self.logger.info(f"Empty playlist cleanup enabled - will not create empty playlist '{title}'")
-                    return True, 0, tracks_total
+                    return {
+                        'success': True,
+                        'action': 'skipped_empty',
+                        'total_tracks': tracks_total,
+                        'found_tracks': 0,
+                        'message': f"Skipped creating empty playlist '{title}'"
+                    }
                 else:
                     self.logger.info(f"Empty playlist cleanup disabled - skipping creation of empty playlist '{title}'")
-                    return True, 0, tracks_total
+                    return {
+                        'success': True,
+                        'action': 'skipped_empty',
+                        'total_tracks': tracks_total,
+                        'found_tracks': 0,
+                        'message': f"Skipped creating empty playlist '{title}'"
+                    }
 
             # Create/update playlist using proven method
             success = self.create_or_update_playlist(title, found_track_keys, summary)
@@ -494,14 +535,32 @@ class PlexClient(BaseAPIClient):
             if success:
                 match_rate = (tracks_found / tracks_total * 100) if tracks_total > 0 else 0
                 self.logger.info(f"Successfully synced playlist '{title}': {tracks_found}/{tracks_total} tracks ({match_rate:.1f}% success rate)")
+                return {
+                    'success': True,
+                    'action': 'synced',
+                    'total_tracks': tracks_total,
+                    'found_tracks': tracks_found,
+                    'message': f"Successfully synced playlist '{title}' with {tracks_found} tracks"
+                }
             else:
                 self.logger.error(f"Failed to sync playlist '{title}'")
-            
-            return success, tracks_found, tracks_total
+                return {
+                    'success': False,
+                    'action': 'failed',
+                    'total_tracks': tracks_total,
+                    'found_tracks': tracks_found,
+                    'message': f"Failed to sync playlist '{title}'"
+                }
 
         except Exception as e:
             self.logger.error(f"Error syncing playlist '{title}': {e}")
-            return False, 0, len(tracks)
+            return {
+                'success': False,
+                'action': 'error',
+                'total_tracks': len(tracks),
+                'found_tracks': 0,
+                'message': f"Error syncing playlist '{title}': {str(e)}"
+            }
     
     # ==== ORIGINAL PLEX API METHODS ====
     # Keeping all existing proven functionality

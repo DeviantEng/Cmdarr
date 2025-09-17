@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import quote_plus
 from cache_manager import get_cache_manager
 from .client_base import BaseAPIClient
+from utils.cache_client import create_cache_client
 
 
 class JellyfinClient(BaseAPIClient):
@@ -36,12 +37,16 @@ class JellyfinClient(BaseAPIClient):
         self.token = config.get('JELLYFIN_TOKEN', '')
         self.user_id = config.get('JELLYFIN_USER_ID', '')
         
-        # Initialize cache if enabled
-        self.cache_enabled = config.get('CACHE_ENABLED', True)
-        if self.cache_enabled:
-            self.cache = get_cache_manager()
-        else:
-            self.cache = None
+        # Initialize cache (always enabled)
+        self.cache_enabled = True
+        self.cache = get_cache_manager()
+        
+        # Initialize centralized cache client
+        self.cache_client = create_cache_client('jellyfin', config)
+        
+        # Load cached library if library cache is enabled
+        if config.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False):
+            self._load_cached_library()
     
     def get_cache_key(self, library_key: str = None) -> str:
         """Generate cache key for library cache"""
@@ -77,11 +82,104 @@ class JellyfinClient(BaseAPIClient):
         """Get cache TTL in days for Jellyfin"""
         return self.config.get('CACHE_JELLYFIN_TTL_DAYS', 7)
     
-    async def test_connection(self) -> bool:
+    def _load_cached_library(self) -> None:
+        """Load cached library data if available"""
+        try:
+            from utils.library_cache_manager import get_library_cache_manager
+            cache_manager = get_library_cache_manager(self.config)
+            
+            # Register this client with the cache manager using centralized cache client
+            self.cache_client.register_with_cache_manager(self)
+            
+            # Try to get cached library data
+            cached_data = cache_manager.get_library_cache('jellyfin')
+            
+            if cached_data:
+                self._cached_library = cached_data
+                self.logger.info(f"Loaded cached library with {cached_data.get('total_tracks', 0)} tracks")
+            else:
+                self.logger.info("No cached library data available, will use live API searches")
+                self._cached_library = None
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to load cached library: {e}")
+            self._cached_library = None
+    
+    def _record_cache_hit(self) -> None:
+        """Record a library cache hit"""
+        self.cache_client.record_cache_hit()
+    
+    def _record_cache_miss(self) -> None:
+        """Record a library cache miss"""
+        self.cache_client.record_cache_miss()
+    
+    # ==== SYNCHRONOUS HTTP METHODS (like Plex client) ====
+    
+    def _get_sync(self, path: str, params: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """GET request to Jellyfin API using synchronous requests (like Plex)"""
+        if params is None:
+            params = {}
+            
+        headers = {
+            'X-Emby-Token': self.token,
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get(
+                f"{self.base_url}{path}",
+                params=params,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except ValueError:
+                    self.logger.warning(f"Non-JSON response from {path}: {response.text[:100]}")
+                    return {}
+            return {}
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Sync GET request failed for {path}: {e}")
+            raise
+    
+    def _post_sync(self, path: str, params: Dict[str, Any] = None, json_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """POST request to Jellyfin API using synchronous requests (like Plex)"""
+        if params is None:
+            params = {}
+            
+        headers = {
+            'X-Emby-Token': self.token,
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}{path}",
+                params=params,
+                json=json_data,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            if response.status_code in [200, 201, 204]:
+                try:
+                    return response.json() if response.text.strip() else {}
+                except ValueError:
+                    return {}  # OK for operations that don't return JSON
+            return {}
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Sync POST request failed for {path}: {e}")
+            raise
+    
+    def test_connection(self) -> bool:
         """Test connection to Jellyfin server"""
         try:
             # First test basic connectivity with system info
-            system_response = await self._get("/System/Info")
+            system_response = self._get_sync("/System/Info")
             if not system_response:
                 self.logger.error("Failed to connect to Jellyfin server - system info not available")
                 return False
@@ -89,7 +187,7 @@ class JellyfinClient(BaseAPIClient):
             self.logger.info(f"Connected to Jellyfin server: {system_response.get('ServerName', 'Unknown')}")
             
             # Test authentication by getting user info with the configured user ID
-            response = await self._get(f"/Users/{self.user_id}")
+            response = self._get_sync(f"/Users/{self.user_id}")
             if response and response.get('Id'):
                 self.logger.info(f"Successfully connected to Jellyfin server")
                 return True
@@ -106,11 +204,11 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Connection test failed: {e}")
             return False
     
-    async def authenticate(self) -> bool:
+    def authenticate(self) -> bool:
         """Authenticate with Jellyfin server"""
         try:
             # Test authentication by getting user info
-            response = await self._get(f"/Users/{self.user_id}")
+            response = self._get_sync(f"/Users/{self.user_id}")
             if response and response.get('Id'):
                 self.logger.info(f"Successfully authenticated with Jellyfin server")
                 return True
@@ -121,10 +219,10 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Authentication failed: {e}")
             return False
     
-    async def get_server_info(self) -> Dict[str, Any]:
+    def get_server_info(self) -> Dict[str, Any]:
         """Get Jellyfin server information"""
         try:
-            response = await self._get("/System/Info")
+            response = self._get_sync("/System/Info")
             if response:
                 server_name = response.get('ServerName', 'Unknown')
                 version = response.get('Version', 'Unknown')
@@ -140,7 +238,7 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Failed to get server info: {e}")
             return {}
     
-    async def search_tracks(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def search_tracks_sync(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Search for tracks in Jellyfin library"""
         self.logger.debug(f"=== SEARCH_TRACKS CALLED with query: '{query}', limit: {limit} ===")
         try:
@@ -155,55 +253,72 @@ class JellyfinClient(BaseAPIClient):
                     self.logger.debug(f"Cache miss for search_tracks: {query}")
             
             params = {
-                'SearchTerm': query,
-                'IncludeItemTypes': 'Audio',
-                'Recursive': 'true',
-                'Limit': limit,
-                'UserId': self.user_id
+                'searchTerm': query,  # Use lowercase like web interface
+                'includeItemTypes': 'Audio',
+                'recursive': 'true',
+                'limit': limit,
+                'userId': self.user_id,
+                'fields': 'PrimaryImageAspectRatio,CanDelete,MediaSourceCount',
+                'imageTypeLimit': '1',
+                'enableTotalRecordCount': 'false'
             }
             
             self.logger.debug(f"Searching Jellyfin API with params: {params}")
             self.logger.debug(f"Making HTTP request to /Items with user_id: {self.user_id}")
             self.logger.debug(f"Base URL: {self.base_url}")
             
+            # Debug: Show the actual URL that will be constructed
+            import urllib.parse
+            full_url = f"{self.base_url}/Items"
+            query_string = urllib.parse.urlencode(params)
+            self.logger.debug(f"Full URL: {full_url}?{query_string}")
+            
             try:
-                response = await self._get("/Items", params=params)
+                response = self._get_sync("/Items", params=params)
                 self.logger.debug(f"Jellyfin API response: {response}")
             except Exception as e:
                 self.logger.error(f"HTTP request failed: {e}")
                 import traceback
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
                 return []
+            
+            tracks = []
             if response and 'Items' in response:
-                tracks = []
-                for item in response['Items']:
-                    if item.get('Type') == 'Audio':
-                        track_data = {
-                            'id': item.get('Id'),
-                            'name': item.get('Name'),
-                            'artist': item.get('AlbumArtist', item.get('Artists', ['Unknown'])[0] if item.get('Artists') and len(item.get('Artists', [])) > 0 else 'Unknown'),
-                            'album': item.get('Album', 'Unknown'),
-                            'duration': item.get('RunTimeTicks', 0) // 10000000 if item.get('RunTimeTicks') else 0,
-                            'path': item.get('Path'),
-                            'year': item.get('ProductionYear')
-                        }
-                        tracks.append(track_data)
-                        self.logger.debug(f"Found track: '{track_data['artist']}' - '{track_data['name']}'")
-                
-                # Cache the results
-                if self.cache_enabled:
-                    cache_key = self._get_cache_key("search_tracks", query, limit)
-                    self.cache.set(cache_key, 'jellyfin', tracks, self.get_cache_ttl())
-                
-                return tracks
-            return []
+                tracks = self._extract_tracks_from_response(response['Items'])
+                self.logger.debug(f"Found {len(tracks)} tracks with Audio search")
+            
+            # Cache the results
+            if self.cache_enabled:
+                cache_key = self._get_cache_key("search_tracks", query, limit)
+                self.cache.set(cache_key, 'jellyfin', tracks, self.get_cache_ttl())
+                self.logger.debug(f"Cached {len(tracks)} tracks for query: {query}")
+            
+            return tracks
         except Exception as e:
             self.logger.error(f"Failed to search tracks: {e}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return []
     
-    async def find_track_by_artist_and_title(self, artist: str, title: str) -> Optional[Dict[str, Any]]:
+    def _extract_tracks_from_response(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Extract track data from Jellyfin API response items"""
+        tracks = []
+        for item in items:
+            if item.get('Type') == 'Audio':
+                track_data = {
+                    'id': item.get('Id'),
+                    'name': item.get('Name'),
+                    'artist': item.get('AlbumArtist', item.get('Artists', ['Unknown'])[0] if item.get('Artists') and len(item.get('Artists', [])) > 0 else 'Unknown'),
+                    'album': item.get('Album', 'Unknown'),
+                    'duration': item.get('RunTimeTicks', 0) // 10000000 if item.get('RunTimeTicks') else 0,
+                    'path': item.get('Path'),
+                    'year': item.get('ProductionYear')
+                }
+                tracks.append(track_data)
+                self.logger.debug(f"Found track: '{track_data['artist']}' - '{track_data['name']}'")
+        return tracks
+    
+    def find_track_by_artist_and_title_sync(self, artist: str, title: str) -> Optional[Dict[str, Any]]:
         """Find a specific track by artist and title with improved fuzzy matching"""
         self.logger.debug(f"=== FIND_TRACK_BY_ARTIST_AND_TITLE CALLED: '{artist}' - '{title}' ===")
         try:
@@ -217,7 +332,17 @@ class JellyfinClient(BaseAPIClient):
                     for track in tracks:
                         if track.get('id') == track_id:
                             self.logger.debug(f"Found track in cache: '{track['artist']}' - '{track['name']}'")
+                            # Record cache hit
+                            self._record_cache_hit()
                             return track
+                
+                # Cache miss - no match found in cached library
+                self.logger.debug("No match found in cached library")
+                self._record_cache_miss()
+            else:
+                # Cache miss - no cached library available
+                self.logger.debug("No cached library available")
+                self._record_cache_miss()
             
             # Fallback to live API search if cache not available or no match found
             self.logger.debug("Using live API search for track")
@@ -230,8 +355,13 @@ class JellyfinClient(BaseAPIClient):
             
             # Search for the track using title only (Jellyfin search works better with individual terms)
             self.logger.debug(f"Searching by title: '{title}'")
-            tracks = await self.search_tracks(title, limit=50)
+            tracks = self.search_tracks_sync(title, limit=50)
             self.logger.debug(f"Title search returned {len(tracks)} tracks")
+            
+            # Log what tracks were found for analysis
+            if tracks:
+                track_list = [f"{t['artist']} - {t['name']}" for t in tracks[:3]]
+                self.logger.debug(f"Title search found tracks: {track_list}")
             
             # Try multiple matching strategies
             match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title)
@@ -240,7 +370,7 @@ class JellyfinClient(BaseAPIClient):
             
             # If no match, try searching by artist only
             self.logger.debug(f"No match found with title search, trying artist search: '{artist}'")
-            artist_tracks = await self.search_tracks(artist, limit=50)
+            artist_tracks = self.search_tracks_sync(artist, limit=50)
             self.logger.debug(f"Artist search returned {len(artist_tracks)} tracks")
             
             match = self._find_best_match(artist_tracks, normalized_artist, normalized_title, artist, title)
@@ -249,13 +379,111 @@ class JellyfinClient(BaseAPIClient):
             
             # If still no match, try searching by both artist and title
             self.logger.debug(f"No match found, trying combined search: '{artist} {title}'")
-            combined_tracks = await self.search_tracks(f"{artist} {title}", limit=50)
+            combined_tracks = self.search_tracks_sync(f"{artist} {title}", limit=50)
             self.logger.debug(f"Combined search returned {len(combined_tracks)} tracks")
             
             match = self._find_best_match(combined_tracks, normalized_artist, normalized_title, artist, title)
             if match:
                 return match
             
+            # Strategy 5: Try searching with just key words from title and artist
+            self.logger.debug("No match found, trying key word search...")
+            artist_words = [w for w in normalized_artist.split() if len(w) > 2][:3]  # Take up to 3 significant words
+            title_words = [w for w in normalized_title.split() if len(w) > 2][:3]   # Take up to 3 significant words
+            
+            if artist_words or title_words:
+                key_words = artist_words + title_words
+                key_word_query = ' '.join(key_words)
+                self.logger.debug(f"Key word search: '{key_word_query}'")
+                keyword_tracks = self.search_tracks_sync(key_word_query, limit=50)
+                self.logger.debug(f"Key word search returned {len(keyword_tracks)} tracks")
+                
+                match = self._find_best_match(keyword_tracks, normalized_artist, normalized_title, artist, title)
+                if match:
+                    return match
+            
+            # Strategy 6: Relaxed fuzzy matching with lower threshold
+            self.logger.debug("No match found, trying relaxed fuzzy matching...")
+            all_unique_tracks = {}
+            for track_list in [tracks, artist_tracks, combined_tracks]:
+                for track in track_list:
+                    all_unique_tracks[track['id']] = track
+            
+            if keyword_tracks:  # Add keyword tracks if they exist
+                for track in keyword_tracks:
+                    all_unique_tracks[track['id']] = track
+            
+            all_tracks = list(all_unique_tracks.values())
+            self.logger.debug(f"Trying relaxed matching on {len(all_tracks)} unique tracks")
+            match = self._find_best_match_relaxed(all_tracks, normalized_artist, normalized_title, artist, title)
+            if match:
+                return match
+            
+            # Strategy 7: Ultra-relaxed matching - title-only with very low threshold
+            self.logger.debug("No match found, trying ultra-relaxed title-only matching...")
+            match = self._find_best_match_ultra_relaxed(all_tracks, normalized_title, title)
+            if match:
+                return match
+            
+            # Strategy 8: Focused fallback strategies (in order of preference)
+            self.logger.debug("No match found, trying focused fallback strategies...")
+            
+            # Strategy 8a: Full search (artist + title)
+            self.logger.debug("Strategy 8a: Full search (artist + title)")
+            full_query = f"{artist} {title}"
+            self.logger.debug(f"Full search: '{full_query}'")
+            full_tracks = self.search_tracks_sync(full_query, limit=50)
+            self.logger.debug(f"Full search returned {len(full_tracks)} tracks")
+            
+            if full_tracks:
+                match = self._find_best_match_ultra_relaxed(full_tracks, normalized_title, title)
+                if match:
+                    self.logger.info(f"Full search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
+                    return match
+            
+            # Strategy 8b: Truncated search (artist + shortened title, max 25 chars)
+            self.logger.debug("Strategy 8b: Truncated search (artist + shortened title)")
+            truncated_title = self._truncate_title_for_search(title, 25 - len(artist) - 1)  # -1 for space
+            if truncated_title != title:
+                truncated_query = f"{artist} {truncated_title}"
+                self.logger.debug(f"Truncated search: '{truncated_query}'")
+                truncated_tracks = self.search_tracks_sync(truncated_query, limit=50)
+                self.logger.debug(f"Truncated search returned {len(truncated_tracks)} tracks")
+                
+                if truncated_tracks:
+                    match = self._find_best_match_ultra_relaxed(truncated_tracks, normalized_title, title)
+                    if match:
+                        self.logger.info(f"Truncated search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
+                        return match
+            
+            # Strategy 8c: Title-only search with artist validation
+            self.logger.debug("Strategy 8c: Title-only search with artist validation")
+            title_only_match = self._try_title_only_search_with_validation(title, artist, normalized_artist, normalized_title)
+            if title_only_match:
+                return title_only_match
+            
+            # Strategy 8d: Progressive title word removal (handle Jellyfin API limitations)
+            self.logger.debug("Strategy 8d: Progressive title word removal")
+            progressive_match = self._try_progressive_title_word_removal(title, artist, normalized_artist, normalized_title)
+            if progressive_match:
+                return progressive_match
+            
+            self.logger.info(f"❌ TRACK NOT FOUND: '{artist}' - '{title}'")
+            self.logger.info(f"   📋 Search attempts made:")
+            self.logger.info(f"     1️⃣ Title search: '{title}' ({len(tracks)} results)")
+            self.logger.info(f"     2️⃣ Artist search: '{artist}' ({len(artist_tracks) if 'artist_tracks' in locals() else 0} results)")
+            self.logger.info(f"     3️⃣ Combined search: '{artist} {title}' ({len(combined_tracks) if 'combined_tracks' in locals() else 0} results)")
+            if 'keyword_tracks' in locals():
+                self.logger.info(f"     4️⃣ Keyword search: {len(keyword_tracks)} results")
+            self.logger.info(f"     5️⃣ Relaxed fuzzy matching: {len(all_tracks)} unique tracks")
+            self.logger.info(f"     6️⃣ Ultra-relaxed matching: {len(all_tracks)} tracks")
+            if 'full_tracks' in locals():
+                self.logger.info(f"     7️⃣ Full search: '{artist} {title}' ({len(full_tracks)} results)")
+            if 'truncated_tracks' in locals():
+                self.logger.info(f"     8️⃣ Truncated search: {len(truncated_tracks)} results")
+            self.logger.info(f"     9️⃣ Title-only search: '{title}' with artist validation")
+            self.logger.info(f"     🔟 Progressive title word removal: Multiple variants tried")
+            self.logger.info(f"   🔍 All search strategies (1-10) failed to find a match above 25% similarity")
             self.logger.debug(f"No match found for: '{artist}' - '{title}'")
             return None
         except Exception as e:
@@ -270,9 +498,35 @@ class JellyfinClient(BaseAPIClient):
         # Convert to lowercase and strip whitespace
         normalized = str(text).lower().strip()
         
-        # Remove common special characters and punctuation
+        # Handle music-specific patterns first
         import re
-        normalized = re.sub(r'[^\w\s]', '', normalized)
+        # Remove featuring/feat patterns (more comprehensive)
+        normalized = re.sub(r'\s*\(feat\.?\s+[^)]+\)\s*', ' ', normalized)
+        normalized = re.sub(r'\s*\(ft\.?\s+[^)]+\)\s*', ' ', normalized)
+        normalized = re.sub(r'\s*feat\.?\s+.*$', ' ', normalized)
+        normalized = re.sub(r'\s*ft\.?\s+.*$', ' ', normalized)
+        
+        # Handle collaboration formats - normalize "&" to "feat"
+        normalized = re.sub(r'\s*&\s*', ' feat ', normalized)
+        normalized = re.sub(r'\s*featuring\s+', ' feat ', normalized)
+        
+        # Handle common version/remix patterns more aggressively
+        normalized = re.sub(r'\s*\(reimagined\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\s*\(remastered?\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\s*\(radio edit\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\s*\(clean\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\s*\(explicit\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        
+        # Remove version/remix information
+        normalized = re.sub(r'\s*\(.*?(remix|mix|edit|version|remaster|radio|clean|explicit|instrumental|acoustic|live|demo).*?\)\s*', ' ', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\s*\[.*?(remix|mix|edit|version|remaster|radio|clean|explicit|instrumental|acoustic|live|demo).*?\]\s*', ' ', normalized, flags=re.IGNORECASE)
+        
+        # Remove parentheses and brackets content
+        normalized = re.sub(r'\s*\([^)]*\)\s*', ' ', normalized)
+        normalized = re.sub(r'\s*\[[^\]]*\]\s*', ' ', normalized)
+        
+        # Remove special characters but keep hyphens and apostrophes
+        normalized = re.sub(r'[^\w\s\'-]', ' ', normalized)
         
         # Replace multiple spaces with single space
         normalized = re.sub(r'\s+', ' ', normalized)
@@ -280,7 +534,7 @@ class JellyfinClient(BaseAPIClient):
         # Remove common words that might cause matching issues
         common_words = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
         words = normalized.split()
-        words = [word for word in words if word not in common_words]
+        words = [word for word in words if word not in common_words and len(word) > 1]
         normalized = ' '.join(words)
         
         return normalized.strip()
@@ -332,6 +586,125 @@ class JellyfinClient(BaseAPIClient):
         
         if best_match:
             self.logger.debug(f"Fuzzy match found (score: {best_score:.2f}): '{best_match['artist']}' - '{best_match['name']}'")
+            return best_match
+        
+        return None
+    
+    def _find_best_match_relaxed(self, tracks: List[Dict[str, Any]], normalized_artist: str, normalized_title: str, 
+                                original_artist: str, original_title: str) -> Optional[Dict[str, Any]]:
+        """Find the best matching track using relaxed fuzzy matching with lower thresholds"""
+        if not tracks:
+            return None
+        
+        best_match = None
+        best_score = 0
+        
+        for track in tracks:
+            track_artist_norm = self._normalize_text(track['artist'])
+            track_title_norm = self._normalize_text(track['name'])
+            
+            # Calculate multiple similarity measures
+            artist_jaccard = self._calculate_similarity(normalized_artist, track_artist_norm)
+            title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
+            
+            # Character-based similarity for titles (handles minor spelling differences)
+            title_char_sim = self._calculate_character_similarity(normalized_title, track_title_norm)
+            
+            # Word order independence for titles
+            title_word_sim = self._calculate_word_order_similarity(normalized_title, track_title_norm)
+            
+            # Best title similarity from multiple measures
+            title_best = max(title_jaccard, title_char_sim, title_word_sim)
+            
+            # Combined score with lower weight on artist (artist matching is often harder)
+            combined_score = (artist_jaccard * 0.4) + (title_best * 0.6)
+            
+            # Relaxed threshold (was 0.7, now 0.5)
+            if combined_score > best_score and combined_score > 0.5:
+                best_score = combined_score
+                best_match = track
+                self.logger.debug(f"Relaxed match candidate (score: {combined_score:.2f}): '{track['artist']}' - '{track['name']}' | Artist sim: {artist_jaccard:.2f}, Title sim: {title_best:.2f}")
+        
+        if best_match:
+            self.logger.debug(f"Relaxed fuzzy match found (score: {best_score:.2f}): '{best_match['artist']}' - '{best_match['name']}'")
+            return best_match
+        
+        return None
+    
+    def _calculate_character_similarity(self, text1: str, text2: str) -> float:
+        """Calculate character-level similarity using simple overlap ratio"""
+        if not text1 or not text2:
+            return 0.0
+        
+        # Remove spaces and convert to lowercase for character comparison
+        chars1 = set(text1.replace(' ', '').lower())
+        chars2 = set(text2.replace(' ', '').lower())
+        
+        if not chars1 or not chars2:
+            return 0.0
+        
+        intersection = chars1.intersection(chars2)
+        union = chars1.union(chars2)
+        
+        return len(intersection) / len(union) if union else 0.0
+    
+    def _calculate_word_order_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity ignoring word order (useful for 'Title (Remix)' vs 'Remix Title' cases)"""
+        if not text1 or not text2:
+            return 0.0
+        
+        words1 = set(text1.split())
+        words2 = set(text2.split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        # Higher weight for exact word matches regardless of order
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        similarity = len(intersection) / len(union) if union else 0.0
+        
+        # Boost score if most words match (handles cases like "Song Title" vs "Title Song")
+        if len(intersection) >= min(len(words1), len(words2)) * 0.8:
+            similarity *= 1.2  # 20% boost
+        
+        return min(similarity, 1.0)  # Cap at 1.0
+    
+    def _find_best_match_ultra_relaxed(self, tracks: List[Dict[str, Any]], normalized_title: str, original_title: str) -> Optional[Dict[str, Any]]:
+        """Ultra-relaxed matching focusing only on title similarity with very low threshold"""
+        if not tracks:
+            return None
+        
+        best_match = None
+        best_score = 0
+        
+        for track in tracks:
+            track_title_norm = self._normalize_text(track['name'])
+            
+            # Multiple title similarity measures
+            title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
+            title_char_sim = self._calculate_character_similarity(normalized_title, track_title_norm)
+            title_word_sim = self._calculate_word_order_similarity(normalized_title, track_title_norm)
+            
+            # Take the best title similarity
+            title_score = max(title_jaccard, title_char_sim, title_word_sim)
+            
+            # Additional check for very short titles (like "ATTN.")
+            if len(normalized_title.replace(' ', '')) <= 4 and len(track_title_norm.replace(' ', '')) <= 4:
+                # For very short titles, be more lenient with character matching
+                char_overlap = len(set(normalized_title.replace(' ', '')) & set(track_title_norm.replace(' ', '')))
+                if char_overlap >= 2:  # At least 2 characters match
+                    title_score = max(title_score, 0.6)  # Boost score for short titles
+            
+            # Very low threshold for ultra-relaxed matching (25% - even more relaxed)
+            if title_score > best_score and title_score > 0.25:
+                best_score = title_score
+                best_match = track
+                self.logger.debug(f"Ultra-relaxed match candidate (title score: {title_score:.2f}): '{track['artist']}' - '{track['name']}'")
+        
+        if best_match:
+            self.logger.info(f"Ultra-relaxed match found (title score: {best_score:.2f}): '{best_match['artist']}' - '{best_match['name']}' for '{original_title}'")
             return best_match
         
         return None
@@ -422,8 +795,8 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Failed to create playlist '{title}': {e}")
             return False
 
-    async def create_playlist(self, title: str, track_ids: List[str], summary: str = "") -> bool:
-        """Create a new playlist with the given tracks (async wrapper for compatibility)"""
+    def create_playlist(self, title: str, track_ids: List[str], summary: str = "") -> bool:
+        """Create a new playlist with the given tracks"""
         # Use synchronous method for reliability (like Plex)
         return self.create_playlist_sync(title, track_ids, summary)
     
@@ -526,8 +899,8 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Failed to get playlists from Jellyfin: {e}")
             return []
 
-    async def get_playlists(self) -> List[Dict[str, Any]]:
-        """Get all playlists from Jellyfin (async wrapper for compatibility)"""
+    def get_playlists(self) -> List[Dict[str, Any]]:
+        """Get all playlists from Jellyfin"""
         return self.get_playlists_sync()
 
     def find_playlist_by_name_sync(self, playlist_name: str) -> Optional[Dict[str, Any]]:
@@ -584,8 +957,8 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Failed to find playlists with name '{playlist_name}': {e}")
             return []
 
-    async def find_playlist_by_name(self, playlist_name: str) -> Optional[Dict[str, Any]]:
-        """Find a playlist by name (async wrapper for compatibility)"""
+    def find_playlist_by_name(self, playlist_name: str) -> Optional[Dict[str, Any]]:
+        """Find a playlist by name"""
         return self.find_playlist_by_name_sync(playlist_name)
     
     def delete_playlist_sync(self, playlist_id: str) -> bool:
@@ -601,6 +974,12 @@ class JellyfinClient(BaseAPIClient):
                 headers=headers,
                 timeout=30
             )
+            
+            # Handle 404 specifically before raise_for_status()
+            if response.status_code == 404:
+                self.logger.info(f"Playlist {playlist_id} already deleted (404 - not found)")
+                return True
+            
             response.raise_for_status()
             
             if response.status_code in [200, 204]:
@@ -618,14 +997,27 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.error(f"Failed to delete playlist {playlist_id} - status {response.status_code}")
                 return False
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"HTTP error deleting playlist {playlist_id}: {e}")
-            return False
+            # 404 errors are OK - playlist is already gone (desired outcome)
+            self.logger.debug(f"RequestException caught: type={type(e)}, str={str(e)}")
+            if hasattr(e, 'response'):
+                self.logger.debug(f"Exception has response: status_code={getattr(e.response, 'status_code', 'None')}")
+            
+            if hasattr(e, 'response') and e.response and e.response.status_code == 404:
+                self.logger.info(f"Playlist {playlist_id} already deleted (404 - not found)")
+                return True
+            elif "404" in str(e) or "Not Found" in str(e):
+                # Alternative way to catch 404s if response object isn't available
+                self.logger.info(f"Playlist {playlist_id} already deleted (404 in error message)")
+                return True
+            else:
+                self.logger.error(f"HTTP error deleting playlist {playlist_id}: {e}")
+                return False
         except Exception as e:
             self.logger.error(f"Failed to delete playlist {playlist_id}: {e}")
             return False
 
-    async def delete_playlist(self, playlist_id: str) -> bool:
-        """Delete a playlist by ID (async wrapper for compatibility)"""
+    def delete_playlist(self, playlist_id: str) -> bool:
+        """Delete a playlist by ID"""
         return self.delete_playlist_sync(playlist_id)
     
     def get_playlist_tracks_sync(self, playlist_id: str) -> List[Dict[str, Any]]:
@@ -646,6 +1038,12 @@ class JellyfinClient(BaseAPIClient):
                 headers=headers,
                 timeout=30
             )
+            
+            # Handle 404 specifically before raise_for_status()
+            if response.status_code == 404:
+                self.logger.debug(f"Playlist {playlist_id} not found (404), returning empty track list")
+                return []
+            
             response.raise_for_status()
             
             if response.status_code == 200:
@@ -663,14 +1061,23 @@ class JellyfinClient(BaseAPIClient):
                     return tracks
             return []
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"HTTP error getting playlist tracks: {e}")
-            return []
+            # 404 errors are OK - playlist doesn't exist or was deleted, return empty list
+            if hasattr(e, 'response') and e.response and e.response.status_code == 404:
+                self.logger.debug(f"Playlist {playlist_id} not found (404), returning empty track list")
+                return []
+            elif "404" in str(e) or "Not Found" in str(e):
+                # Alternative way to catch 404s if response object isn't available
+                self.logger.debug(f"Playlist {playlist_id} not found (404 in error message), returning empty track list")
+                return []
+            else:
+                self.logger.error(f"HTTP error getting playlist tracks: {e}")
+                return []
         except Exception as e:
             self.logger.error(f"Failed to get playlist tracks: {e}")
             return []
 
-    async def get_playlist_tracks(self, playlist_id: str) -> List[Dict[str, Any]]:
-        """Get tracks from a playlist (async wrapper for compatibility)"""
+    def get_playlist_tracks(self, playlist_id: str) -> List[Dict[str, Any]]:
+        """Get tracks from a playlist"""
         return self.get_playlist_tracks_sync(playlist_id)
     
     def _compare_playlist_tracks(self, existing_track_ids: List[str], new_track_ids: List[str]) -> bool:
@@ -778,13 +1185,16 @@ class JellyfinClient(BaseAPIClient):
             self.logger.error(f"Error creating or updating playlist '{title}': {e}")
             return False
     
-    async def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", 
-                     cleanup: bool = True, empty_playlist_cleanup: bool = True) -> Dict[str, Any]:
+    def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", **kwargs) -> Dict[str, Any]:
         """
         Sync a playlist - create new or update existing
         Returns statistics about the operation
         """
         try:
+            # Extract kwargs
+            cleanup = kwargs.get('cleanup', True)
+            empty_playlist_cleanup = kwargs.get('empty_playlist_cleanup', True)
+            
             self.logger.info(f"Starting playlist sync for '{title}'")
             self.logger.debug(f"Received {len(tracks)} tracks to search for")
             
@@ -796,7 +1206,7 @@ class JellyfinClient(BaseAPIClient):
                     # ListenBrainz uses 'track' key for track title, not 'title'
                     track_title = track.get('track', track.get('title', 'Unknown Title'))
                     self.logger.debug(f"Searching track {i+1}/{len(tracks)}: '{track['artist']}' - '{track_title}'")
-                    jellyfin_track = await self.find_track_by_artist_and_title(track['artist'], track_title)
+                    jellyfin_track = self.find_track_by_artist_and_title_sync(track['artist'], track_title)
                     if jellyfin_track:
                         found_tracks.append(jellyfin_track)
                         self.logger.debug(f"Found track {i+1}: '{jellyfin_track['artist']}' - '{jellyfin_track['name']}'")
@@ -822,22 +1232,25 @@ class JellyfinClient(BaseAPIClient):
             
             # Use the create_or_update_playlist_sync method for proper playlist management
             success = self.create_or_update_playlist_sync(title, track_ids, summary)
-            action = 'synced'  # The method handles create/update logic internally
             
             if success:
-                self.logger.info(f"Successfully {action} playlist '{title}' with {len(found_tracks)} tracks")
+                # Always report the actual tracks that were processed (like Plex does)
+                match_rate = (len(found_tracks) / len(tracks) * 100) if len(tracks) > 0 else 0
+                self.logger.info(f"Successfully synced playlist '{title}': {len(found_tracks)}/{len(tracks)} tracks ({match_rate:.1f}% success rate)")
                 return {
                     'success': True,
-                    'action': action,
+                    'action': 'synced',
                     'total_tracks': len(tracks),
                     'found_tracks': len(found_tracks),
-                    'message': f"Successfully {action} playlist '{title}' with {len(found_tracks)} tracks"
+                    'message': f"Successfully synced playlist '{title}' with {len(found_tracks)} tracks"
                 }
             else:
                 return {
                     'success': False,
                     'action': 'failed',
-                    'message': f"Failed to {action} playlist '{title}'"
+                    'total_tracks': len(tracks),
+                    'found_tracks': len(found_tracks),
+                    'message': f"Failed to sync playlist '{title}'"
                 }
                 
         except Exception as e:
@@ -853,7 +1266,7 @@ class JellyfinClient(BaseAPIClient):
     # ==== LIBRARY CACHE INTERFACE METHODS ====
     # Required by LibraryCacheManager for optimization
     
-    async def build_library_cache(self, library_key: str = None) -> Dict[str, Any]:
+    def build_library_cache(self, library_key: str = None) -> Dict[str, Any]:
         """
         Build optimized library cache for Jellyfin music library
         
@@ -883,7 +1296,7 @@ class JellyfinClient(BaseAPIClient):
             
             while True:
                 params['StartIndex'] = start_index
-                response = await self._get("/Items", params=params)
+                response = self._get_sync("/Items", params=params)
                 
                 if not response or 'Items' not in response:
                     break
@@ -1056,7 +1469,7 @@ class JellyfinClient(BaseAPIClient):
         
         return False
     
-    async def verify_track_exists(self, track_id: str) -> bool:
+    def verify_track_exists(self, track_id: str) -> bool:
         """
         Verify that a track still exists in Jellyfin (for cache validation)
         
@@ -1064,7 +1477,7 @@ class JellyfinClient(BaseAPIClient):
             True if track exists, False otherwise
         """
         try:
-            response = await self._get(f"/Items/{track_id}")
+            response = self._get_sync(f"/Items/{track_id}")
             return response is not None and response.get('Id') == track_id
         except Exception as e:
             self.logger.debug(f"Track verification failed for {track_id}: {e}")
@@ -1193,3 +1606,221 @@ class JellyfinClient(BaseAPIClient):
                 'new_tracks': len(new_track_ids),
                 'overlap': 0
             }
+    
+    def _try_progressive_title_search(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Try progressive title shortening to handle Jellyfin truncation issues"""
+        self.logger.debug("🔄 Strategy 8a: Progressive title shortening...")
+        
+        # Split title into words and try progressively shorter versions
+        title_words = title.split()
+        
+        for i in range(len(title_words), 0, -1):  # Start with full title, then remove words
+            shortened_title = ' '.join(title_words[:i])
+            if len(shortened_title) < len(title):  # Only try if actually shortened
+                self.logger.debug(f"   Trying shortened title: '{shortened_title}'")
+                tracks = self.search_tracks_sync(shortened_title, limit=50)
+                
+                if tracks:
+                    # Check if any track has the correct artist
+                    for track in tracks:
+                        track_artist_normalized = self._normalize_text(track['artist'])
+                        if self._calculate_similarity(track_artist_normalized, normalized_artist) >= 0.7:
+                            self.logger.info(f"✅ Progressive title match: '{track['artist']}' - '{track['name']}' for '{artist}' - '{title}'")
+                            return track
+        
+        return None
+    
+    def _try_special_character_variants(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Try different special character handling for problematic titles"""
+        self.logger.debug("🔄 Strategy 8b: Special character variants...")
+        
+        # Create variants of the title with different character handling
+        variants = []
+        
+        # Remove commas and replace with spaces
+        if ',' in title:
+            variants.append(title.replace(',', ' '))
+        
+        # Remove quotes
+        if '"' in title or "'" in title:
+            variants.append(title.replace('"', '').replace("'", ''))
+        
+        # Replace problematic characters
+        if any(char in title for char in ['&', '(', ')', '[', ']']):
+            import re
+            variants.append(re.sub(r'[&\(\)\[\]]', ' ', title))
+        
+        # Try each variant
+        for variant in variants:
+            if variant != title:  # Only try if different
+                self.logger.debug(f"   Trying variant: '{variant}'")
+                tracks = self.search_tracks_sync(variant, limit=50)
+                
+                if tracks:
+                    match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title)
+                    if match:
+                        self.logger.info(f"✅ Special character variant match: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
+                        return match
+        
+        return None
+    
+    def _try_title_only_with_artist_validation(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Search by title only, then validate artist matches"""
+        self.logger.debug("🔄 Strategy 8c: Title-only search with artist validation...")
+        
+        # Search by title only
+        tracks = self.search_tracks_sync(title, limit=100)
+        
+        if not tracks:
+            return None
+        
+        self.logger.debug(f"   Found {len(tracks)} tracks with title '{title}', validating artists...")
+        
+        # Find best artist match
+        best_match = None
+        best_score = 0
+        
+        for track in tracks:
+            track_artist_normalized = self._normalize_text(track['artist'])
+            artist_score = self._calculate_similarity(track_artist_normalized, normalized_artist)
+            
+            if artist_score > best_score:
+                best_score = artist_score
+                best_match = track
+        
+        # Accept if artist similarity is high enough
+        if best_match and best_score >= 0.6:  # Lower threshold for title-only search
+            self.logger.info(f"✅ Title-only match: '{best_match['artist']}' - '{best_match['name']}' (artist similarity: {best_score:.2f})")
+            return best_match
+        
+        return None
+    
+    def _try_artist_only_with_title_validation(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Search by artist only, then validate title matches"""
+        self.logger.debug("🔄 Strategy 8d: Artist-only search with title validation...")
+        
+        # Search by artist only
+        tracks = self.search_tracks_sync(artist, limit=100)
+        
+        if not tracks:
+            return None
+        
+        self.logger.debug(f"   Found {len(tracks)} tracks with artist '{artist}', validating titles...")
+        
+        # Find best title match
+        best_match = None
+        best_score = 0
+        
+        for track in tracks:
+            track_title_normalized = self._normalize_text(track['name'])
+            title_score = self._calculate_similarity(track_title_normalized, normalized_title)
+            
+            if title_score > best_score:
+                best_score = title_score
+                best_match = track
+        
+        # Accept if title similarity is high enough
+        if best_match and best_score >= 0.6:  # Lower threshold for artist-only search
+            self.logger.info(f"✅ Artist-only match: '{best_match['artist']}' - '{best_match['name']}' (title similarity: {best_score:.2f})")
+            return best_match
+        
+        return None
+    
+    def _truncate_title_for_search(self, title: str, max_length: int) -> str:
+        """Truncate title to fit within max_length while preserving word boundaries"""
+        if len(title) <= max_length:
+            return title
+        
+        # Try to truncate at word boundaries
+        words = title.split()
+        truncated = ""
+        
+        for word in words:
+            if len(truncated + word) + 1 <= max_length:  # +1 for space
+                truncated += word + " "
+            else:
+                break
+        
+        # Remove trailing space and ensure we have something
+        truncated = truncated.strip()
+        if not truncated:
+            truncated = title[:max_length].strip()
+        
+        self.logger.debug(f"Truncated '{title}' to '{truncated}' (max {max_length} chars)")
+        return truncated
+    
+    def _try_title_only_search_with_validation(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Search by title only, then validate artist matches"""
+        self.logger.debug(f"   Searching by title only: '{title}'")
+        
+        # Search by title only
+        tracks = self.search_tracks_sync(title, limit=50)
+        
+        if not tracks:
+            self.logger.debug(f"   Title-only search returned 0 results")
+            return None
+        
+        self.logger.debug(f"   Found {len(tracks)} tracks with title '{title}', validating artists...")
+        
+        # Find best artist match
+        best_match = None
+        best_score = 0
+        
+        for track in tracks:
+            track_artist_normalized = self._normalize_text(track['artist'])
+            artist_score = self._calculate_similarity(track_artist_normalized, normalized_artist)
+            
+            if artist_score > best_score:
+                best_score = artist_score
+                best_match = track
+        
+        # Accept if artist similarity is high enough
+        if best_match and best_score >= 0.7:  # Higher threshold for title-only search
+            self.logger.info(f"✅ Title-only match: '{best_match['artist']}' - '{best_match['name']}' (artist similarity: {best_score:.2f})")
+            return best_match
+        
+        return None
+    
+    def _try_progressive_title_word_removal(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+        """Progressively remove words from title until we get search results"""
+        self.logger.debug(f"   Trying progressive title word removal for: '{title}'")
+        
+        words = title.split()
+        if len(words) <= 1:
+            self.logger.debug(f"   Title '{title}' has only {len(words)} word(s), skipping progressive removal")
+            return None
+        
+        # Try removing words from the end first (most common case)
+        for i in range(len(words) - 1, 0, -1):  # Start with removing 1 word, then 2, etc.
+            shortened_title = ' '.join(words[:i])
+            if len(shortened_title) < 3:  # Skip very short titles
+                continue
+                
+            self.logger.debug(f"   Trying shortened title: '{shortened_title}'")
+            
+            # Search with shortened title
+            tracks = self.search_tracks_sync(shortened_title, limit=50)
+            
+            if tracks:
+                self.logger.debug(f"   Found {len(tracks)} tracks with shortened title '{shortened_title}'")
+                
+                # Find best artist match
+                best_match = None
+                best_score = 0
+                
+                for track in tracks:
+                    track_artist_normalized = self._normalize_text(track['artist'])
+                    artist_score = self._calculate_similarity(track_artist_normalized, normalized_artist)
+                    
+                    if artist_score > best_score:
+                        best_score = artist_score
+                        best_match = track
+                
+                # Accept if artist similarity is high enough
+                if best_match and best_score >= 0.7:
+                    self.logger.info(f"✅ Progressive word removal match: '{best_match['artist']}' - '{best_match['name']}' (artist similarity: {best_score:.2f})")
+                    return best_match
+            else:
+                self.logger.debug(f"   No results for shortened title: '{shortened_title}'")
+        
+        return None

@@ -84,14 +84,22 @@ class LibraryCacheBuilderCommand(BaseCommand):
         """Get cache TTL in days for a specific target"""
         return self.config.get(f'LIBRARY_CACHE_{target.upper()}_TTL_DAYS', 30)
     
-    async def execute(self) -> bool:
+    def execute(self, force_rebuild: bool = False, target_filter: Optional[str] = None) -> bool:
         """Execute the library cache building process"""
         try:
-            self.logger.info("Starting library cache building process")
+            self.logger.info(f"Starting library cache building process (force_rebuild={force_rebuild}, target_filter={target_filter})")
             
             # Check which targets are enabled
             enabled_targets = [target for target in self.clients.keys() 
                              if self.is_target_enabled(target)]
+            
+            # Apply target filter if specified
+            if target_filter and target_filter in enabled_targets:
+                enabled_targets = [target_filter]
+                self.logger.info(f"Filtered to target: {target_filter}")
+            elif target_filter and target_filter not in enabled_targets:
+                self.logger.warning(f"Target filter '{target_filter}' not in enabled targets: {enabled_targets}")
+                return False
             
             if not enabled_targets:
                 self.logger.info("No targets enabled for cache building")
@@ -103,7 +111,7 @@ class LibraryCacheBuilderCommand(BaseCommand):
             results = {}
             for target in enabled_targets:
                 try:
-                    result = await self._build_target_cache(target)
+                    result = self._build_target_cache(target, force_rebuild=force_rebuild)
                     results[target] = result
                 except Exception as e:
                     self.logger.error(f"Failed to build cache for {target}: {e}")
@@ -132,10 +140,10 @@ class LibraryCacheBuilderCommand(BaseCommand):
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return False
     
-    async def _build_target_cache(self, target: str) -> Dict[str, Any]:
+    def _build_target_cache(self, target: str, force_rebuild: bool = False) -> Dict[str, Any]:
         """Build cache for a specific target"""
         try:
-            self.logger.info(f"Building library cache for {target}")
+            self.logger.info(f"Building library cache for {target} (force_rebuild={force_rebuild})")
             start_time = time.time()
             
             client = self.clients[target]
@@ -145,26 +153,31 @@ class LibraryCacheBuilderCommand(BaseCommand):
                 self.library_cache_manager.register_client(target, client)
                 self.logger.debug(f"Registered {target} client with cache manager")
             
-            # Check if cache exists and is fresh
-            existing_cache = self.library_cache_manager.get_library_cache(target)
-            if existing_cache:
-                cache_age_hours = (time.time() - existing_cache.get('built_at', 0)) / 3600
-                ttl_hours = self.get_target_ttl_days(target) * 24
-                
-                if cache_age_hours < ttl_hours:
-                    self.logger.info(f"Cache for {target} is fresh ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h)")
-                    return {
-                        'success': True,
-                        'cached': True,
-                        'age_hours': cache_age_hours,
-                        'message': 'Cache was already fresh'
-                    }
-                else:
-                    self.logger.info(f"Cache for {target} is stale ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h), rebuilding")
+            # Check if cache exists and is fresh (unless force rebuild is requested)
+            if not force_rebuild:
+                existing_cache = self.library_cache_manager.get_library_cache(target)
+                if existing_cache:
+                    cache_age_hours = (time.time() - existing_cache.get('built_at', 0)) / 3600
+                    ttl_hours = self.get_target_ttl_days(target) * 24
+                    
+                    if cache_age_hours < ttl_hours:
+                        self.logger.info(f"Cache for {target} is fresh ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h)")
+                        return {
+                            'success': True,
+                            'cached': True,
+                            'age_hours': cache_age_hours,
+                            'message': 'Cache was already fresh'
+                        }
+                    else:
+                        self.logger.info(f"Cache for {target} is stale ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h), rebuilding")
+            else:
+                self.logger.info(f"Force rebuild requested for {target}, invalidating existing cache")
+                # Invalidate existing cache
+                self.library_cache_manager.invalidate_cache(target)
             
             # Build new cache
             self.logger.info(f"Building fresh cache for {target}")
-            cache_data = await client.build_library_cache()
+            cache_data = client.build_library_cache()
             
             if not cache_data:
                 return {

@@ -326,14 +326,19 @@ async def get_statistics(db: Session = Depends(get_db)):
 async def _get_cache_status_for_target(target: str, cache_manager, cache_stats):
     """Helper function to get cache status for a specific target"""
     library_cache = None
+    # Get per-client cache stats
+    client_stats = cache_manager.get_client_stats(target)
+    
     cache_info = {
         'target': target,
         'status': 'Not available',
         'last_generated': None,
         'size_mb': 0,
         'object_count': 0,
-        'cache_hits': cache_stats.get('cache_hits', 0),
-        'cache_misses': cache_stats.get('cache_misses', 0),
+        'cache_hits': client_stats.get('cache_hits', 0),
+        'cache_misses': client_stats.get('cache_misses', 0),
+        'hit_rate': client_stats.get('hit_rate', 0.0),
+        'last_used': client_stats.get('last_used'),
         'memory_usage_mb': cache_stats.get('memory_usage_mb', 0)
     }
     
@@ -392,3 +397,25 @@ async def get_cache_status(target: str = None):
     except Exception as e:
         logger.error(f"Failed to get cache status: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve cache status")
+
+@router.post("/cache/reset")
+async def reset_cache_stats():
+    """Reset cache statistics for all clients (for testing)"""
+    try:
+        from utils.library_cache_manager import get_library_cache_manager, reset_library_cache_manager
+        from services.config_service import config_service
+        
+        # Reset the singleton instance
+        reset_library_cache_manager()
+        
+        # Get fresh instance
+        cache_manager = get_library_cache_manager(config_service)
+        
+        # Reset all client stats
+        cache_manager.reset_client_stats()
+        
+        return {"message": "Cache statistics reset successfully"}
+        
+    except Exception as e:
+        logger.error(f"Failed to reset cache stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset cache statistics")

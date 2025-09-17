@@ -54,12 +54,9 @@ class BaseAPIClient(ABC):
         # Default headers
         self.headers = headers or {}
         
-        # Initialize cache if enabled
-        self.cache_enabled = config.get('CACHE_ENABLED', True)
-        if self.cache_enabled:
-            self.cache = get_cache_manager()
-        else:
-            self.cache = None
+        # Initialize cache (always enabled)
+        self.cache_enabled = True
+        self.cache = get_cache_manager()
     
     async def __aenter__(self):
         """Async context manager entry"""
@@ -149,6 +146,21 @@ class BaseAPIClient(ABC):
     async def _delete(self, endpoint: str, params: Dict[str, str] = None, **kwargs) -> Optional[Dict[str, Any]]:
         """Convenience method for DELETE requests"""
         return await self._make_request(endpoint, params=params, method='DELETE', **kwargs)
+    
+    def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", **kwargs) -> Dict[str, Any]:
+        """
+        Standard playlist sync method - must be implemented by subclasses
+        
+        Args:
+            title: Playlist title
+            tracks: List of track dictionaries with 'artist', 'album', 'track' keys
+            summary: Playlist description
+            **kwargs: Additional client-specific parameters
+            
+        Returns:
+            Dict with keys: success, action, total_tracks, found_tracks, message
+        """
+        raise NotImplementedError("Subclasses must implement sync_playlist")
     
     async def close(self):
         """Close the HTTP session"""

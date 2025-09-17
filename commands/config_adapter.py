@@ -88,19 +88,6 @@ class ConfigAdapter:
         self.LISTENBRAINZ_PLEX_PLAYLIST_ENABLED = config_service.get('LISTENBRAINZ_PLEX_PLAYLIST_ENABLED', False)
         self.LISTENBRAINZ_PLEX_PLAYLIST_SCHEDULE = config_service.get('LISTENBRAINZ_PLEX_PLAYLIST_SCHEDULE', 12)
         
-        # Playlist Sync Commands Configuration
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED', False)
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE', 12)
-        
-        # Playlist Sync ListenBrainz Curated Configuration
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET', 'plex')
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_PLAYLISTS = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_PLAYLISTS', 'weekly_exploration,weekly_jams,daily_jams')
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP', True)
-        
-        # Playlist Retention Settings
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_EXPLORATION_RETENTION = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_EXPLORATION_RETENTION', 4)
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_JAMS_RETENTION = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_JAMS_RETENTION', 4)
-        self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_DAILY_JAMS_RETENTION = config_service.get('PLAYLIST_SYNC_LISTENBRAINZ_CURATED_DAILY_JAMS_RETENTION', 3)
         
         # Web Server Configuration
         self.WEB_PORT = config_service.get('WEB_PORT', 8080)
@@ -146,11 +133,6 @@ class ConfigAdapter:
             'discovery_listenbrainz_schedule': self.DISCOVERY_LISTENBRAINZ_SCHEDULE,
             'discovery_listenbrainz_limit': self.DISCOVERY_LISTENBRAINZ_LIMIT,
             'listenbrainz_plex_playlist_enabled': self.LISTENBRAINZ_PLEX_PLAYLIST_ENABLED,
-            'playlist_sync_listenbrainz_curated_enabled': self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED,
-            'playlist_sync_listenbrainz_curated_schedule': self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE,
-            'playlist_sync_listenbrainz_curated_target': self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET,
-            'playlist_sync_listenbrainz_curated_playlists': self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_PLAYLISTS,
-            'playlist_sync_listenbrainz_curated_cleanup': self.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP,
             'plex_url': self.PLEX_URL,
             'plex_timeout': self.PLEX_TIMEOUT,
             'plex_ignore_tls': self.PLEX_IGNORE_TLS,

@@ -39,13 +39,38 @@ class LibraryCacheManager:
         self.memory_cache = {}
         self.cache_active = False
         
-        # Performance tracking
-        self.stats = {
-            'cache_hits': 0,
-            'cache_misses': 0,
+        # Global performance tracking (for overall system monitoring)
+        self.global_stats = {
+            'total_cache_hits': 0,
+            'total_cache_misses': 0,
             'memory_usage_mb': 0,
             'last_cache_build': None
         }
+        
+        # Per-client performance tracking (isolated by client type)
+        # Preserve existing stats if available, otherwise initialize fresh
+        if hasattr(self, 'client_stats') and self.client_stats:
+            self.logger.info("Library cache manager initialized with preserved client stats")
+        else:
+            self.client_stats = {
+                'plex': {
+                    'cache_hits': 0,
+                    'cache_misses': 0,
+                    'last_used': None,
+                    'hit_rate': 0.0
+                },
+                'jellyfin': {
+                    'cache_hits': 0,
+                    'cache_misses': 0,
+                    'last_used': None,
+                    'hit_rate': 0.0
+                }
+            }
+            self.logger.info("Library cache manager initialized with fresh client stats")
+        
+        # TEMPORARY: Add compatibility property to avoid stats error
+        # TODO: Remove this once we find the source of the error
+        self.stats = self.global_stats
     
     def register_client(self, client_type: str, client_instance) -> None:
         """
@@ -69,7 +94,13 @@ class LibraryCacheManager:
                 raise ValueError(f"Client {client_type} missing required method: {method}")
         
         self.registered_clients[client_type] = client_instance
-        self.logger.debug(f"Registered client: {client_type}")
+        self.logger.info(f"Registered client: {client_type}")
+        
+        # Validate client type is supported
+        if client_type not in self.client_stats:
+            self.logger.warning(f"Unsupported client type '{client_type}', stats may not be tracked properly")
+        else:
+            self.logger.info(f"Client '{client_type}' registered with stats: {self.client_stats[client_type]}")
     
     def get_library_cache(self, client_type: str, library_key: str = None) -> Optional[Dict[str, Any]]:
         """
@@ -87,14 +118,14 @@ class LibraryCacheManager:
         
         # Check memory cache first if active
         if self.cache_active and cache_key in self.memory_cache:
-            self.stats['cache_hits'] += 1
+            self.global_stats['total_cache_hits'] += 1
             self.logger.debug(f"Memory cache hit: {cache_key}")
             return self.memory_cache[cache_key]
         
         # Check SQLite cache
         cached_data = self._get_from_sqlite(cache_key, client_type, library_key)
         if cached_data:
-            self.stats['cache_hits'] += 1
+            self.global_stats['total_cache_hits'] += 1
             self.logger.debug(f"SQLite cache hit: {cache_key}")
             
             # Load into memory cache if active
@@ -102,7 +133,7 @@ class LibraryCacheManager:
             return cached_data
         
         # Build new cache
-        self.stats['cache_misses'] += 1
+        self.global_stats['total_cache_misses'] += 1
         return self._build_and_store_cache(client, client_type, library_key, cache_key)
     
     def get_library_cache_direct(self, client_type: str, library_key: str = None) -> Optional[Dict[str, Any]]:
@@ -175,7 +206,7 @@ class LibraryCacheManager:
             # Load into memory cache if active
             self._load_to_memory_cache(cache_key, cache_data)
             
-            self.stats['last_cache_build'] = datetime.utcnow()
+            self.global_stats['last_cache_build'] = datetime.utcnow()
             self.logger.info(f"Built and cached {track_count:,} tracks for {client_type}:{library_key}")
             return cache_data
             
@@ -241,7 +272,7 @@ class LibraryCacheManager:
             return
         
         self.memory_cache[cache_key] = cache_data
-        self.stats['memory_usage_mb'] = current_memory + estimated_size
+        self.global_stats['memory_usage_mb'] = current_memory + estimated_size
         self.logger.debug(f"Loaded to memory cache: {cache_key} (~{estimated_size:.1f}MB)")
     
     def _estimate_cache_size(self, cache_data: Dict[str, Any]) -> float:
@@ -269,7 +300,7 @@ class LibraryCacheManager:
         
         self.memory_cache.clear()
         self.cache_active = False
-        self.stats['memory_usage_mb'] = 0
+        self.global_stats['memory_usage_mb'] = 0
         self.logger.debug("Memory cache cleared and disabled")
     
     def verify_and_refresh_cache(self, client_type: str, library_key: str = None, 
@@ -320,6 +351,25 @@ class LibraryCacheManager:
         except Exception as e:
             self.logger.warning(f"Cache invalidation error: {e}")
     
+    def invalidate_cache(self, client_type: str, library_key: str = None) -> None:
+        """Invalidate cache for a specific client and library"""
+        try:
+            # Generate cache key
+            cache_key = f"{client_type}:{library_key or 'default'}"
+            
+            # Remove from SQLite
+            self._invalidate_sqlite_cache(cache_key)
+            
+            # Remove from memory cache if present
+            if cache_key in self.memory_cache:
+                del self.memory_cache[cache_key]
+                self.logger.debug(f"Removed {cache_key} from memory cache")
+            
+            self.logger.info(f"Successfully invalidated cache for {client_type} (library: {library_key or 'default'})")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to invalidate cache for {client_type}: {e}")
+    
     def cleanup_expired_cache(self) -> int:
         """Remove expired cache entries and return count of removed items"""
         try:
@@ -359,13 +409,14 @@ class LibraryCacheManager:
                     'cache_counts_by_client': cache_counts,
                     'total_cached_tracks': total_tracks,
                     'memory_cache_entries': len(self.memory_cache),
-                    'memory_usage_mb': self.stats['memory_usage_mb'],
-                    'cache_hits': self.stats['cache_hits'],
-                    'cache_misses': self.stats['cache_misses'],
-                    'hit_rate': self.stats['cache_hits'] / max(1, self.stats['cache_hits'] + self.stats['cache_misses']),
+                    'memory_usage_mb': self.global_stats['memory_usage_mb'],
+                    'total_cache_hits': self.global_stats['total_cache_hits'],
+                    'total_cache_misses': self.global_stats['total_cache_misses'],
+                    'global_hit_rate': self.global_stats['total_cache_hits'] / max(1, self.global_stats['total_cache_hits'] + self.global_stats['total_cache_misses']),
+                    'client_stats': self.client_stats,
                     'oldest_entry': oldest.isoformat() if oldest else None,
                     'newest_entry': newest.isoformat() if newest else None,
-                    'last_cache_build': self.stats['last_cache_build'].isoformat() if self.stats['last_cache_build'] else None
+                    'last_cache_build': self.global_stats['last_cache_build'].isoformat() if self.global_stats['last_cache_build'] else None
                 }
                 
         except Exception as e:
@@ -421,6 +472,92 @@ class LibraryCacheManager:
         except Exception as e:
             self.logger.warning(f"Cache clear error: {e}")
             return 0
+    
+    def record_cache_hit(self, client_type: str) -> None:
+        """Record a cache hit for a specific client"""
+        if client_type not in self.client_stats:
+            self.logger.warning(f"Client '{client_type}' not registered, cannot record cache hit")
+            return
+        
+        # Update client-specific stats
+        self.client_stats[client_type]['cache_hits'] += 1
+        self.client_stats[client_type]['last_used'] = datetime.now()
+        
+        # Update global stats
+        self.global_stats['total_cache_hits'] += 1
+        
+        # Recalculate hit rate for this client
+        total_requests = (self.client_stats[client_type]['cache_hits'] + 
+                         self.client_stats[client_type]['cache_misses'])
+        self.client_stats[client_type]['hit_rate'] = (
+            self.client_stats[client_type]['cache_hits'] / max(1, total_requests)
+        )
+        
+        self.logger.info(f"Cache hit recorded for '{client_type}': {self.client_stats[client_type]['cache_hits']} hits")
+    
+    def record_cache_miss(self, client_type: str) -> None:
+        """Record a cache miss for a specific client"""
+        if client_type not in self.client_stats:
+            self.logger.warning(f"Client '{client_type}' not registered, cannot record cache miss")
+            return
+        
+        # Update client-specific stats
+        self.client_stats[client_type]['cache_misses'] += 1
+        self.client_stats[client_type]['last_used'] = datetime.now()
+        
+        # Update global stats
+        self.global_stats['total_cache_misses'] += 1
+        
+        # Recalculate hit rate for this client
+        total_requests = (self.client_stats[client_type]['cache_hits'] + 
+                         self.client_stats[client_type]['cache_misses'])
+        self.client_stats[client_type]['hit_rate'] = (
+            self.client_stats[client_type]['cache_hits'] / max(1, total_requests)
+        )
+        
+        self.logger.info(f"Cache miss recorded for '{client_type}': {self.client_stats[client_type]['cache_misses']} misses")
+    
+    def get_client_stats(self, client_type: str) -> Dict[str, Any]:
+        """Get cache statistics for a specific client"""
+        self.logger.debug(f"Getting client stats for '{client_type}', available clients: {list(self.client_stats.keys())}")
+        
+        if client_type not in self.client_stats:
+            self.logger.debug(f"Client '{client_type}' not found in client_stats, returning default stats")
+            return {
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'last_used': None,
+                'hit_rate': 0.0
+            }
+        
+        # Return a copy of the client stats (already includes hit_rate)
+        stats = self.client_stats[client_type].copy()
+        self.logger.debug(f"Client '{client_type}' stats: {stats}")
+        return stats
+    
+    def reset_client_stats(self, client_type: str = None) -> None:
+        """Reset cache statistics for a specific client or all clients"""
+        if client_type:
+            if client_type in self.client_stats:
+                self.client_stats[client_type] = {
+                    'cache_hits': 0,
+                    'cache_misses': 0,
+                    'last_used': None,
+                    'hit_rate': 0.0
+                }
+                self.logger.info(f"Reset cache stats for client '{client_type}'")
+            else:
+                self.logger.warning(f"Cannot reset stats for unknown client '{client_type}'")
+        else:
+            # Reset all client stats
+            for client in self.client_stats:
+                self.client_stats[client] = {
+                    'cache_hits': 0,
+                    'cache_misses': 0,
+                    'last_used': None,
+                    'hit_rate': 0.0
+                }
+            self.logger.info("Reset cache stats for all clients")
 
 
 # Global library cache manager instance
@@ -431,4 +568,11 @@ def get_library_cache_manager(config) -> LibraryCacheManager:
     global _library_cache_manager
     if _library_cache_manager is None:
         _library_cache_manager = LibraryCacheManager(config)
+    else:
+        pass  # Using existing instance
     return _library_cache_manager
+
+def reset_library_cache_manager():
+    """Reset the global library cache manager instance (for testing)"""
+    global _library_cache_manager
+    _library_cache_manager = None

@@ -128,7 +128,9 @@
                                         @change="markAsChanged(setting)"
                                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                                     <template x-for="option in setting.options" :key="option">
-                                        <option :value="option" x-text="option"></option>
+                                        <option :value="option" 
+                                                :selected="option === setting.value"
+                                                x-text="option"></option>
                                     </template>
                                 </select>
                             </div>
@@ -146,7 +148,7 @@
                         <!-- Current Value Display -->
                         <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                             <span>Current value: </span>
-                            <span class="font-mono" x-text="setting.effective_value || 'Not set'"></span>
+                            <span class="font-mono" x-text="setting.effective_value !== null && setting.effective_value !== undefined ? setting.effective_value : 'Not set'"></span>
                         </div>
                     </div>
                 </template>
@@ -184,7 +186,7 @@ function configManager() {
                 this.settings = Object.entries(response.settings).map(([key, value]) => ({
                     key,
                     value: value,
-                    effective_value: value,
+                    effective_value: value, // This will be updated from details endpoint
                     data_type: 'string', // Will be updated from details
                     category: 'unknown',
                     description: '',
@@ -199,21 +201,45 @@ function configManager() {
                         const details = await this.apiCall(`/api/config/details/${setting.key}`);
                         Object.assign(setting, details);
                         
+                        // Use effective_value as the current value if value is null/empty
+                        if (!setting.value && setting.effective_value !== null && setting.effective_value !== undefined) {
+                            setting.value = setting.effective_value;
+                        }
+                        
+                        // Special handling for LOG_LEVEL to ensure it gets the correct value
+                        if (setting.key === 'LOG_LEVEL') {
+                            setting.value = setting.effective_value || setting.default_value;
+                        }
+                        
                         // Convert boolean values to strings for proper dropdown display
                         if (setting.data_type === 'bool') {
-                            setting.value = String(setting.value).toLowerCase();
+                            // Use effective_value if value is null/empty, otherwise use the value
+                            const actualValue = setting.value !== null && setting.value !== undefined ? setting.value : setting.effective_value;
+                            setting.value = String(actualValue !== null && actualValue !== undefined ? actualValue : setting.default_value).toLowerCase();
                         }
                         
                         // Ensure dropdown values are properly set
-                        if (setting.data_type === 'dropdown' && setting.value) {
-                            // Force reactivity by ensuring the value is properly set
-                            setting.value = String(setting.value);
+                        if (setting.data_type === 'dropdown') {
+                            // Use effective_value or default_value if current value is empty
+                            const actualValue = setting.value !== null && setting.value !== undefined ? setting.value : setting.effective_value;
+                            setting.value = String(actualValue || setting.default_value);
+                            
                         }
                         
                         // Force Alpine.js to update the DOM for this setting
                         this.$nextTick(() => {
                             // Trigger reactivity update
                             setting.value = setting.value;
+                            
+                            // Additional fix for dropdown values - ensure the value is properly set
+                            if (setting.data_type === 'dropdown' && setting.value) {
+                                // Force the dropdown to update by temporarily clearing and setting the value
+                                const tempValue = setting.value;
+                                setting.value = '';
+                                this.$nextTick(() => {
+                                    setting.value = tempValue;
+                                });
+                            }
                         });
                     } catch (error) {
                         console.warn(`Failed to load details for ${setting.key}:`, error);

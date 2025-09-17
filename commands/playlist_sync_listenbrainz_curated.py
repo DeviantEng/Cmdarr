@@ -39,25 +39,17 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
         """Initialize target client based on command-specific configuration"""
         target = None
         
-        # Debug: Check what we have available
-        self.logger.info(f"Command config_json available: {hasattr(self, 'config_json')}")
-        if hasattr(self, 'config_json'):
-            self.logger.info(f"Command config_json: {self.config_json}")
-        
         # Check if the command executor set it as an attribute on config (primary method)
         target = getattr(self.config, 'COMMAND_PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET', None)
-        self.logger.info(f"Found target in config attribute: {target}")
         
         # Fallback: check if we have command-specific config (set by command executor)
         if not target and hasattr(self, 'config_json') and self.config_json:
             # The command executor maps 'target' to 'COMMAND_PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET'
             target = self.config_json.get('target')
-            self.logger.info(f"Found target in config_json: {target}")
         
         # Fallback: check global config (for backward compatibility)
         if not target:
             target = self.config.get('COMMAND_PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET')
-            self.logger.info(f"Found target in global config: {target}")
         
         self.logger.info(f"Final target value: {target}")
         
@@ -307,21 +299,9 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
             # No existing playlist or all existing playlists deleted, proceed with sync
             self.logger.info(f"Proceeding with sync for playlist '{target_title}'")
             
-            # Call the client's sync method
+            # Call the client's sync method - now standardized across all clients
             if hasattr(self.target_client, 'sync_playlist'):
-                # Plex client returns a tuple, Jellyfin client returns a coroutine
-                if self.target_name == 'Plex':
-                    success, found_tracks, total_tracks = self.target_client.sync_playlist(target_title, tracks, description)
-                    return {
-                        'success': success,
-                        'action': 'created' if success else 'failed',
-                        'total_tracks': total_tracks,
-                        'found_tracks': found_tracks,
-                        'duration': 0  # Plex doesn't return duration
-                    }
-                else:
-                    # Jellyfin client is async
-                    return await self.target_client.sync_playlist(target_title, tracks, description)
+                return self.target_client.sync_playlist(target_title, tracks, description)
             else:
                 self.logger.error(f"Target client does not support sync_playlist method")
                 return {
@@ -438,9 +418,10 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
             elif target_type == 'jellyfin':
                 self.library_cache_manager.register_client('jellyfin', self.target_client)
                 self.logger.debug("Registered Jellyfin client with library cache manager")
-            
         except Exception as e:
             self.logger.warning(f"Failed to register client with library cache manager: {e}")
+            import traceback
+            self.logger.warning(f"Full traceback: {traceback.format_exc()}")
     
     async def _sync_curated_playlists(self) -> Dict[str, Dict[str, Any]]:
         """Main processing function to sync curated playlists with library cache optimization"""
@@ -457,7 +438,12 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
         # Test connections
         self.logger.info("Testing API connections...")
         lb_connected = await self.listenbrainz.test_connection()
-        target_connected = await self.target_client.test_connection()  # Async call
+        
+        # Jellyfin client is synchronous, Plex client is async
+        if self.target_name.lower() == 'jellyfin':
+            target_connected = self.target_client.test_connection()
+        else:
+            target_connected = await self.target_client.test_connection()
         
         if not lb_connected:
             self.logger.error("Failed to connect to ListenBrainz API")
@@ -473,8 +459,16 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
         if library_cache:
             track_count = library_cache.get('total_tracks', 0)
             self.logger.info(f"Library cache available: {track_count:,} tracks")
-            # Pass the cached library to the target client for fast lookups
-            self.target_client._cached_library = library_cache
+            
+            # Only pass cached library to target client if their library cache is enabled
+            if self.target_name.lower() == 'plex' and self.config.get('LIBRARY_CACHE_PLEX_ENABLED', False):
+                self.target_client._cached_library = library_cache
+                self.logger.info("Plex library cache enabled - using cached library for fast lookups")
+            elif self.target_name.lower() == 'jellyfin' and self.config.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False):
+                self.target_client._cached_library = library_cache
+                self.logger.info("Jellyfin library cache enabled - using cached library for fast lookups")
+            else:
+                self.logger.info(f"{self.target_name} library cache disabled - using live API searches")
         else:
             self.logger.info("No library cache available, will use live API searches")
         
@@ -849,12 +843,9 @@ class PlaylistSyncListenBrainzCuratedCommand(BaseCommand):
         """Clean up old playlists based on retention settings"""
         try:
             self.logger.info("Starting playlist cleanup based on retention settings...")
-            self.logger.info("DEBUG: _cleanup_old_playlists method called successfully")
             
-            # Get all playlists from Plex
-            self.logger.info("About to call _get_all_playlists()...")
+            # Get all playlists from target
             playlists = await self._get_all_playlists()
-            self.logger.info(f"_get_all_playlists() returned {len(playlists)} playlists")
             if not playlists:
                 self.logger.warning("No playlists found for cleanup")
                 return

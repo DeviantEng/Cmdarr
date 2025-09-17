@@ -256,15 +256,28 @@ class CommandExecutor:
         """Run a synchronous command (wrapper for thread pool)"""
         self._ensure_initialized()
         try:
-            # Commands are async, so we need to run them in an event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(command.execute())
-            finally:
-                loop.close()
+            # Check if the command's execute method is async or sync
+            import inspect
+            execute_method = getattr(command, 'execute', None)
+            if execute_method is None:
+                raise ValueError("Command has no execute method")
+            
+            # Check if execute method is a coroutine function
+            if inspect.iscoroutinefunction(execute_method):
+                # Command is async, run in event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(command.execute())
+                finally:
+                    loop.close()
+            else:
+                # Command is synchronous, call directly
+                return command.execute()
         except Exception as e:
             self.logger.error(f"Sync command execution failed: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return False
     
     def _generate_output_summary(self, command_name: str, success: bool, duration: float) -> str:

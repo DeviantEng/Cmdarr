@@ -90,21 +90,8 @@ class ConfigService:
             # Command Configuration
             {'key': 'COMMAND_CLEANUP_RETENTION', 'default_value': '50', 'data_type': 'int', 'category': 'commands', 'description': 'Number of command executions to keep per command'},
             
-            # Playlist Sync ListenBrainz Curated Configuration
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'playlist_sync', 'description': 'Enable ListenBrainz curated playlist sync'},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE', 'default_value': '12', 'data_type': 'int', 'category': 'playlist_sync', 'description': 'Playlist sync schedule (hours)'},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET', 'default_value': 'plex', 'data_type': 'dropdown', 'category': 'playlist_sync', 'description': 'Target music player', 'options': ['plex', 'jellyfin']},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_PLAYLISTS', 'default_value': 'weekly_exploration,weekly_jams,daily_jams', 'data_type': 'string', 'category': 'playlist_sync', 'description': 'Comma-separated list of playlists to sync'},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP', 'default_value': 'true', 'data_type': 'bool', 'category': 'playlist_sync', 'description': 'Enable automatic cleanup of old playlists'},
-            
-            # Playlist Retention Settings
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_EXPLORATION_RETENTION', 'default_value': '4', 'data_type': 'int', 'category': 'playlist_sync', 'description': 'Number of Weekly Exploration playlists to keep'},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_JAMS_RETENTION', 'default_value': '4', 'data_type': 'int', 'category': 'playlist_sync', 'description': 'Number of Weekly Jams playlists to keep'},
-            {'key': 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_DAILY_JAMS_RETENTION', 'default_value': '3', 'data_type': 'int', 'category': 'playlist_sync', 'description': 'Number of Daily Jams playlists to keep'},
-            
             
             # Cache Configuration
-            {'key': 'CACHE_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'cache', 'description': 'Enable SQLite caching for API responses'},
             {'key': 'CACHE_FILE', 'default_value': 'data/cmdarr.db', 'data_type': 'string', 'category': 'cache', 'description': 'Cache database file location'},
             {'key': 'CACHE_LASTFM_TTL_DAYS', 'default_value': '7', 'data_type': 'int', 'category': 'cache', 'description': 'Cache TTL for Last.fm API responses (days)'},
             {'key': 'CACHE_MUSICBRAINZ_TTL_DAYS', 'default_value': '7', 'data_type': 'int', 'category': 'cache', 'description': 'Cache TTL for MusicBrainz API responses (days)'},

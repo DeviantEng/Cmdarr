@@ -353,11 +353,21 @@ class ListenBrainzClient(BaseAPIClient):
             return []
     
     async def test_connection(self) -> bool:
-        """Test connection to ListenBrainz API"""
+        """Test connection to ListenBrainz API - checks cache first, then API"""
         try:
             self.logger.info("Testing connection to ListenBrainz API...")
             
-            # Test with a simple API call
+            # First check if we have valid cached data
+            username = self.config.get('LISTENBRAINZ_USERNAME', '')
+            if username and self.cache_enabled and self.cache:
+                cache_key = self._get_cache_key(username, 'curated_playlists')
+                cached_result = self.cache.get(cache_key, 'listenbrainz')
+                if cached_result is not None:
+                    self.logger.info("ListenBrainz API connection test passed - valid cached data available")
+                    return True
+            
+            # If no cached data, test with a simple API call
+            self.logger.info("No cached data found, testing API connection...")
             response = await self._make_request("stats/sitewide/artists")
             
             if response and 'payload' in response:

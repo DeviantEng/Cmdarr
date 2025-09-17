@@ -31,53 +31,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clean up develop images
-        uses: pcasteran/ghcr-cleaning-action@v1
+      - name: Clean up old images
+        uses: actions/delete-package-versions@v5
         with:
-          user: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          package: ${{ env.IMAGE_NAME }}
-          repository: ${{ github.repository }}
-          # Keep the last 10 develop images
-          keep: 10
-          # Only clean up develop branch images
-          filter: develop
-          # Dry run first - set to false after testing
-          dry-run: false
-
-      - name: Clean up SHA-tagged images
-        uses: pcasteran/ghcr-cleaning-action@v1
-        with:
-          user: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          package: ${{ env.IMAGE_NAME }}
-          repository: ${{ github.repository }}
-          # Keep only recent SHA-tagged images
-          keep: 3
-          # Filter for SHA-tagged images (develop-* pattern)
-          filter: develop-
-          # Dry run first - set to false after testing
-          dry-run: true
-
-      - name: Clean up latest images
-        uses: pcasteran/ghcr-cleaning-action@v1
-        with:
-          user: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          package: ${{ env.IMAGE_NAME }}
-          repository: ${{ github.repository }}
-          # Keep the last 5 latest images
-          keep: 5
-          # Only clean up latest images
-          filter: latest
-          # Dry run first - set to false after testing
-          dry-run: false
+          package-name: cmdarr
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: false
 
       - name: Summary
         run: |
           echo "Cleanup completed for ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           echo "Retention policy:"
-          echo "  - develop: Keep last 10 images"
-          echo "  - latest: Keep last 5 images" 
+          echo "  - develop: Keep last 5 images"
+          echo "  - latest: Keep last 3 images" 
           echo "  - SHA-tagged: Keep last 3 images"
           echo "  - Untagged images: Deleted"

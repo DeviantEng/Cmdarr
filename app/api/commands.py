@@ -464,45 +464,43 @@ async def get_scheduler_status():
         raise HTTPException(status_code=500, detail="Failed to get scheduler status")
 
 
-@router.post("/library_cache_builder/execute")
+@router.post("/library_cache_builder/refresh")
 async def execute_cache_builder(request: Request):
     """Execute library cache builder command manually"""
     try:
         from commands.library_cache_builder import LibraryCacheBuilderCommand
         from commands.config_adapter import Config
-        import asyncio
         
         # Parse request body
         body = await request.json()
         target = body.get('target', 'all')  # 'plex', 'jellyfin', or 'all'
-        force_refresh = body.get('force_refresh', False)
+        force_rebuild = body.get('force_rebuild', False)  # Renamed from force_refresh
+        
+        logger.info(f"Cache builder API called with target='{target}', force_rebuild={force_rebuild}")
         
         # Create and execute command
         config = Config()
         cmd = LibraryCacheBuilderCommand(config)
         
-        # Override target settings if specified
-        if target in ['plex', 'jellyfin']:
-            # Temporarily enable only the specified target
-            original_plex_enabled = config.get('LIBRARY_CACHE_PLEX_ENABLED', False)
-            original_jellyfin_enabled = config.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
-            
-            if target == 'plex':
-                config.LIBRARY_CACHE_PLEX_ENABLED = True
-                config.LIBRARY_CACHE_JELLYFIN_ENABLED = False
-            else:
-                config.LIBRARY_CACHE_PLEX_ENABLED = False
-                config.LIBRARY_CACHE_JELLYFIN_ENABLED = True
+        # Execute the command with parameters
+        target_filter = target if target != 'all' else None
+        logger.info(f"Executing command with target_filter='{target_filter}', force_rebuild={force_rebuild}")
+        success = cmd.execute(force_rebuild=force_rebuild, target_filter=target_filter)
         
-        # Execute the command
-        result = await cmd.execute()
-        
-        return {
-            "success": result,
-            "target": target,
-            "force_refresh": force_refresh,
-            "message": f"Cache builder executed for {target}"
-        }
+        if success:
+            return {
+                'success': True,
+                'message': f'Cache {"rebuilt" if force_rebuild else "refreshed"} successfully for {target}',
+                'force_rebuild': force_rebuild,
+                'target': target
+            }
+        else:
+            return {
+                'success': False,
+                'error': f'Cache operation failed for {target}',
+                'force_rebuild': force_rebuild,
+                'target': target
+            }
         
     except Exception as e:
         logger.error(f"Failed to execute cache builder: {e}")

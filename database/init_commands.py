@@ -13,9 +13,11 @@ sys.path.insert(0, str(project_root))
 
 from database.database import get_database_manager
 from database.models import CommandConfig
-from utils.logger import get_logger
+import logging
 
-logger = get_logger('cmdarr.init_commands')
+# Setup basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('cmdarr.init_commands')
 
 
 def init_default_commands():

@@ -18,9 +18,10 @@ def add_new_feature(cursor):
     cursor.execute("ALTER TABLE some_table ADD COLUMN new_column TEXT;")
     logger.info("Added new_column to some_table")
 
+# For new migrations after app version change, use current app_version
 runner.add_migration(Migration(
     name="add_new_feature",
-    version="1.1.0",
+    version=get_migration_version(1),  # First migration for new app version
     description="Add new feature to some_table",
     up_func=add_new_feature
 ))
@@ -30,9 +31,18 @@ runner.add_migration(Migration(
 
 1. **Always check if changes already exist** before applying them
 2. **Use descriptive names** for migrations
-3. **Increment version numbers** appropriately
+3. **Use get_migration_version(sequence)** for version numbers (syncs with app version)
 4. **Handle existing data** gracefully
 5. **Test migrations** on a copy of production data
+
+## Versioning
+
+Migration versions are automatically generated based on the app version:
+- App version `0.1.0` with sequence `1` becomes migration version `0.1.0.1`
+- App version `0.1.0` with sequence `2` becomes migration version `0.1.0.2`
+- When app version changes to `0.2.0`, new migrations become `0.2.0.1`, `0.2.0.2`, etc.
+
+**Important**: All migrations created for the same app version should use the same base version for consistency. Existing migrations use pinned versions to maintain stability.
 
 ## Running Migrations
 
@@ -54,8 +64,10 @@ python test_migration.py
 
 ## Migration History
 
-- **v1.0.0**: Added `status` column to `command_executions` table
-- **v1.0.1**: Ensured all required indexes exist on `command_executions` table
+- **v0.1.0.1**: Added `status` column to `command_executions` table
+- **v0.1.0.2**: Ensured all required indexes exist on `command_executions` table
+- **v0.1.0.3**: Added `timeout_minutes` column to `command_configs` table
+- **v0.1.0.4**: Removed playlist sync config options from global config (now command-specific)
 
 ## Troubleshooting
 

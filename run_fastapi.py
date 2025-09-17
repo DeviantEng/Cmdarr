@@ -82,12 +82,26 @@ def main():
         port = int(os.getenv("WEB_PORT", "8080"))
         log_level = os.getenv("LOG_LEVEL", "info").lower()
         
+        # Configure Uvicorn logging with custom access log filter
+        import copy
+        uvicorn_log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+        
+        # Add custom filter to downgrade health checks to DEBUG
+        uvicorn_log_config["filters"] = uvicorn_log_config.get("filters", {})
+        uvicorn_log_config["filters"]["health_check_filter"] = {
+            "()": "utils.logger.UvicornHealthCheckFilter"
+        }
+        
+        # Apply filter to uvicorn.access logger
+        uvicorn_log_config["loggers"]["uvicorn.access"]["filters"] = ["health_check_filter"]
+        
         uvicorn.run(
             "app.main:app",
             host=host,
             port=port,
             reload=False,  # Disable auto-reload in production
-            log_level=log_level
+            log_level=log_level,
+            log_config=uvicorn_log_config
         )
         
     except Exception as e:

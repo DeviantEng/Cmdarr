@@ -167,18 +167,54 @@
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Plex Library Cache</h2>
-                        <button @click="refreshCache('plex')" 
-                                :disabled="cacheRefreshing.plex"
-                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                                :class="cacheRefreshing.plex ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
-                            <svg x-show="!cacheRefreshing.plex" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                            <svg x-show="cacheRefreshing.plex" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                            <span x-text="cacheRefreshing.plex ? 'Refreshing...' : 'Refresh'"></span>
-                    </button>
+                        <!-- Cache Actions Dropdown -->
+                        <div class="relative" x-data="{ open: false }">
+                            <button @click="open = !open" 
+                                    :disabled="cacheRefreshing.plex"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                                    :class="cacheRefreshing.plex ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
+                                <svg x-show="!cacheRefreshing.plex" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <svg x-show="cacheRefreshing.plex" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span x-text="cacheRefreshing.plex ? 'Working...' : 'Refresh'"></span>
+                                <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            
+                            <!-- Dropdown Menu -->
+                            <div x-show="open" 
+                                 @click.away="open = false"
+                                 x-transition:enter="transition ease-out duration-100"
+                                 x-transition:enter-start="transform opacity-0 scale-95"
+                                 x-transition:enter-end="transform opacity-100 scale-100"
+                                 x-transition:leave="transition ease-in duration-75"
+                                 x-transition:leave-start="transform opacity-100 scale-100"
+                                 x-transition:leave-end="transform opacity-0 scale-95"
+                                 class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+                                <div class="py-1">
+                                    <button @click="refreshCache('plex', false); open = false" 
+                                            :disabled="cacheRefreshing.plex"
+                                            class="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Refresh Cache
+                                    </button>
+                                    <button @click="refreshCache('plex', true); open = false" 
+                                            :disabled="cacheRefreshing.plex"
+                                            class="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        Force Rebuild
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                 </div>
             </div>
             <div class="p-6">
@@ -230,18 +266,54 @@
                 <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                     <div class="flex items-center justify-between">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Jellyfin Library Cache</h2>
-                        <button @click="refreshCache('jellyfin')" 
-                                :disabled="cacheRefreshing.jellyfin"
-                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                                :class="cacheRefreshing.jellyfin ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
-                            <svg x-show="!cacheRefreshing.jellyfin" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                            <svg x-show="cacheRefreshing.jellyfin" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                            <span x-text="cacheRefreshing.jellyfin ? 'Refreshing...' : 'Refresh'"></span>
-                        </button>
+                        <!-- Cache Actions Dropdown -->
+                        <div class="relative" x-data="{ open: false }">
+                            <button @click="open = !open" 
+                                    :disabled="cacheRefreshing.jellyfin"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                                    :class="cacheRefreshing.jellyfin ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'">
+                                <svg x-show="!cacheRefreshing.jellyfin" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <svg x-show="cacheRefreshing.jellyfin" class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span x-text="cacheRefreshing.jellyfin ? 'Working...' : 'Refresh'"></span>
+                                <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            
+                            <!-- Dropdown Menu -->
+                            <div x-show="open" 
+                                 @click.away="open = false"
+                                 x-transition:enter="transition ease-out duration-100"
+                                 x-transition:enter-start="transform opacity-0 scale-95"
+                                 x-transition:enter-end="transform opacity-100 scale-100"
+                                 x-transition:leave="transition ease-in duration-75"
+                                 x-transition:leave-start="transform opacity-100 scale-100"
+                                 x-transition:leave-end="transform opacity-0 scale-95"
+                                 class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+                                <div class="py-1">
+                                    <button @click="refreshCache('jellyfin', false); open = false" 
+                                            :disabled="cacheRefreshing.jellyfin"
+                                            class="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Refresh Cache
+                                    </button>
+                                    <button @click="refreshCache('jellyfin', true); open = false" 
+                                            :disabled="cacheRefreshing.jellyfin"
+                                            class="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        Force Rebuild
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="p-6">
@@ -410,34 +482,35 @@ function statusManager() {
         },
         
         // Cache refresh functionality
-        async refreshCache(target) {
+        async refreshCache(target, forceRebuild = false) {
             if (this.cacheRefreshing[target]) return;
             
             this.cacheRefreshing[target] = true;
             
             try {
                 // Trigger cache refresh via API
-                const response = await this.apiCall(`/api/commands/library_cache_builder/execute`, {
+                const response = await this.apiCall(`/api/commands/library_cache_builder/refresh`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         target: target,
-                        force_refresh: true
+                        force_rebuild: forceRebuild
                     })
                 });
                 
                 if (response.success) {
-                    this.showFlash(`${target.charAt(0).toUpperCase() + target.slice(1)} cache refreshed successfully`, 'success');
+                    const action = forceRebuild ? 'rebuilt' : 'refreshed';
+                    this.showFlash(`${target.charAt(0).toUpperCase() + target.slice(1)} cache ${action} successfully`, 'success');
                     // Reload cache data
                     await this.loadCacheData(target);
                 } else {
-                    this.showFlash(`Failed to refresh ${target} cache: ${response.error || 'Unknown error'}`, 'error');
+                    this.showFlash(`Failed to ${forceRebuild ? 'rebuild' : 'refresh'} ${target} cache: ${response.error || 'Unknown error'}`, 'error');
                 }
             } catch (error) {
-                console.error(`Failed to refresh ${target} cache:`, error);
-                this.showFlash(`Failed to refresh ${target} cache: ${error.message}`, 'error');
+                console.error(`Failed to ${forceRebuild ? 'rebuild' : 'refresh'} ${target} cache:`, error);
+                this.showFlash(`Failed to ${forceRebuild ? 'rebuild' : 'refresh'} ${target} cache: ${error.message}`, 'error');
             } finally {
                 this.cacheRefreshing[target] = false;
             }

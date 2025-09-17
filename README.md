@@ -145,10 +145,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **Duplicate Prevention**: Smart validation to prevent creating duplicate playlists
 - **Cache-Aware**: Automatically builds library cache if missing or stale
 
-**Configuration**:
-- `PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED=true`
-- `PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE_HOURS=12`
-- `PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET=plex` (or `jellyfin`)
+**Configuration**: Command-specific settings available in the web interface under Commands → Playlist Sync ListenBrainz Curated
 
 ## Library Cache Optimization
 

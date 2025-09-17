@@ -16,6 +16,7 @@ sys.path.insert(0, str(project_root))
 
 try:
     from utils.logger import get_logger
+    from __version__ import __version__ as app_version
     logger = get_logger('cmdarr.migration_framework')
 except Exception:
     import logging
@@ -122,6 +123,18 @@ class MigrationRunner:
             conn.close()
 
 
+def get_migration_version(sequence: int, base_version: str = None) -> str:
+    """Generate migration version based on app version and sequence number"""
+    # Use provided base_version or current app_version
+    # This gives us versions like "0.1.0.1", "0.1.0.2", etc.
+    try:
+        version_base = base_version if base_version else app_version
+        return f"{version_base}.{sequence}"
+    except:
+        # Fallback if app_version import fails
+        return f"1.0.0.{sequence}"
+
+
 def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
     """Create a migration runner with all defined migrations"""
     runner = MigrationRunner(db_path)
@@ -143,9 +156,12 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
         cursor.execute("UPDATE command_executions SET status = 'failed' WHERE completed_at IS NOT NULL AND success = 0 AND (status IS NULL OR status = 'running');")
         logger.info("Updated existing execution records with correct status")
     
+    # All migrations for v0.1.0 - use same base version for consistency
+    BASE_VERSION_0_1_0 = "0.1.0"
+    
     runner.add_migration(Migration(
         name="add_status_column_to_command_executions",
-        version="1.0.0",
+        version=get_migration_version(1, BASE_VERSION_0_1_0),
         description="Add status column to command_executions table",
         up_func=add_status_column
     ))
@@ -168,7 +184,7 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
     
     runner.add_migration(Migration(
         name="ensure_command_executions_indexes",
-        version="1.0.1",
+        version=get_migration_version(2, BASE_VERSION_0_1_0),
         description="Ensure all required indexes exist on command_executions table",
         up_func=ensure_indexes
     ))
@@ -195,10 +211,44 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
     
     runner.add_migration(Migration(
         name="add_timeout_column_to_command_configs",
-        version="1.1.0",
+        version=get_migration_version(3, BASE_VERSION_0_1_0),
         description="Add timeout_minutes column to command_configs table with defaults",
         up_func=add_timeout_column
     ))
+    
+    # Migration 4: Remove playlist sync config options from global config
+    def remove_playlist_sync_global_config(cursor):
+        playlist_sync_keys = [
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_ENABLED',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_SCHEDULE',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_TARGET',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_PLAYLISTS',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_EXPLORATION_RETENTION',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_WEEKLY_JAMS_RETENTION',
+            'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_DAILY_JAMS_RETENTION'
+        ]
+        
+        for key in playlist_sync_keys:
+            cursor.execute("DELETE FROM config_settings WHERE key = ?", (key,))
+        
+        logger.info("Removed playlist sync configuration options from global config (now command-specific only)")
+    
+    runner.add_migration(Migration(
+        name="remove_playlist_sync_global_config",
+        version=get_migration_version(4, BASE_VERSION_0_1_0),
+        description="Remove playlist sync config options from global config (now command-specific)",
+        up_func=remove_playlist_sync_global_config
+    ))
+    
+    # Future migrations for new app versions should use current app_version
+    # Example for when you bump to 0.2.0:
+    # runner.add_migration(Migration(
+    #     name="your_new_migration",
+    #     version=get_migration_version(1),  # Uses current app_version (0.2.0) -> 0.2.0.1
+    #     description="Your new migration for v0.2.0",
+    #     up_func=your_migration_function
+    # ))
     
     return runner
 
