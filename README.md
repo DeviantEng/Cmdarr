@@ -191,7 +191,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 Add Cmdarr as a Custom List in Lidarr:
 1. Go to Settings → Import Lists
 2. Add a new "Custom List" 
-3. Set URL to: `http://cmdarr:8080/api/import_lists/discovery_lastfm` or `http://cmdarr:8080/api/import_lists/discovery_listenbrainz`
+3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_listenbrainz`
 4. Configure sync interval as desired (recommend 24-48 hours)
 
 ### Environment Variables
@@ -460,9 +460,9 @@ python run_fastapi.py
 
 ### API Endpoints
 - **Import Lists**: 
-  - `/api/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
-  - `/api/import_lists/discovery_listenbrainz` - JSON endpoint for ListenBrainz Weekly Discovery artists
-  - `/api/import_lists/metrics` - Metrics for import list files
+  - `/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
+  - `/import_lists/discovery_listenbrainz` - JSON endpoint for ListenBrainz Weekly Discovery artists
+  - `/import_lists/metrics` - Metrics for import list files
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
 - **Configuration API**: `/api/config/` - RESTful configuration management
 - **Commands API**: `/api/commands/` - Command management and execution

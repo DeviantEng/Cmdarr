@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-01-17
+
+### 🔧 URL Structure Improvements
+- **Clean Import List URLs**: Moved import list endpoints from `/api/import_lists/` to `/import_lists/` for better clarity and Lidarr compatibility
+- **Fixed Lidarr Integration**: Resolved redirect issues that prevented Lidarr from properly consuming import list feeds
+- **Simplified URL Structure**: Import lists now follow the clean pattern `/import_lists/<command_category>_<client_name>`
+
+### Technical Details
+- Updated router prefix from `/api/import_lists` to `/import_lists` in main application
+- Removed legacy redirect endpoints that were causing Lidarr compatibility issues
+- Updated UI to display correct working URLs without redirects
+- Updated documentation with new endpoint URLs
+
 ## [0.1.2] - 2025-01-17
 
 ### 🔧 Bug Fixes & Improvements
