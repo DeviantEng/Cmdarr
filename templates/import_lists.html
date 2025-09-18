@@ -255,8 +255,34 @@ function importLists() {
         
         async copyToClipboard(text) {
             try {
-                await navigator.clipboard.writeText(text);
-                this.showFlash('URL copied to clipboard', 'success');
+                // Try modern clipboard API first (requires HTTPS)
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    this.showFlash('URL copied to clipboard', 'success');
+                    return;
+                }
+                
+                // Fallback: Create temporary textarea element
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-999999px';
+                textarea.style.top = '-999999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        this.showFlash('URL copied to clipboard', 'success');
+                    } else {
+                        throw new Error('execCommand failed');
+                    }
+                } finally {
+                    document.body.removeChild(textarea);
+                }
+                
             } catch (error) {
                 console.error('Failed to copy to clipboard:', error);
                 this.showFlash('Failed to copy URL', 'error');

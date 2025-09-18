@@ -276,12 +276,13 @@ async def import_lists_page(request: Request):
 
 
 # API Routes - Import after logging is configured
-from app.api import config, status, import_lists
+from app.api import config, status, import_lists, test_connectivity
 
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/api/import_lists", tags=["import_lists"])
+app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 
 
 # WebSocket endpoint for real-time updates

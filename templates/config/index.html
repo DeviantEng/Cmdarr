@@ -34,6 +34,17 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Configuration Settings</h3>
                 <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+                    <button @click="testConnectivity()" 
+                            :disabled="isTestingConnectivity"
+                            class="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed">
+                        <svg x-show="!isTestingConnectivity" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <svg x-show="isTestingConnectivity" class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span x-text="isTestingConnectivity ? 'Testing...' : 'Test All Connectivity'"></span>
+                    </button>
                     <button @click="saveAllChanges()" 
                             :disabled="!hasChanges"
                             class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed">
@@ -155,6 +166,77 @@
             </div>
         </div>
     </div>
+
+    <!-- Connectivity Test Modal -->
+    <div x-show="showConnectivityModal" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto"
+         style="display: none;">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showConnectivityModal = false"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900 sm:mx-0 sm:h-10 sm:w-10">
+                            <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                Connectivity Test Results
+                            </h3>
+                            <div class="mt-4">
+                                <div x-show="connectivityResults.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+                                    No test results available.
+                                </div>
+                                <div x-show="connectivityResults.length > 0" class="space-y-3">
+                                    <template x-for="result in connectivityResults" :key="result.service">
+                                        <div class="flex items-center justify-between p-3 rounded-lg border"
+                                             :class="result.success ? 'bg-green-50 dark:bg-green-900 border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-700'">
+                                            <div class="flex items-center">
+                                                <div class="flex-shrink-0">
+                                                    <svg x-show="result.success" class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    <svg x-show="!result.success" class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </div>
+                                                <div class="ml-3">
+                                                    <p class="text-sm font-medium"
+                                                       :class="result.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'"
+                                                       x-text="result.service"></p>
+                                                    <p class="text-sm"
+                                                       :class="result.success ? 'text-green-600 dark:text-green-300' : 'text-red-600 dark:text-red-300'"
+                                                       x-text="result.message"></p>
+                                                    <p x-show="result.error" class="text-xs text-red-500 dark:text-red-400 mt-1" x-text="result.error"></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button @click="showConnectivityModal = false" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -165,6 +247,11 @@ function configManager() {
         categories: [],
         selectedCategory: 'all',
         changedSettings: new Set(),
+        
+        // Connectivity test
+        isTestingConnectivity: false,
+        showConnectivityModal: false,
+        connectivityResults: [],
         
         // Computed
         get filteredSettings() {
@@ -298,6 +385,38 @@ function configManager() {
             // Reload original values
             this.loadConfiguration();
             this.showFlash('Changes reset', 'success');
+        },
+        
+        async testConnectivity() {
+            this.isTestingConnectivity = true;
+            this.connectivityResults = [];
+            this.showConnectivityModal = true;
+            
+            try {
+                const response = await this.apiCall('/api/config/test-connectivity', {
+                    method: 'POST'
+                });
+                
+                this.connectivityResults = response.results;
+                
+                if (response.overall_success) {
+                    this.showFlash('All connectivity tests passed!', 'success');
+                } else {
+                    this.showFlash('Some connectivity tests failed. Check the results.', 'warning');
+                }
+                
+            } catch (error) {
+                console.error('Connectivity test failed:', error);
+                this.showFlash('Connectivity test failed', 'error');
+                this.connectivityResults = [{
+                    service: 'Test Error',
+                    success: false,
+                    message: 'Failed to run connectivity test',
+                    error: error.message || 'Unknown error'
+                }];
+            } finally {
+                this.isTestingConnectivity = false;
+            }
         }
     }
 }

@@ -289,7 +289,7 @@ class CommandExecutor:
         try:
             log_file = "data/logs/cmdarr.log"
             if os.path.exists(log_file):
-                with open(log_file, 'r') as f:
+                with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
                     lines = f.readlines()
                 
                 # Get the last 100 lines to find recent command output
@@ -521,13 +521,16 @@ class CommandExecutor:
                     execution.error_message = error_message
                     execution.output_summary = output_summary
                     
-                    # Update the command config's last_run and related fields
+                    # Update the command config's related fields (last_run is handled by scheduler)
                     command_config = session.query(CommandConfig).filter(
                         CommandConfig.command_name == execution.command_name
                     ).first()
                     
                     if command_config:
-                        command_config.last_run = execution.started_at
+                        # Only update last_run if this wasn't triggered by scheduler
+                        # (scheduler handles last_run update separately)
+                        if execution.triggered_by != 'scheduler':
+                            command_config.last_run = execution.started_at
                         command_config.last_success = success
                         command_config.last_duration = duration
                         command_config.last_error = error_message

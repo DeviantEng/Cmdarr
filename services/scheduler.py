@@ -6,7 +6,7 @@ Background scheduler service for automatic command execution
 import asyncio
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, Any
 from sqlalchemy.orm import Session
 
 from database.database import get_database_manager
@@ -25,6 +25,11 @@ class CommandScheduler:
         self.check_interval = 60  # Check every 60 seconds
         self._task: Optional[asyncio.Task] = None
         
+        # Command queue system
+        self.command_queue: Optional[asyncio.Queue] = None
+        self.queue_processor_task: Optional[asyncio.Task] = None
+        self.currently_running_command: Optional[str] = None
+        
     async def start(self):
         """Start the background scheduler"""
         if self.running:
@@ -34,8 +39,14 @@ class CommandScheduler:
         self.running = True
         self.logger.info("Starting command scheduler")
         
+        # Initialize command queue
+        self.command_queue = asyncio.Queue()
+        
         # Start the main scheduler loop
         self._task = asyncio.create_task(self._scheduler_loop())
+        
+        # Start the command queue processor
+        self.queue_processor_task = asyncio.create_task(self._process_command_queue())
         
         # Initialize scheduled tasks for enabled commands
         await self._initialize_scheduled_tasks()
@@ -52,6 +63,14 @@ class CommandScheduler:
         for task in self.scheduled_tasks.values():
             task.cancel()
         self.scheduled_tasks.clear()
+        
+        # Cancel queue processor task
+        if self.queue_processor_task:
+            self.queue_processor_task.cancel()
+            try:
+                await self.queue_processor_task
+            except asyncio.CancelledError:
+                pass
         
         # Cancel main scheduler task
         if self._task:
@@ -101,58 +120,118 @@ class CommandScheduler:
             from app.api.commands import calculate_next_run
             next_run = calculate_next_run(command.last_run, command.schedule_hours)
             
-            if next_run and datetime.utcnow() >= next_run:
-                self.logger.info(f"Scheduling command {command.command_name} for execution")
-                await self._schedule_command_execution(command.command_name)
+            # Check if it's time to run
+            # If next_run is None, it means the command has never run and should run immediately
+            # If next_run is in the past, it means the command is overdue
+            # If next_run is in the future, check if it's time to run
+            if next_run is None or datetime.utcnow() >= next_run:
+                if next_run is None:
+                    reason = "never run"
+                elif next_run < datetime.utcnow():
+                    reason = "overdue"
+                else:
+                    reason = "scheduled"
+                self.logger.info(f"Command {command.command_name} is due to run ({reason})")
+                await self._queue_command_execution(command.command_name)
                 
         except Exception as e:
             self.logger.error(f"Failed to check schedule for {command.command_name}: {e}")
-            
-    async def _schedule_command_execution(self, command_name: str):
-        """Schedule a command for immediate execution"""
+    
+    async def _queue_command_execution(self, command_name: str):
+        """Add a command to the execution queue"""
         try:
-            # Check if command is already running
+            # Check if command is already in queue or running
             if command_name in self.scheduled_tasks:
-                self.logger.warning(f"Command {command_name} is already scheduled")
+                self.logger.warning(f"Command {command_name} is already queued or running")
                 return
-                
-            # Create execution record
-            manager = get_database_manager()
-            session = manager.get_session_sync()
+            
+            # Add to queue
+            await self.command_queue.put(command_name)
+            self.logger.info(f"Queued command {command_name} for execution")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to queue command {command_name}: {e}")
+    
+    async def _process_command_queue(self):
+        """Process commands from the queue one at a time"""
+        self.logger.info("Command queue processor started")
+        while self.running:
             try:
-                execution = CommandExecution(
-                    command_name=command_name,
-                    started_at=datetime.utcnow(),
-                    triggered_by='scheduler'
-                )
-                session.add(execution)
-                session.commit()
-                execution_id = execution.id
+                # Wait for a command to be queued
+                self.logger.debug("Waiting for commands in queue...")
+                command_name = await self.command_queue.get()
                 
-                # Update command's last_run timestamp
-                command = session.query(CommandConfig).filter(
-                    CommandConfig.command_name == command_name
-                ).first()
-                if command:
-                    command.last_run = datetime.utcnow()
-                    session.commit()
-                    
-            finally:
-                session.close()
+                # Check if we're still running
+                if not self.running:
+                    break
                 
+                self.logger.info(f"Processing command from queue: {command_name}")
+                # Execute the command
+                await self._execute_command_from_queue(command_name)
+                
+                # Mark task as done
+                self.command_queue.task_done()
+                
+            except asyncio.CancelledError:
+                self.logger.info("Command queue processor cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error processing command queue: {e}")
+                await asyncio.sleep(5)  # Wait before retrying
+    
+    async def _execute_command_from_queue(self, command_name: str):
+        """Execute a command from the queue"""
+        try:
+            self.currently_running_command = command_name
+            self.logger.info(f"Starting execution of {command_name}")
+            
             # Execute command asynchronously
             task = asyncio.create_task(
                 command_executor.execute_command(command_name, triggered_by='scheduler')
             )
             self.scheduled_tasks[command_name] = task
             
-            # Clean up task when complete
-            task.add_done_callback(lambda t: self.scheduled_tasks.pop(command_name, None))
+            # Clean up task when complete and update last_run only on success
+            task.add_done_callback(lambda t: self._handle_command_completion(command_name, t))
             
-            self.logger.info(f"Scheduled execution of {command_name}")
+            # Wait for command to complete
+            await task
             
         except Exception as e:
-            self.logger.error(f"Failed to schedule command {command_name}: {e}")
+            self.logger.error(f"Failed to execute command {command_name} from queue: {e}")
+        finally:
+            self.currently_running_command = None
+            
+    def _handle_command_completion(self, command_name: str, task: asyncio.Task):
+        """Handle command completion and update last_run timestamp only on success"""
+        try:
+            # Remove from scheduled tasks
+            self.scheduled_tasks.pop(command_name, None)
+            
+            # Check if command completed successfully
+            if not task.cancelled() and not task.exception():
+                # Command completed successfully, update last_run timestamp
+                manager = get_database_manager()
+                session = manager.get_session_sync()
+                try:
+                    command = session.query(CommandConfig).filter(
+                        CommandConfig.command_name == command_name
+                    ).first()
+                    if command:
+                        command.last_run = datetime.utcnow()
+                        session.commit()
+                        self.logger.info(f"Updated last_run timestamp for {command_name}")
+                finally:
+                    session.close()
+            else:
+                # Command failed or was cancelled, don't update last_run
+                if task.cancelled():
+                    self.logger.warning(f"Command {command_name} was cancelled, not updating last_run")
+                elif task.exception():
+                    self.logger.error(f"Command {command_name} failed: {task.exception()}, not updating last_run")
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to handle completion for {command_name}: {e}")
             
     async def _initialize_scheduled_tasks(self):
         """Initialize scheduled tasks for all enabled commands"""
@@ -243,6 +322,14 @@ class CommandScheduler:
     def is_command_scheduled(self, command_name: str) -> bool:
         """Check if a command is currently scheduled for execution"""
         return command_name in self.scheduled_tasks
+    
+    def get_queue_status(self) -> Dict[str, Any]:
+        """Get current queue status"""
+        return {
+            'queue_size': self.command_queue.qsize() if self.command_queue else 0,
+            'currently_running': self.currently_running_command,
+            'scheduled_commands': list(self.scheduled_tasks.keys())
+        }
 
 
 # Global scheduler instance

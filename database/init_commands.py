@@ -30,7 +30,7 @@ def init_default_commands():
             'description': 'Discover similar artists from Last.fm and MusicBrainz for Lidarr import',
             'enabled': False,
             'schedule_hours': 24,
-            'timeout_minutes': 120,
+            'timeout_minutes': 30,
             'config_json': {
                 'limit': 5,
                 'similar_count': 1,
@@ -43,7 +43,7 @@ def init_default_commands():
             'description': 'Discover artists from ListenBrainz Weekly Discovery playlist for Lidarr import',
             'enabled': False,
             'schedule_hours': 24,
-            'timeout_minutes': 120,
+            'timeout_minutes': 30,
             'config_json': {
                 'limit': 5
             }
@@ -54,7 +54,7 @@ def init_default_commands():
             'description': 'Sync ListenBrainz curated playlists to music players',
             'enabled': False,
             'schedule_hours': 12,
-            'timeout_minutes': 120,
+            'timeout_minutes': 30,
             'config_json': {
                 'target': 'plex',
                 'weekly_exploration': True,

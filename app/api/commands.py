@@ -31,15 +31,17 @@ def calculate_next_run(last_run: Optional[datetime], schedule_hours: Optional[in
         return None
     
     if not last_run:
-        # If no last run, schedule for immediate execution (next minute)
-        return datetime.utcnow() + timedelta(minutes=1)
+        # If no last run but there is a schedule, this means the command was just enabled
+        # Return None to indicate it should run immediately (scheduler will handle it)
+        return None
     
     # Calculate next run from last run
     next_run = last_run + timedelta(hours=schedule_hours)
     
-    # If the calculated next run is in the past, schedule for immediate execution
+    # If the calculated next run is in the past, return a stable "overdue" time
+    # Use the last_run + schedule_hours as the base, which gives a consistent time
     if next_run < datetime.utcnow():
-        return datetime.utcnow() + timedelta(minutes=1)
+        return next_run  # This will be in the past, but stable
     
     return next_run
 
@@ -165,8 +167,23 @@ async def update_command(
         # Update fields if provided
         if request.enabled is not None:
             command.enabled = request.enabled
+            
+            # If enabling a command that has never run, set a placeholder last_run timestamp
+            # This makes next_run = last_run + schedule_hours = 5 minutes from now
+            if request.enabled and command.last_run is None and command.schedule_hours:
+                schedule_minutes = command.schedule_hours * 60
+                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
+                logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
+                
         if request.schedule_hours is not None:
             command.schedule_hours = request.schedule_hours
+            
+            # If setting schedule on an enabled command that has never run, set placeholder last_run
+            if command.enabled and command.last_run is None and request.schedule_hours:
+                schedule_minutes = request.schedule_hours * 60
+                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
+                logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
+                
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
@@ -174,6 +191,9 @@ async def update_command(
         
         command.updated_at = datetime.utcnow()
         db.commit()
+        
+        # Refresh the command object to ensure we have the latest data
+        db.refresh(command)
         
         # Notify scheduler of changes
         if enabled_changed or schedule_changed:
@@ -454,10 +474,14 @@ async def get_scheduler_status():
     try:
         from services.scheduler import scheduler
         
+        queue_status = scheduler.get_queue_status()
+        
         return {
             "running": scheduler.running,
             "scheduled_commands": list(scheduler.get_scheduled_commands()),
-            "check_interval_seconds": scheduler.check_interval
+            "check_interval_seconds": scheduler.check_interval,
+            "queue_size": queue_status['queue_size'],
+            "currently_running": queue_status['currently_running']
         }
     except Exception as e:
         logger.error(f"Failed to get scheduler status: {e}")
