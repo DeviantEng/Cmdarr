@@ -281,7 +281,7 @@ from app.api import config, status, import_lists, test_connectivity
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
-app.include_router(import_lists.router, prefix="/api/import_lists", tags=["import_lists"])
+app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 
 
@@ -292,18 +292,6 @@ async def websocket_route(websocket: WebSocket, client_id: str = None):
     await websocket_endpoint(websocket, client_id)
 
 
-# Legacy endpoints for backward compatibility
-@app.get("/discovery_lastfm")
-async def discovery_lastfm_legacy():
-    """Legacy endpoint - redirects to new import lists API"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/api/import_lists/discovery_lastfm", status_code=301)
-
-@app.get("/discovery_listenbrainz")
-async def discovery_listenbrainz_legacy():
-    """Legacy endpoint - redirects to new import lists API"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/api/import_lists/discovery_listenbrainz", status_code=301)
 
 
 if __name__ == "__main__":

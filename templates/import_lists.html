@@ -41,10 +41,10 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
                 <div class="flex items-center space-x-2">
                     <input type="text" 
-                           :value="baseUrl + '/discovery_lastfm'"
+                           :value="baseUrl + '/import_lists/discovery_lastfm'"
                            readonly
                            class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-mono text-gray-900 dark:text-white">
-                    <button @click="copyToClipboard(baseUrl + '/discovery_lastfm')"
+                    <button @click="copyToClipboard(baseUrl + '/import_lists/discovery_lastfm')"
                             class="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
                         Copy
                     </button>
@@ -115,10 +115,10 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
                 <div class="flex items-center space-x-2">
                     <input type="text" 
-                           :value="baseUrl + '/discovery_listenbrainz'"
+                           :value="baseUrl + '/import_lists/discovery_listenbrainz'"
                            readonly
                            class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-mono text-gray-900 dark:text-white">
-                    <button @click="copyToClipboard(baseUrl + '/discovery_listenbrainz')"
+                    <button @click="copyToClipboard(baseUrl + '/import_lists/discovery_listenbrainz')"
                             class="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
                         Copy
                     </button>
@@ -178,12 +178,12 @@
             <div class="ml-9 space-y-2">
                 <div class="flex items-center space-x-2">
                     <span class="text-blue-600 dark:text-blue-400">•</span>
-                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/discovery_lastfm'"></code>
+                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/import_lists/discovery_lastfm'"></code>
                     <span class="text-sm">(Last.fm similar artists)</span>
                 </div>
                 <div class="flex items-center space-x-2">
                     <span class="text-blue-600 dark:text-blue-400">•</span>
-                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/discovery_listenbrainz'"></code>
+                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/import_lists/discovery_listenbrainz'"></code>
                     <span class="text-sm">(ListenBrainz weekly discovery)</span>
                 </div>
             </div>
@@ -233,7 +233,7 @@ function importLists() {
                 this.baseUrl = window.location.origin;
                 
                 // Load import list metrics
-                const response = await this.apiCall('/api/import_lists/metrics');
+                const response = await this.apiCall('/import_lists/metrics');
                 this.lastfmMetrics = response.lastfm || this.lastfmMetrics;
                 this.listenbrainzMetrics = response.listenbrainz || this.listenbrainzMetrics;
             } catch (error) {
