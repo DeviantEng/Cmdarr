@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-01-18
+
+### 🔧 Command Configuration Fixes
+- **Fixed Command-Specific Settings**: Resolved issue where command-level configuration settings (like limit, min_match_score) were not taking effect
+- **Improved Configuration Fallback**: Commands now properly use command-specific config with graceful fallback to global settings
+
 ## [0.1.3] - 2025-01-17
 
 ### 🔧 URL Structure Improvements

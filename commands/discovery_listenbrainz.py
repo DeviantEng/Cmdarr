@@ -140,8 +140,15 @@ class DiscoveryListenbrainzCommand(BaseCommand):
         stats.musicbrainz_recovered = len(musicbrainz_recovered)
         
         # Apply random sampling using shared utility
+        # Use command-specific limit if available, otherwise fall back to global config
+        limit = 5  # Default fallback
+        if hasattr(self, 'config_json') and self.config_json and 'limit' in self.config_json:
+            limit = self.config_json['limit']
+        elif hasattr(self.config, 'DISCOVERY_LISTENBRAINZ_LIMIT'):
+            limit = self.config.DISCOVERY_LISTENBRAINZ_LIMIT
+        
         output_artists, limited_count, random_sampling = self.utils.apply_random_sampling(
-            processed_artists, self.config.DISCOVERY_LISTENBRAINZ_LIMIT, "discovery_listenbrainz"
+            processed_artists, limit, "discovery_listenbrainz"
         )
         
         stats.final_count = len(output_artists)

@@ -123,7 +123,14 @@ class DiscoveryLastfmCommand(BaseCommand):
             # Check minimum match score
             try:
                 match_score = float(similar['match'])
-                if match_score < self.config.LASTFM_MIN_MATCH_SCORE:
+                # Use command-specific min_match_score if available, otherwise fall back to global config
+                min_match_score = 0.0  # Default fallback
+                if hasattr(self, 'config_json') and self.config_json and 'min_match_score' in self.config_json:
+                    min_match_score = self.config_json['min_match_score']
+                elif hasattr(self.config, 'LASTFM_MIN_MATCH_SCORE'):
+                    min_match_score = self.config.LASTFM_MIN_MATCH_SCORE
+                
+                if match_score < min_match_score:
                     stats.filtered_low_score += 1
                     continue
             except (ValueError, TypeError):
@@ -147,8 +154,15 @@ class DiscoveryLastfmCommand(BaseCommand):
         stats.valid_candidates = len(final_artists)
         
         # Apply random sampling using shared utility
+        # Use command-specific limit if available, otherwise fall back to global config
+        limit = 5  # Default fallback
+        if hasattr(self, 'config_json') and self.config_json and 'limit' in self.config_json:
+            limit = self.config_json['limit']
+        elif hasattr(self.config, 'DISCOVERY_LASTFM_LIMIT'):
+            limit = self.config.DISCOVERY_LASTFM_LIMIT
+        
         output_artists, limited_count, random_sampling = self.utils.apply_random_sampling(
-            final_artists, self.config.DISCOVERY_LASTFM_LIMIT, "discovery_lastfm"
+            final_artists, limit, "discovery_lastfm"
         )
         
         stats.final_count = len(output_artists)
