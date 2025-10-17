@@ -82,22 +82,21 @@
             </div>
         </div>
 
-        <!-- ListenBrainz Discovery -->
+        <!-- Playlist Sync Discovery -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">🎵 ListenBrainz Discovery</h2>
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">🎶 Playlist Sync Discovery</h2>
                 <div class="flex items-center space-x-2">
-                    <span x-show="listenbrainzMetrics.exists" 
+                    <span x-show="unifiedMetrics.exists" 
                           class="px-2 py-1 text-xs font-medium rounded-full"
                           :class="{
-                              'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': listenbrainzMetrics.status === 'fresh',
-                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': listenbrainzMetrics.status === 'stale',
-                              'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': listenbrainzMetrics.status === 'very_stale',
-                              'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200': listenbrainzMetrics.status === 'no_new_artists',
-                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200': listenbrainzMetrics.status === 'empty'
+                              'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': unifiedMetrics.status === 'fresh',
+                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': unifiedMetrics.status === 'stale',
+                              'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': unifiedMetrics.status === 'very_stale' || unifiedMetrics.status === 'empty',
+                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200': unifiedMetrics.status === 'empty'
                           }"
-                          x-text="listenbrainzMetrics.status === 'no_new_artists' ? 'No New Artists' : listenbrainzMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span>
-                    <span x-show="!listenbrainzMetrics.exists" 
+                          x-text="unifiedMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span>
+                    <span x-show="!unifiedMetrics.exists" 
                           class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                         Not Available
                     </span>
@@ -105,20 +104,17 @@
             </div>
             
             <p class="text-gray-600 dark:text-gray-400 mb-4">
-                Artists from your ListenBrainz Weekly Discovery playlist, filtered to exclude existing library content.
-                <span class="text-sm text-gray-500 dark:text-gray-500">
-                    Note: "No New Artists" is normal when all artists in this week's playlist are already in your library.
-                </span>
+                Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.)
             </p>
             
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
                 <div class="flex items-center space-x-2">
                     <input type="text" 
-                           :value="baseUrl + '/import_lists/discovery_listenbrainz'"
+                           :value="baseUrl + '/import_lists/discovery_playlistsync'"
                            readonly
                            class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-mono text-gray-900 dark:text-white">
-                    <button @click="copyToClipboard(baseUrl + '/import_lists/discovery_listenbrainz')"
+                    <button @click="copyToClipboard(baseUrl + '/import_lists/discovery_playlistsync')"
                             class="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
                         Copy
                     </button>
@@ -126,36 +122,35 @@
             </div>
             
             <!-- Stats -->
-            <div x-show="listenbrainzMetrics.exists" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div x-show="unifiedMetrics.exists" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">File Statistics</h4>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="text-center">
-                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="listenbrainzMetrics.entry_count.toLocaleString()"></div>
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="unifiedMetrics.entry_count.toLocaleString()"></div>
                         <div class="text-xs text-gray-600 dark:text-gray-400">Artists</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="formatFileSize(listenbrainzMetrics.file_size)"></div>
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="formatFileSize(unifiedMetrics.file_size)"></div>
                         <div class="text-xs text-gray-600 dark:text-gray-400">File Size</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="listenbrainzMetrics.age_human"></div>
+                        <div class="text-lg font-semibold text-gray-900 dark:text-white" x-text="unifiedMetrics.age_human"></div>
                         <div class="text-xs text-gray-600 dark:text-gray-400">Last Updated</div>
                     </div>
                     <div class="text-center">
                         <div class="text-lg font-semibold text-gray-900 dark:text-white" 
                              :class="{
-                                 'text-green-600 dark:text-green-400': listenbrainzMetrics.status === 'fresh',
-                                 'text-yellow-600 dark:text-yellow-400': listenbrainzMetrics.status === 'stale',
-                                 'text-red-600 dark:text-red-400': listenbrainzMetrics.status === 'very_stale',
-                                 'text-gray-600 dark:text-gray-400': listenbrainzMetrics.status === 'empty'
+                                 'text-green-600 dark:text-green-400': unifiedMetrics.status === 'fresh',
+                                 'text-yellow-600 dark:text-yellow-400': unifiedMetrics.status === 'stale',
+                                 'text-red-600 dark:text-red-400': unifiedMetrics.status === 'very_stale',
+                                 'text-gray-600 dark:text-gray-400': unifiedMetrics.status === 'empty'
                              }"
-                             x-text="listenbrainzMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></div>
+                             x-text="unifiedMetrics.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></div>
                         <div class="text-xs text-gray-600 dark:text-gray-400">Status</div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Lidarr Integration Guide -->
     <div class="mt-8 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-6">
@@ -183,8 +178,8 @@
                 </div>
                 <div class="flex items-center space-x-2">
                     <span class="text-blue-600 dark:text-blue-400">•</span>
-                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/import_lists/discovery_listenbrainz'"></code>
-                    <span class="text-sm">(ListenBrainz weekly discovery)</span>
+                    <code class="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-sm" x-text="baseUrl + '/import_lists/discovery_playlistsync'"></code>
+                    <span class="text-sm">(Playlist sync discovered artists)</span>
                 </div>
             </div>
             <div class="flex items-start space-x-3">
@@ -217,7 +212,7 @@ function importLists() {
             age_human: 'Not available',
             status: 'missing'
         },
-        listenbrainzMetrics: {
+        unifiedMetrics: {
             exists: false,
             entry_count: 0,
             file_size: 0,
@@ -235,7 +230,7 @@ function importLists() {
                 // Load import list metrics
                 const response = await this.apiCall('/import_lists/metrics');
                 this.lastfmMetrics = response.lastfm || this.lastfmMetrics;
-                this.listenbrainzMetrics = response.listenbrainz || this.listenbrainzMetrics;
+                this.unifiedMetrics = response.unified || this.unifiedMetrics;
             } catch (error) {
                 console.error('Failed to load import lists:', error);
                 this.showFlash('Failed to load import list metrics', 'error');

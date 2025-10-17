@@ -110,7 +110,7 @@ class MusicBrainzClient(BaseAPIClient):
                 if self.cache_enabled and self.cache:
                     self.cache.mark_failed_lookup(
                         cache_key, 'musicbrainz', 'No artists found', 
-                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS
+                        self.config.CACHE_MUSICBRAINZ_TTL_DAYS
                     )
                 return None
             
@@ -120,7 +120,7 @@ class MusicBrainzClient(BaseAPIClient):
                 if self.cache_enabled and self.cache:
                     self.cache.mark_failed_lookup(
                         cache_key, 'musicbrainz', 'Empty artists list', 
-                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS
+                        self.config.CACHE_MUSICBRAINZ_TTL_DAYS
                     )
                 return None
             
@@ -175,7 +175,7 @@ class MusicBrainzClient(BaseAPIClient):
                 if self.cache_enabled and self.cache:
                     self.cache.mark_failed_lookup(
                         cache_key, 'musicbrainz', f'No match above threshold (best: {best_score:.3f})', 
-                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS
+                        self.config.CACHE_MUSICBRAINZ_TTL_DAYS
                     )
                 return None
                 
@@ -186,7 +186,7 @@ class MusicBrainzClient(BaseAPIClient):
             if self.cache_enabled and self.cache:
                 self.cache.mark_failed_lookup(
                     cache_key, 'musicbrainz', f'Exception: {str(e)}', 
-                    self.config.CACHE_FAILED_LOOKUP_TTL_DAYS
+                    self.config.CACHE_MUSICBRAINZ_TTL_DAYS
                 )
             return None
     

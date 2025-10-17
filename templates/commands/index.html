@@ -3,16 +3,159 @@
 {% block title %}Commands - Cmdarr{% endblock %}
 
 {% block content %}
-<div x-data="commandManager()" x-init="loadCommands()">
-    <!-- Page Header -->
-    <div class="mb-8">
+<div x-data="commandManager()" x-init="loadCommands()" class="w-full commands-page-container">
+    <!-- Page Title -->
+    <div class="mb-6 w-full">
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Commands</h1>
         <p class="mt-2 text-gray-600 dark:text-gray-400">Manage and monitor your Cmdarr commands</p>
     </div>
+    
+    <!-- Controls Row -->
+    <div class="mb-6 flex justify-between items-center w-full">
+        <!-- Left Controls -->
+        <div class="flex items-center space-x-3">
+            <!-- View Toggle -->
+            <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                <button @click="toggleViewMode('card')" 
+                        :class="viewMode === 'card' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                    </svg>
+                </button>
+                <button @click="toggleViewMode('list')" 
+                        :class="viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-600'"
+                        class="px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Filter Button -->
+            <div class="relative" x-data="{ showFilters: false }">
+                <button @click="showFilters = !showFilters" 
+                        @click.away="showFilters = false"
+                        class="relative inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                    </svg>
+                    Filter
+                    <span x-show="hasActiveFilters" class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" x-text="activeFilterCount"></span>
+                </button>
+                
+                <!-- Filter Dropdown -->
+                <div x-show="showFilters" 
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="transform opacity-0 scale-95"
+                     x-transition:enter-end="transform opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="transform opacity-100 scale-100"
+                     x-transition:leave-end="transform opacity-0 scale-95"
+                     class="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+                     style="display: none;">
+                    
+                    <div class="p-4">
+                        <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Filter Commands</h3>
+                        
+                        <!-- Status Filter -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
+                            <select x-model="filters.status" @click.stop class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="all">All</option>
+                                <option value="enabled">Enabled</option>
+                                <option value="disabled">Disabled</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Type Filter -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Type</label>
+                            <select x-model="filters.type" @click.stop class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="all">All</option>
+                                <option value="discovery">Discovery</option>
+                                <option value="playlist_sync">Playlist Sync</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Filter Actions -->
+                        <div class="flex space-x-2">
+                            <button @click="clearFilters()" class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                                Clear
+                            </button>
+                            <button @click="showFilters = false" class="flex-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">
+                                Apply
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Controls -->
+        <div class="flex items-center">
+            <!-- New Command Popup Menu -->
+            <div class="relative" x-data="{ showNewMenu: false }">
+            <button @click="showNewMenu = !showNewMenu" 
+                    @click.away="showNewMenu = false"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200">
+                New...
+            </button>
+            
+            <!-- Popup Menu -->
+            <div x-show="showNewMenu" 
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95"
+                 class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+                 style="display: none;">
+                
+                <div class="py-2">
+                    <!-- ListenBrainz Option -->
+                    <button @click="showNewMenu = false; playlistSyncForm.playlist_type = 'listenbrainz'; showCreatePlaylistSyncModal = true; initPlaylistSyncModal()"
+                            class="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-gray-900 dark:text-white">ListenBrainz Curated</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Weekly Exploration, Weekly Jams, Daily Jams</p>
+                            </div>
+                        </div>
+                    </button>
+                    
+                    <!-- Divider -->
+                    <div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                    
+                    <!-- External Playlist Option -->
+                    <button @click="showNewMenu = false; playlistSyncForm.playlist_type = 'other'; showCreatePlaylistSyncModal = true; initPlaylistSyncModal()"
+                            class="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.293l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-gray-900 dark:text-white">External Playlist</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Spotify, Deezer</p>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Commands Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        <template x-for="command in commands" :key="command.command_name">
+    <!-- Commands Card View -->
+    <div x-show="viewMode === 'card'" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 w-full clear-both">
+        <template x-for="command in filteredAndSortedCommands" :key="command.command_name">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow transition-colors duration-200">
                 <div class="p-6">
                     <!-- Command Header -->
@@ -60,11 +203,15 @@
                             <span class="text-xs text-gray-500 dark:text-gray-400">Duration: </span>
                             <span class="text-xs text-gray-900 dark:text-white" x-text="formatDuration(command.last_duration)"></span>
                         </div>
-                        <div x-show="command.last_success !== null">
+                        <div x-show="command.last_success !== null || command.is_running">
                             <span class="text-xs text-gray-500 dark:text-gray-400">Status: </span>
                             <span class="text-xs font-medium"
-                                  :class="command.last_success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
-                                  x-text="command.last_success ? 'Success' : 'Failed'"></span>
+                                  :class="{
+                                      'text-green-600 dark:text-green-400': command.last_success === true,
+                                      'text-red-600 dark:text-red-400': command.last_success === false,
+                                      'text-yellow-600 dark:text-yellow-400': command.is_running
+                                  }"
+                                  x-text="command.is_running ? 'Running...' : (command.last_success ? 'Success' : 'Failed')"></span>
                         </div>
                         <div x-show="command.last_error">
                             <span class="text-xs text-red-500 dark:text-red-400">Error: </span>
@@ -95,8 +242,169 @@
         </template>
     </div>
 
+    <!-- Commands List View -->
+    <div x-show="viewMode === 'list'" class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden w-full clear-both">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            Status
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                            @click="sortBy('display_name')">
+                            <div class="flex items-center">
+                                Name
+                                <svg class="ml-1 w-4 h-4" :class="sortConfig.column === 'display_name' ? 'text-gray-900 dark:text-white' : 'text-gray-400'" fill="currentColor" viewBox="0 0 20 20">
+                                    <path x-show="sortConfig.column === 'display_name' && sortConfig.direction === 'asc'" fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column === 'display_name' && sortConfig.direction === 'desc'" fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column !== 'display_name'" fill-rule="evenodd" d="M10 3a1 1 0 011 1v12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 16.586V4a1 1 0 011-1z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                            @click="sortBy('schedule_hours')">
+                            <div class="flex items-center">
+                                Schedule
+                                <svg class="ml-1 w-4 h-4" :class="sortConfig.column === 'schedule_hours' ? 'text-gray-900 dark:text-white' : 'text-gray-400'" fill="currentColor" viewBox="0 0 20 20">
+                                    <path x-show="sortConfig.column === 'schedule_hours' && sortConfig.direction === 'asc'" fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column === 'schedule_hours' && sortConfig.direction === 'desc'" fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column !== 'schedule_hours'" fill-rule="evenodd" d="M10 3a1 1 0 011 1v12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 16.586V4a1 1 0 011-1z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                            @click="sortBy('last_run')">
+                            <div class="flex items-center">
+                                Last Run
+                                <svg class="ml-1 w-4 h-4" :class="sortConfig.column === 'last_run' ? 'text-gray-900 dark:text-white' : 'text-gray-400'" fill="currentColor" viewBox="0 0 20 20">
+                                    <path x-show="sortConfig.column === 'last_run' && sortConfig.direction === 'asc'" fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column === 'last_run' && sortConfig.direction === 'desc'" fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column !== 'last_run'" fill-rule="evenodd" d="M10 3a1 1 0 011 1v12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 16.586V4a1 1 0 011-1z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                            @click="sortBy('next_run')">
+                            <div class="flex items-center">
+                                Next Run
+                                <svg class="ml-1 w-4 h-4" :class="sortConfig.column === 'next_run' ? 'text-gray-900 dark:text-white' : 'text-gray-400'" fill="currentColor" viewBox="0 0 20 20">
+                                    <path x-show="sortConfig.column === 'next_run' && sortConfig.direction === 'asc'" fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column === 'next_run' && sortConfig.direction === 'desc'" fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    <path x-show="sortConfig.column !== 'next_run'" fill-rule="evenodd" d="M10 3a1 1 0 011 1v12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 16.586V4a1 1 0 011-1z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    <template x-for="command in filteredAndSortedCommands" :key="command.command_name">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
+                            <!-- Status Toggle -->
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <button @click="toggleCommand(command)" 
+                                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                                        :class="command.enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'">
+                                    <span class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                          :class="command.enabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                                </button>
+                            </td>
+                            
+                            <!-- Command Name -->
+                            <td class="px-6 py-4">
+                                <div class="flex items-center">
+                                    <div class="flex-shrink-0">
+                                        <div class="w-2 h-2 rounded-full mr-3"
+                                             :class="command.enabled ? 'bg-green-400' : 'bg-gray-400 dark:bg-gray-500'"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="command.display_name"></div>
+                                        <div class="text-sm text-gray-500 dark:text-gray-400" x-text="command.description || 'No description available'"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <!-- Schedule -->
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                <span x-show="command.schedule_hours" x-text="`Every ${command.schedule_hours}h`"></span>
+                                <span x-show="!command.schedule_hours" class="text-gray-400 dark:text-gray-500">Manual</span>
+                            </td>
+                            
+                            <!-- Last Run -->
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div x-show="command.last_run" class="text-sm"
+                                     :class="{
+                                         'text-green-600 dark:text-green-400': command.last_success === true,
+                                         'text-red-600 dark:text-red-400': command.last_success === false,
+                                         'text-gray-400 dark:text-gray-500': command.last_success === null
+                                     }">
+                                    <div x-text="formatDate(command.last_run)"></div>
+                                    <div class="text-xs" x-text="command.last_success === true ? 'Success' : (command.last_success === false ? 'Failed' : 'Unknown')"></div>
+                                </div>
+                                <div x-show="!command.last_run" class="text-sm text-gray-400 dark:text-gray-500">Never</div>
+                            </td>
+                            
+                            <!-- Next Run -->
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                <span x-show="command.next_run" x-text="formatDate(command.next_run)"></span>
+                                <span x-show="!command.next_run" class="text-gray-400 dark:text-gray-500">-</span>
+                            </td>
+                            
+                            <!-- Actions -->
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <div class="relative" x-data="{ showActions: false }">
+                                    <button @click="showActions = !showActions" 
+                                            @click.away="showActions = false"
+                                            class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                        Actions
+                                        <svg class="ml-2 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                        </svg>
+                                    </button>
+                                    
+                                    <!-- Actions Dropdown -->
+                                    <div x-show="showActions" 
+                                         x-transition:enter="transition ease-out duration-100"
+                                         x-transition:enter-start="transform opacity-0 scale-95"
+                                         x-transition:enter-end="transform opacity-100 scale-100"
+                                         x-transition:leave="transition ease-in duration-75"
+                                         x-transition:leave-start="transform opacity-100 scale-100"
+                                         x-transition:leave-end="transform opacity-0 scale-95"
+                                         class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+                                         style="display: none;">
+                                        
+                                        <div class="py-1">
+                                            <button @click="showActions = false; executeCommand(command)" 
+                                                    :disabled="!command.enabled"
+                                                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                                <svg class="w-4 h-4 mr-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m-6-8h8a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                                                </svg>
+                                                Execute Now
+                                            </button>
+                                            <button @click="showActions = false; editCommand(command)" 
+                                                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                                <svg class="w-4 h-4 mr-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                </svg>
+                                                Edit
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Recent Executions -->
-    <div class="mt-8">
+    <div class="mt-8 w-full clear-both">
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg transition-colors duration-200">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Recent Executions</h3>
@@ -163,7 +471,7 @@
                                     <div>
                                         <p class="text-sm font-medium text-gray-900 dark:text-white" x-text="getCommandDisplayName(execution.command_name)"></p>
                                         <p class="text-sm text-gray-500 dark:text-gray-400" x-text="formatDate(execution.started_at)"></p>
-                                        <p x-show="execution.target && execution.target !== 'unknown'" class="text-xs text-blue-600 dark:text-blue-400 font-medium" x-text="'Target: ' + execution.target.toUpperCase()"></p>
+                                        <p x-show="execution && execution.target && execution.target !== 'unknown'" class="text-xs text-blue-600 dark:text-blue-400 font-medium" x-text="'Target: ' + execution.target.toUpperCase()"></p>
                                     </div>
                                 </div>
                                 <div class="text-right">
@@ -194,13 +502,13 @@
                             </div>
                             
                             <!-- Error Message (if failed) -->
-                            <div x-show="execution.status === 'failed' && execution.error_message" 
+                            <div x-show="execution && execution.status === 'failed' && execution.error_message" 
                                  class="mt-3 p-3 bg-red-50 dark:bg-red-900 rounded-md">
                                 <p class="text-sm text-red-800 dark:text-red-200" x-text="execution.error_message"></p>
                             </div>
                             
                             <!-- Execution Summary (if completed) -->
-                            <div x-show="execution.status === 'completed'" 
+                            <div x-show="execution && execution.status === 'completed'" 
                                  class="mt-3 p-3 bg-green-50 dark:bg-green-900 rounded-md">
                                 <p class="text-sm text-green-800 dark:text-green-200">
                                     <span x-text="getCommandDisplayName(execution.command_name)"></span> completed successfully in 
@@ -212,21 +520,15 @@
                             <div class="mt-3">
                                 <button @click="toggleExecutionDetails(execution.id)"
                                         class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-                                    <span x-text="executionDetailsOpen[execution.id] ? 'Hide Details' : 'Show Details'"></span>
+                                    <span x-text="execution && execution.id && executionDetailsOpen[execution.id] ? 'Hide Details' : 'Show Details'"></span>
                                     <svg class="w-4 h-4 transition-transform duration-200"
-                                         :class="{ 'rotate-180': executionDetailsOpen[execution.id] }"
+                                         :class="{ 'rotate-180': execution && execution.id && executionDetailsOpen[execution.id] }"
                                          fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </button>
                                 
-                                <div x-show="executionDetailsOpen[execution.id]" 
-                                     x-transition:enter="transition ease-out duration-200"
-                                     x-transition:enter-start="opacity-0 transform scale-95"
-                                     x-transition:enter-end="opacity-100 transform scale-100"
-                                     x-transition:leave="transition ease-in duration-150"
-                                     x-transition:leave-start="opacity-100 transform scale-100"
-                                     x-transition:leave-end="opacity-0 transform scale-95"
+                                <div x-show="execution && execution.id && executionDetailsOpen[execution.id]" 
                                      class="mt-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
                                     <div class="space-y-2 text-sm">
                                         <div class="flex justify-between">
@@ -269,11 +571,11 @@
                                     <!-- Command-specific summary -->
                                     <div x-show="execution.status === 'completed'" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
                                         <h5 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Execution Summary</h5>
-                                        <div x-show="execution.command_name === 'playlist_sync_listenbrainz_curated' && execution.output_summary" 
+                                        <div x-show="execution.command_name.startsWith('playlist_sync_') && execution.output_summary" 
                                              class="text-sm text-gray-700 dark:text-gray-300">
                                             <div x-html="formatPlaylistSyncSummary(execution.output_summary)"></div>
                                         </div>
-                                        <div x-show="execution.command_name !== 'playlist_sync_listenbrainz_curated' || !execution.output_summary" 
+                                        <div x-show="!execution.command_name.startsWith('playlist_sync_') || !execution.output_summary" 
                                              x-text="execution.output_summary || getExecutionSummary(execution)" 
                                              class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line"></div>
                                     </div>
@@ -288,27 +590,15 @@
     
     <!-- Command Edit Modal -->
     <div x-show="showEditModal" 
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-50 overflow-y-auto" 
          style="display: none;">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <!-- Background overlay -->
             <div class="fixed inset-0 bg-gray-500 dark:bg-gray-800 bg-opacity-75 dark:bg-opacity-75 transition-opacity" 
-                 @click="showEditModal = false"></div>
+                 @click="closeEditModal()"></div>
 
             <!-- Modal panel -->
-            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
-                 x-transition:enter="transition ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave="transition ease-in duration-200"
-                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 
                 <!-- Modal header -->
                 <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -319,9 +609,9 @@
                             </svg>
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" x-text="`Edit ${editingCommand?.display_name || 'Command'}`"></h3>
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" x-text="editingCommand.display_name ? `Edit ${editingCommand.display_name}` : 'Edit Command'"></h3>
                             <div class="mt-2">
-                                <p class="text-sm text-gray-500 dark:text-gray-400" x-text="editingCommand?.description || 'Configure command settings'"></p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400" x-text="editingCommand.description || 'Configure command settings'"></p>
                             </div>
                         </div>
                     </div>
@@ -366,11 +656,14 @@
                         </div>
 
                         <!-- Command Configuration -->
-                        <div x-show="editingCommand.config_json">
+                        <div x-show="editingCommand.config_json && editingCommand.command_name && (
+                            editingCommand.command_name === 'discovery_lastfm' ||
+                            editingCommand.command_name.startsWith('playlist_sync_')
+                        )">
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Configuration</label>
                             <div class="space-y-4">
                                 <!-- Last.fm Discovery Configuration -->
-                                <div x-show="editingCommand.command_name === 'discovery_lastfm'">
+                                <div x-show="editingCommand.command_name && editingCommand.command_name === 'discovery_lastfm'">
                                     <div>
                                         <label for="config_limit" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Limit</label>
                                         <input type="number" 
@@ -404,22 +697,10 @@
                                     </div>
                                 </div>
 
-                                <!-- ListenBrainz Discovery Configuration -->
-                                <div x-show="editingCommand.command_name === 'discovery_listenbrainz'">
-                                    <div>
-                                        <label for="config_limit" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Limit</label>
-                                        <input type="number" 
-                                               id="config_limit"
-                                               x-model.number="editingCommand.config_json.limit"
-                                               min="1" 
-                                               max="50"
-                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">The number of artists to add to the import list from ListenBrainz playlists</p>
-                                    </div>
-                                </div>
+                                <!-- Playlist Sync Discovery Configuration -->
 
                                 <!-- ListenBrainz Playlist Sync Configuration -->
-                                <div x-show="editingCommand.command_name === 'playlist_sync_listenbrainz_curated'">
+                                <div x-show="editingCommand.command_name && editingCommand.command_name.startsWith('playlist_sync_') && editingCommand.config_json && editingCommand.config_json.source === 'listenbrainz'">
                                     <div>
                                         <label for="config_target" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Target</label>
                                         <select id="config_target"
@@ -507,6 +788,41 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- External Playlist Sync Configuration -->
+                                <div x-show="editingCommand.command_name && editingCommand.command_name.startsWith('playlist_sync_') && editingCommand.config_json && editingCommand.config_json.source !== 'listenbrainz'">
+                                    <div>
+                                        <label for="config_playlist_url" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Playlist URL</label>
+                                        <input type="text" 
+                                               id="config_playlist_url"
+                                               :value="editingCommand.config_json.playlist_url"
+                                               readonly
+                                               class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Playlist URL cannot be modified after creation</p>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <label for="config_target" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Target</label>
+                                        <select id="config_target"
+                                                x-model="editingCommand.config_json.target"
+                                                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                            <option value="plex">Plex</option>
+                                            <option value="jellyfin">Jellyfin</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Target music player for playlist synchronization</p>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <label for="config_sync_mode" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Sync Mode</label>
+                                        <select id="config_sync_mode"
+                                                x-model="editingCommand.config_json.sync_mode"
+                                                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                            <option value="full">Full Sync - Match playlist exactly (delete & recreate)</option>
+                                            <option value="additive">Additive Only - Only add new tracks, never remove existing</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">How to handle playlist synchronization</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -518,33 +834,432 @@
                             class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
                         Save Changes
                     </button>
-                    <button @click="showEditModal = false" 
+                    <button @click="closeEditModal()" 
                             class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-600 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                         Cancel
+                    </button>
+                    <!-- Delete button for playlist sync commands -->
+                    <button x-show="editingCommand.command_name && editingCommand.command_name.startsWith('playlist_sync_')" 
+                            @click="deleteCommand()" 
+                            class="mt-3 w-full inline-flex justify-center rounded-md border border-red-300 dark:border-red-600 shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:mt-0 sm:mr-3 sm:w-auto sm:text-sm">
+                        Delete Command
                     </button>
                 </div>
             </div>
         </div>
     </div>
+    
+    <!-- Create Playlist Sync Modal -->
+        <div x-show="showCreatePlaylistSyncModal" 
+             class="fixed inset-0 z-50 overflow-y-auto" 
+             style="display: none;">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+                 @click="closeCreatePlaylistSyncModal()"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                
+                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+                                Create Playlist Sync
+                            </h3>
+                            
+                            <form @submit.prevent="createPlaylistSync()">
+                                <!-- ListenBrainz Configuration (shown when playlist_type is 'listenbrainz') -->
+                                <div x-show="playlistSyncForm.playlist_type === 'listenbrainz'" class="mb-4">
+                                    <!-- Playlist Types -->
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Playlist Types
+                                        </label>
+                                        <div class="space-y-2">
+                                            <label class="flex items-center">
+                                                <input type="checkbox" 
+                                                       x-model="playlistSyncForm.playlist_types"
+                                                       value="weekly_exploration"
+                                                       class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Exploration</span>
+                                            </label>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" 
+                                                       x-model="playlistSyncForm.playlist_types"
+                                                       value="weekly_jams"
+                                                       class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Jams</span>
+                                            </label>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" 
+                                                       x-model="playlistSyncForm.playlist_types"
+                                                       value="daily_jams"
+                                                       class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Daily Jams</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Retention Settings -->
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Retention Settings
+                                        </label>
+                                        <div class="grid grid-cols-3 gap-4">
+                                            <div>
+                                                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Weekly Exploration</label>
+                                                <input type="number" 
+                                                       x-model="playlistSyncForm.weekly_exploration_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center dark:bg-gray-700 dark:text-white">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Weekly Jams</label>
+                                                <input type="number" 
+                                                       x-model="playlistSyncForm.weekly_jams_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center dark:bg-gray-700 dark:text-white">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Daily Jams</label>
+                                                <input type="number" 
+                                                       x-model="playlistSyncForm.daily_jams_keep"
+                                                       min="1" 
+                                                       max="10"
+                                                       class="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center dark:bg-gray-700 dark:text-white">
+                                            </div>
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            Number of playlists to keep for each type (older ones will be deleted)
+                                        </p>
+                                    </div>
+                                    
+                                    <!-- Cleanup Toggle -->
+                                    <div class="mb-4">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" 
+                                                   x-model="playlistSyncForm.cleanup_enabled"
+                                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                                Enable playlist cleanup (delete old playlists)
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- External Playlist Configuration (shown when playlist_type is 'other') -->
+                                <div x-show="playlistSyncForm.playlist_type === 'other'">
+                                    <!-- Playlist URL -->
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Playlist URL
+                                        </label>
+                                        <input type="url" 
+                                               x-model="playlistSyncForm.playlist_url"
+                                               @input="debouncedValidateUrl()"
+                                               @focus="initPlaylistSyncModal()"
+                                               :class="{
+                                                   'border-red-500': playlistSyncValidation.error,
+                                                   'border-green-500': playlistSyncValidation.isValid,
+                                                   'border-gray-300 dark:border-gray-600': !playlistSyncValidation.error && !playlistSyncValidation.isValid
+                                               }"
+                                               class="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                                               placeholder="https://open.spotify.com/playlist/...">
+                                        
+                                        <!-- Helper text -->
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            Supported sources: Spotify<br>
+                                            Example: https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF<br>
+                                            <span x-show="playlistSyncSources.length > 0 && spotifySource && !spotifyConfigured" class="text-red-600 dark:text-red-400">
+                                                ⚠️ Spotify credentials not configured - <a href="/config" class="underline">configure in Settings</a>
+                                            </span>
+                                            <span x-show="playlistSyncSources.length > 0 && spotifySource && spotifyConfigured" class="text-green-600 dark:text-green-400">
+                                                ✅ Spotify credentials configured
+                                            </span>
+                                            <span x-show="playlistSyncSources.length === 0" class="text-gray-500 dark:text-gray-400">
+                                                Loading configuration status...
+                                            </span>
+                                        </p>
+                                        
+                                        <!-- Validation feedback -->
+                                        <div x-show="playlistSyncValidation.isValidating" class="mt-2 flex items-center text-blue-600">
+                                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Validating...
+                                        </div>
+                                        
+                                        <div x-show="playlistSyncValidation.error" class="mt-2 text-red-600 text-sm">
+                                            <span x-text="playlistSyncValidation.error"></span>
+                                        </div>
+                                        
+                                        <div x-show="playlistSyncValidation.isValid && playlistSyncValidation.metadata" class="mt-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                                            <div class="flex items-center text-green-800 dark:text-green-200">
+                                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                <span class="font-medium">Found: "<span x-text="playlistSyncValidation.metadata && playlistSyncValidation.metadata.name ? playlistSyncValidation.metadata.name : 'Unknown Playlist'"></span>"</span>
+                                            </div>
+                                            <div class="mt-1 text-sm text-green-700 dark:text-green-300">
+                                                <span x-text="playlistSyncValidation.metadata && playlistSyncValidation.metadata.track_count ? playlistSyncValidation.metadata.track_count : 0"></span> tracks by <span x-text="playlistSyncValidation.metadata && playlistSyncValidation.metadata.owner ? playlistSyncValidation.metadata.owner : 'Unknown'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Common Configuration -->
+                                <!-- Target -->
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Target
+                                    </label>
+                                    <select x-model="playlistSyncForm.target" 
+                                            :disabled="playlistSyncForm.playlist_type === 'other' && !playlistSyncValidation.isValid"
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white">
+                                        <option value="plex">Plex</option>
+                                        <option value="jellyfin">Jellyfin</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Sync Mode (External Playlists Only) -->
+                                <div x-show="playlistSyncForm.playlist_type === 'other'" class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Sync Mode
+                                    </label>
+                                    <select x-model="playlistSyncForm.sync_mode" 
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white">
+                                        <option value="full">Full Sync - Match playlist exactly (delete & recreate)</option>
+                                        <option value="additive">Additive Only - Only add new tracks, never remove existing</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Full sync ensures the target playlist matches the source exactly. Additive mode only adds new tracks.
+                                    </p>
+                                </div>
+                                
+                                <!-- Schedule -->
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Run every <input type="number" 
+                                                        x-model="playlistSyncForm.schedule_hours" 
+                                                        min="1" 
+                                                        max="168"
+                                                        class="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center dark:bg-gray-700 dark:text-white"> hours
+                                    </label>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        How often to check for playlist updates (1-168 hours)
+                                    </p>
+                                </div>
+                                
+                                <!-- Artist Discovery -->
+                                <div class="mb-4">
+                                    <label class="flex items-center">
+                                        <input type="checkbox" 
+                                               x-model="playlistSyncForm.enable_artist_discovery"
+                                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                        <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                            Enable Playlist Sync Discovery
+                                        </span>
+                                    </label>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        When enabled, artists from unmatched tracks will be added to Lidarr's discovery list via the Playlist Sync Discovery command. This works alongside the existing Last.fm Discovery command.
+                                    </p>
+                                </div>
+                                
+                                <!-- Enable on creation -->
+                                <div class="mb-6">
+                                    <label class="flex items-center">
+                                        <input type="checkbox" 
+                                               x-model="playlistSyncForm.enabled"
+                                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                                        <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                            Enable this playlist sync immediately
+                                        </span>
+                                    </label>
+                                </div>
+                                
+                                <!-- Buttons -->
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" 
+                                            @click="closeCreatePlaylistSyncModal()"
+                                            class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                        Cancel
+                                    </button>
+                                    <button type="submit"
+                                            :disabled="!canCreatePlaylistSync()"
+                                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        Create Playlist Sync
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <script>
 function commandManager() {
     return {
-        // Data
-        commands: [],
-        recentExecutions: [],
-        showEditModal: false,
-        editingCommand: null,
-        websocket: null,
-        executionLogs: {}, // Store logs for each execution
-        executionDetailsOpen: {}, // Track which execution details are open
-        killingExecutions: [], // Track which executions are being killed
+                // Data
+                commands: [],
+                recentExecutions: [],
+                showEditModal: false,
+                editingCommand: {
+                    schedule_hours: 24,
+                    timeout_minutes: 30,
+                    enabled: false,
+                    config_json: {
+                        limit: 5,
+                        similar_count: 1,
+                        min_match_score: 0.0,
+                        target: 'plex',
+                        weekly_exploration: false,
+                        weekly_jams: false,
+                        daily_jams: false,
+                        playlist_cleanup: false,
+                        weekly_exploration_keep: 2,
+                        weekly_jams_keep: 2,
+                        daily_jams_keep: 3
+                    }
+                },
+                websocket: null,
+                executionLogs: {}, // Store logs for each execution
+                executionDetailsOpen: {}, // Track which execution details are open
+                killingExecutions: [], // Track which executions are being killed
+                initialized: false, // Track if data is loaded
+                
+                // View and Filter State
+                viewMode: localStorage.getItem('commandViewMode') || 'card',
+                sortConfig: { column: 'display_name', direction: 'asc' },
+                filters: { status: 'all', type: 'all' },
+                
+                // Playlist Sync Modal Data
+                showCreatePlaylistSyncModal: false,
+                playlistSyncForm: {
+                    playlist_type: 'other',
+                    playlist_url: '',
+                    playlist_types: ['weekly_exploration'],
+                    target: 'plex',
+                    sync_mode: 'full',
+                    schedule_hours: 12,
+                    enabled: true,
+                    weekly_exploration_keep: 2,
+                    weekly_jams_keep: 2,
+                    daily_jams_keep: 3,
+                    cleanup_enabled: true,
+                    enable_artist_discovery: false
+                },
+                playlistSyncValidation: {
+                    isValidating: false,
+                    isValid: false,
+                    error: '',
+                    metadata: null
+                },
+                playlistSyncSources: [],
+                
+                // Computed properties for Spotify configuration status
+                get spotifySource() {
+                    return this.playlistSyncSources.find(s => s.id === 'spotify');
+                },
+                get spotifyConfigured() {
+                    return this.spotifySource && this.spotifySource.configured;
+                },
+                
+                // Computed properties for filtering and sorting
+                get filteredCommands() {
+                    return this.commands.filter(command => {
+                        // Status filter
+                        if (this.filters.status === 'enabled' && !command.enabled) return false;
+                        if (this.filters.status === 'disabled' && command.enabled) return false;
+                        
+                        // Type filter
+                        if (this.filters.type === 'discovery' && command.command_type !== 'discovery') return false;
+                        if (this.filters.type === 'playlist_sync' && command.command_type !== 'playlist_sync') return false;
+                        
+                        return true;
+                    });
+                },
+                
+                get filteredAndSortedCommands() {
+                    const filtered = this.filteredCommands;
+                    
+                    return filtered.sort((a, b) => {
+                        let aVal, bVal;
+                        
+                        switch (this.sortConfig.column) {
+                            case 'display_name':
+                                aVal = a.display_name.toLowerCase();
+                                bVal = b.display_name.toLowerCase();
+                                break;
+                            case 'schedule_hours':
+                                aVal = a.schedule_hours || 0;
+                                bVal = b.schedule_hours || 0;
+                                break;
+                            case 'last_run':
+                                aVal = a.last_run ? new Date(a.last_run) : new Date(0);
+                                bVal = b.last_run ? new Date(b.last_run) : new Date(0);
+                                break;
+                            case 'next_run':
+                                aVal = a.next_run ? new Date(a.next_run) : new Date(0);
+                                bVal = b.next_run ? new Date(b.next_run) : new Date(0);
+                                break;
+                            case 'enabled':
+                                aVal = a.enabled ? 1 : 0;
+                                bVal = b.enabled ? 1 : 0;
+                                break;
+                            default:
+                                return 0;
+                        }
+                        
+                        if (aVal < bVal) return this.sortConfig.direction === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return this.sortConfig.direction === 'asc' ? 1 : -1;
+                        return 0;
+                    });
+                },
+                
+                get hasActiveFilters() {
+                    return this.filters.status !== 'all' || this.filters.type !== 'all';
+                },
+                
+                get activeFilterCount() {
+                    let count = 0;
+                    if (this.filters.status !== 'all') count++;
+                    if (this.filters.type !== 'all') count++;
+                    return count;
+                },
         
         // Methods
         init() {
             this.setupWebSocket();
             this.loadCommands();
+        },
+        
+        // View Mode Methods
+        toggleViewMode(mode) {
+            this.viewMode = mode;
+            localStorage.setItem('commandViewMode', mode);
+        },
+        
+        // Sorting Methods
+        sortBy(column) {
+            if (this.sortConfig.column === column) {
+                this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortConfig.column = column;
+                this.sortConfig.direction = 'asc';
+            }
+        },
+        
+        // Filter Methods
+        clearFilters() {
+            this.filters = { status: 'all', type: 'all' };
         },
         
         setupWebSocket() {
@@ -554,7 +1269,7 @@ function commandManager() {
                 this.websocket = new WebSocket(wsUrl);
                 
                 this.websocket.onopen = () => {
-                    console.log('WebSocket connected');
+                    // WebSocket connected successfully
                 };
                 
                 this.websocket.onmessage = (event) => {
@@ -567,7 +1282,6 @@ function commandManager() {
                 };
                 
                 this.websocket.onclose = () => {
-                    console.log('WebSocket disconnected, attempting to reconnect...');
                     setTimeout(() => this.setupWebSocket(), 5000);
                 };
                 
@@ -617,6 +1331,13 @@ function commandManager() {
                 // Initialize logs for this execution
                 this.executionLogs[data.execution_id] = [];
                 
+                // Update command status to show running
+                const command = this.commands.find(cmd => cmd.command_name === commandName);
+                if (command) {
+                    command.is_running = true;
+                    command.running_execution_id = data.execution_id;
+                }
+                
             } else if (data.status === 'completed') {
                 // Update existing execution
                 if (executionIndex >= 0) {
@@ -625,6 +1346,18 @@ function commandManager() {
                     this.recentExecutions[executionIndex].completed_at = data.completed_at;
                     this.recentExecutions[executionIndex].error_message = data.error_message;
                     this.recentExecutions[executionIndex].status = data.success ? 'completed' : 'failed';
+                }
+                
+                // Update the command itself and clear running status
+                const command = this.commands.find(cmd => cmd.command_name === commandName);
+                if (command) {
+                    command.last_run = data.started_at;
+                    command.last_run_success = data.success;
+                    command.last_run_duration = data.duration;
+                    command.last_run_message = data.message;
+                    command.next_run = data.next_run; // Update next run time
+                    command.is_running = false; // Clear running status
+                    command.running_execution_id = null;
                 }
             }
         },
@@ -647,14 +1380,10 @@ function commandManager() {
                 return `Last.fm Discovery completed successfully in ${this.formatDuration(duration)}.
 
 This command discovered similar artists from Last.fm and MusicBrainz for Lidarr import. The results have been saved to the import list file and are ready for Lidarr to consume.`;
-            } else if (commandName === 'discovery_listenbrainz') {
-                return `ListenBrainz Discovery completed successfully in ${this.formatDuration(duration)}.
+            } else if (commandName.startsWith('playlist_sync_')) {
+                return `Playlist Sync completed successfully in ${this.formatDuration(duration)}.
 
-This command fetched artists from your ListenBrainz Weekly Discovery playlist and filtered them to exclude existing library content. The filtered results have been saved to the import list file.`;
-            } else if (commandName === 'playlist_sync_listenbrainz_curated') {
-                return `ListenBrainz Playlist Sync completed successfully in ${this.formatDuration(duration)}.
-
-This command synchronized ListenBrainz curated playlists to your configured music player. Playlists have been updated with the latest tracks from ListenBrainz.`;
+This command synchronized playlists to your configured music player. Playlists have been updated with the latest tracks.`;
             } else {
                 return `Command completed successfully in ${this.formatDuration(duration)}.
 
@@ -694,6 +1423,12 @@ The command executed without errors and completed its intended operation.`;
                 // Load commands
                 const commandsResponse = await this.apiCall('/api/commands/');
                 this.commands = commandsResponse;
+                
+                // Initialize running status for all commands
+                this.commands.forEach(command => {
+                    command.is_running = false;
+                    command.running_execution_id = null;
+                });
                 
                 // Load recent executions
                 const executionsResponse = await this.apiCall('/api/status/executions/recent?limit=10');
@@ -767,15 +1502,81 @@ The command executed without errors and completed its intended operation.`;
         },
         
         editCommand(command) {
-            // Deep clone the command to avoid modifying the original
-            this.editingCommand = JSON.parse(JSON.stringify(command));
-            
-            // Ensure timeout_minutes has a default value if not set
-            if (!this.editingCommand.timeout_minutes) {
-                this.editingCommand.timeout_minutes = 120;
+            try {
+                // Initialize editingCommand with defaults first
+                this.editingCommand = {
+                    schedule_hours: 24,
+                    timeout_minutes: 120,
+                    enabled: false,
+                    config_json: {}
+                };
+                
+                // Merge command data with existing default structure
+                Object.assign(this.editingCommand, command);
+                
+                // Ensure config_json is properly merged
+                if (command.config_json) {
+                    Object.assign(this.editingCommand.config_json, command.config_json);
+                }
+                
+                // Ensure timeout_minutes has a default value if not set
+                if (!this.editingCommand.timeout_minutes) {
+                    this.editingCommand.timeout_minutes = 120;
+                }
+                
+                // Set default values for common config properties
+                if (this.editingCommand?.command_name === 'discovery_lastfm') {
+                    this.editingCommand.config_json.limit = this.editingCommand.config_json.limit || 5;
+                    this.editingCommand.config_json.similar_count = this.editingCommand.config_json.similar_count || 1;
+                    this.editingCommand.config_json.min_match_score = this.editingCommand.config_json.min_match_score || 0.0;
+                } else if (this.editingCommand?.command_name.startsWith('playlist_sync_') && this.editingCommand.config_json.source === 'listenbrainz') {
+                    this.editingCommand.config_json.target = this.editingCommand.config_json.target || 'plex';
+                    this.editingCommand.config_json.playlist_types = this.editingCommand.config_json.playlist_types || ['weekly_exploration'];
+                    this.editingCommand.config_json.weekly_exploration_keep = this.editingCommand.config_json.weekly_exploration_keep || 2;
+                    this.editingCommand.config_json.weekly_jams_keep = this.editingCommand.config_json.weekly_jams_keep || 2;
+                    this.editingCommand.config_json.daily_jams_keep = this.editingCommand.config_json.daily_jams_keep || 3;
+                    this.editingCommand.config_json.cleanup_enabled = this.editingCommand.config_json.cleanup_enabled !== false;
+                    this.editingCommand.config_json.enable_artist_discovery = this.editingCommand.config_json.enable_artist_discovery || false;
+                } else if (this.editingCommand?.command_name.startsWith('playlist_sync_') && this.editingCommand.config_json.source !== 'listenbrainz') {
+                    this.editingCommand.config_json.target = this.editingCommand.config_json.target || 'plex';
+                    this.editingCommand.config_json.sync_mode = this.editingCommand.config_json.sync_mode || 'full';
+                    this.editingCommand.config_json.enable_artist_discovery = this.editingCommand.config_json.enable_artist_discovery || false;
+                }
+                
+                // Use setTimeout to ensure DOM is ready before showing modal
+                setTimeout(() => {
+                    this.showEditModal = true;
+                }, 10);
+                
+            } catch (error) {
+                console.error('Error in editCommand:', error);
             }
-            
-            this.showEditModal = true;
+        },
+        
+        closeEditModal() {
+            try {
+                this.showEditModal = false;
+                this.editingCommand = {
+                    schedule_hours: 24,
+                    timeout_minutes: 30,
+                    enabled: false,
+                    config_json: {
+                        limit: 5,
+                        similar_count: 1,
+                        min_match_score: 0.0,
+                        target: 'plex',
+                        weekly_exploration: false,
+                        weekly_jams: false,
+                        daily_jams: false,
+                        playlist_cleanup: false,
+                        weekly_exploration_keep: 2,
+                        weekly_jams_keep: 2,
+                        daily_jams_keep: 3
+                    }
+                };
+            } catch (error) {
+                console.error('Error closing edit modal:', error);
+            }
         },
         
         async saveCommand() {
@@ -796,13 +1597,57 @@ The command executed without errors and completed its intended operation.`;
                     Object.assign(originalCommand, this.editingCommand);
                 }
                 
-                this.showEditModal = false;
-                this.editingCommand = null;
+                this.closeEditModal();
                 this.showFlash('Command updated successfully', 'success');
                 
             } catch (error) {
                 console.error('Failed to save command:', error);
                 this.showFlash('Failed to update command', 'error');
+            }
+        },
+        
+        async deleteCommand() {
+            if (!this.editingCommand.command_name) {
+                this.showFlash('No command selected for deletion', 'error');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete the command "${this.editingCommand.display_name}"? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                await this.apiCall(`/api/commands/${this.editingCommand.command_name}`, {
+                    method: 'DELETE'
+                });
+                
+                // Remove the command from the list
+                this.commands = this.commands.filter(c => c.command_name !== this.editingCommand.command_name);
+                
+                this.closeEditModal();
+                this.editingCommand = {
+                    schedule_hours: 24,
+                    timeout_minutes: 30,
+                    enabled: false,
+                    config_json: {
+                        limit: 5,
+                        similar_count: 1,
+                        min_match_score: 0.0,
+                        target: 'plex',
+                        weekly_exploration: false,
+                        weekly_jams: false,
+                        daily_jams: false,
+                        playlist_cleanup: false,
+                        weekly_exploration_keep: 2,
+                        weekly_jams_keep: 2,
+                        daily_jams_keep: 3
+                    }
+                };
+                this.showFlash('Command deleted successfully', 'success');
+                
+            } catch (error) {
+                console.error('Failed to delete command:', error);
+                this.showFlash('Failed to delete command', 'error');
             }
         },
         
@@ -854,6 +1699,152 @@ The command executed without errors and completed its intended operation.`;
                 console.error('Failed to cleanup executions:', error);
                 this.showFlash('Failed to cleanup executions', 'error');
             }
+        },
+        
+        // Playlist Sync Methods
+        async loadPlaylistSyncSources() {
+            try {
+                const response = await this.apiCall('/api/commands/playlist-sync/sources');
+                this.playlistSyncSources = response.sources || [];
+            } catch (error) {
+                console.error('Failed to load playlist sync sources:', error);
+                // Set empty array on error to show "not configured" state
+                this.playlistSyncSources = [];
+            }
+        },
+        
+        async validatePlaylistUrl() {
+            if (!this.playlistSyncForm.playlist_url) {
+                this.playlistSyncValidation = {
+                    isValidating: false,
+                    isValid: false,
+                    error: '',
+                    metadata: null
+                };
+                return;
+            }
+            
+            this.playlistSyncValidation.isValidating = true;
+            this.playlistSyncValidation.error = '';
+            
+            try {
+                const response = await this.apiCall(`/api/commands/playlist-sync/validate-url?url=${encodeURIComponent(this.playlistSyncForm.playlist_url)}`);
+                
+                this.playlistSyncValidation = {
+                    isValidating: false,
+                    isValid: response.valid,
+                    error: response.error || '',
+                    metadata: response.metadata || null
+                };
+                
+            } catch (error) {
+                console.error('Validation error:', error);
+                this.playlistSyncValidation = {
+                    isValidating: false,
+                    isValid: false,
+                    error: 'Failed to validate URL',
+                    metadata: null
+                };
+            }
+        },
+        
+        async createPlaylistSync() {
+            if (!this.canCreatePlaylistSync()) {
+                this.showFlash('Please complete all required fields', 'error');
+                return;
+            }
+            
+            try {
+                const response = await this.apiCall('/api/commands/playlist-sync/create', {
+                    method: 'POST',
+                    body: JSON.stringify(this.playlistSyncForm)
+                });
+                
+                this.showFlash(response.message, 'success');
+                this.closeCreatePlaylistSyncModal();
+                await this.loadCommands();
+                
+            } catch (error) {
+                console.error('Failed to create playlist sync:', error);
+                this.showFlash('Failed to create playlist sync command', 'error');
+            }
+        },
+        
+        canCreatePlaylistSync() {
+            if (this.playlistSyncForm.playlist_type === 'listenbrainz') {
+                return this.playlistSyncForm.playlist_types.length > 0;
+            } else {
+                return this.playlistSyncValidation.isValid;
+            }
+        },
+        
+        
+        closeCreatePlaylistSyncModal() {
+            this.showCreatePlaylistSyncModal = false;
+            this.playlistSyncForm = {
+                playlist_type: 'other',
+                playlist_url: '',
+                playlist_types: ['weekly_exploration'],
+                target: 'plex',
+                sync_mode: 'full',
+                schedule_hours: 12,
+                enabled: true,
+                weekly_exploration_keep: 3,
+                weekly_jams_keep: 3,
+                daily_jams_keep: 3,
+                cleanup_enabled: true,
+                enable_artist_discovery: false
+            };
+            this.playlistSyncValidation = {
+                isValidating: false,
+                isValid: false,
+                error: '',
+                metadata: null
+            };
+        },
+        
+        // Debounced URL validation
+        debouncedValidateUrl: null,
+        
+        initPlaylistSyncModal() {
+            // Initialize debounced validation
+            this.debouncedValidateUrl = this.debounce(() => {
+                this.validatePlaylistUrl();
+            }, 500);
+            
+            // Load sources
+            this.loadPlaylistSyncSources();
+            
+            // Initialize form based on playlist type
+            if (this.playlistSyncForm.playlist_type === 'listenbrainz') {
+                // Reset validation for ListenBrainz
+                this.playlistSyncValidation = {
+                    isValidating: false,
+                    isValid: false,
+                    error: '',
+                    metadata: null
+                };
+                
+                // Ensure at least one playlist type is selected
+                if (this.playlistSyncForm.playlist_types.length === 0) {
+                    this.playlistSyncForm.playlist_types = ['weekly_exploration'];
+                }
+            } else {
+                // Reset ListenBrainz-specific fields for external playlists
+                this.playlistSyncForm.playlist_types = [];
+            }
+        },
+        
+        debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
     }
 }

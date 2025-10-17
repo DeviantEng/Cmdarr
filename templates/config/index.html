@@ -12,19 +12,31 @@
 
     <!-- Configuration Categories -->
     <div class="mb-6">
-        <div class="flex flex-wrap gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
-            <button @click="selectedCategory = 'all'" 
-                    class="px-3 py-2 text-sm font-medium rounded-md transition-colors"
-                    :class="selectedCategory === 'all' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">
-                All Settings
-            </button>
-            <template x-for="category in categories" :key="category">
-                <button @click="selectedCategory = category" 
-                        class="px-3 py-2 text-sm font-medium rounded-md transition-colors capitalize"
-                        :class="selectedCategory === category ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">
-                    <span x-text="category"></span>
-                </button>
-            </template>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div class="flex items-center space-x-3">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Category:</label>
+                <div class="relative">
+                    <select x-model="selectedCategory" 
+                            @change="onCategoryChange()"
+                            class="appearance-none bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white">
+                        <option value="all">All Settings</option>
+                        <template x-for="item in flattenedCategories" :key="item.value">
+                            <option :value="item.value" 
+                                    :disabled="item.type === 'group'"
+                                    :class="item.type === 'group' ? 'font-bold text-gray-700 dark:text-gray-300' : ''"
+                                    x-text="item.type === 'group' ? item.label : item.label"></option>
+                        </template>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">
+                <span x-text="filteredSettings.length"></span> of <span x-text="settings.length"></span> settings
+            </div>
         </div>
     </div>
 
@@ -245,6 +257,7 @@ function configManager() {
         // Data
         settings: [],
         categories: [],
+        categoryGroups: [],
         selectedCategory: 'all',
         changedSettings: new Set(),
         
@@ -263,6 +276,17 @@ function configManager() {
         
         get hasChanges() {
             return this.changedSettings.size > 0;
+        },
+        
+        get flattenedCategories() {
+            const flattened = [];
+            for (const group of this.categoryGroups) {
+                flattened.push({ type: 'group', label: group.name, value: group.name });
+                for (const category of group.categories) {
+                    flattened.push({ type: 'category', label: category, value: category });
+                }
+            }
+            return flattened;
         },
         
         // Methods
@@ -333,12 +357,57 @@ function configManager() {
                     }
                 }
                 
-                // Extract categories
+                // Extract categories and create grouped structure after all details are loaded
                 this.categories = [...new Set(this.settings.map(s => s.category))].sort();
+                this.categoryGroups = this.createCategoryGroups();
                 
             } catch (error) {
                 console.error('Failed to load configuration:', error);
                 this.showFlash('Failed to load configuration', 'error');
+            }
+        },
+        
+        createCategoryGroups() {
+            const groups = [
+                {
+                    name: '🏠 Application',
+                    categories: ['logging', 'web', 'output', 'pretty']
+                },
+                {
+                    name: '🎵 Music Sources',
+                    categories: ['lastfm', 'listenbrainz', 'musicbrainz', 'spotify']
+                },
+                {
+                    name: '📺 Media Servers',
+                    categories: ['plex', 'jellyfin']
+                },
+                {
+                    name: '🎯 Music Management',
+                    categories: ['lidarr']
+                },
+                {
+                    name: '⚡ Performance',
+                    categories: ['cache', 'library', 'command']
+                }
+            ];
+            
+            // Filter groups to only include categories that actually exist
+            const filteredGroups = groups.map(group => ({
+                ...group,
+                categories: group.categories.filter(cat => this.categories.includes(cat))
+            })).filter(group => group.categories.length > 0);
+            
+            return filteredGroups;
+        },
+        
+        onCategoryChange() {
+            // Don't allow selection of group headers
+            if (this.selectedCategory && (this.selectedCategory.startsWith('🏠') || 
+                this.selectedCategory.startsWith('🎵') || 
+                this.selectedCategory.startsWith('📺') || 
+                this.selectedCategory.startsWith('🎯') || 
+                this.selectedCategory.startsWith('⚡'))) {
+                this.selectedCategory = 'all';
             }
         },
         

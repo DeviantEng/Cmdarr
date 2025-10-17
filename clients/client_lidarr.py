@@ -190,6 +190,109 @@ class LidarrClient(BaseAPIClient):
             self.logger.error(f"Failed to get artist by MBID {mbid}: {e}")
             return None
     
+    async def get_quality_profiles(self) -> List[Dict[str, Any]]:
+        """Get all quality profiles from Lidarr"""
+        try:
+            response = await self._make_request('qualityprofile')
+            if response:
+                return response
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting quality profiles: {e}")
+            return []
+    
+    async def get_root_folders(self) -> List[Dict[str, Any]]:
+        """Get all root folders from Lidarr"""
+        try:
+            response = await self._make_request('rootfolder')
+            if response:
+                return response
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting root folders: {e}")
+            return []
+
+    async def add_artist(self, mbid: str, artist_name: str, quality_profile_id: int = None, 
+                       metadata_profile_id: int = None, monitored: bool = True) -> Dict[str, Any]:
+        """Add a new artist to Lidarr by MusicBrainz ID"""
+        try:
+            # Check if artist already exists
+            existing_artist = await self.get_artist_by_mbid(mbid)
+            if existing_artist:
+                return {
+                    'success': False,
+                    'error': 'Artist already exists',
+                    'artist': existing_artist
+                }
+            
+            # Get actual configuration from Lidarr
+            quality_profiles = await self.get_quality_profiles()
+            root_folders = await self.get_root_folders()
+            
+            if not quality_profiles:
+                return {
+                    'success': False,
+                    'error': 'No quality profiles found in Lidarr'
+                }
+            
+            if not root_folders:
+                return {
+                    'success': False,
+                    'error': 'No root folders found in Lidarr'
+                }
+            
+            # Use provided IDs or default to first available
+            if quality_profile_id is None:
+                quality_profile_id = quality_profiles[0]['id']
+            
+            if metadata_profile_id is None:
+                metadata_profile_id = 1  # Default metadata profile ID
+            
+            # Use first root folder
+            root_folder_path = root_folders[0]['path']
+            
+            # Prepare artist data for Lidarr API
+            artist_data = {
+                'foreignArtistId': mbid,
+                'artistName': artist_name,
+                'qualityProfileId': quality_profile_id,
+                'metadataProfileId': metadata_profile_id,
+                'monitored': monitored,
+                'monitorNewItems': 'all',  # Monitor all new albums
+                'rootFolderPath': root_folder_path,
+                'addOptions': {
+                    'monitor': 'all',
+                    'searchForMissingAlbums': False  # Don't auto-search on add
+                }
+            }
+            
+            self.logger.info(f"Adding artist '{artist_name}' (MBID: {mbid}) to Lidarr")
+            self.logger.debug(f"Using quality profile ID: {quality_profile_id}, root folder: {root_folder_path}")
+            
+            # Make POST request to add artist
+            response = await self._make_request('artist', method='POST', json=artist_data)
+            
+            if response:
+                self.logger.info(f"Successfully added artist '{artist_name}' to Lidarr")
+                return {
+                    'success': True,
+                    'artist': response,
+                    'message': f"Artist '{artist_name}' added successfully"
+                }
+            else:
+                self.logger.error(f"Failed to add artist '{artist_name}' - no response from Lidarr")
+                return {
+                    'success': False,
+                    'error': 'No response from Lidarr API'
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error adding artist '{artist_name}' (MBID: {mbid}): {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
     async def get_artist_stats(self) -> Dict[str, Any]:
         """Get basic statistics about artists in Lidarr"""
         try:

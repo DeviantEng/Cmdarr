@@ -74,6 +74,9 @@ class ConfigAdapter:
         self.JELLYFIN_TIMEOUT = config_service.get('JELLYFIN_TIMEOUT', 30)
         self.JELLYFIN_IGNORE_TLS = config_service.get('JELLYFIN_IGNORE_TLS', False)
         
+        # Spotify Configuration
+        self.SPOTIFY_CLIENT_ID = config_service.get('SPOTIFY_CLIENT_ID', '')
+        self.SPOTIFY_CLIENT_SECRET = config_service.get('SPOTIFY_CLIENT_SECRET', '')
         
         # Processing Configuration
         self.GENERATE_DEBUG_VALIDATION_CALLS = config_service.get('GENERATE_DEBUG_VALIDATION_CALLS', True)

@@ -241,6 +241,33 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
         up_func=remove_playlist_sync_global_config
     ))
     
+    # Migration 5: Add command_type column to command_configs
+    def add_command_type_column(cursor):
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(command_configs)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'command_type' not in columns:
+            cursor.execute("ALTER TABLE command_configs ADD COLUMN command_type VARCHAR(50);")
+            logger.info("Added command_type column to command_configs table")
+            
+            # Set default command types for existing commands
+            cursor.execute("""
+                UPDATE command_configs 
+                SET command_type = 'discovery' 
+                WHERE command_name IN ('discovery_lastfm', 'playlist_sync_discovery_maintenance')
+            """)
+            logger.info("Set command_type for existing discovery commands")
+        else:
+            logger.info("Command_type column already exists")
+    
+    runner.add_migration(Migration(
+        name="add_command_type_column_to_command_configs",
+        version=get_migration_version(5, BASE_VERSION_0_1_0),
+        description="Add command_type column to command_configs table with defaults",
+        up_func=add_command_type_column
+    ))
+    
     # Future migrations for new app versions should use current app_version
     # Example for when you bump to 0.2.0:
     # runner.add_migration(Migration(

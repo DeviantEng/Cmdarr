@@ -83,6 +83,10 @@ class ConfigService:
             {'key': 'JELLYFIN_TIMEOUT', 'default_value': '30', 'data_type': 'int', 'category': 'jellyfin', 'description': 'Request timeout in seconds'},
             {'key': 'JELLYFIN_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Ignore TLS certificate verification'},
             
+            # Spotify Configuration
+            {'key': 'SPOTIFY_CLIENT_ID', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client ID', 'is_sensitive': True},
+            {'key': 'SPOTIFY_CLIENT_SECRET', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client Secret', 'is_sensitive': True},
+            
             # Web Server Configuration
             {'key': 'WEB_PORT', 'default_value': '8080', 'data_type': 'int', 'category': 'web_server', 'description': 'Web server port'},
             {'key': 'WEB_HOST', 'default_value': '0.0.0.0', 'data_type': 'string', 'category': 'web_server', 'description': 'Web server host'},
@@ -113,6 +117,7 @@ class ConfigService:
             
             # Playlist Sync Configuration
             # Note: Target configuration is handled at the command level
+            {'key': 'PLAYLIST_SYNC_DISCOVERY_AGE_THRESHOLD_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'playlist_sync', 'description': 'Age threshold in days for removing stale discovery entries'},
             
             # Output Configuration
             {'key': 'OUTPUT_FILE', 'default_value': 'data/import_lists/discovery_lastfm.json', 'data_type': 'string', 'category': 'output', 'description': 'Output file for Last.fm Lidarr import list'},

@@ -8,13 +8,14 @@ A modular music automation platform that bridges services for your self-hosted m
 
 ### 🎵 **Automatic Music Discovery**
 - **Find Similar Artists**: Automatically discovers new artists similar to those in your Lidarr library using Last.fm
-- **Weekly Discovery**: Imports artists from your ListenBrainz Weekly Discovery playlists
+- **Playlist-Based Discovery**: Discovers artists from synced playlists and adds them directly to Lidarr
 - **Smart Filtering**: Automatically excludes artists you already have and those on your exclusion lists
 - **Quality Control**: Uses MusicBrainz fuzzy matching to ensure high-quality artist data
 
 ### 🎶 **Intelligent Playlist Management**
-- **ListenBrainz Integration**: Syncs curated playlists (Weekly Exploration, Weekly Jams, Daily Jams) to Plex and Jellyfin
-- **Smart Naming**: Converts verbose playlist titles into clean, organized names like `[LB] Weekly Exploration, Sep-01`
+- **Multi-Source Support**: Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin
+- **Modular Command System**: Create unlimited playlist sync commands with custom schedules
+- **Direct Lidarr Integration**: Artists from playlists are automatically added to Lidarr for monitoring
 - **Automatic Cleanup**: Removes old playlists based on your retention preferences
 - **Duplicate Prevention**: Prevents creating duplicate playlists with the same tracks
 - **Performance Optimized**: Library cache reduces sync time from 3+ minutes to ~30 seconds
@@ -56,6 +57,8 @@ services:
       - PLEX_TOKEN=your_plex_token
       - JELLYFIN_URL=http://jellyfin:8096
       - JELLYFIN_TOKEN=your_jellyfin_token
+      - SPOTIFY_CLIENT_ID=your_spotify_client_id
+      - SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
       - JELLYFIN_USER_ID=your_jellyfin_user_id
       # Library cache optimization
       - LIBRARY_CACHE_TTL_DAYS=30
@@ -93,20 +96,26 @@ docker run -d \
 
 Access Cmdarr at `http://localhost:8080` for:
 
-- **📊 Dashboard**: Overview of system status, commands, and configuration
+- **📊 Commands Dashboard**: Main interface with card/list view toggle, filtering, and sorting
 - **⚙️ Configuration**: Web-based configuration interface with validation
 - **🎛️ Command Management**: Enable/disable commands, view execution status, trigger manual runs
 - **📈 System Status**: Detailed system information, health metrics, and cache status
 
 ### Key Features
+- **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
+- **Advanced Filtering**: Filter commands by status (enabled/disabled) and type (discovery/playlist sync)
+- **Sortable Columns**: Sort by name, schedule, last run, or next run with visual indicators
 - **Real-time Updates**: Live status updates and command execution monitoring
 - **Manual Cache Refresh**: UI buttons for on-demand cache rebuilding
 - **Execution Tracking**: See whether commands were triggered manually or by scheduler
 - **Configuration Validation**: Dropdown support with current value display
+- **Enhanced Actions**: Improved action dropdowns with Execute Now and Edit options
 
 ## Available Commands
 
-### `discovery_lastfm`
+### Discovery Commands
+
+#### `discovery_lastfm`
 **What it does**: Discovers similar artists by querying Last.fm for each artist in your Lidarr library  
 **Benefits**:
 - Uses MusicBrainz fuzzy matching as fallback for artists missing MBIDs
@@ -120,32 +129,26 @@ Access Cmdarr at `http://localhost:8080` for:
 - `DISCOVERY_LASTFM_SCHEDULE_HOURS=24`
 - `DISCOVERY_LASTFM_LIMIT=5`
 
-### `discovery_listenbrainz`
-**What it does**: Extracts artists from your ListenBrainz Weekly Discovery playlist for Lidarr import  
+#### `playlist_sync_discovery_maintenance`
+**What it does**: Maintains the unified discovery import list by removing stale entries  
 **Benefits**:
-- Filters out artists already in your Lidarr library
-- Uses MusicBrainz fuzzy matching for artists without MBIDs
-- Respects your personal music discovery preferences
-- Generates separate JSON import list
+- Automatically cleans up old discovery entries based on configurable age threshold
+- Prevents import list bloat and improves Lidarr performance
+- Runs automatically as a scheduled maintenance task
 
-**Configuration**:
-- `DISCOVERY_LISTENBRAINZ_ENABLED=true`
-- `DISCOVERY_LISTENBRAINZ_SCHEDULE_HOURS=24`
-- `DISCOVERY_LISTENBRAINZ_LIMIT=5`
+### Playlist Sync Commands
 
-### `playlist_sync_listenbrainz_curated`
-**What it does**: Syncs ListenBrainz curated playlists (Weekly Exploration, Weekly Jams, Daily Jams) to music players  
+#### Dynamic Playlist Sync Commands
+**What it does**: Create unlimited playlist sync commands through the web interface  
 **Benefits**:
+- **ListenBrainz Curated Playlists**: Sync Weekly Exploration, Weekly Jams, Daily Jams
+- **External Playlist Support**: Sync playlists from Spotify, Deezer, and other sources
+- **Multi-Target Support**: Sync to Plex, Jellyfin, or both simultaneously
 - **Library Cache Optimization**: 3+ minutes → 30 seconds sync time
-- Smart playlist naming: `[LB] Weekly Exploration, Sep-01`
-- Configurable target support (Plex and Jellyfin)
-- Empty playlist cleanup (configurable)
-- Track matching with fuzzy search algorithms
-- **Playlist Retention**: Automatic cleanup of old playlists based on configurable limits
-- **Duplicate Prevention**: Smart validation to prevent creating duplicate playlists
-- **Cache-Aware**: Automatically builds library cache if missing or stale
+- **Smart Playlist Management**: Automatic cleanup, retention policies, and duplicate prevention
+- **Direct Lidarr Integration**: Artists from playlists are automatically added to Lidarr for monitoring
 
-**Configuration**: Command-specific settings available in the web interface under Commands → Playlist Sync ListenBrainz Curated
+**Configuration**: Create and manage playlist sync commands through the web interface under Commands → New...
 
 ## Library Cache Optimization
 
@@ -185,6 +188,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 - **Plex Token**: Get from [Plex Support Guide](https://support.plex.tv/articles/204059436/) (for playlist sync)
 - **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
 - **Jellyfin User ID**: Found in Jellyfin Dashboard → Users → Select User → User ID
+- **Spotify Client ID & Secret**: Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (for playlist sync)
 
 ### Lidarr Integration
 
@@ -213,6 +217,8 @@ PLEX_TOKEN=your_plex_token
 JELLYFIN_URL=http://jellyfin:8096
 JELLYFIN_TOKEN=your_jellyfin_token
 JELLYFIN_USER_ID=your_jellyfin_user_id
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 
 # Library cache optimization
 LIBRARY_CACHE_TTL_DAYS=30

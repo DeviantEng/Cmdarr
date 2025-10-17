@@ -31,39 +31,11 @@ def init_default_commands():
             'enabled': False,
             'schedule_hours': 24,
             'timeout_minutes': 30,
+            'command_type': 'discovery',
             'config_json': {
                 'limit': 5,
                 'similar_count': 1,
                 'min_match_score': 0.5
-            }
-        },
-        {
-            'command_name': 'discovery_listenbrainz',
-            'display_name': 'ListenBrainz Discovery',
-            'description': 'Discover artists from ListenBrainz Weekly Discovery playlist for Lidarr import',
-            'enabled': False,
-            'schedule_hours': 24,
-            'timeout_minutes': 30,
-            'config_json': {
-                'limit': 5
-            }
-        },
-        {
-            'command_name': 'playlist_sync_listenbrainz_curated',
-            'display_name': 'ListenBrainz Playlist Sync',
-            'description': 'Sync ListenBrainz curated playlists to music players',
-            'enabled': False,
-            'schedule_hours': 12,
-            'timeout_minutes': 30,
-            'config_json': {
-                'target': 'plex',
-                'weekly_exploration': True,
-                'weekly_jams': True,
-                'daily_jams': False,
-                'playlist_cleanup': True,
-                'weekly_exploration_keep': 2,
-                'weekly_jams_keep': 2,
-                'daily_jams_keep': 3
             }
         },
         {
@@ -73,9 +45,22 @@ def init_default_commands():
             'enabled': False,
             'schedule_hours': 24,
             'timeout_minutes': 180,
+            'command_type': None,
             'config_json': {
                 'plex_enabled': False,
                 'jellyfin_enabled': False
+            }
+        },
+        {
+            'command_name': 'playlist_sync_discovery_maintenance',
+            'display_name': 'Playlist Sync Discovery Maintenance',
+            'description': 'Maintains the unified discovery import list by removing stale entries',
+            'enabled': True,
+            'schedule_hours': 24,
+            'timeout_minutes': 30,
+            'command_type': 'discovery',
+            'config_json': {
+                'age_threshold_days': 30
             }
         }
     ]

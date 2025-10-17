@@ -540,6 +540,7 @@ class PlexClient(BaseAPIClient):
                     'action': 'synced',
                     'total_tracks': tracks_total,
                     'found_tracks': tracks_found,
+                    'unmatched_tracks': failed_matches,
                     'message': f"Successfully synced playlist '{title}' with {tracks_found} tracks"
                 }
             else:
@@ -549,6 +550,7 @@ class PlexClient(BaseAPIClient):
                     'action': 'failed',
                     'total_tracks': tracks_total,
                     'found_tracks': tracks_found,
+                    'unmatched_tracks': failed_matches,
                     'message': f"Failed to sync playlist '{title}'"
                 }
 
@@ -559,6 +561,7 @@ class PlexClient(BaseAPIClient):
                 'action': 'error',
                 'total_tracks': len(tracks),
                 'found_tracks': 0,
+                'unmatched_tracks': [f"{track.get('artist', 'Unknown')} - {track.get('track', 'Unknown')}" for track in tracks],
                 'message': f"Error syncing playlist '{title}': {str(e)}"
             }
     

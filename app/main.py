@@ -235,14 +235,13 @@ async def detailed_status_api(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
-# Main index page
+# Main index page (now serves commands)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Main index page"""
-    return templates.TemplateResponse("index.html", {
+    """Main index page - now serves commands page"""
+    return templates.TemplateResponse("commands/index.html", {
         "request": request,
-        "app_name": "Cmdarr",
-        "version": __version__
+        "app_name": "Cmdarr"
     })
 
 

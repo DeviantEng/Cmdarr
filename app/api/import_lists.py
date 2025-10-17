@@ -58,10 +58,10 @@ def _get_file_metrics(file_path: str) -> Dict[str, Any]:
     
     # Determine status based on age and content
     if entry_count == 0:
-        # For ListenBrainz, empty is normal (no new artists found)
+        # For playlist sync discovery, empty is normal (no new artists found)
         # For Last.fm, empty might indicate an issue
         if 'listenbrainz' in file_path.lower():
-            status = 'no_new_artists'  # Normal state for ListenBrainz
+            status = 'no_new_artists'  # Normal state for playlist sync discovery
         else:
             status = 'empty'  # Potentially problematic for Last.fm
     elif age_hours < 25:  # Within expected update cycle
@@ -94,15 +94,15 @@ async def get_import_list_metrics():
         
         # Get file paths from config
         lastfm_file = config_service.get('OUTPUT_FILE')
-        listenbrainz_file = config_service.get('LISTENBRAINZ_OUTPUT_FILE')
+        unified_file = "data/import_lists/discovery_playlistsync.json"
         
-        # Get metrics for each file
+        # Get metrics for both discovery files
         lastfm_metrics = _get_file_metrics(lastfm_file)
-        listenbrainz_metrics = _get_file_metrics(listenbrainz_file)
+        unified_metrics = _get_file_metrics(unified_file)
         
         return {
             'lastfm': lastfm_metrics,
-            'listenbrainz': listenbrainz_metrics,
+            'unified': unified_metrics,
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         }
         
@@ -141,31 +141,29 @@ async def serve_discovery_lastfm():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/discovery_listenbrainz")
-async def serve_discovery_listenbrainz():
-    """Serve the ListenBrainz discovery JSON file"""
+@router.get("/discovery_playlistsync")
+async def serve_discovery_playlistsync():
+    """Serve the playlist sync discovery import list"""
     try:
-        # Import services inside function to avoid startup issues
-        from services.config_service import config_service
         from utils.logger import get_logger
         logger = get_logger('cmdarr.api.import_lists')
         
-        file_path = config_service.get('LISTENBRAINZ_OUTPUT_FILE')
+        file_path = "data/import_lists/discovery_playlistsync.json"
         
         if not os.path.exists(file_path):
-            logger.warning(f"ListenBrainz discovery file not found: {file_path}")
-            raise HTTPException(status_code=404, detail="ListenBrainz discovery file not found")
+            logger.warning(f"Playlist sync discovery file not found: {file_path}")
+            return []
         
-        # Read and serve the file
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        logger.debug(f"Served discovery_listenbrainz with {len(data)} entries")
+        logger.debug(f"Served discovery_playlistsync with {len(data)} entries")
         return data
         
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in ListenBrainz discovery file: {e}")
+        logger.error(f"Invalid JSON in playlist sync discovery file: {e}")
         raise HTTPException(status_code=500, detail="Invalid JSON file")
     except Exception as e:
-        logger.error(f"Error serving ListenBrainz discovery: {e}")
+        logger.error(f"Error serving playlist sync discovery: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+

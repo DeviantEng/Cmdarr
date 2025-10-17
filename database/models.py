@@ -76,6 +76,7 @@ class CommandConfig(Base):
     schedule_hours = Column(Integer, nullable=True)  # NULL means manual only
     timeout_minutes = Column(Integer, nullable=True)  # Timeout in minutes (NULL = no timeout)
     config_json = Column(JSON, nullable=True)  # Command-specific settings
+    command_type = Column(String(50), nullable=True, index=True)  # 'discovery', 'playlist_sync'
     last_run = Column(DateTime(timezone=True), nullable=True)
     last_success = Column(Boolean, nullable=True)
     last_duration = Column(Float, nullable=True)  # Duration in seconds

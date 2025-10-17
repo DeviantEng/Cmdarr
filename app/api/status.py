@@ -124,14 +124,21 @@ async def get_health_status():
             db_manager = get_database_manager()
             session = db_manager.get_session_sync()
             try:
-                enabled_commands = session.query(CommandConfig).filter(CommandConfig.enabled == True).count()
+                # Get all enabled commands, excluding helper commands
+                all_enabled_commands = session.query(CommandConfig).filter(CommandConfig.enabled == True).all()
+                helper_commands = {'library_cache_builder'}  # Known helper commands
+                
+                # Filter out helper commands
+                user_enabled_commands = [cmd for cmd in all_enabled_commands if cmd.command_name not in helper_commands]
+                enabled_commands_count = len(user_enabled_commands)
+                
                 running_commands = session.query(CommandExecution)\
                     .filter(CommandExecution.completed_at.is_(None))\
                     .count()
                 
                 health_status["checks"]["commands"] = {
                     "status": "healthy",
-                    "message": f"{enabled_commands} enabled commands, {running_commands} currently running"
+                    "message": f"{enabled_commands_count} enabled commands, {running_commands} currently running"
                 }
             finally:
                 session.close()
@@ -152,7 +159,11 @@ async def get_health_status():
 async def get_commands_status(db: Session = Depends(get_db)):
     """Get status of all commands"""
     try:
-        commands = db.query(CommandConfig).all()
+        all_commands = db.query(CommandConfig).all()
+        helper_commands = {'library_cache_builder'}  # Known helper commands
+        
+        # Filter out helper commands
+        commands = [cmd for cmd in all_commands if cmd.command_name not in helper_commands]
         command_statuses = []
         
         for command in commands:

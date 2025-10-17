@@ -131,7 +131,7 @@ class CommandScheduler:
                     reason = "overdue"
                 else:
                     reason = "scheduled"
-                self.logger.info(f"Command {command.command_name} is due to run ({reason})")
+                self.logger.info(f"Command '{command.display_name}' is due to run ({reason})")
                 await self._queue_command_execution(command.command_name)
                 
         except Exception as e:
@@ -245,7 +245,7 @@ class CommandScheduler:
                 ).all()
                 
                 for command in enabled_commands:
-                    self.logger.info(f"Command {command.command_name} is enabled with {command.schedule_hours}h schedule")
+                    self.logger.info(f"Command '{command.display_name}' is enabled with {command.schedule_hours}h schedule")
                     
             finally:
                 session.close()

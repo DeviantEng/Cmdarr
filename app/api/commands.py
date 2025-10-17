@@ -69,6 +69,7 @@ class CommandConfigResponse(BaseModel):
     schedule_hours: Optional[int]
     timeout_minutes: Optional[int]
     config_json: Optional[Dict[str, Any]]
+    command_type: Optional[str]
     last_run: Optional[str]
     last_success: Optional[bool]
     last_duration: Optional[float]
@@ -168,9 +169,9 @@ async def update_command(
         if request.enabled is not None:
             command.enabled = request.enabled
             
-            # If enabling a command that has never run, set a placeholder last_run timestamp
+            # If enabling a command, set a placeholder last_run timestamp for immediate execution
             # This makes next_run = last_run + schedule_hours = 5 minutes from now
-            if request.enabled and command.last_run is None and command.schedule_hours:
+            if request.enabled and command.schedule_hours:
                 schedule_minutes = command.schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
                 logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
@@ -178,8 +179,8 @@ async def update_command(
         if request.schedule_hours is not None:
             command.schedule_hours = request.schedule_hours
             
-            # If setting schedule on an enabled command that has never run, set placeholder last_run
-            if command.enabled and command.last_run is None and request.schedule_hours:
+            # If setting schedule on an enabled command, set placeholder last_run for immediate execution
+            if command.enabled and request.schedule_hours:
                 schedule_minutes = request.schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
                 logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
@@ -533,5 +534,442 @@ async def execute_cache_builder(request: Request):
             "error": str(e),
             "message": "Failed to execute cache builder"
         }
+
+
+# Playlist Sync Endpoints
+
+@router.get("/playlist-sync/validate-url")
+async def validate_playlist_url(url: str):
+    """Validate playlist URL and fetch metadata"""
+    try:
+        from utils.playlist_parser import parse_playlist_url
+        from clients.client_spotify import SpotifyClient
+        from commands.config_adapter import Config
+        
+        # Parse URL
+        parsed = parse_playlist_url(url)
+        
+        if not parsed['valid']:
+            return {
+                "valid": False,
+                "error": parsed['error'],
+                "supported_sources": ["spotify"],
+                "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF"
+            }
+        
+        # Fetch metadata from source
+        source = parsed['source']
+        if source == 'spotify':
+            config = Config()
+            spotify_client = SpotifyClient(config)
+            try:
+                metadata = await spotify_client.get_playlist_info(url)
+                
+                if metadata.get('success'):
+                    return {
+                        "valid": True,
+                        "source": source,
+                        "playlist_id": parsed['playlist_id'],
+                        "metadata": {
+                            "name": metadata['name'],
+                            "description": metadata['description'],
+                            "track_count": metadata['track_count'],
+                            "owner": metadata['owner']
+                        }
+                    }
+                else:
+                    return {
+                        "valid": False,
+                        "error": metadata.get('error', 'Failed to fetch playlist metadata')
+                    }
+            finally:
+                await spotify_client.close()
+        else:
+            return {
+                "valid": False,
+                "error": f"Source {source} not yet supported"
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to validate playlist URL: {e}")
+        return {
+            "valid": False,
+            "error": f"Failed to validate URL: {str(e)}"
+        }
+
+
+@router.post("/playlist-sync/create")
+async def create_playlist_sync(request: dict, db: Session = Depends(get_db)):
+    """Create a new playlist sync command"""
+    try:
+        # Get playlist type from request
+        playlist_type = request.get('playlist_type', 'other')  # 'listenbrainz' or 'other'
+        
+        if playlist_type == 'listenbrainz':
+            return await create_listenbrainz_playlist_sync(request, db)
+        else:
+            return await create_external_playlist_sync(request, db)
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create playlist sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create playlist sync: {str(e)}")
+
+
+async def create_external_playlist_sync(request: dict, db: Session = Depends(get_db)):
+    """Create a new external playlist sync command (Spotify, etc.)"""
+    try:
+        from utils.playlist_parser import parse_playlist_url
+        from clients.client_spotify import SpotifyClient
+        from commands.config_adapter import Config
+        from database.models import CommandConfig
+        
+        # Validate request
+        playlist_url = request.get('playlist_url')
+        target = request.get('target')
+        sync_mode = request.get('sync_mode', 'full')
+        schedule_hours = request.get('schedule_hours', 12)
+        enabled = request.get('enabled', True)
+        
+        if not playlist_url:
+            raise HTTPException(status_code=400, detail="playlist_url is required")
+        if not target:
+            raise HTTPException(status_code=400, detail="target is required")
+        if target not in ['plex', 'jellyfin']:
+            raise HTTPException(status_code=400, detail="target must be 'plex' or 'jellyfin'")
+        
+        # Validate URL and get metadata
+        parsed = parse_playlist_url(playlist_url)
+        if not parsed['valid']:
+            raise HTTPException(status_code=400, detail=parsed['error'])
+        
+        source = parsed['source']
+        if source == 'spotify':
+            config = Config()
+            spotify_client = SpotifyClient(config)
+            try:
+                metadata = await spotify_client.get_playlist_info(playlist_url)
+                
+                logger.info(f"Spotify metadata response: {metadata}")
+                
+                if not metadata or not isinstance(metadata, dict):
+                    raise HTTPException(status_code=400, detail='Invalid metadata response from Spotify')
+                
+                if not metadata.get('success'):
+                    error_msg = metadata.get('error', 'Failed to fetch playlist') if metadata else 'No metadata received'
+                    raise HTTPException(status_code=400, detail=error_msg)
+                
+                playlist_name = metadata.get('name')
+                if not playlist_name:
+                    raise HTTPException(status_code=400, detail='Playlist name not found in metadata')
+            finally:
+                await spotify_client.close()
+        else:
+            raise HTTPException(status_code=400, detail=f"Source {source} not yet supported")
+        
+        # Generate unique command ID (never reuse IDs for historical consistency)
+        try:
+            existing_commands = db.query(CommandConfig).filter(
+                CommandConfig.command_name.like('playlist_sync_%')
+            ).all()
+            
+            # Find all used IDs from existing commands
+            used_ids = set()
+            for cmd in existing_commands:
+                try:
+                    cmd_id = int(cmd.command_name.split('_')[-1])
+                    used_ids.add(cmd_id)
+                except (ValueError, IndexError):
+                    continue
+            
+            # Also check execution history for any orphaned IDs
+            from database.models import CommandExecution
+            orphaned_executions = db.query(CommandExecution).filter(
+                CommandExecution.command_name.like('playlist_sync_%')
+            ).all()
+            
+            for execution in orphaned_executions:
+                try:
+                    cmd_id = int(execution.command_name.split('_')[-1])
+                    used_ids.add(cmd_id)
+                except (ValueError, IndexError):
+                    continue
+            
+            # Find the next available ID
+            next_id = 1
+            while next_id in used_ids:
+                next_id += 1
+            
+            command_name = f"playlist_sync_{next_id:05d}"
+            
+        except Exception as e:
+            logger.error(f"Failed to generate unique command ID: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
+        
+        # Generate display name
+        display_name = f"[{source.title()}] {playlist_name} → {target.title()}"
+        
+        # Create command config
+        try:
+            config_json = {
+                "source": source,
+                "unique_id": f"{next_id:05d}",
+                "playlist_url": playlist_url,
+                "playlist_name": playlist_name,
+                "target": target,
+                "sync_mode": sync_mode,
+                "enable_artist_discovery": request.get('enable_artist_discovery', False)
+            }
+            
+            command = CommandConfig(
+                command_name=command_name,
+                display_name=display_name,
+                description=f"Sync {source.title()} playlist '{playlist_name}' to {target.title()}",
+                enabled=enabled,
+                schedule_hours=schedule_hours,
+                timeout_minutes=30,  # Default timeout for playlist sync commands
+                command_type="playlist_sync",
+                config_json=config_json
+            )
+            
+            # If creating an enabled command, set placeholder last_run for immediate execution
+            if enabled and schedule_hours:
+                schedule_minutes = schedule_hours * 60
+                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
+                logger.info(f"Set placeholder last_run for new command {command_name} (next run in 5 minutes)")
+            
+            db.add(command)
+            db.commit()
+            
+            # Reload command executor to pick up new command
+            from services.command_executor import command_executor
+            command_executor._ensure_initialized()  # Ensure logger is initialized
+            command_executor._load_dynamic_playlist_sync_commands()
+            
+        except Exception as e:
+            logger.error(f"Failed to create command in database: {e}")
+            import traceback
+            logger.error(f"Database creation traceback: {traceback.format_exc()}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
+        
+        return {
+            "success": True,
+            "command_name": command_name,
+            "display_name": display_name,
+            "message": "Playlist sync command created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create external playlist sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create external playlist sync: {str(e)}")
+
+
+async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends(get_db)):
+    """Create a new ListenBrainz playlist sync command"""
+    try:
+        from commands.config_adapter import Config
+        from database.models import CommandConfig
+        
+        # Validate request
+        playlist_types = request.get('playlist_types', [])
+        target = request.get('target')
+        sync_mode = request.get('sync_mode', 'full')
+        schedule_hours = request.get('schedule_hours', 12)
+        enabled = request.get('enabled', True)
+        
+        # Retention settings
+        weekly_exploration_keep = request.get('weekly_exploration_keep', 2)
+        weekly_jams_keep = request.get('weekly_jams_keep', 2)
+        daily_jams_keep = request.get('daily_jams_keep', 3)
+        cleanup_enabled = request.get('cleanup_enabled', True)
+        
+        if not playlist_types:
+            raise HTTPException(status_code=400, detail="playlist_types is required")
+        if not target:
+            raise HTTPException(status_code=400, detail="target is required")
+        if target not in ['plex', 'jellyfin']:
+            raise HTTPException(status_code=400, detail="target must be 'plex' or 'jellyfin'")
+        
+        # Validate playlist types
+        valid_types = ['weekly_exploration', 'weekly_jams', 'daily_jams']
+        for playlist_type in playlist_types:
+            if playlist_type not in valid_types:
+                raise HTTPException(status_code=400, detail=f"Invalid playlist type: {playlist_type}")
+        
+        # Generate unique command ID (never reuse IDs for historical consistency)
+        try:
+            existing_commands = db.query(CommandConfig).filter(
+                CommandConfig.command_name.like('playlist_sync_%')
+            ).all()
+            
+            # Find all used IDs from existing commands
+            used_ids = set()
+            for cmd in existing_commands:
+                try:
+                    cmd_id = int(cmd.command_name.split('_')[-1])
+                    used_ids.add(cmd_id)
+                except (ValueError, IndexError):
+                    continue
+            
+            # Also check execution history for any orphaned IDs
+            from database.models import CommandExecution
+            orphaned_executions = db.query(CommandExecution).filter(
+                CommandExecution.command_name.like('playlist_sync_%')
+            ).all()
+            
+            for execution in orphaned_executions:
+                try:
+                    cmd_id = int(execution.command_name.split('_')[-1])
+                    used_ids.add(cmd_id)
+                except (ValueError, IndexError):
+                    continue
+            
+            # Find the next available ID
+            next_id = 1
+            while next_id in used_ids:
+                next_id += 1
+            
+            command_name = f"playlist_sync_{next_id:05d}"
+            
+        except Exception as e:
+            logger.error(f"Failed to generate unique command ID: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
+        
+        # Generate display name
+        if len(playlist_types) == 1:
+            playlist_name = playlist_types[0].replace('_', ' ').title()
+            display_name = f"[ListenBrainz] {playlist_name} → {target.title()}"
+        elif len(playlist_types) == len(valid_types):
+            display_name = f"[ListenBrainz] All Curated Playlists → {target.title()}"
+        else:
+            playlist_names = [pt.replace('_', ' ').title() for pt in playlist_types]
+            display_name = f"[ListenBrainz] {', '.join(playlist_names)} → {target.title()}"
+        
+        # Create command config
+        try:
+            config_json = {
+                "source": "listenbrainz",
+                "unique_id": f"{next_id:05d}",
+                "playlist_types": playlist_types,
+                "target": target,
+                "sync_mode": sync_mode,
+                "weekly_exploration_keep": weekly_exploration_keep,
+                "weekly_jams_keep": weekly_jams_keep,
+                "daily_jams_keep": daily_jams_keep,
+                "cleanup_enabled": cleanup_enabled,
+                "enable_artist_discovery": request.get('enable_artist_discovery', False)
+            }
+            
+            command = CommandConfig(
+                command_name=command_name,
+                display_name=display_name,
+                description=f"Sync ListenBrainz curated playlists to {target.title()}",
+                enabled=enabled,
+                schedule_hours=schedule_hours,
+                timeout_minutes=30,  # Default timeout for playlist sync commands
+                command_type="playlist_sync",
+                config_json=config_json
+            )
+            
+            # If creating an enabled command, set placeholder last_run for immediate execution
+            if enabled and schedule_hours:
+                schedule_minutes = schedule_hours * 60
+                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
+                logger.info(f"Set placeholder last_run for new ListenBrainz command {command_name} (next run in 5 minutes)")
+            
+            db.add(command)
+            db.commit()
+            
+            # Reload command executor to pick up new command
+            from services.command_executor import command_executor
+            command_executor._ensure_initialized()  # Ensure logger is initialized
+            command_executor._load_dynamic_playlist_sync_commands()
+            
+        except Exception as e:
+            logger.error(f"Failed to create command in database: {e}")
+            import traceback
+            logger.error(f"Database creation traceback: {traceback.format_exc()}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
+        
+        return {
+            "success": True,
+            "command_name": command_name,
+            "display_name": display_name,
+            "message": "ListenBrainz playlist sync command created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create ListenBrainz playlist sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create ListenBrainz playlist sync: {str(e)}")
+
+
+@router.delete("/{command_name}")
+async def delete_command(command_name: str, db: Session = Depends(get_db)):
+    """Delete a command (enhanced to support playlist_sync_* commands)"""
+    try:
+        # Validate command_name parameter
+        if not command_name:
+            raise HTTPException(status_code=400, detail="Command name is required")
+        
+        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        if not command:
+            raise HTTPException(status_code=404, detail="Command not found")
+        
+        # Check if it's a playlist sync command
+        if command_name.startswith('playlist_sync_'):
+            # Allow deletion of dynamic playlist sync commands
+            pass
+        elif command_name in ['discovery_lastfm', 'library_cache_builder']:
+            raise HTTPException(status_code=400, detail="Cannot delete built-in commands")
+        
+        db.delete(command)
+        db.commit()
+        
+        # Reload command executor to remove deleted command
+        from services.command_executor import command_executor
+        command_executor._ensure_initialized()  # Ensure command executor is initialized
+        if command_name in command_executor.command_classes:
+            del command_executor.command_classes[command_name]
+        
+        return {"message": f"Command {command_name} deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete command {command_name}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete command")
+
+
+@router.get("/playlist-sync/sources")
+async def get_playlist_sync_sources():
+    """Get available playlist sync sources and their configuration status"""
+    try:
+        from commands.config_adapter import Config
+        
+        config = Config()
+        
+        sources = [
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "requires_url": True,
+                "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
+                "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
+                "config_help": "Add Spotify Client ID and Secret in Settings"
+            }
+        ]
+        
+        return {"sources": sources}
+        
+    except Exception as e:
+        logger.error(f"Failed to get playlist sync sources: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get playlist sync sources")
 
 

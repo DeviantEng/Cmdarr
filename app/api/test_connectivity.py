@@ -59,6 +59,10 @@ async def test_connectivity():
         musicbrainz_result = await _test_musicbrainz()
         results.append(musicbrainz_result)
         
+        # Test Spotify
+        spotify_result = await _test_spotify()
+        results.append(spotify_result)
+        
         # Calculate overall success
         overall_success = all(result.success for result in results)
         
@@ -331,6 +335,52 @@ async def _test_musicbrainz() -> ConnectivityTestResult:
     except Exception as e:
         return ConnectivityTestResult(
             service="MusicBrainz",
+            success=False,
+            message="Test failed",
+            error=str(e)
+        )
+
+
+async def _test_spotify() -> ConnectivityTestResult:
+    """Test Spotify connectivity"""
+    try:
+        # Check if Spotify is configured
+        spotify_client_id = config_service.get('SPOTIFY_CLIENT_ID')
+        spotify_client_secret = config_service.get('SPOTIFY_CLIENT_SECRET')
+        
+        if not spotify_client_id or not spotify_client_secret:
+            return ConnectivityTestResult(
+                service="Spotify",
+                success=False,
+                message="Not configured",
+                error="Spotify Client ID or Client Secret not set"
+            )
+        
+        # Test connection
+        from clients.client_spotify import SpotifyClient
+        config = ConfigAdapter()
+        client = SpotifyClient(config)
+        
+        # Use the existing test_connection method
+        success = await client.test_connection()
+        
+        if success:
+            return ConnectivityTestResult(
+                service="Spotify",
+                success=True,
+                message="Connected successfully"
+            )
+        else:
+            return ConnectivityTestResult(
+                service="Spotify",
+                success=False,
+                message="Connection failed",
+                error="Unable to authenticate with Spotify API"
+            )
+            
+    except Exception as e:
+        return ConnectivityTestResult(
+            service="Spotify",
             success=False,
             message="Test failed",
             error=str(e)

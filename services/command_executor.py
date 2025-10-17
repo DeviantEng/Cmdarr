@@ -34,18 +34,22 @@ class CommandExecutor:
         if self.config is None:
             from commands.config_adapter import Config
             self.config = Config()
+        
+        # Import command classes
+        from commands.discovery_lastfm import DiscoveryLastfmCommand
+        from commands.library_cache_builder import LibraryCacheBuilderCommand
+        from commands.playlist_sync import PlaylistSyncCommand
+        from commands.playlist_sync_discovery_maintenance import PlaylistSyncDiscoveryMaintenanceCommand
+        
         if self.command_classes is None:
-            from commands.discovery_lastfm import DiscoveryLastfmCommand
-            from commands.discovery_listenbrainz import DiscoveryListenbrainzCommand
-            from commands.playlist_sync_listenbrainz_curated import PlaylistSyncListenBrainzCuratedCommand
-            from commands.library_cache_builder import LibraryCacheBuilderCommand
-            
             self.command_classes = {
                 'discovery_lastfm': DiscoveryLastfmCommand,
-                'discovery_listenbrainz': DiscoveryListenbrainzCommand,
-                'playlist_sync_listenbrainz_curated': PlaylistSyncListenBrainzCuratedCommand,
-                'library_cache_builder': LibraryCacheBuilderCommand
+                'library_cache_builder': LibraryCacheBuilderCommand,
+                'playlist_sync_discovery_maintenance': PlaylistSyncDiscoveryMaintenanceCommand
             }
+            
+            # Load dynamic playlist sync commands from database
+            self._load_dynamic_playlist_sync_commands()
             
             # Clean up any stuck executions on startup
             import asyncio
@@ -88,6 +92,14 @@ class CommandExecutor:
                 'execution_id': None
             }
         
+        # Verify command still exists in database (prevents execution of deleted commands)
+        if not await self._command_exists_in_db(command_name):
+            return {
+                'success': False,
+                'error': f'Command {command_name} not found in database (may have been deleted)',
+                'execution_id': None
+            }
+        
         # Create execution record
         self.logger.info(f"About to create execution record for {command_name} with triggered_by='{triggered_by}'")
         execution_id = await self._create_execution_record(command_name, triggered_by)
@@ -124,6 +136,24 @@ class CommandExecutor:
             self.logger.error(f"Failed to check running commands in database: {e}")
             return False
     
+    async def _command_exists_in_db(self, command_name: str) -> bool:
+        """Check if a command exists in the database"""
+        try:
+            db_manager = get_database_manager()
+            session = db_manager.get_session_sync()
+            try:
+                # Look for the command configuration
+                command_config = session.query(CommandConfig).filter(
+                    CommandConfig.command_name == command_name
+                ).first()
+                
+                return command_config is not None
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Error checking if command {command_name} exists: {e}")
+            return False
+    
     async def cleanup_stuck_executions(self, max_duration_hours: int = 2):
         """Clean up executions that have been running too long"""
         try:
@@ -139,7 +169,7 @@ class CommandExecutor:
                 ).all()
                 
                 for execution in stuck_executions:
-                    execution.is_running = False
+                    execution.status = 'failed'
                     execution.completed_at = datetime.utcnow()
                     execution.success = False
                     execution.error_message = f"Command timed out after {max_duration_hours} hours"
@@ -226,7 +256,6 @@ class CommandExecutor:
                 execution_id, 
                 success=success, 
                 duration=duration,
-                completed_at=datetime.utcnow(),
                 output_summary=output_summary
             )
             
@@ -243,8 +272,7 @@ class CommandExecutor:
                 execution_id,
                 success=False,
                 duration=duration,
-                error_message=error_msg,
-                completed_at=datetime.utcnow()
+                error_message=error_msg
             )
         
         finally:
@@ -295,11 +323,9 @@ class CommandExecutor:
                 # Get the last 100 lines to find recent command output
                 recent_lines = lines[-100:] if len(lines) > 100 else lines
                 
-                if command_name == 'discovery_listenbrainz':
-                    return self._extract_listenbrainz_summary(recent_lines, duration)
-                elif command_name == 'discovery_lastfm':
+                if command_name == 'discovery_lastfm':
                     return self._extract_lastfm_summary(recent_lines, duration)
-                elif command_name == 'playlist_sync_listenbrainz_curated':
+                elif command_name.startswith('playlist_sync_'):
                     return self._extract_playlist_sync_summary(recent_lines, duration)
         except Exception as e:
             self.logger.debug(f"Failed to extract command summary: {e}")
@@ -387,89 +413,54 @@ class CommandExecutor:
         """Extract playlist sync statistics from log lines"""
         summary_parts = [f"Playlist Sync completed in {duration:.1f}s"]
         
-        # Look for the most recent statistics block
-        stats_found = False
-        individual_playlists = []
-        
-        # Find the most recent statistics block by looking for the last occurrence of each stat
-        target_line = None
-        source_line = None
-        playlists_configured_line = None
-        successful_syncs_line = None
-        failed_syncs_line = None
-        total_tracks_found_line = None
-        total_tracks_attempted_line = None
-        total_sync_time_line = None
-        track_success_rate_line = None
+        # Look for individual playlist sync statistics
+        sync_stats_found = False
+        artist_discovery_found = False
         
         # Process lines in reverse order to get the most recent values
         for line in reversed(log_lines):
             line = line.strip()
             
-            if "Target:" in line and "playlist_sync.listenbrainz_curated" in line and not target_line:
-                target_line = line
-            elif "Source:" in line and "playlist_sync.listenbrainz_curated" in line and not source_line:
-                source_line = line
-            elif "Playlists Configured:" in line and "playlist_sync.listenbrainz_curated" in line and not playlists_configured_line:
-                playlists_configured_line = line
-            elif "Successful Syncs:" in line and "playlist_sync.listenbrainz_curated" in line and not successful_syncs_line:
-                successful_syncs_line = line
-            elif "Failed Syncs:" in line and "playlist_sync.listenbrainz_curated" in line and not failed_syncs_line:
-                failed_syncs_line = line
-            elif "Total Tracks Found:" in line and "playlist_sync.listenbrainz_curated" in line and not total_tracks_found_line:
-                total_tracks_found_line = line
-            elif "Total Tracks Attempted:" in line and "playlist_sync.listenbrainz_curated" in line and not total_tracks_attempted_line:
-                total_tracks_attempted_line = line
-            elif "Total Sync Time:" in line and "playlist_sync.listenbrainz_curated" in line and not total_sync_time_line:
-                total_sync_time_line = line
-            elif "Track Success Rate:" in line and "playlist_sync.listenbrainz_curated" in line and not track_success_rate_line:
-                track_success_rate_line = line
+            # Look for sync completion messages
+            if "Full sync completed:" in line and not sync_stats_found:
+                # Extract track statistics from log message
+                # Format: "Full sync completed: {action}, {found_tracks}/{total_tracks} tracks matched"
+                import re
+                match = re.search(r'(\d+)/(\d+) tracks matched', line)
+                if match:
+                    found_tracks = int(match.group(1))
+                    total_tracks = int(match.group(2))
+                    success_rate = (found_tracks / total_tracks * 100) if total_tracks > 0 else 0
+                    summary_parts.append(f"{found_tracks}/{total_tracks} tracks matched ({success_rate:.1f}% success rate)")
+                    sync_stats_found = True
             
-            # Extract individual playlist results
-            elif "✅ 🚀" in line and "tracks" in line:
-                playlist_info = line.split("✅ 🚀")[1].strip()
-                individual_playlists.append(playlist_info)
+            elif "Successfully added" in line and "tracks to playlist" in line and not sync_stats_found:
+                # Extract additive sync statistics
+                import re
+                match = re.search(r'Successfully added (\d+) tracks to playlist', line)
+                if match:
+                    added_tracks = int(match.group(1))
+                    summary_parts.append(f"{added_tracks} tracks added")
+                    sync_stats_found = True
+            
+            # Look for artist discovery statistics
+            elif "Artist discovery completed:" in line and not artist_discovery_found:
+                # Extract artist discovery stats
+                # Format: "Artist discovery completed: {added} added, {skipped} skipped, {failed} failed"
+                import re
+                match = re.search(r'(\d+) added, (\d+) skipped, (\d+) failed', line)
+                if match:
+                    added = int(match.group(1))
+                    skipped = int(match.group(2))
+                    failed = int(match.group(3))
+                    if added > 0:
+                        summary_parts.append(f"{added} artists added to Lidarr")
+                    if failed > 0:
+                        summary_parts.append(f"{failed} artists failed")
+                    artist_discovery_found = True
         
-        # Add statistics if found
-        if target_line:
-            summary_parts.append(f"Target: {target_line.split('Target:')[1].strip()}")
-            stats_found = True
-        if source_line:
-            summary_parts.append(f"Source: {source_line.split('Source:')[1].strip()}")
-        if playlists_configured_line:
-            summary_parts.append(f"Playlists Configured: {playlists_configured_line.split(':')[1].strip()}")
-        if successful_syncs_line:
-            summary_parts.append(f"Successful Syncs: {successful_syncs_line.split(':')[1].strip()}")
-        if failed_syncs_line:
-            summary_parts.append(f"Failed Syncs: {failed_syncs_line.split(':')[1].strip()}")
-        if total_tracks_found_line:
-            summary_parts.append(f"Total Tracks Found: {total_tracks_found_line.split(':')[1].strip()}")
-        if total_tracks_attempted_line:
-            summary_parts.append(f"Total Tracks Attempted: {total_tracks_attempted_line.split(':')[1].strip()}")
-        if total_sync_time_line:
-            summary_parts.append(f"Total Sync Time: {total_sync_time_line.split(':')[1].strip()}")
-        if track_success_rate_line:
-            summary_parts.append(f"Track Success Rate: {track_success_rate_line.split(':')[1].strip()}")
-        
-        # Add individual playlist results if found
-        if individual_playlists:
-            summary_parts.append("")
-            summary_parts.append("Individual Playlist Results:")
-            for playlist in individual_playlists:
-                summary_parts.append(f"  • {playlist}")
-        
-        # If no detailed stats found, fall back to basic summary
-        if not stats_found:
-            summary_parts = [f"Playlist Sync completed in {duration:.1f}s"]
-            for line in log_lines:
-                if "playlists processed" in line.lower():
-                    summary_parts.append(line.strip())
-                elif "tracks added" in line.lower():
-                    summary_parts.append(line.strip())
-                elif "playlists updated" in line.lower():
-                    summary_parts.append(line.strip())
-        
-        return "\n".join(summary_parts)
+        # Join all summary parts
+        return " • ".join(summary_parts)
     
     async def _create_execution_record(self, command_name: str, triggered_by: str = 'manual') -> int:
         """Create a new command execution record in the database"""
@@ -480,31 +471,23 @@ class CommandExecutor:
             try:
                 execution = CommandExecution(
                     command_name=command_name,
-                    started_at=datetime.utcnow(),
-                    triggered_by=triggered_by
+                    triggered_by=triggered_by,
+                    status='running',
+                    started_at=datetime.utcnow()
                 )
                 session.add(execution)
                 session.commit()
-                
-                # Broadcast command started
-                await self._broadcast_update(command_name, {
-                    'status': 'started',
-                    'execution_id': execution.id,
-                    'started_at': execution.started_at.isoformat() + 'Z',
-                    'triggered_by': execution.triggered_by
-                })
-                
+                session.refresh(execution)
                 return execution.id
             finally:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to create execution record: {e}")
-            return 0
-    
-    async def _update_execution_record(self, execution_id: int, success: bool, duration: float, 
-                                     completed_at: datetime, error_message: str = None, output_summary: str = None):
+            raise
+
+    async def _update_execution_record(self, execution_id: int, success: bool, duration: float,
+                                     output_summary: Optional[str] = None, error_message: Optional[str] = None) -> None:
         """Update command execution record with results"""
-        self._ensure_initialized()
         try:
             db_manager = get_database_manager()
             session = db_manager.get_session_sync()
@@ -512,164 +495,157 @@ class CommandExecutor:
                 execution = session.query(CommandExecution).filter(
                     CommandExecution.id == execution_id
                 ).first()
-                
                 if execution:
-                    execution.completed_at = completed_at
-                    execution.success = success
                     execution.status = 'completed' if success else 'failed'
+                    execution.success = success
                     execution.duration = duration
-                    execution.error_message = error_message
-                    execution.output_summary = output_summary
+                    execution.completed_at = datetime.utcnow()
+                    if output_summary:
+                        execution.output_summary = output_summary
+                    if error_message:
+                        execution.error_message = error_message
                     
-                    # Update the command config's related fields (last_run is handled by scheduler)
+                    # Also update the CommandConfig with last run information
                     command_config = session.query(CommandConfig).filter(
                         CommandConfig.command_name == execution.command_name
                     ).first()
-                    
                     if command_config:
-                        # Only update last_run if this wasn't triggered by scheduler
-                        # (scheduler handles last_run update separately)
-                        if execution.triggered_by != 'scheduler':
-                            command_config.last_run = execution.started_at
+                        command_config.last_run = datetime.utcnow()
                         command_config.last_success = success
                         command_config.last_duration = duration
-                        command_config.last_error = error_message
-                        command_config.updated_at = datetime.utcnow()
+                        if error_message:
+                            command_config.last_error = error_message
+                        else:
+                            command_config.last_error = None
                     
                     session.commit()
-                    
-                    # Broadcast command completed
-                    await self._broadcast_update(execution.command_name, {
-                        'status': 'completed',
-                        'execution_id': execution.id,
-                        'success': success,
-                        'duration': duration,
-                        'completed_at': completed_at.isoformat() + 'Z',
-                        'error_message': error_message
-                    })
             finally:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to update execution record: {e}")
     
-    async def get_command_status(self, command_name: str) -> Dict[str, Any]:
-        """Get current status of a command"""
-        self._ensure_initialized()
-        is_running = command_name in self.running_commands
-        
-        # Get latest execution record
+    async def cleanup_stuck_executions(self, max_duration_hours: int = 2):
+        """Clean up executions that have been running too long"""
         try:
             db_manager = get_database_manager()
             session = db_manager.get_session_sync()
             try:
-                latest_execution = session.query(CommandExecution).filter(
-                    CommandExecution.command_name == command_name
-                ).order_by(CommandExecution.started_at.desc()).first()
+                from datetime import datetime, timedelta
+                cutoff_time = datetime.utcnow() - timedelta(hours=max_duration_hours)
                 
-                if latest_execution:
-                    return {
-                        'command_name': command_name,
-                        'is_running': is_running,
-                        'last_execution': {
-                            'id': latest_execution.id,
-                            'started_at': latest_execution.started_at.isoformat() + 'Z',
-                            'completed_at': latest_execution.completed_at.isoformat() + 'Z' if latest_execution.completed_at else None,
-                            'success': latest_execution.success,
-                            'duration': latest_execution.duration,
-                            'error_message': latest_execution.error_message
-                        }
-                    }
-                else:
-                    return {
-                        'command_name': command_name,
-                        'is_running': is_running,
-                        'last_execution': None
-                    }
+                stuck_executions = session.query(CommandExecution).filter(
+                    CommandExecution.is_running == True,
+                    CommandExecution.started_at < cutoff_time
+                ).all()
+                
+                for execution in stuck_executions:
+                    execution.status = 'failed'
+                    execution.success = False
+                    execution.completed_at = datetime.utcnow()
+                    execution.error_message = f"Execution stuck for more than {max_duration_hours} hours"
+                
+                if stuck_executions:
+                    session.commit()
+                    self.logger.info(f"Cleaned up {len(stuck_executions)} stuck executions")
             finally:
                 session.close()
         except Exception as e:
-            self.logger.error(f"Failed to get command status: {e}")
-            return {
-                'command_name': command_name,
-                'is_running': is_running,
-                'error': str(e)
-            }
-    
-    async def get_all_command_status(self) -> Dict[str, Any]:
-        """Get status of all commands"""
-        self._ensure_initialized()
-        status = {}
-        for command_name in self.command_classes.keys():
-            status[command_name] = await self.get_command_status(command_name)
-        return status
-    
-    def get_running_commands(self) -> list:
-        """Get list of currently running commands"""
-        return list(self.running_commands.keys())
-    
-    def get_command_class(self, command_name: str):
-        """Get command class for a given command name"""
-        self._ensure_initialized()
-        return self.command_classes.get(command_name)
-    
-    async def stop_command(self, command_name: str) -> bool:
-        """Stop a running command"""
-        self._ensure_initialized()
-        if command_name not in self.running_commands:
-            return False
-        
+            self.logger.error(f"Failed to cleanup stuck executions: {e}")
+    def _load_dynamic_playlist_sync_commands(self):
+        """Load dynamic playlist sync commands from database"""
         try:
-            task = self.running_commands[command_name]
-            task.cancel()
-            del self.running_commands[command_name]
-            self.logger.info(f"Stopped command: {command_name}")
-            return True
+            db_manager = get_database_manager()
+            session = db_manager.get_session_sync()
+            try:
+                # Get all playlist sync commands from database
+                playlist_sync_commands = session.query(CommandConfig).filter(
+                    CommandConfig.command_name.like('playlist_sync_%')
+                ).filter(
+                    CommandConfig.command_name != 'playlist_sync_discovery_maintenance'  # Exclude maintenance command
+                ).all()
+                
+                for command_config in playlist_sync_commands:
+                    command_name = command_config.command_name
+                    config_json = command_config.config_json or {}
+                    source = config_json.get('source', 'unknown')
+                    
+                    try:
+                        # Determine command class based on source
+                        if source == 'listenbrainz':
+                            from commands.playlist_sync_listenbrainz import PlaylistSyncListenBrainzCommand
+                            command_class = PlaylistSyncListenBrainzCommand
+                        else:
+                            # External sources (spotify, etc.)
+                            from commands.playlist_sync import PlaylistSyncCommand
+                            command_class = PlaylistSyncCommand
+                        
+                        # Create command instance
+                        command = command_class(self.config)
+                        command.config_json = config_json
+                        
+                        # Add to command classes
+                        self.command_classes[command_name] = command_class
+                        
+                        self.logger.debug(f"Loaded dynamic playlist sync command: {command_name} (source: {source})")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to load individual command {command_name}: {e}")
+                        import traceback
+                        self.logger.error(f"Traceback: {traceback.format_exc()}")
+                        continue
+                    
+            finally:
+                session.close()
+                
         except Exception as e:
-            self.logger.error(f"Failed to stop command {command_name}: {e}")
-            return False
-    
-    async def _broadcast_update(self, command_name: str, data: Dict[str, Any]):
-        """Broadcast command update via WebSocket"""
-        try:
-            from app.websocket import manager
-            await manager.broadcast_command_update(command_name, data)
-        except Exception as e:
-            # Don't fail command execution if WebSocket fails
-            self.logger.warning(f"Failed to broadcast update for {command_name}: {e}")
+            self.logger.error(f"Failed to load dynamic playlist sync commands: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
 
-    def kill_execution(self, execution_id: int):
-        """Kill a running command execution"""
+    async def get_command_status(self, command_name: str) -> Dict[str, Any]:
+        """Get current status of a command"""
         try:
-            self._ensure_initialized()
+            # Check if command is currently running
+            is_running = command_name in self.running_commands
             
-            # Find the running command task
-            command_name = None
-            task_to_cancel = None
+            # Get last execution from database
+            last_execution = None
+            try:
+                db_manager = get_database_manager()
+                session = db_manager.get_session_sync()
+                try:
+                    execution = session.query(CommandExecution).filter(
+                        CommandExecution.command_name == command_name
+                    ).order_by(CommandExecution.started_at.desc()).first()
+                    
+                    if execution:
+                        last_execution = {
+                            "id": execution.id,
+                            "started_at": execution.started_at.isoformat() + 'Z',
+                            "completed_at": execution.completed_at.isoformat() + 'Z' if execution.completed_at else None,
+                            "success": execution.success,
+                            "status": execution.status,
+                            "duration": execution.duration,
+                            "error_message": execution.error_message,
+                            "triggered_by": execution.triggered_by,
+                            "is_running": execution.is_running
+                        }
+                finally:
+                    session.close()
+            except Exception as e:
+                self.logger.warning(f"Failed to get last execution for {command_name}: {e}")
             
-            for cmd_name, task in self.running_commands.items():
-                # Check if this task is for the execution we want to kill
-                if hasattr(task, 'execution_id') and task.execution_id == execution_id:
-                    command_name = cmd_name
-                    task_to_cancel = task
-                    break
+            return {
+                "is_running": is_running,
+                "last_execution": last_execution
+            }
             
-            if task_to_cancel and not task_to_cancel.done():
-                # Cancel the task
-                task_to_cancel.cancel()
-                self.logger.info(f"Cancelled task for execution {execution_id} ({command_name})")
-                
-                # Remove from running commands
-                if command_name in self.running_commands:
-                    del self.running_commands[command_name]
-                
-                return True
-            else:
-                self.logger.warning(f"No running task found for execution {execution_id}")
-                return False
-                
         except Exception as e:
-            self.logger.error(f"Failed to kill execution {execution_id}: {e}")
-            return False
+            self.logger.error(f"Failed to get command status for {command_name}: {e}")
+            return {
+                "is_running": False,
+                "last_execution": None
+            }
 
 
 # Global instance

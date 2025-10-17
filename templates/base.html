@@ -46,11 +46,6 @@
                     <a href="/" 
                        class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                        :class="{ 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20': $route === '/' }">
-                        Dashboard
-                    </a>
-                    <a href="/commands" 
-                       class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                       :class="{ 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20': $route === '/commands' }">
                         Commands
                     </a>
                     <a href="/import-lists" 
@@ -114,12 +109,6 @@
                     <a href="/" 
                        class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium transition-colors"
                        :class="{ 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20': $route === '/' }"
-                       @click="mobileMenuOpen = false">
-                        Dashboard
-                    </a>
-                    <a href="/commands" 
-                       class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium transition-colors"
-                       :class="{ 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20': $route === '/commands' }"
                        @click="mobileMenuOpen = false">
                         Commands
                     </a>
@@ -221,7 +210,6 @@
                 
                 // Initialize app
                 init() {
-                    console.log('Cmdarr app initialized');
                     this.setupEventListeners();
                     this.initializeDarkMode();
                 },
@@ -295,19 +283,15 @@
                     const savedMode = localStorage.getItem('cmdarr-dark-mode');
                     if (savedMode !== null) {
                         this.isDarkMode = savedMode === 'true';
-                        console.log('Loaded dark mode from localStorage:', this.isDarkMode);
                     } else {
                         // Default to dark mode (user can switch to light if desired)
                         this.isDarkMode = true;
-                        console.log('Using default dark mode preference');
                     }
                 },
                 
                 toggleDarkMode() {
-                    console.log('Toggling dark mode from', this.isDarkMode, 'to', !this.isDarkMode);
                     this.isDarkMode = !this.isDarkMode;
                     localStorage.setItem('cmdarr-dark-mode', this.isDarkMode.toString());
-                    console.log('Dark mode is now:', this.isDarkMode);
                 }
             }
         }

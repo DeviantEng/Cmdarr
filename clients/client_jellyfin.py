@@ -1200,6 +1200,7 @@ class JellyfinClient(BaseAPIClient):
             
             # Find tracks in Jellyfin
             found_tracks = []
+            unmatched_tracks = []
             self.logger.debug(f"Searching for {len(tracks)} tracks in Jellyfin library")
             for i, track in enumerate(tracks):
                 try:
@@ -1211,8 +1212,10 @@ class JellyfinClient(BaseAPIClient):
                         found_tracks.append(jellyfin_track)
                         self.logger.debug(f"Found track {i+1}: '{jellyfin_track['artist']}' - '{jellyfin_track['name']}'")
                     else:
+                        unmatched_tracks.append(f"{track['artist']} - {track_title}")
                         self.logger.debug(f"Track not found in Jellyfin: {track['artist']} - {track_title}")
                 except Exception as e:
+                    unmatched_tracks.append(f"{track.get('artist', 'Unknown')} - {track.get('track', track.get('title', 'Unknown'))}")
                     self.logger.error(f"Error searching for track {i+1}: {e}")
                     continue
             
@@ -1224,6 +1227,7 @@ class JellyfinClient(BaseAPIClient):
                     'action': 'skipped_empty',
                     'total_tracks': len(tracks),
                     'found_tracks': 0,
+                    'unmatched_tracks': unmatched_tracks,
                     'message': f"Skipped creating empty playlist '{title}'"
                 }
             
@@ -1242,6 +1246,7 @@ class JellyfinClient(BaseAPIClient):
                     'action': 'synced',
                     'total_tracks': len(tracks),
                     'found_tracks': len(found_tracks),
+                    'unmatched_tracks': unmatched_tracks,
                     'message': f"Successfully synced playlist '{title}' with {len(found_tracks)} tracks"
                 }
             else:
@@ -1250,6 +1255,7 @@ class JellyfinClient(BaseAPIClient):
                     'action': 'failed',
                     'total_tracks': len(tracks),
                     'found_tracks': len(found_tracks),
+                    'unmatched_tracks': unmatched_tracks,
                     'message': f"Failed to sync playlist '{title}'"
                 }
                 
@@ -1260,6 +1266,9 @@ class JellyfinClient(BaseAPIClient):
             return {
                 'success': False,
                 'action': 'failed',
+                'total_tracks': len(tracks),
+                'found_tracks': 0,
+                'unmatched_tracks': [f"{track.get('artist', 'Unknown')} - {track.get('track', track.get('title', 'Unknown'))}" for track in tracks],
                 'message': f"Failed to sync playlist '{title}': {str(e)}"
             }
     
