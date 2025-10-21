@@ -19,8 +19,8 @@ from utils.discovery import DiscoveryUtils, FilteringStats
 class DiscoveryLastfmCommand(BaseCommand):
     """Command to discover similar artists for Lidarr import using shared utilities"""
     
-    def __init__(self, config=None):
-        super().__init__(config)
+    def __init__(self, config=None, execution_id=None):
+        super().__init__(config, execution_id)
         self.lidarr = LidarrClient(self.config)
         self.lastfm = LastFMClient(self.config)
         self.musicbrainz = MusicBrainzClient(self.config) if self.config.MUSICBRAINZ_ENABLED else None

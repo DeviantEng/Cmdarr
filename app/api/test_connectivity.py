@@ -21,6 +21,7 @@ class ConnectivityTestResult(BaseModel):
     success: bool
     message: str
     error: str = None
+    status: str = "success"  # "success", "warning", "error"
 
 
 class ConnectivityTestResponse(BaseModel):
@@ -66,6 +67,9 @@ async def test_connectivity():
         # Calculate overall success
         overall_success = all(result.success for result in results)
         
+        # Sort results alphabetically by service name
+        results.sort(key=lambda x: x.service)
+        
         return ConnectivityTestResponse(
             results=results,
             overall_success=overall_success
@@ -88,29 +92,32 @@ async def _test_lidarr() -> ConnectivityTestResult:
                 service="Lidarr",
                 success=False,
                 message="Not configured",
-                error="Lidarr URL or API key not set"
+                error="Lidarr URL or API key not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_lidarr import LidarrClient
         config = ConfigAdapter()
-        client = LidarrClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with LidarrClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="Lidarr",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="Lidarr",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to Lidarr"
+                error="Unable to connect to Lidarr",
+                status="error"
             )
             
     except Exception as e:
@@ -118,7 +125,8 @@ async def _test_lidarr() -> ConnectivityTestResult:
             service="Lidarr",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
@@ -133,29 +141,32 @@ async def _test_lastfm() -> ConnectivityTestResult:
                 service="Last.fm",
                 success=False,
                 message="Not configured",
-                error="Last.fm API key not set"
+                error="Last.fm API key not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_lastfm import LastFMClient
         config = ConfigAdapter()
-        client = LastFMClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with LastFMClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="Last.fm",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="Last.fm",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to Last.fm"
+                error="Unable to connect to Last.fm",
+                status="error"
             )
             
     except Exception as e:
@@ -163,13 +174,25 @@ async def _test_lastfm() -> ConnectivityTestResult:
             service="Last.fm",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
 async def _test_plex() -> ConnectivityTestResult:
     """Test Plex connectivity"""
     try:
+        # Check if Plex client is enabled
+        plex_enabled = config_service.get('PLEX_CLIENT_ENABLED', False)
+        if not plex_enabled:
+            return ConnectivityTestResult(
+                service="Plex",
+                success=False,
+                message="Disabled",
+                error="Plex client is disabled",
+                status="warning"
+            )
+        
         # Check if Plex is configured
         plex_url = config_service.get('PLEX_URL')
         plex_token = config_service.get('PLEX_TOKEN')
@@ -179,29 +202,32 @@ async def _test_plex() -> ConnectivityTestResult:
                 service="Plex",
                 success=False,
                 message="Not configured",
-                error="Plex URL or token not set"
+                error="Plex URL or token not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_plex import PlexClient
         config = ConfigAdapter()
-        client = PlexClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with PlexClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="Plex",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="Plex",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to Plex"
+                error="Unable to connect to Plex",
+                status="error"
             )
             
     except Exception as e:
@@ -209,13 +235,25 @@ async def _test_plex() -> ConnectivityTestResult:
             service="Plex",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
 async def _test_jellyfin() -> ConnectivityTestResult:
     """Test Jellyfin connectivity"""
     try:
+        # Check if Jellyfin client is enabled
+        jellyfin_enabled = config_service.get('JELLYFIN_CLIENT_ENABLED', False)
+        if not jellyfin_enabled:
+            return ConnectivityTestResult(
+                service="Jellyfin",
+                success=False,
+                message="Disabled",
+                error="Jellyfin client is disabled",
+                status="warning"
+            )
+        
         # Check if Jellyfin is configured
         jellyfin_url = config_service.get('JELLYFIN_URL')
         jellyfin_token = config_service.get('JELLYFIN_TOKEN')
@@ -225,29 +263,32 @@ async def _test_jellyfin() -> ConnectivityTestResult:
                 service="Jellyfin",
                 success=False,
                 message="Not configured",
-                error="Jellyfin URL or token not set"
+                error="Jellyfin URL or token not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_jellyfin import JellyfinClient
         config = ConfigAdapter()
-        client = JellyfinClient(config)
         
-        # Use the existing test_connection method (JellyfinClient has sync test_connection)
+        # JellyfinClient has sync test_connection method
+        client = JellyfinClient(config)
         success = client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="Jellyfin",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="Jellyfin",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to Jellyfin"
+                error="Unable to connect to Jellyfin",
+                status="error"
             )
             
     except Exception as e:
@@ -255,7 +296,8 @@ async def _test_jellyfin() -> ConnectivityTestResult:
             service="Jellyfin",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
@@ -270,29 +312,32 @@ async def _test_listenbrainz() -> ConnectivityTestResult:
                 service="ListenBrainz",
                 success=False,
                 message="Not configured",
-                error="ListenBrainz token not set"
+                error="ListenBrainz token not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_listenbrainz import ListenBrainzClient
         config = ConfigAdapter()
-        client = ListenBrainzClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with ListenBrainzClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="ListenBrainz",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="ListenBrainz",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to ListenBrainz"
+                error="Unable to connect to ListenBrainz",
+                status="error"
             )
             
     except Exception as e:
@@ -300,7 +345,8 @@ async def _test_listenbrainz() -> ConnectivityTestResult:
             service="ListenBrainz",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
@@ -313,23 +359,25 @@ async def _test_musicbrainz() -> ConnectivityTestResult:
         # Test connection
         from clients.client_musicbrainz import MusicBrainzClient
         config = ConfigAdapter()
-        client = MusicBrainzClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with MusicBrainzClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="MusicBrainz",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="MusicBrainz",
                 success=False,
                 message="Connection failed",
-                error="Unable to connect to MusicBrainz"
+                error="Unable to connect to MusicBrainz",
+                status="error"
             )
             
     except Exception as e:
@@ -337,7 +385,8 @@ async def _test_musicbrainz() -> ConnectivityTestResult:
             service="MusicBrainz",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )
 
 
@@ -353,29 +402,32 @@ async def _test_spotify() -> ConnectivityTestResult:
                 service="Spotify",
                 success=False,
                 message="Not configured",
-                error="Spotify Client ID or Client Secret not set"
+                error="Spotify Client ID or Client Secret not set",
+                status="error"
             )
         
         # Test connection
         from clients.client_spotify import SpotifyClient
         config = ConfigAdapter()
-        client = SpotifyClient(config)
         
-        # Use the existing test_connection method
-        success = await client.test_connection()
+        async with SpotifyClient(config) as client:
+            # Use the existing test_connection method
+            success = await client.test_connection()
         
         if success:
             return ConnectivityTestResult(
                 service="Spotify",
                 success=True,
-                message="Connected successfully"
+                message="Connected successfully",
+                status="success"
             )
         else:
             return ConnectivityTestResult(
                 service="Spotify",
                 success=False,
                 message="Connection failed",
-                error="Unable to authenticate with Spotify API"
+                error="Unable to authenticate with Spotify API",
+                status="error"
             )
             
     except Exception as e:
@@ -383,5 +435,6 @@ async def _test_spotify() -> ConnectivityTestResult:
             service="Spotify",
             success=False,
             message="Test failed",
-            error=str(e)
+            error=str(e),
+            status="error"
         )

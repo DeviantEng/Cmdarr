@@ -19,12 +19,12 @@ from utils.library_cache_manager import get_library_cache_manager
 class PlaylistSyncCommand(BaseCommand):
     """Dynamic command for syncing playlists from external sources"""
     
-    def __init__(self, config=None):
+    def __init__(self, config=None, execution_id=None):
         # Initialize config_json to empty dict to prevent null reference errors
         # This must be done BEFORE calling super().__init__() because get_logger_name() needs it
         self.config_json = {}
         
-        super().__init__(config)
+        super().__init__(config, execution_id)
         
         # Source client will be initialized based on config
         self.source_client = None
@@ -53,17 +53,17 @@ class PlaylistSyncCommand(BaseCommand):
         
         # Initialize source client
         if source == 'spotify':
-            self.source_client = SpotifyClient(self.config)
+            self.source_client = SpotifyClient(self.config, execution_id=self.execution_id)
         else:
             raise ValueError(f"Unsupported playlist source: {source}")
         
         # Initialize target client
         target = target.lower()
         if target == 'plex':
-            self.target_client = PlexClient(self.config)
+            self.target_client = PlexClient(self.config, execution_id=self.execution_id)
             self.target_name = 'Plex'
         elif target == 'jellyfin':
-            self.target_client = JellyfinClient(self.config)
+            self.target_client = JellyfinClient(self.config, execution_id=self.execution_id)
             self.target_name = 'Jellyfin'
         else:
             raise ValueError(f"Unsupported playlist target: {target}")

@@ -55,7 +55,7 @@ def init_default_commands():
             'command_name': 'playlist_sync_discovery_maintenance',
             'display_name': 'Playlist Sync Discovery Maintenance',
             'description': 'Maintains the unified discovery import list by removing stale entries',
-            'enabled': True,
+            'enabled': False,
             'schedule_hours': 24,
             'timeout_minutes': 30,
             'command_type': 'discovery',

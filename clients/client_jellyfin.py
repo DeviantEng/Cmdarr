@@ -17,7 +17,7 @@ from utils.cache_client import create_cache_client
 class JellyfinClient(BaseAPIClient):
     """Client for Jellyfin Media Server operations"""
     
-    def __init__(self, config):
+    def __init__(self, config, execution_id=None):
         jellyfin_url = config.get('JELLYFIN_URL', 'http://localhost:8096')
         
         super().__init__(
@@ -28,7 +28,8 @@ class JellyfinClient(BaseAPIClient):
             headers={
                 'X-Emby-Token': config.get('JELLYFIN_TOKEN', ''),
                 'Content-Type': 'application/json'
-            }
+            },
+            execution_id=execution_id
         )
         
         self.logger.debug(f"JellyfinClient init - JELLYFIN_URL from config: {jellyfin_url}")
@@ -1206,14 +1207,14 @@ class JellyfinClient(BaseAPIClient):
                 try:
                     # ListenBrainz uses 'track' key for track title, not 'title'
                     track_title = track.get('track', track.get('title', 'Unknown Title'))
-                    self.logger.debug(f"Searching track {i+1}/{len(tracks)}: '{track['artist']}' - '{track_title}'")
+                    self.logger.info(f"[{i+1}/{len(tracks)}] Searching: '{track['artist']}' - '{track_title}'")
                     jellyfin_track = self.find_track_by_artist_and_title_sync(track['artist'], track_title)
                     if jellyfin_track:
                         found_tracks.append(jellyfin_track)
-                        self.logger.debug(f"Found track {i+1}: '{jellyfin_track['artist']}' - '{jellyfin_track['name']}'")
+                        self.logger.info(f"[{i+1}/{len(tracks)}] ✅ '{jellyfin_track['artist']}' - '{jellyfin_track['name']}'")
                     else:
                         unmatched_tracks.append(f"{track['artist']} - {track_title}")
-                        self.logger.debug(f"Track not found in Jellyfin: {track['artist']} - {track_title}")
+                        self.logger.info(f"[{i+1}/{len(tracks)}] ❌ '{track['artist']}' - '{track_title}'")
                 except Exception as e:
                     unmatched_tracks.append(f"{track.get('artist', 'Unknown')} - {track.get('track', track.get('title', 'Unknown'))}")
                     self.logger.error(f"Error searching for track {i+1}: {e}")

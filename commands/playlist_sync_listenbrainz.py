@@ -20,11 +20,11 @@ from utils.library_cache_manager import get_library_cache_manager
 class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
     """ListenBrainz-specific playlist sync extending base PlaylistSyncCommand"""
     
-    def __init__(self, config=None):
+    def __init__(self, config=None, execution_id=None):
         # Initialize config_json to empty dict to prevent null reference errors
         self.config_json = {}
         
-        super().__init__(config)
+        super().__init__(config, execution_id)
         
         # ListenBrainz-specific client
         self.listenbrainz_client = ListenBrainzClient(self.config)

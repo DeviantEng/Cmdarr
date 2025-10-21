@@ -173,6 +173,10 @@ class CmdarrLogger:
         # Set aiohttp access logger to propagate so filters work
         aiohttp_access_logger.propagate = True
         
+        # Configure urllib3 logging to reduce verbosity and hide sensitive info
+        urllib3_logger = logging.getLogger('urllib3.connectionpool')
+        urllib3_logger.setLevel(logging.WARNING)  # Only show warnings and errors, not INFO requests
+        
         # Clean up old log files
         cls._cleanup_old_logs(config)
         

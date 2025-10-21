@@ -493,7 +493,7 @@ class LibraryCacheManager:
             self.client_stats[client_type]['cache_hits'] / max(1, total_requests)
         )
         
-        self.logger.info(f"Cache hit recorded for '{client_type}': {self.client_stats[client_type]['cache_hits']} hits")
+        self.logger.debug(f"Cache hit recorded for '{client_type}': {self.client_stats[client_type]['cache_hits']} hits")
     
     def record_cache_miss(self, client_type: str) -> None:
         """Record a cache miss for a specific client"""
@@ -515,7 +515,7 @@ class LibraryCacheManager:
             self.client_stats[client_type]['cache_hits'] / max(1, total_requests)
         )
         
-        self.logger.info(f"Cache miss recorded for '{client_type}': {self.client_stats[client_type]['cache_misses']} misses")
+        self.logger.debug(f"Cache miss recorded for '{client_type}': {self.client_stats[client_type]['cache_misses']} misses")
     
     def get_client_stats(self, client_type: str) -> Dict[str, Any]:
         """Get cache statistics for a specific client"""

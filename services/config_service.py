@@ -71,12 +71,14 @@ class ConfigService:
             {'key': 'MUSICBRAINZ_CONTACT', 'default_value': 'your-email@example.com', 'data_type': 'string', 'category': 'musicbrainz', 'description': 'Contact email (required by MusicBrainz API)'},
             
             # Plex Configuration
+            {'key': 'PLEX_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable Plex client functionality'},
             {'key': 'PLEX_URL', 'default_value': 'http://localhost:32400', 'data_type': 'string', 'category': 'plex', 'description': 'Plex Media Server URL'},
             {'key': 'PLEX_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex authentication token', 'is_sensitive': True},
             {'key': 'PLEX_TIMEOUT', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds'},
             {'key': 'PLEX_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Ignore TLS certificate verification'},
             
             # Jellyfin Configuration
+            {'key': 'JELLYFIN_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Enable Jellyfin client functionality'},
             {'key': 'JELLYFIN_URL', 'default_value': 'http://localhost:8096', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin Media Server URL'},
             {'key': 'JELLYFIN_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin authentication token', 'is_sensitive': True},
             {'key': 'JELLYFIN_USER_ID', 'default_value': '', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin user ID'},
@@ -93,6 +95,7 @@ class ConfigService:
             
             # Command Configuration
             {'key': 'COMMAND_CLEANUP_RETENTION', 'default_value': '50', 'data_type': 'int', 'category': 'commands', 'description': 'Number of command executions to keep per command'},
+            {'key': 'MAX_PARALLEL_COMMANDS', 'default_value': '3', 'data_type': 'int', 'category': 'commands', 'description': 'Maximum number of commands that can run in parallel', 'min_value': 1, 'max_value': 10},
             
             
             # Cache Configuration
@@ -110,10 +113,10 @@ class ConfigService:
             {'key': 'LIBRARY_CACHE_SCHEDULE_HOURS', 'default_value': '24', 'data_type': 'int', 'category': 'cache', 'description': 'Library cache building schedule (hours)'},
             
             # Library Cache Target Configuration (default disabled)
-            {'key': 'LIBRARY_CACHE_PLEX_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'cache', 'description': 'Enable library cache building for Plex'},
-            {'key': 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'cache', 'description': 'Plex library cache TTL (days)'},
-            {'key': 'LIBRARY_CACHE_JELLYFIN_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'cache', 'description': 'Enable library cache building for Jellyfin'},
-            {'key': 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'cache', 'description': 'Jellyfin library cache TTL (days)'},
+            {'key': 'LIBRARY_CACHE_PLEX_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable library cache building for Plex'},
+            {'key': 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Plex library cache TTL (days)'},
+            {'key': 'LIBRARY_CACHE_JELLYFIN_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Enable library cache building for Jellyfin'},
+            {'key': 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'jellyfin', 'description': 'Jellyfin library cache TTL (days)'},
             
             # Playlist Sync Configuration
             # Note: Target configuration is handled at the command level
@@ -278,6 +281,26 @@ class ConfigService:
             self.logger.error(f"Failed to validate required settings: {e}")
         
         return missing
+    
+    def validate_client_dependencies(self) -> List[str]:
+        """Validate that client-dependent settings are properly configured"""
+        warnings = []
+        
+        # Check Plex library cache dependency
+        plex_client_enabled = self.get('PLEX_CLIENT_ENABLED', False)
+        plex_cache_enabled = self.get('LIBRARY_CACHE_PLEX_ENABLED', False)
+        
+        if plex_cache_enabled and not plex_client_enabled:
+            warnings.append("LIBRARY_CACHE_PLEX_ENABLED is enabled but PLEX_CLIENT_ENABLED is disabled")
+        
+        # Check Jellyfin library cache dependency
+        jellyfin_client_enabled = self.get('JELLYFIN_CLIENT_ENABLED', False)
+        jellyfin_cache_enabled = self.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
+        
+        if jellyfin_cache_enabled and not jellyfin_client_enabled:
+            warnings.append("LIBRARY_CACHE_JELLYFIN_ENABLED is enabled but JELLYFIN_CLIENT_ENABLED is disabled")
+        
+        return warnings
     
     def _get_data_type(self, key: str) -> str:
         """Get data type for a configuration key"""

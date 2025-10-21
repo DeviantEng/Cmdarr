@@ -268,12 +268,86 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
         up_func=add_command_type_column
     ))
     
+    # Migration 6: Remove obsolete commands from v0.1.4
+    def remove_obsolete_commands_v021(cursor):
+        """Remove obsolete commands that existed in v0.1.4 but are no longer used"""
+        obsolete_commands = [
+            'playlist_sync_listenbrainz_curated',
+            'discovery_listenbrainz'
+        ]
+        
+        for command_name in obsolete_commands:
+            # Remove command executions first (foreign key constraint)
+            cursor.execute("DELETE FROM command_executions WHERE command_name = ?", (command_name,))
+            logger.info(f"Removed executions for obsolete command: {command_name}")
+            
+            # Remove command configuration
+            cursor.execute("DELETE FROM command_configs WHERE command_name = ?", (command_name,))
+            logger.info(f"Removed obsolete command configuration: {command_name}")
+        
+        logger.info("Removed obsolete commands from v0.1.4")
+    
+    # Use current app version for v0.2.1 migrations
+    BASE_VERSION_0_2_1 = "0.2.1"
+    
+    runner.add_migration(Migration(
+        name="remove_obsolete_commands_v021",
+        version=get_migration_version(1, BASE_VERSION_0_2_1),
+        description="Remove obsolete commands from v0.1.4 (playlist_sync_listenbrainz_curated, discovery_listenbrainz)",
+        up_func=remove_obsolete_commands_v021
+    ))
+    
+    # Migration 2: Add new configuration settings for v0.2.1
+    def add_v021_config_settings(cursor):
+        """Add new configuration settings introduced in v0.2.1"""
+        new_settings = [
+            ('PLEX_CLIENT_ENABLED', 'false', 'bool', 'plex', 'Enable Plex client functionality'),
+            ('JELLYFIN_CLIENT_ENABLED', 'false', 'bool', 'jellyfin', 'Enable Jellyfin client functionality'),
+            ('MAX_PARALLEL_COMMANDS', '3', 'int', 'commands', 'Maximum number of commands that can run in parallel')
+        ]
+        
+        for key, default_value, data_type, category, description in new_settings:
+            # Check if setting already exists
+            cursor.execute("SELECT COUNT(*) FROM config_settings WHERE key = ?", (key,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO config_settings (key, value, data_type, category, description)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (key, default_value, data_type, category, description))
+                logger.info(f"Added new config setting: {key}")
+            else:
+                logger.info(f"Config setting {key} already exists")
+    
+    runner.add_migration(Migration(
+        name="add_v021_config_settings",
+        version=get_migration_version(2, BASE_VERSION_0_2_1),
+        description="Add new configuration settings for v0.2.1 (PLEX_CLIENT_ENABLED, JELLYFIN_CLIENT_ENABLED, MAX_PARALLEL_COMMANDS)",
+        up_func=add_v021_config_settings
+    ))
+    
+    # Migration 3: Disable playlist_sync_discovery_maintenance by default
+    def disable_discovery_maintenance_default(cursor):
+        """Disable playlist_sync_discovery_maintenance command by default in v0.2.1"""
+        cursor.execute("""
+            UPDATE command_configs 
+            SET enabled = 0 
+            WHERE command_name = 'playlist_sync_discovery_maintenance'
+        """)
+        logger.info("Disabled playlist_sync_discovery_maintenance command by default")
+    
+    runner.add_migration(Migration(
+        name="disable_discovery_maintenance_default",
+        version=get_migration_version(3, BASE_VERSION_0_2_1),
+        description="Disable playlist_sync_discovery_maintenance command by default",
+        up_func=disable_discovery_maintenance_default
+    ))
+    
     # Future migrations for new app versions should use current app_version
-    # Example for when you bump to 0.2.0:
+    # Example for when you bump to 0.3.0:
     # runner.add_migration(Migration(
     #     name="your_new_migration",
-    #     version=get_migration_version(1),  # Uses current app_version (0.2.0) -> 0.2.0.1
-    #     description="Your new migration for v0.2.0",
+    #     version=get_migration_version(1),  # Uses current app_version (0.3.0) -> 0.3.0.1
+    #     description="Your new migration for v0.3.0",
     #     up_func=your_migration_function
     # ))
     

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-01-21
+
+### 🚀 New Features
+- **Live Log Streaming**: Real-time command execution monitoring in the UI with execution ID tracking for concurrent commands
+- **Client Enablement Controls**: Added `PLEX_CLIENT_ENABLED` and `JELLYFIN_CLIENT_ENABLED` configuration options for granular service management
+- **Parallel Command Limits**: Configurable maximum of 3 commands running simultaneously (range: 1-10) to prevent system overload
+
+### 🔧 Fixes and Improvements
+- **ListenBrainz Modal Parity**: Fixed create/edit modal inconsistencies for ListenBrainz playlist sync commands with proper retention settings and playlist type configuration
+- **Enhanced Configuration Organization**: Moved Plex/Jellyfin cache settings to their respective client categories for better organization
+
 ## [0.2.0] - 2025-10-17
 
 ### 🎵 Major Playlist Sync Overhaul

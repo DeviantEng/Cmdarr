@@ -26,6 +26,7 @@ class CommandExecutor:
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cmdarr-cmd")
         self.running_commands: Dict[str, asyncio.Task] = {}
         self.command_classes = None
+        self.max_parallel_commands = 3  # Default, will be updated from config
     
     def _ensure_initialized(self):
         """Lazy initialization to avoid circular imports"""
@@ -34,6 +35,10 @@ class CommandExecutor:
         if self.config is None:
             from commands.config_adapter import Config
             self.config = Config()
+            
+        # Update max parallel commands from config
+        from services.config_service import config_service
+        self.max_parallel_commands = config_service.get_int('MAX_PARALLEL_COMMANDS', 3)
         
         # Import command classes
         from commands.discovery_lastfm import DiscoveryLastfmCommand
@@ -75,6 +80,14 @@ class CommandExecutor:
             Dictionary with execution result
         """
         self._ensure_initialized()
+        
+        # Check parallel command limit
+        if len(self.running_commands) >= self.max_parallel_commands:
+            return {
+                'success': False,
+                'error': f'Maximum parallel commands limit reached ({self.max_parallel_commands}). Please wait for other commands to complete.',
+                'execution_id': None
+            }
         
         # Check in-memory running commands
         if command_name in self.running_commands:
@@ -192,6 +205,10 @@ class CommandExecutor:
         try:
             self.logger.info(f"Starting command execution: {command_name} (ID: {execution_id})")
             
+            # Start log streaming for this command
+            from app.websocket import manager as ws_manager
+            await ws_manager.start_log_streaming(command_name, str(execution_id))
+            
             # Get command class
             if command_name not in self.command_classes:
                 raise ValueError(f"Unknown command: {command_name}")
@@ -225,8 +242,8 @@ class CommandExecutor:
                     for key, value in command_config.config_json.items():
                         setattr(config, f'COMMAND_{command_name.upper()}_{key.upper()}', value)
                 
-                # Create command instance
-                command = command_class(config)
+                # Create command instance with execution ID
+                command = command_class(config, execution_id)
                 
                 # Pass command-specific configuration to the command
                 if command_config and command_config.config_json:
@@ -276,6 +293,10 @@ class CommandExecutor:
             )
         
         finally:
+            # Stop log streaming for this command
+            from app.websocket import manager as ws_manager
+            await ws_manager.stop_log_streaming(command_name)
+            
             # Remove from running commands
             if command_name in self.running_commands:
                 del self.running_commands[command_name]
