@@ -544,6 +544,7 @@ async def validate_playlist_url(url: str):
     try:
         from utils.playlist_parser import parse_playlist_url
         from clients.client_spotify import SpotifyClient
+        from clients.client_deezer import DeezerClient
         from commands.config_adapter import Config
         
         # Parse URL
@@ -553,14 +554,15 @@ async def validate_playlist_url(url: str):
             return {
                 "valid": False,
                 "error": parsed['error'],
-                "supported_sources": ["spotify"],
+                "supported_sources": ["spotify", "deezer"],
                 "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF"
             }
         
         # Fetch metadata from source
         source = parsed['source']
+        config = Config()
+        
         if source == 'spotify':
-            config = Config()
             spotify_client = SpotifyClient(config)
             try:
                 metadata = await spotify_client.get_playlist_info(url)
@@ -584,6 +586,30 @@ async def validate_playlist_url(url: str):
                     }
             finally:
                 await spotify_client.close()
+        elif source == 'deezer':
+            deezer_client = DeezerClient(config)
+            try:
+                metadata = await deezer_client.get_playlist_info(url)
+                
+                if metadata.get('success'):
+                    return {
+                        "valid": True,
+                        "source": source,
+                        "playlist_id": parsed['playlist_id'],
+                        "metadata": {
+                            "name": metadata['name'],
+                            "description": metadata['description'],
+                            "track_count": metadata['track_count'],
+                            "owner": metadata['owner']
+                        }
+                    }
+                else:
+                    return {
+                        "valid": False,
+                        "error": metadata.get('error', 'Failed to fetch playlist metadata')
+                    }
+            finally:
+                await deezer_client.close()
         else:
             return {
                 "valid": False,
@@ -618,10 +644,11 @@ async def create_playlist_sync(request: dict, db: Session = Depends(get_db)):
 
 
 async def create_external_playlist_sync(request: dict, db: Session = Depends(get_db)):
-    """Create a new external playlist sync command (Spotify, etc.)"""
+    """Create a new external playlist sync command (Spotify, Deezer, etc.)"""
     try:
         from utils.playlist_parser import parse_playlist_url
         from clients.client_spotify import SpotifyClient
+        from clients.client_deezer import DeezerClient
         from commands.config_adapter import Config
         from database.models import CommandConfig
         
@@ -645,8 +672,9 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             raise HTTPException(status_code=400, detail=parsed['error'])
         
         source = parsed['source']
+        config = Config()
+        
         if source == 'spotify':
-            config = Config()
             spotify_client = SpotifyClient(config)
             try:
                 metadata = await spotify_client.get_playlist_info(playlist_url)
@@ -665,6 +693,25 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                     raise HTTPException(status_code=400, detail='Playlist name not found in metadata')
             finally:
                 await spotify_client.close()
+        elif source == 'deezer':
+            deezer_client = DeezerClient(config)
+            try:
+                metadata = await deezer_client.get_playlist_info(playlist_url)
+                
+                logger.info(f"Deezer metadata response: {metadata}")
+                
+                if not metadata or not isinstance(metadata, dict):
+                    raise HTTPException(status_code=400, detail='Invalid metadata response from Deezer')
+                
+                if not metadata.get('success'):
+                    error_msg = metadata.get('error', 'Failed to fetch playlist') if metadata else 'No metadata received'
+                    raise HTTPException(status_code=400, detail=error_msg)
+                
+                playlist_name = metadata.get('name')
+                if not playlist_name:
+                    raise HTTPException(status_code=400, detail='Playlist name not found in metadata')
+            finally:
+                await deezer_client.close()
         else:
             raise HTTPException(status_code=400, detail=f"Source {source} not yet supported")
         
@@ -963,6 +1010,14 @@ async def get_playlist_sync_sources():
                 "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
                 "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
                 "config_help": "Add Spotify Client ID and Secret in Settings"
+            },
+            {
+                "id": "deezer",
+                "name": "Deezer",
+                "requires_url": True,
+                "example_url": "https://www.deezer.com/en/playlist/1479458365",
+                "configured": True,  # Deezer doesn't require authentication for public playlists
+                "config_help": "Deezer public playlists work without configuration"
             }
         ]
         

@@ -11,6 +11,7 @@ from typing import Dict, List, Any, Optional
 
 from .command_base import BaseCommand
 from clients.client_spotify import SpotifyClient
+from clients.client_deezer import DeezerClient
 from clients.client_plex import PlexClient
 from clients.client_jellyfin import JellyfinClient
 from utils.library_cache_manager import get_library_cache_manager
@@ -54,6 +55,8 @@ class PlaylistSyncCommand(BaseCommand):
         # Initialize source client
         if source == 'spotify':
             self.source_client = SpotifyClient(self.config, execution_id=self.execution_id)
+        elif source == 'deezer':
+            self.source_client = DeezerClient(self.config, execution_id=self.execution_id)
         else:
             raise ValueError(f"Unsupported playlist source: {source}")
         
@@ -107,7 +110,10 @@ class PlaylistSyncCommand(BaseCommand):
             
             # Fetch tracks from source
             self.logger.info("Fetching tracks from source playlist...")
-            tracks_result = await self.source_client.get_playlist_tracks(playlist_url)
+            
+            # Use source client as context manager for proper session cleanup
+            async with self.source_client as client:
+                tracks_result = await client.get_playlist_tracks(playlist_url)
             
             if not tracks_result.get('success'):
                 error_msg = tracks_result.get('error', 'Unknown error')
@@ -214,9 +220,8 @@ class PlaylistSyncCommand(BaseCommand):
     async def _close_clients(self):
         """Close HTTP sessions for clients"""
         try:
-            if hasattr(self, 'source_client') and self.source_client:
-                if hasattr(self.source_client, 'close'):
-                    await self.source_client.close()
+            # Source client is now managed as context manager, so no manual cleanup needed
+            # Target client cleanup is still needed for Plex/Jellyfin
             if hasattr(self, 'target_client') and self.target_client:
                 if hasattr(self.target_client, 'close'):
                     await self.target_client.close()

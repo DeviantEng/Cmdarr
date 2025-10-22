@@ -45,16 +45,17 @@ def parse_playlist_url(url: str) -> Dict[str, any]:
             'error': None
         }
     
-    # Deezer pattern (future): deezer.com/*/playlist/{id}
+    # Deezer pattern: deezer.com/*/playlist/{id}
     deezer_pattern = r'deezer\.com/.+/playlist/([0-9]+)'
     deezer_match = re.search(deezer_pattern, url)
     
     if deezer_match:
+        playlist_id = deezer_match.group(1)
         return {
             'source': 'deezer',
-            'playlist_id': deezer_match.group(1),
-            'valid': False,  # Not supported yet
-            'error': 'Deezer playlists are not yet supported. Coming soon!'
+            'playlist_id': playlist_id,
+            'valid': True,
+            'error': None
         }
     
     # Unknown/unsupported URL
@@ -62,7 +63,7 @@ def parse_playlist_url(url: str) -> Dict[str, any]:
         'source': 'unknown',
         'playlist_id': None,
         'valid': False,
-        'error': 'Unsupported playlist URL. Currently only Spotify playlists are supported.'
+        'error': 'Unsupported playlist URL. Currently only Spotify and Deezer playlists are supported.'
     }
 
 
@@ -73,7 +74,7 @@ def get_supported_sources() -> list:
     Returns:
         List of supported source identifiers
     """
-    return ['spotify']
+    return ['spotify', 'deezer']
 
 
 def get_example_url(source: str) -> Optional[str]:
