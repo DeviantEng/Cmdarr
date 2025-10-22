@@ -205,10 +205,6 @@ class CommandExecutor:
         try:
             self.logger.info(f"Starting command execution: {command_name} (ID: {execution_id})")
             
-            # Start log streaming for this command
-            from app.websocket import manager as ws_manager
-            await ws_manager.start_log_streaming(command_name, str(execution_id))
-            
             # Get command class
             if command_name not in self.command_classes:
                 raise ValueError(f"Unknown command: {command_name}")
@@ -293,10 +289,6 @@ class CommandExecutor:
             )
         
         finally:
-            # Stop log streaming for this command
-            from app.websocket import manager as ws_manager
-            await ws_manager.stop_log_streaming(command_name)
-            
             # Remove from running commands
             if command_name in self.running_commands:
                 del self.running_commands[command_name]
