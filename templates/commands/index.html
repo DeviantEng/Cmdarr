@@ -713,26 +713,29 @@
                                     </div>
                                     
                                     <div class="mt-3">
-                                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Playlists</label>
+                                        <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Playlist Types</label>
                                         <div class="space-y-2">
                                             <div class="flex items-center">
                                                 <input type="checkbox" 
                                                        id="config_weekly_exploration"
-                                                       x-model="editingCommand.config_json.weekly_exploration"
+                                                       :checked="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('weekly_exploration')"
+                                                       @change="togglePlaylistType('weekly_exploration')"
                                                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
                                                 <label for="config_weekly_exploration" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Exploration</label>
                                             </div>
                                             <div class="flex items-center">
                                                 <input type="checkbox" 
                                                        id="config_weekly_jams"
-                                                       x-model="editingCommand.config_json.weekly_jams"
+                                                       :checked="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('weekly_jams')"
+                                                       @change="togglePlaylistType('weekly_jams')"
                                                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
                                                 <label for="config_weekly_jams" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Weekly Jams</label>
                                             </div>
                                             <div class="flex items-center">
                                                 <input type="checkbox" 
                                                        id="config_daily_jams"
-                                                       x-model="editingCommand.config_json.daily_jams"
+                                                       :checked="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('daily_jams')"
+                                                       @change="togglePlaylistType('daily_jams')"
                                                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
                                                 <label for="config_daily_jams" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Daily Jams</label>
                                             </div>
@@ -740,22 +743,35 @@
                                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select which ListenBrainz playlists to sync</p>
                                     </div>
 
+                                    <!-- Sync Mode -->
                                     <div class="mt-3">
-                                        <label for="config_playlist_cleanup" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Playlist Cleanup</label>
-                                        <select id="config_playlist_cleanup"
-                                                x-model="editingCommand.config_json.playlist_cleanup"
+                                        <label for="config_sync_mode" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Sync Mode</label>
+                                        <select id="config_sync_mode"
+                                                x-model="editingCommand.config_json.sync_mode"
                                                 class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                                            <option value="true">True</option>
-                                            <option value="false">False</option>
+                                            <option value="full">Full Sync - Match playlist exactly (delete & recreate)</option>
+                                            <option value="additive">Additive Only - Only add new tracks, never remove existing</option>
                                         </select>
-                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Enable automatic cleanup of old playlists</p>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Full sync ensures the target playlist matches the source exactly. Additive mode only adds new tracks.</p>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" 
+                                                   x-model="editingCommand.config_json.cleanup_enabled"
+                                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                                Enable playlist cleanup (delete old playlists)
+                                            </span>
+                                        </label>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">When enabled, old playlists will be automatically deleted based on retention settings</p>
                                     </div>
 
                                     <!-- Retention Settings (shown when cleanup is enabled) -->
-                                    <div x-show="editingCommand.config_json.playlist_cleanup === true || editingCommand.config_json.playlist_cleanup === 'true'" class="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                    <div x-show="editingCommand.config_json.cleanup_enabled" class="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                                         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Playlist Retention</h4>
                                         <div class="space-y-3">
-                                            <div x-show="editingCommand.config_json.weekly_exploration === true || editingCommand.config_json.weekly_exploration === 'true'">
+                                            <div x-show="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('weekly_exploration')">
                                                 <label for="config_weekly_exploration_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Weekly Exploration Keep</label>
                                                 <input type="number" 
                                                        id="config_weekly_exploration_keep"
@@ -765,7 +781,7 @@
                                                        class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Weekly Exploration playlists to keep</p>
                                             </div>
-                                            <div x-show="editingCommand.config_json.weekly_jams === true || editingCommand.config_json.weekly_jams === 'true'">
+                                            <div x-show="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('weekly_jams')">
                                                 <label for="config_weekly_jams_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Weekly Jams Keep</label>
                                                 <input type="number" 
                                                        id="config_weekly_jams_keep"
@@ -775,7 +791,7 @@
                                                        class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Weekly Jams playlists to keep</p>
                                             </div>
-                                            <div x-show="editingCommand.config_json.daily_jams === true || editingCommand.config_json.daily_jams === 'true'">
+                                            <div x-show="editingCommand.config_json.playlist_types && editingCommand.config_json.playlist_types.includes('daily_jams')">
                                                 <label for="config_daily_jams_keep" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Daily Jams Keep</label>
                                                 <input type="number" 
                                                        id="config_daily_jams_keep"
@@ -786,6 +802,21 @@
                                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of Daily Jams playlists to keep</p>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <!-- Artist Discovery -->
+                                    <div class="mt-3">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" 
+                                                   x-model="editingCommand.config_json.enable_artist_discovery"
+                                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                                Enable Playlist Sync Discovery
+                                            </span>
+                                        </label>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            When enabled, artists from unmatched tracks will be added to Lidarr's discovery list via the Playlist Sync Discovery command. This works alongside the existing Last.fm Discovery command.
+                                        </p>
                                     </div>
                                 </div>
 
@@ -1120,13 +1151,13 @@ function commandManager() {
                         similar_count: 1,
                         min_match_score: 0.0,
                         target: 'plex',
-                        weekly_exploration: false,
-                        weekly_jams: false,
-                        daily_jams: false,
-                        playlist_cleanup: false,
+                        playlist_types: ['weekly_exploration'],
+                        sync_mode: 'full',
+                        cleanup_enabled: true,
                         weekly_exploration_keep: 2,
                         weekly_jams_keep: 2,
-                        daily_jams_keep: 3
+                        daily_jams_keep: 3,
+                        enable_artist_discovery: false
                     }
                 },
                 websocket: null,
@@ -1532,6 +1563,7 @@ The command executed without errors and completed its intended operation.`;
                 } else if (this.editingCommand?.command_name.startsWith('playlist_sync_') && this.editingCommand.config_json.source === 'listenbrainz') {
                     this.editingCommand.config_json.target = this.editingCommand.config_json.target || 'plex';
                     this.editingCommand.config_json.playlist_types = this.editingCommand.config_json.playlist_types || ['weekly_exploration'];
+                    this.editingCommand.config_json.sync_mode = this.editingCommand.config_json.sync_mode || 'full';
                     this.editingCommand.config_json.weekly_exploration_keep = this.editingCommand.config_json.weekly_exploration_keep || 2;
                     this.editingCommand.config_json.weekly_jams_keep = this.editingCommand.config_json.weekly_jams_keep || 2;
                     this.editingCommand.config_json.daily_jams_keep = this.editingCommand.config_json.daily_jams_keep || 3;
@@ -1553,6 +1585,31 @@ The command executed without errors and completed its intended operation.`;
             }
         },
         
+        togglePlaylistType(playlistType) {
+            try {
+                // Ensure playlist_types array exists
+                if (!this.editingCommand.config_json.playlist_types) {
+                    this.editingCommand.config_json.playlist_types = [];
+                }
+                
+                const index = this.editingCommand.config_json.playlist_types.indexOf(playlistType);
+                if (index > -1) {
+                    // Remove from array
+                    this.editingCommand.config_json.playlist_types.splice(index, 1);
+                } else {
+                    // Add to array
+                    this.editingCommand.config_json.playlist_types.push(playlistType);
+                }
+                
+                // Ensure at least one playlist type is selected
+                if (this.editingCommand.config_json.playlist_types.length === 0) {
+                    this.editingCommand.config_json.playlist_types = ['weekly_exploration'];
+                }
+            } catch (error) {
+                console.error('Error toggling playlist type:', error);
+            }
+        },
+        
         closeEditModal() {
             try {
                 this.showEditModal = false;
@@ -1565,13 +1622,13 @@ The command executed without errors and completed its intended operation.`;
                         similar_count: 1,
                         min_match_score: 0.0,
                         target: 'plex',
-                        weekly_exploration: false,
-                        weekly_jams: false,
-                        daily_jams: false,
-                        playlist_cleanup: false,
+                        playlist_types: ['weekly_exploration'],
+                        sync_mode: 'full',
+                        cleanup_enabled: true,
                         weekly_exploration_keep: 2,
                         weekly_jams_keep: 2,
-                        daily_jams_keep: 3
+                        daily_jams_keep: 3,
+                        enable_artist_discovery: false
                     }
                 };
             } catch (error) {
@@ -1634,13 +1691,13 @@ The command executed without errors and completed its intended operation.`;
                         similar_count: 1,
                         min_match_score: 0.0,
                         target: 'plex',
-                        weekly_exploration: false,
-                        weekly_jams: false,
-                        daily_jams: false,
-                        playlist_cleanup: false,
+                        playlist_types: ['weekly_exploration'],
+                        sync_mode: 'full',
+                        cleanup_enabled: true,
                         weekly_exploration_keep: 2,
                         weekly_jams_keep: 2,
-                        daily_jams_keep: 3
+                        daily_jams_keep: 3,
+                        enable_artist_discovery: false
                     }
                 };
                 this.showFlash('Command deleted successfully', 'success');

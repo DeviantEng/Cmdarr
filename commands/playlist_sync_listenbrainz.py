@@ -138,8 +138,11 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 await self._cleanup_old_playlists()
             
             # Universal artist discovery (if enabled)
-            if success and config.get('enable_artist_discovery', False):
+            if self.config_json.get('enable_artist_discovery', False):
+                self.logger.info("Artist discovery is enabled, proceeding with discovery...")
                 await self._discover_missing_artists(sync_results)
+            else:
+                self.logger.info("Artist discovery is disabled, skipping discovery...")
             
             # Determine overall success
             if success:
@@ -803,7 +806,13 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             
             config_key = config_key_map.get(playlist_type)
             if config_key and command_config and config_key in command_config:
-                retention_count = command_config.get(config_key, 3)
+                retention_count_raw = command_config.get(config_key, 3)
+                # Ensure retention_count is an integer (config values might be strings)
+                try:
+                    retention_count = int(retention_count_raw)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Invalid retention count '{retention_count_raw}' for {playlist_type}, using default 3")
+                    retention_count = 3
                 self.logger.info(f"Using command config {config_key}={retention_count} for {playlist_type}")
             else:
                 # Fallback to global config - this should not happen for playlist retention!
@@ -944,6 +953,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
         """Discover artists from unmatched tracks using existing discovery utilities"""
         try:
             self.logger.info("Starting universal artist discovery for unmatched tracks...")
+            self.logger.info(f"Sync results keys: {list(sync_results.keys())}")
             
             # Collect unmatched artists from all playlists
             unmatched_artists = set()
@@ -951,22 +961,31 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             matched_tracks = 0
             
             for playlist_key, result in sync_results.items():
+                self.logger.info(f"Processing playlist {playlist_key}: success={result.get('success', False)}")
                 if result['success']:
                     total_tracks += result['tracks_total']
                     matched_tracks += result['tracks_found']
                     
                     # Extract artists from actual unmatched tracks
                     unmatched_tracks = result.get('unmatched_tracks', [])
+                    self.logger.info(f"Playlist {playlist_key} has {len(unmatched_tracks)} unmatched tracks")
+                    
                     for track_string in unmatched_tracks:
                         if ' - ' in track_string:
                             artist, track_name = track_string.split(' - ', 1)
                             unmatched_artists.add(artist.strip())
+                            self.logger.info(f"Found unmatched artist: {artist.strip()}")
+                        else:
+                            self.logger.warning(f"Unmatched track string doesn't contain ' - ': {track_string}")
+                else:
+                    self.logger.warning(f"Playlist {playlist_key} failed, skipping unmatched tracks")
+            
+            self.logger.info(f"Total tracks processed: {total_tracks}, matched: {matched_tracks}")
+            self.logger.info(f"Found {len(unmatched_artists)} unique unmatched artists: {list(unmatched_artists)}")
             
             if not unmatched_artists:
                 self.logger.info("No unmatched artists found for discovery")
                 return
-            
-            self.logger.info(f"Found {len(unmatched_artists)} unique artists from unmatched tracks")
             
             # Use existing discovery utilities for MBID lookup and filtering
             from utils.discovery import DiscoveryUtils
@@ -975,17 +994,28 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             
             lidarr_client = LidarrClient(self.config)
             musicbrainz_client = MusicBrainzClient(self.config) if self.config.MUSICBRAINZ_ENABLED else None
+            
+            if not musicbrainz_client:
+                self.logger.error("MusicBrainz is disabled - cannot discover artists without MBID lookup")
+                return
+            
             discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
             
             # Get Lidarr context for filtering
+            self.logger.info("Getting Lidarr context for filtering...")
             existing_mbids, existing_names, excluded_mbids = await discovery_utils.get_lidarr_context()
+            self.logger.info(f"Lidarr context: {len(existing_mbids)} existing MBIDs, {len(existing_names)} existing names, {len(excluded_mbids)} excluded MBIDs")
             
             # Process artists through MusicBrainz
             artists_without_mbids = [{'name': artist_name} for artist_name in unmatched_artists]
+            self.logger.info(f"Processing {len(artists_without_mbids)} artists through MusicBrainz...")
+            
             discovered_artists = await discovery_utils.process_artists_through_musicbrainz(
                 artists_without_mbids, existing_mbids, existing_names, excluded_mbids, 
                 f"listenbrainz_playlist_sync_{self.config_json.get('unique_id', 'unknown')}"
             )
+            
+            self.logger.info(f"MusicBrainz processing returned {len(discovered_artists) if discovered_artists else 0} discovered artists")
             
             if discovered_artists:
                 # Save to unified discovery file
@@ -995,7 +1025,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 self.logger.info("No new artists discovered (all were already in Lidarr or excluded)")
                 
         except Exception as e:
-            self.logger.error(f"Error during artist discovery: {e}")
+            self.logger.error(f"Error during artist discovery: {e}", exc_info=True)
     
     async def _save_discovered_artists(self, discovered_artists: List[Dict[str, Any]]):
         """Save discovered artists to playlist sync discovery file"""
