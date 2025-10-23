@@ -38,13 +38,16 @@ class LibraryCacheBuilderCommand(BaseCommand):
     def _initialize_clients(self):
         """Initialize configured clients for cache building"""
         try:
-            # Initialize Plex client if configured
-            if self.config.get('PLEX_URL') and self.config.get('PLEX_TOKEN'):
+            # Initialize Plex client if enabled and configured
+            if (self.config.get('PLEX_CLIENT_ENABLED', False) and 
+                self.config.get('PLEX_URL') and 
+                self.config.get('PLEX_TOKEN')):
                 self.clients['plex'] = PlexClient(self.config)
                 self.logger.info("Plex client initialized for cache building")
             
-            # Initialize Jellyfin client if configured
-            if (self.config.get('JELLYFIN_URL') and 
+            # Initialize Jellyfin client if enabled and configured
+            if (self.config.get('JELLYFIN_CLIENT_ENABLED', False) and
+                self.config.get('JELLYFIN_URL') and 
                 self.config.get('JELLYFIN_TOKEN') and 
                 self.config.get('JELLYFIN_USER_ID')):
                 self.clients['jellyfin'] = JellyfinClient(self.config)
