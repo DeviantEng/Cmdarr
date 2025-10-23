@@ -656,7 +656,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
         playlist_url = request.get('playlist_url')
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = request.get('schedule_hours', 12)
+        schedule_hours = int(request.get('schedule_hours', 12))
         enabled = request.get('enabled', True)
         
         if not playlist_url:
@@ -825,7 +825,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
         playlist_types = request.get('playlist_types', [])
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = request.get('schedule_hours', 12)
+        schedule_hours = int(request.get('schedule_hours', 12))
         enabled = request.get('enabled', True)
         
         # Retention settings
