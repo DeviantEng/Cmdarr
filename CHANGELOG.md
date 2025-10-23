@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - 2025-01-21
+## [0.2.2] - 2025-10-23
+
+🚀 New Features
+- **Deezer Playlist Support**: Added Deezer client integration for syncing public playlists alongside existing Spotify support
+
+🔧 Fixes and Improvements
+- **Enhanced External Playlist Editing**: Added missing UI elements to the Edit window, that were previously only available on creation
+
+## [0.2.1] - 2025-10-21
 
 ### 🚀 New Features
 - **Live Log Streaming**: Real-time command execution monitoring in the UI with execution ID tracking for concurrent commands
