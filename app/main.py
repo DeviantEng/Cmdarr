@@ -47,6 +47,10 @@ def auto_enable_library_cache():
                     logger.info("Plex library cache disabled by user preference")
                 else:
                     logger.info("Auto-enabled Plex library cache")
+            else:
+                # Disable cache if Plex client is disabled
+                config_service.set('LIBRARY_CACHE_PLEX_ENABLED', False)
+                logger.info("Plex library cache disabled (Plex client not enabled)")
                 
             # Check Jellyfin
             jellyfin_enabled = config_service.get('JELLYFIN_CLIENT_ENABLED', False)
@@ -64,6 +68,10 @@ def auto_enable_library_cache():
                     logger.info("Jellyfin library cache disabled by user preference")
                 else:
                     logger.info("Auto-enabled Jellyfin library cache")
+            else:
+                # Disable cache if Jellyfin client is disabled
+                config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
+                logger.info("Jellyfin library cache disabled (Jellyfin client not enabled)")
             
             # Enable cache builder command if any cache is enabled
             any_cache_enabled = (
