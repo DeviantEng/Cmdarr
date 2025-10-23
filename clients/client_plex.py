@@ -821,6 +821,31 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error searching library {library_key}: {e}")
             return []
 
+    def get_recently_added_tracks(self, library_key, days=1):
+        """Get tracks added in the last N days using Plex's recentlyAdded endpoint"""
+        from datetime import datetime, timedelta
+        
+        # Calculate timestamp for N days ago
+        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_timestamp = int(cutoff_date.timestamp())
+        
+        params = {
+            "type": 10,  # Track type
+            "addedAt>>": cutoff_timestamp
+        }
+
+        try:
+            self.logger.debug(f"Getting tracks added in last {days} days (since {cutoff_date.isoformat()})")
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            tracks = media_container.get("Metadata", [])
+            
+            self.logger.info(f"Found {len(tracks)} tracks added in last {days} days")
+            return tracks
+        except Exception as e:
+            self.logger.error(f"Error getting recently added tracks from library {library_key}: {e}")
+            return []
+
     def _score_track_match(self, track, target_track_name, target_artist_name, mbids=None):
         """
         Score how well a Plex track matches our target track.

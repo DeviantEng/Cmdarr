@@ -142,6 +142,11 @@ class PlaylistSyncCommand(BaseCommand):
                 if cached_data:
                     track_count = cached_data.get('total_tracks', 0)
                     self.logger.info(f"Using library cache with {track_count:,} tracks")
+                else:
+                    self.logger.warning(
+                        f"Library cache not available for {self.target_name}. "
+                        "Playlist sync will use live API (slower performance expected)."
+                    )
             
             # Sync playlist based on mode
             sync_result = None

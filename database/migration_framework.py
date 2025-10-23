@@ -342,6 +342,138 @@ def create_migration_runner(db_path: str = "data/cmdarr.db") -> MigrationRunner:
         up_func=disable_discovery_maintenance_default
     ))
     
+    # Migration 4: Add library cache configuration settings for v0.2.3
+    def add_library_cache_config_settings(cursor):
+        """Add library cache configuration settings for v0.2.3"""
+        new_settings = [
+            ('LIBRARY_CACHE_PLEX_ENABLED', 'false', 'bool', 'plex', 'Enable Plex library cache building'),
+            ('LIBRARY_CACHE_JELLYFIN_ENABLED', 'false', 'bool', 'jellyfin', 'Enable Jellyfin library cache building'),
+            ('LIBRARY_CACHE_SCHEDULE_HOURS', '24', 'int', 'cache', 'Library cache building schedule (hours)'),
+            ('LIBRARY_CACHE_PLEX_USER_DISABLED', 'false', 'bool', 'plex', 'Track if user explicitly disabled Plex cache'),
+            ('LIBRARY_CACHE_JELLYFIN_USER_DISABLED', 'false', 'bool', 'jellyfin', 'Track if user explicitly disabled Jellyfin cache')
+        ]
+        
+        for key, default_value, data_type, category, description in new_settings:
+            # Check if setting already exists
+            cursor.execute("SELECT COUNT(*) FROM config_settings WHERE key = ?", (key,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO config_settings (key, value, data_type, category, description)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (key, default_value, data_type, category, description))
+                logger.info(f"Added new config setting: {key}")
+            else:
+                logger.info(f"Config setting {key} already exists")
+    
+    runner.add_migration(Migration(
+        name="add_library_cache_config_settings",
+        version=get_migration_version(4, BASE_VERSION_0_2_1),
+        description="Add library cache configuration settings for v0.2.3",
+        up_func=add_library_cache_config_settings
+    ))
+    
+    # Migration 5: Fix library cache settings categories
+    def fix_library_cache_categories(cursor):
+        """Fix library cache settings to be in correct categories"""
+        # Update Plex cache settings to plex category
+        cursor.execute("""
+            UPDATE config_settings 
+            SET category = 'plex' 
+            WHERE key IN ('LIBRARY_CACHE_PLEX_ENABLED', 'LIBRARY_CACHE_PLEX_USER_DISABLED')
+        """)
+        
+        # Update Jellyfin cache settings to jellyfin category  
+        cursor.execute("""
+            UPDATE config_settings 
+            SET category = 'jellyfin' 
+            WHERE key IN ('LIBRARY_CACHE_JELLYFIN_ENABLED', 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED')
+        """)
+        
+        logger.info("Fixed library cache settings categories")
+    
+    runner.add_migration(Migration(
+        name="fix_library_cache_categories",
+        version=get_migration_version(5, BASE_VERSION_0_2_1),
+        description="Fix library cache settings to be in correct categories (plex/jellyfin)",
+        up_func=fix_library_cache_categories
+    ))
+    
+    # Migration 6: Streamline cache settings UI
+    def streamline_cache_settings_ui(cursor):
+        """Streamline cache settings UI by hiding enable settings and updating defaults"""
+        # Update enable settings to be hidden and default to true
+        cursor.execute("""
+            UPDATE config_settings 
+            SET default_value = 'true', description = 'Enable library cache building for Plex (auto-managed)'
+            WHERE key = 'LIBRARY_CACHE_PLEX_ENABLED'
+        """)
+        
+        cursor.execute("""
+            UPDATE config_settings 
+            SET default_value = 'true', description = 'Enable library cache building for Jellyfin (auto-managed)'
+            WHERE key = 'LIBRARY_CACHE_JELLYFIN_ENABLED'
+        """)
+        
+        # Update user disabled settings descriptions
+        cursor.execute("""
+            UPDATE config_settings 
+            SET description = 'Disable library caching (slower playlist sync)'
+            WHERE key = 'LIBRARY_CACHE_PLEX_USER_DISABLED'
+        """)
+        
+        cursor.execute("""
+            UPDATE config_settings 
+            SET description = 'Disable library caching (slower playlist sync)'
+            WHERE key = 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED'
+        """)
+        
+        logger.info("Streamlined cache settings UI")
+    
+    runner.add_migration(Migration(
+        name="streamline_cache_settings_ui",
+        version=get_migration_version(6, BASE_VERSION_0_2_1),
+        description="Streamline cache settings UI by hiding enable settings and updating descriptions",
+        up_func=streamline_cache_settings_ui
+    ))
+    
+    # Migration 7: Fix cache TTL settings
+    def fix_cache_ttl_settings(cursor):
+        """Fix cache TTL settings to be more reasonable"""
+        # Update TTL settings to 7 days instead of 30 days
+        cursor.execute("""
+            UPDATE config_settings 
+            SET default_value = '7'
+            WHERE key IN ('LIBRARY_CACHE_TTL_DAYS', 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS')
+        """)
+        
+        logger.info("Fixed cache TTL settings to 7 days")
+    
+    runner.add_migration(Migration(
+        name="fix_cache_ttl_settings",
+        version=get_migration_version(7, BASE_VERSION_0_2_1),
+        description="Fix cache TTL settings to be more reasonable (7 days instead of 30)",
+        up_func=fix_cache_ttl_settings
+    ))
+    
+    # Migration 8: Update cache TTL settings to 30 days for smart caching
+    def update_cache_ttl_to_30_days(cursor):
+        """Update cache TTL settings to 30 days for smart caching with 36-hour lookback"""
+        # Update TTL settings to 30 days for smart caching
+        cursor.execute("""
+            UPDATE config_settings 
+            SET default_value = '30'
+            WHERE key IN ('LIBRARY_CACHE_TTL_DAYS', 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS')
+        """)
+        
+        logger.info("Updated cache TTL settings to 30 days for smart caching")
+    
+    runner.add_migration(Migration(
+        name="update_cache_ttl_to_30_days",
+        version=get_migration_version(8, BASE_VERSION_0_2_1),
+        description="Update cache TTL settings to 30 days for smart caching with 36-hour lookback",
+        up_func=update_cache_ttl_to_30_days
+    ))
+    
     # Future migrations for new app versions should use current app_version
     # Example for when you bump to 0.3.0:
     # runner.add_migration(Migration(

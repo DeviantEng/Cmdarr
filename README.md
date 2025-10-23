@@ -198,6 +198,10 @@ Add Cmdarr as a Custom List in Lidarr:
 3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_listenbrainz`
 4. Configure sync interval as desired (recommend 24-48 hours)
 
+### Performance Optimization
+
+When Plex or Jellyfin client is enabled, library cache building is automatically enabled for optimal performance.
+
 ### Environment Variables
 
 All configuration can be set via environment variables:

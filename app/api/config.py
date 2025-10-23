@@ -43,7 +43,10 @@ async def get_all_config():
     """Get all configuration settings"""
     try:
         settings = config_service.get_all_settings()
-        return {"settings": settings}
+        # Filter out hidden settings (cache enable settings)
+        hidden_keys = ['LIBRARY_CACHE_PLEX_ENABLED', 'LIBRARY_CACHE_JELLYFIN_ENABLED']
+        filtered_settings = {k: v for k, v in settings.items() if k not in hidden_keys}
+        return {"settings": filtered_settings}
     except Exception as e:
         logger.error(f"Failed to get all configuration: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
@@ -54,7 +57,10 @@ async def get_config_by_category(category: str):
     """Get configuration settings by category"""
     try:
         settings = config_service.get_all_by_category(category)
-        return {"category": category, "settings": settings}
+        # Filter out hidden settings (cache enable settings)
+        hidden_keys = ['LIBRARY_CACHE_PLEX_ENABLED', 'LIBRARY_CACHE_JELLYFIN_ENABLED']
+        filtered_settings = {k: v for k, v in settings.items() if k not in hidden_keys}
+        return {"category": category, "settings": filtered_settings}
     except Exception as e:
         logger.error(f"Failed to get configuration for category {category}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
@@ -115,6 +121,20 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
                 # Clear the reconfiguring flag even if there was an error
                 if hasattr(CmdarrLogger, '_reconfiguring'):
                     delattr(CmdarrLogger, '_reconfiguring')
+        
+        # Special handling for cache user disabled settings - manage the hidden enabled setting
+        if key in ['LIBRARY_CACHE_PLEX_USER_DISABLED', 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED']:
+            target = 'PLEX' if 'PLEX' in key else 'JELLYFIN'
+            enabled_key = f'LIBRARY_CACHE_{target}_ENABLED'
+            
+            # If user is disabling cache, set enabled to false
+            if request.value in [True, 'true', '1']:
+                config_service.set(enabled_key, False)
+                logger.info(f"User disabled {target} library cache")
+            # If user is enabling cache, set enabled to true
+            elif request.value in [False, 'false', '0']:
+                config_service.set(enabled_key, True)
+                logger.info(f"User enabled {target} library cache")
         
         # Update options if provided
         if request.options is not None:

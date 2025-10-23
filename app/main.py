@@ -24,6 +24,94 @@ from app.websocket import websocket_endpoint
 logger = get_logger('cmdarr.app')
 
 
+def auto_enable_library_cache():
+    """Auto-enable library cache when clients are enabled"""
+    try:
+        db_manager = get_database_manager()
+        session = db_manager.get_session_sync()
+        
+        try:
+            # Check Plex
+            plex_enabled = config_service.get('PLEX_CLIENT_ENABLED', False)
+            plex_url = config_service.get('PLEX_URL', '')
+            plex_token = config_service.get('PLEX_TOKEN', '')
+            cache_plex_user_disabled = config_service.get('LIBRARY_CACHE_PLEX_USER_DISABLED', False)
+            
+            if plex_enabled and plex_url and plex_token:
+                # Always enable cache when client is enabled
+                config_service.set('LIBRARY_CACHE_PLEX_ENABLED', True)
+                
+                # Only disable if user explicitly disabled
+                if cache_plex_user_disabled:
+                    config_service.set('LIBRARY_CACHE_PLEX_ENABLED', False)
+                    logger.info("Plex library cache disabled by user preference")
+                else:
+                    logger.info("Auto-enabled Plex library cache")
+                
+            # Check Jellyfin
+            jellyfin_enabled = config_service.get('JELLYFIN_CLIENT_ENABLED', False)
+            jellyfin_url = config_service.get('JELLYFIN_URL', '')
+            jellyfin_token = config_service.get('JELLYFIN_TOKEN', '')
+            cache_jellyfin_user_disabled = config_service.get('LIBRARY_CACHE_JELLYFIN_USER_DISABLED', False)
+            
+            if jellyfin_enabled and jellyfin_url and jellyfin_token:
+                # Always enable cache when client is enabled
+                config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', True)
+                
+                # Only disable if user explicitly disabled
+                if cache_jellyfin_user_disabled:
+                    config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
+                    logger.info("Jellyfin library cache disabled by user preference")
+                else:
+                    logger.info("Auto-enabled Jellyfin library cache")
+            
+            # Enable cache builder command if any cache is enabled
+            any_cache_enabled = (
+                config_service.get('LIBRARY_CACHE_PLEX_ENABLED', False) or
+                config_service.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
+            )
+            
+            if any_cache_enabled:
+                from database.models import CommandConfig
+                cache_builder_cmd = session.query(CommandConfig).filter(
+                    CommandConfig.command_name == 'library_cache_builder'
+                ).first()
+                
+                if cache_builder_cmd and not cache_builder_cmd.enabled:
+                    cache_builder_cmd.enabled = True
+                    session.commit()
+                    logger.info("Auto-enabled library_cache_builder command")
+                    
+                    # Trigger immediate cache build (non-blocking)
+                    trigger_immediate_cache_build()
+                    
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.error(f"Error in auto-enable library cache: {e}")
+        # Non-fatal, continue startup
+
+
+def trigger_immediate_cache_build():
+    """Trigger immediate cache build when auto-enabled"""
+    try:
+        import asyncio
+        from services.command_executor import command_executor
+        
+        # Queue cache builder for immediate execution
+        asyncio.create_task(
+            command_executor.execute_command(
+                'library_cache_builder',
+                triggered_by='auto_enable'
+            )
+        )
+        logger.info("Queued library_cache_builder for immediate execution")
+    except Exception as e:
+        logger.error(f"Failed to trigger cache build: {e}")
+        # Non-fatal, log and continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -55,6 +143,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize default commands: {e}")
         # Don't raise here as commands can be added later via API
+    
+    # Auto-enable library cache for configured clients
+    try:
+        auto_enable_library_cache()
+        logger.info("Auto-enable library cache check completed")
+    except Exception as e:
+        logger.error(f"Failed to auto-enable library cache: {e}")
+        # Don't raise here as the app can still work
     
     
     # Clean up stuck commands from previous runs

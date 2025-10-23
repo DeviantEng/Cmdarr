@@ -141,7 +141,7 @@ class LibraryCacheBuilderCommand(BaseCommand):
             return False
     
     def _build_target_cache(self, target: str, force_rebuild: bool = False) -> Dict[str, Any]:
-        """Build cache for a specific target"""
+        """Build cache for a specific target using smart incremental approach"""
         try:
             self.logger.info(f"Building library cache for {target} (force_rebuild={force_rebuild})")
             start_time = time.time()
@@ -153,36 +153,28 @@ class LibraryCacheBuilderCommand(BaseCommand):
                 self.library_cache_manager.register_client(target, client)
                 self.logger.debug(f"Registered {target} client with cache manager")
             
-            # Check if cache exists and is fresh (unless force rebuild is requested)
-            if not force_rebuild:
+            # Handle force rebuild vs smart refresh
+            if force_rebuild:
+                self.logger.info(f"Force rebuild requested for {target}, invalidating existing cache")
+                # Invalidate existing cache
+                self.library_cache_manager.invalidate_cache(target)
+            else:
+                # Smart refresh - always run incremental update (36-hour lookback)
                 existing_cache = self.library_cache_manager.get_library_cache(target)
                 if existing_cache:
                     cache_age_hours = (time.time() - existing_cache.get('built_at', 0)) / 3600
                     ttl_hours = self.get_target_ttl_days(target) * 24
-                    
-                    if cache_age_hours < ttl_hours:
-                        self.logger.info(f"Cache for {target} is fresh ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h)")
-                        return {
-                            'success': True,
-                            'cached': True,
-                            'age_hours': cache_age_hours,
-                            'message': 'Cache was already fresh'
-                        }
-                    else:
-                        self.logger.info(f"Cache for {target} is stale ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h), rebuilding")
-            else:
-                self.logger.info(f"Force rebuild requested for {target}, invalidating existing cache")
-                # Invalidate existing cache
-                self.library_cache_manager.invalidate_cache(target)
+                    self.logger.info(f"Smart refresh for {target}: cache is {cache_age_hours:.1f}h old (TTL: {ttl_hours}h), running incremental update")
+                else:
+                    self.logger.info(f"Smart refresh for {target}: no existing cache, will perform full rebuild")
             
-            # Build new cache
-            self.logger.info(f"Building fresh cache for {target}")
-            cache_data = client.build_library_cache()
+            # Use smart incremental cache building
+            cache_data = self._build_smart_cache(target, client, force_rebuild)
             
             if not cache_data:
                 return {
                     'success': False,
-                    'error': 'No cache data returned from client'
+                    'error': 'No cache data returned from smart cache building'
                 }
             
             # Store cache in cache manager
@@ -190,15 +182,17 @@ class LibraryCacheBuilderCommand(BaseCommand):
             
             build_time = time.time() - start_time
             track_count = cache_data.get('total_tracks', 0)
+            new_tracks = cache_data.get('new_tracks_added', 0)
             
-            self.logger.info(f"Successfully built {target} cache: {track_count:,} tracks in {build_time:.1f}s")
+            self.logger.info(f"Successfully built {target} cache: {track_count:,} total tracks ({new_tracks:,} new) in {build_time:.1f}s")
             
             return {
                 'success': True,
                 'cached': False,
                 'track_count': track_count,
+                'new_tracks_added': new_tracks,
                 'build_time_seconds': build_time,
-                'message': f'Built fresh cache with {track_count:,} tracks'
+                'message': f'Built fresh cache with {track_count:,} tracks ({new_tracks:,} new)'
             }
             
         except Exception as e:
@@ -209,6 +203,145 @@ class LibraryCacheBuilderCommand(BaseCommand):
                 'success': False,
                 'error': str(e)
             }
+    
+    def _build_smart_cache(self, target: str, client, force_rebuild: bool = False) -> Dict[str, Any]:
+        """Build cache using smart incremental approach with 36-hour lookback"""
+        try:
+            # Get existing cache data
+            existing_cache = self.library_cache_manager.get_library_cache(target)
+            
+            # Debug: Check the type and structure of existing_cache
+            self.logger.debug(f"existing_cache type: {type(existing_cache)}")
+            if existing_cache:
+                self.logger.debug(f"existing_cache keys: {list(existing_cache.keys()) if isinstance(existing_cache, dict) else 'Not a dict'}")
+                if isinstance(existing_cache, dict) and 'tracks' in existing_cache:
+                    tracks = existing_cache['tracks']
+                    self.logger.debug(f"tracks type: {type(tracks)}, length: {len(tracks) if hasattr(tracks, '__len__') else 'No length'}")
+            
+            if force_rebuild or not existing_cache:
+                # Full rebuild - use existing method
+                self.logger.info(f"Performing full cache rebuild for {target}")
+                return client.build_library_cache()
+            
+            # Smart incremental rebuild
+            self.logger.info(f"Performing smart incremental cache update for {target} (36-hour lookback)")
+            
+            # Safety check: ensure existing_cache is a dictionary
+            if not isinstance(existing_cache, dict):
+                self.logger.error(f"existing_cache is not a dictionary, got {type(existing_cache)}. Falling back to full rebuild.")
+                return client.build_library_cache()
+            
+            # Get tracks added in last 36 hours (1.5 days)
+            lookback_hours = 36
+            lookback_days = lookback_hours / 24
+            
+            new_tracks = []
+            total_tracks = existing_cache.get('total_tracks', 0)
+            incremental_start_time = time.time()
+            
+            if target == 'plex':
+                # Get all music libraries
+                libraries = client.get_music_libraries()
+                
+                for library in libraries:
+                    library_key = library['key']
+                    library_name = library.get('title', f'Library {library_key}')
+                    
+                    # Get recently added tracks
+                    recent_tracks = client.get_recently_added_tracks(library_key, days=lookback_days)
+                    
+                    if recent_tracks:
+                        self.logger.info(f"Found {len(recent_tracks)} tracks added in last {lookback_days:.1f} days in {library_name}")
+                        
+                        # Process each track
+                        for track in recent_tracks:
+                            track_key = track.get('key')
+                            if track_key:
+                                # Check if track already exists in cache
+                                existing_tracks = existing_cache.get('tracks', [])
+                                existing_track = None
+                                
+                                # Find existing track by key
+                                for existing in existing_tracks:
+                                    if existing.get('key') == track_key:
+                                        existing_track = existing
+                                        break
+                                
+                                if not existing_track:
+                                    # New track - add to cache
+                                    new_tracks.append(track)
+                                    total_tracks += 1
+                                else:
+                                    # Track exists but might have been updated
+                                    # Check if metadata changed
+                                    if self._track_metadata_changed(track, existing_track):
+                                        new_tracks.append(track)
+                                        self.logger.debug(f"Updated metadata for track: {track.get('title', 'Unknown')}")
+                    else:
+                        self.logger.debug(f"No new tracks found in {library_name}")
+            
+            elif target == 'jellyfin':
+                # Jellyfin implementation would go here
+                self.logger.info("Jellyfin smart cache building not yet implemented, falling back to full rebuild")
+                return client.build_library_cache()
+            
+            incremental_time = time.time() - incremental_start_time
+            
+            # Update cache data
+            if new_tracks:
+                # Add new tracks to existing cache
+                existing_tracks = existing_cache.get('tracks', [])
+                for track in new_tracks:
+                    track_key = track.get('key')
+                    if track_key:
+                        # Check if track already exists and update it, or add new
+                        found = False
+                        for i, existing in enumerate(existing_tracks):
+                            if existing.get('key') == track_key:
+                                existing_tracks[i] = track  # Update existing
+                                found = True
+                                break
+                        
+                        if not found:
+                            existing_tracks.append(track)  # Add new
+                
+                # Update cache data
+                cache_data = existing_cache.copy()
+                cache_data['tracks'] = existing_tracks
+                cache_data['total_tracks'] = total_tracks
+                cache_data['new_tracks_added'] = len(new_tracks)
+                cache_data['built_at'] = time.time()
+                cache_data['last_incremental_update'] = time.time()
+                
+                self.logger.info(f"Smart cache update complete: added {len(new_tracks)} new tracks in {incremental_time:.1f}s")
+                self.logger.info(f"Performance: {len(new_tracks)} tracks processed vs {total_tracks:,} total cached (efficiency: {len(new_tracks)/total_tracks*100:.2f}% new)")
+                return cache_data
+            else:
+                # No new tracks found - update timestamp but keep existing data
+                cache_data = existing_cache.copy()
+                cache_data['last_incremental_update'] = time.time()
+                cache_data['new_tracks_added'] = 0
+                
+                self.logger.info(f"Smart cache update complete: no new tracks found in {incremental_time:.1f}s")
+                self.logger.info(f"Performance: 0 tracks processed vs {total_tracks:,} total cached (efficiency: 100% - no work needed)")
+                return cache_data
+                
+        except Exception as e:
+            self.logger.error(f"Smart cache building failed for {target}: {e}")
+            # Fall back to full rebuild
+            self.logger.info(f"Falling back to full cache rebuild for {target}")
+            return client.build_library_cache()
+    
+    def _track_metadata_changed(self, new_track: Dict, existing_track: Dict) -> bool:
+        """Check if track metadata has changed"""
+        # Compare key metadata fields
+        fields_to_check = ['title', 'grandparentTitle', 'parentTitle', 'addedAt', 'updatedAt']
+        
+        for field in fields_to_check:
+            if new_track.get(field) != existing_track.get(field):
+                return True
+        
+        return False
     
     def get_last_run_stats(self) -> Dict[str, Any]:
         """Get statistics from the last run"""

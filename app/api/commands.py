@@ -656,7 +656,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
         playlist_url = request.get('playlist_url')
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = int(request.get('schedule_hours', 12))
+        schedule_hours = int(request.get('schedule_hours', 24))
         enabled = request.get('enabled', True)
         
         if not playlist_url:
@@ -801,12 +801,30 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
         
-        return {
+        # Check for cache warnings
+        warnings = []
+        cache_enabled_key = f'LIBRARY_CACHE_{target.upper()}_ENABLED'
+        if not config.get(cache_enabled_key, False):
+            logger.warning(
+                f"Creating playlist sync targeting {target} but library cache is disabled. "
+                "This may cause slow performance. Consider enabling library cache."
+            )
+            warnings.append(
+                f"Library cache for {target.title()} is disabled. "
+                "Performance may be slow. Enable cache in configuration for better performance."
+            )
+        
+        response = {
             "success": True,
             "command_name": command_name,
             "display_name": display_name,
             "message": "Playlist sync command created successfully"
         }
+        
+        if warnings:
+            response["warnings"] = warnings
+            
+        return response
         
     except HTTPException:
         raise
@@ -825,7 +843,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
         playlist_types = request.get('playlist_types', [])
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = int(request.get('schedule_hours', 12))
+        schedule_hours = int(request.get('schedule_hours', 24))
         enabled = request.get('enabled', True)
         
         # Retention settings
@@ -943,12 +961,30 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
         
-        return {
+        # Check for cache warnings
+        warnings = []
+        cache_enabled_key = f'LIBRARY_CACHE_{target.upper()}_ENABLED'
+        if not config.get(cache_enabled_key, False):
+            logger.warning(
+                f"Creating ListenBrainz playlist sync targeting {target} but library cache is disabled. "
+                "This may cause slow performance. Consider enabling library cache."
+            )
+            warnings.append(
+                f"Library cache for {target.title()} is disabled. "
+                "Performance may be slow. Enable cache in configuration for better performance."
+            )
+        
+        response = {
             "success": True,
             "command_name": command_name,
             "display_name": display_name,
             "message": "ListenBrainz playlist sync command created successfully"
         }
+        
+        if warnings:
+            response["warnings"] = warnings
+            
+        return response
         
     except HTTPException:
         raise
