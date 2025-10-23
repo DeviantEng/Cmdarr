@@ -854,6 +854,21 @@
                                         </select>
                                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">How to handle playlist synchronization</p>
                                     </div>
+
+                                    <!-- Artist Discovery -->
+                                    <div class="mt-3">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" 
+                                                   x-model="editingCommand.config_json.enable_artist_discovery"
+                                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                                Enable Playlist Sync Discovery
+                                            </span>
+                                        </label>
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            When enabled, artists from unmatched tracks will be added to Lidarr's discovery list via the Playlist Sync Discovery command. This works alongside the existing Last.fm Discovery command.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
