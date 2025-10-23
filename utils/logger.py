@@ -7,6 +7,7 @@ import logging
 import logging.handlers
 import os
 import glob
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -135,7 +136,7 @@ class CmdarrLogger:
         )
         # Custom naming for rotated files: cmdarr.log-20250903
         file_handler.suffix = '-%Y%m%d'
-        file_handler.extMatch = r"^\d{8}$"
+        file_handler.extMatch = re.compile(r"^\d{8}$")
         
         file_handler.setFormatter(detailed_formatter)
         file_handler.setLevel(config_level)  # File handler respects configured level
