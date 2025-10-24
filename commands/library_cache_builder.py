@@ -210,8 +210,8 @@ class LibraryCacheBuilderCommand(BaseCommand):
     def _build_smart_cache(self, target: str, client, force_rebuild: bool = False) -> Dict[str, Any]:
         """Build cache using smart incremental approach with 36-hour lookback"""
         try:
-            # Get existing cache data
-            existing_cache = self.library_cache_manager.get_library_cache(target)
+            # Get existing cache data without triggering a build
+            existing_cache = self.library_cache_manager.get_library_cache_direct(target)
             
             # Debug: Check the type and structure of existing_cache
             self.logger.debug(f"existing_cache type: {type(existing_cache)}")

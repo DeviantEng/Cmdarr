@@ -43,9 +43,8 @@ async def get_all_config():
     """Get all configuration settings"""
     try:
         settings = config_service.get_all_settings()
-        # Filter out hidden settings (cache enable settings)
-        hidden_keys = ['LIBRARY_CACHE_PLEX_ENABLED', 'LIBRARY_CACHE_JELLYFIN_ENABLED']
-        filtered_settings = {k: v for k, v in settings.items() if k not in hidden_keys}
+        # Filter out hidden settings
+        filtered_settings = config_service.get_visible_settings()
         return {"settings": filtered_settings}
     except Exception as e:
         logger.error(f"Failed to get all configuration: {e}")
@@ -57,9 +56,8 @@ async def get_config_by_category(category: str):
     """Get configuration settings by category"""
     try:
         settings = config_service.get_all_by_category(category)
-        # Filter out hidden settings (cache enable settings)
-        hidden_keys = ['LIBRARY_CACHE_PLEX_ENABLED', 'LIBRARY_CACHE_JELLYFIN_ENABLED']
-        filtered_settings = {k: v for k, v in settings.items() if k not in hidden_keys}
+        # Filter out hidden settings
+        filtered_settings = config_service.get_visible_settings_by_category(category)
         return {"category": category, "settings": filtered_settings}
     except Exception as e:
         logger.error(f"Failed to get configuration for category {category}: {e}")

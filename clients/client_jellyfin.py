@@ -319,14 +319,14 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.debug(f"Found track: '{track_data['artist']}' - '{track_data['name']}'")
         return tracks
     
-    def find_track_by_artist_and_title_sync(self, artist: str, title: str) -> Optional[Dict[str, Any]]:
+    def find_track_by_artist_and_title_sync(self, artist: str, title: str, album: str = "") -> Optional[Dict[str, Any]]:
         """Find a specific track by artist and title with improved fuzzy matching"""
         self.logger.debug(f"=== FIND_TRACK_BY_ARTIST_AND_TITLE CALLED: '{artist}' - '{title}' ===")
         try:
             # First try to use cached library if available
             if hasattr(self, '_cached_library') and self._cached_library:
                 self.logger.debug("Using cached library for track search")
-                track_id = self.search_cached_library(title, artist, self._cached_library)
+                track_id = self.search_cached_library(title, artist, self._cached_library, album)
                 if track_id:
                     # Find the track data from the cached tracks
                     tracks = self._cached_library.get('tracks', [])
@@ -351,8 +351,9 @@ class JellyfinClient(BaseAPIClient):
             # Normalize search terms
             normalized_artist = self._normalize_text(artist)
             normalized_title = self._normalize_text(title)
+            normalized_album = self._normalize_text(album) if album else ""
             
-            self.logger.debug(f"Normalized search: '{normalized_artist}' - '{normalized_title}'")
+            self.logger.debug(f"Normalized search: '{normalized_artist}' - '{normalized_title}' - '{normalized_album}'")
             
             # Search for the track using title only (Jellyfin search works better with individual terms)
             self.logger.debug(f"Searching by title: '{title}'")
@@ -365,7 +366,7 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.debug(f"Title search found tracks: {track_list}")
             
             # Try multiple matching strategies
-            match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title)
+            match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
             if match:
                 return match
             
@@ -374,7 +375,7 @@ class JellyfinClient(BaseAPIClient):
             artist_tracks = self.search_tracks_sync(artist, limit=50)
             self.logger.debug(f"Artist search returned {len(artist_tracks)} tracks")
             
-            match = self._find_best_match(artist_tracks, normalized_artist, normalized_title, artist, title)
+            match = self._find_best_match(artist_tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
             if match:
                 return match
             
@@ -383,7 +384,7 @@ class JellyfinClient(BaseAPIClient):
             combined_tracks = self.search_tracks_sync(f"{artist} {title}", limit=50)
             self.logger.debug(f"Combined search returned {len(combined_tracks)} tracks")
             
-            match = self._find_best_match(combined_tracks, normalized_artist, normalized_title, artist, title)
+            match = self._find_best_match(combined_tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
             if match:
                 return match
             
@@ -399,7 +400,7 @@ class JellyfinClient(BaseAPIClient):
                 keyword_tracks = self.search_tracks_sync(key_word_query, limit=50)
                 self.logger.debug(f"Key word search returned {len(keyword_tracks)} tracks")
                 
-                match = self._find_best_match(keyword_tracks, normalized_artist, normalized_title, artist, title)
+                match = self._find_best_match(keyword_tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
                 if match:
                     return match
             
@@ -416,7 +417,7 @@ class JellyfinClient(BaseAPIClient):
             
             all_tracks = list(all_unique_tracks.values())
             self.logger.debug(f"Trying relaxed matching on {len(all_tracks)} unique tracks")
-            match = self._find_best_match_relaxed(all_tracks, normalized_artist, normalized_title, artist, title)
+            match = self._find_best_match_relaxed(all_tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
             if match:
                 return match
             
@@ -526,8 +527,9 @@ class JellyfinClient(BaseAPIClient):
         normalized = re.sub(r'\s*\([^)]*\)\s*', ' ', normalized)
         normalized = re.sub(r'\s*\[[^\]]*\]\s*', ' ', normalized)
         
-        # Remove special characters but keep hyphens and apostrophes
-        normalized = re.sub(r'[^\w\s\'-]', ' ', normalized)
+        # Apply centralized punctuation normalization
+        from utils.text_normalizer import normalize_text
+        normalized = normalize_text(normalized)
         
         # Replace multiple spaces with single space
         normalized = re.sub(r'\s+', ' ', normalized)
@@ -541,36 +543,66 @@ class JellyfinClient(BaseAPIClient):
         return normalized.strip()
     
     def _find_best_match(self, tracks: List[Dict[str, Any]], normalized_artist: str, normalized_title: str, 
-                        original_artist: str, original_title: str) -> Optional[Dict[str, Any]]:
+                        original_artist: str, original_title: str, normalized_album: str = "", original_album: str = "") -> Optional[Dict[str, Any]]:
         """Find the best matching track using multiple strategies"""
         if not tracks:
             return None
         
-        # Strategy 1: Exact match (case-insensitive)
+        # Strategy 1: Exact match (case-insensitive) - with album bonus
         for track in tracks:
             if (track['artist'].lower() == original_artist.lower() and 
                 track['name'].lower() == original_title.lower()):
-                self.logger.debug(f"Exact match found: '{track['artist']}' - '{track['name']}'")
+                
+                # Check album match for bonus scoring
+                album_bonus = 0
+                if original_album and track.get('album'):
+                    track_album_norm = self._normalize_text(track['album'])
+                    if track_album_norm == normalized_album:
+                        album_bonus = 0.2  # 20% bonus for exact album match
+                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                        album_bonus = 0.1  # 10% bonus for partial album match
+                
+                self.logger.debug(f"Exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
                 return track
         
-        # Strategy 2: Normalized exact match
+        # Strategy 2: Normalized exact match - with album bonus
         for track in tracks:
             track_artist_norm = self._normalize_text(track['artist'])
             track_title_norm = self._normalize_text(track['name'])
             
             if (track_artist_norm == normalized_artist and 
                 track_title_norm == normalized_title):
-                self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}'")
+                
+                # Check album match for bonus scoring
+                album_bonus = 0
+                if normalized_album and track.get('album'):
+                    track_album_norm = self._normalize_text(track['album'])
+                    if track_album_norm == normalized_album:
+                        album_bonus = 0.2  # 20% bonus for exact album match
+                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                        album_bonus = 0.1  # 10% bonus for partial album match
+                
+                self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
                 return track
         
-        # Strategy 3: Partial match (both artist and title contain search terms)
+        # Strategy 3: Partial match (both artist and title contain search terms) - with album bonus
         for track in tracks:
             if (normalized_artist in self._normalize_text(track['artist']) and 
                 normalized_title in self._normalize_text(track['name'])):
-                self.logger.debug(f"Partial match found: '{track['artist']}' - '{track['name']}'")
+                
+                # Check album match for bonus scoring
+                album_bonus = 0
+                if normalized_album and track.get('album'):
+                    track_album_norm = self._normalize_text(track['album'])
+                    if track_album_norm == normalized_album:
+                        album_bonus = 0.2  # 20% bonus for exact album match
+                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                        album_bonus = 0.1  # 10% bonus for partial album match
+                
+                self.logger.debug(f"Partial match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
                 return track
         
-        # Strategy 4: Fuzzy match using similarity
+        # Strategy 4: Fuzzy match using similarity - with album scoring
         best_match = None
         best_score = 0
         
@@ -578,8 +610,14 @@ class JellyfinClient(BaseAPIClient):
             artist_score = self._calculate_similarity(normalized_artist, self._normalize_text(track['artist']))
             title_score = self._calculate_similarity(normalized_title, self._normalize_text(track['name']))
             
-            # Combined score (weighted average)
-            combined_score = (artist_score * 0.6) + (title_score * 0.4)
+            # Album scoring (bonus)
+            album_score = 0
+            if normalized_album and track.get('album'):
+                track_album_norm = self._normalize_text(track['album'])
+                album_score = self._calculate_similarity(normalized_album, track_album_norm)
+            
+            # Combined score (weighted average with album bonus)
+            combined_score = (artist_score * 0.5) + (title_score * 0.4) + (album_score * 0.1)
             
             if combined_score > best_score and combined_score > 0.7:  # 70% similarity threshold
                 best_score = combined_score
@@ -592,7 +630,7 @@ class JellyfinClient(BaseAPIClient):
         return None
     
     def _find_best_match_relaxed(self, tracks: List[Dict[str, Any]], normalized_artist: str, normalized_title: str, 
-                                original_artist: str, original_title: str) -> Optional[Dict[str, Any]]:
+                                original_artist: str, original_title: str, normalized_album: str = "", original_album: str = "") -> Optional[Dict[str, Any]]:
         """Find the best matching track using relaxed fuzzy matching with lower thresholds"""
         if not tracks:
             return None
@@ -617,14 +655,20 @@ class JellyfinClient(BaseAPIClient):
             # Best title similarity from multiple measures
             title_best = max(title_jaccard, title_char_sim, title_word_sim)
             
-            # Combined score with lower weight on artist (artist matching is often harder)
-            combined_score = (artist_jaccard * 0.4) + (title_best * 0.6)
+            # Album scoring (bonus)
+            album_score = 0
+            if normalized_album and track.get('album'):
+                track_album_norm = self._normalize_text(track['album'])
+                album_score = self._calculate_similarity(normalized_album, track_album_norm)
+            
+            # Combined score with album bonus (adjusted weights to accommodate album)
+            combined_score = (artist_jaccard * 0.35) + (title_best * 0.55) + (album_score * 0.1)
             
             # Relaxed threshold (was 0.7, now 0.5)
             if combined_score > best_score and combined_score > 0.5:
                 best_score = combined_score
                 best_match = track
-                self.logger.debug(f"Relaxed match candidate (score: {combined_score:.2f}): '{track['artist']}' - '{track['name']}' | Artist sim: {artist_jaccard:.2f}, Title sim: {title_best:.2f}")
+                self.logger.debug(f"Relaxed match candidate (score: {combined_score:.2f}): '{track['artist']}' - '{track['name']}' | Artist sim: {artist_jaccard:.2f}, Title sim: {title_best:.2f}, Album sim: {album_score:.2f}")
         
         if best_match:
             self.logger.debug(f"Relaxed fuzzy match found (score: {best_score:.2f}): '{best_match['artist']}' - '{best_match['name']}'")
@@ -1207,8 +1251,9 @@ class JellyfinClient(BaseAPIClient):
                 try:
                     # ListenBrainz uses 'track' key for track title, not 'title'
                     track_title = track.get('track', track.get('title', 'Unknown Title'))
+                    track_album = track.get('album', '')
                     self.logger.info(f"[{i+1}/{len(tracks)}] Searching: '{track['artist']}' - '{track_title}'")
-                    jellyfin_track = self.find_track_by_artist_and_title_sync(track['artist'], track_title)
+                    jellyfin_track = self.find_track_by_artist_and_title_sync(track['artist'], track_title, track_album)
                     if jellyfin_track:
                         found_tracks.append(jellyfin_track)
                         self.logger.info(f"[{i+1}/{len(tracks)}] ✅ '{jellyfin_track['artist']}' - '{jellyfin_track['name']}'")
@@ -1405,29 +1450,61 @@ class JellyfinClient(BaseAPIClient):
         """Process cached library data for use (no transformation needed for Jellyfin)"""
         return cached_data
     
-    def search_cached_library(self, track_name: str, artist_name: str, cached_data: Dict[str, Any]) -> Optional[str]:
+    def search_cached_library(self, track_name: str, artist_name: str, cached_data: Dict[str, Any], album_name: str = "") -> Optional[str]:
         """
-        Ultra-fast search in optimized cached library data
+        Ultra-fast search in optimized cached library data with album scoring
         
         Returns:
             Track ID if found, None otherwise
         """
         try:
+            tracks = cached_data.get('tracks', [])
             artist_index = cached_data.get('artist_index', {})
             track_index = cached_data.get('track_index', {})
             
             # Normalize search terms (safely handle None values)
             artist_key = str(artist_name).lower().strip() if artist_name is not None else ''
             track_key = str(track_name).lower().strip() if track_name is not None else ''
+            album_key = str(album_name).lower().strip() if album_name is not None else ''
             
-            # First try exact match
+            # Strategy 1: Exact match with album bonus
             if artist_key in artist_index and track_key in track_index:
                 artist_tracks = set(artist_index[artist_key])
                 track_tracks = set(track_index[track_key])
                 intersection = artist_tracks.intersection(track_tracks)
                 
                 if intersection:
-                    return list(intersection)[0]  # Return first match
+                    # If we have album info, score the matches
+                    if album_key:
+                        best_match = None
+                        best_score = 0
+                        for track_id in intersection:
+                            # Find the track data
+                            track_data = next((t for t in tracks if t['id'] == track_id), None)
+                            if track_data:
+                                album_score = 0
+                                if track_data.get('album'):
+                                    track_album_norm = self._normalize_text(track_data['album'])
+                                    if track_album_norm == album_key:
+                                        album_score = 1.0  # Exact album match
+                                    elif album_key in track_album_norm or track_album_norm in album_key:
+                                        album_score = 0.7  # Partial album match
+                                    elif self._fuzzy_match(album_key, track_album_norm):
+                                        album_score = 0.5  # Fuzzy album match
+                                
+                                if album_score > best_score:
+                                    best_score = album_score
+                                    best_match = track_id
+                        
+                        if best_match:
+                            return best_match
+                    
+                    # Fallback to first match if no album scoring
+                    return list(intersection)[0]
+            
+            # Strategy 2: Fuzzy matching with album scoring
+            best_match = None
+            best_score = 0
             
             # Try fuzzy matching on artist
             for cached_artist in artist_index:
@@ -1437,7 +1514,23 @@ class JellyfinClient(BaseAPIClient):
                         track_tracks = set(track_index[track_key])
                         intersection = artist_tracks.intersection(track_tracks)
                         if intersection:
-                            return list(intersection)[0]
+                            # Score matches with album bonus
+                            for track_id in intersection:
+                                track_data = next((t for t in tracks if t['id'] == track_id), None)
+                                if track_data:
+                                    score = 0.8  # Base score for fuzzy artist match
+                                    
+                                    # Add album bonus
+                                    if album_key and track_data.get('album'):
+                                        track_album_norm = self._normalize_text(track_data['album'])
+                                        if track_album_norm == album_key:
+                                            score += 0.2  # Album bonus
+                                        elif album_key in track_album_norm or track_album_norm in album_key:
+                                            score += 0.1  # Partial album bonus
+                                    
+                                    if score > best_score:
+                                        best_score = score
+                                        best_match = track_id
             
             # Try fuzzy matching on track name
             for cached_track in track_index:
@@ -1447,9 +1540,25 @@ class JellyfinClient(BaseAPIClient):
                         artist_tracks = set(artist_index[artist_key])
                         intersection = artist_tracks.intersection(track_tracks)
                         if intersection:
-                            return list(intersection)[0]
+                            # Score matches with album bonus
+                            for track_id in intersection:
+                                track_data = next((t for t in tracks if t['id'] == track_id), None)
+                                if track_data:
+                                    score = 0.8  # Base score for fuzzy track match
+                                    
+                                    # Add album bonus
+                                    if album_key and track_data.get('album'):
+                                        track_album_norm = self._normalize_text(track_data['album'])
+                                        if track_album_norm == album_key:
+                                            score += 0.2  # Album bonus
+                                        elif album_key in track_album_norm or track_album_norm in album_key:
+                                            score += 0.1  # Partial album bonus
+                                    
+                                    if score > best_score:
+                                        best_score = score
+                                        best_match = track_id
             
-            return None
+            return best_match
             
         except Exception as e:
             self.logger.error(f"Failed to search cached library: {e}")
@@ -1640,7 +1749,7 @@ class JellyfinClient(BaseAPIClient):
         
         return None
     
-    def _try_special_character_variants(self, title: str, artist: str, normalized_artist: str, normalized_title: str) -> Optional[Dict[str, Any]]:
+    def _try_special_character_variants(self, title: str, artist: str, normalized_artist: str, normalized_title: str, normalized_album: str = "", album: str = "") -> Optional[Dict[str, Any]]:
         """Try different special character handling for problematic titles"""
         self.logger.debug("🔄 Strategy 8b: Special character variants...")
         
@@ -1667,7 +1776,7 @@ class JellyfinClient(BaseAPIClient):
                 tracks = self.search_tracks_sync(variant, limit=50)
                 
                 if tracks:
-                    match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title)
+                    match = self._find_best_match(tracks, normalized_artist, normalized_title, artist, title, normalized_album, album)
                     if match:
                         self.logger.info(f"✅ Special character variant match: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
                         return match

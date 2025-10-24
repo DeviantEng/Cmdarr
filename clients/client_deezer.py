@@ -182,10 +182,16 @@ class DeezerClient(BaseAPIClient):
                         artist = track.get('artist', {})
                         artist_name = artist.get('name', 'Unknown Artist') if artist else 'Unknown Artist'
                         
+                        # Normalize text for consistent matching
+                        from utils.text_normalizer import normalize_text
+                        artist_name = normalize_text(artist_name)
+                        track_name = normalize_text(track.get('title', 'Unknown Track'))
+                        album_name = normalize_text(track.get('album', {}).get('title', 'Unknown Album'))
+                        
                         all_tracks.append({
                             'artist': artist_name,
-                            'track': track.get('title', 'Unknown Track'),
-                            'album': track.get('album', {}).get('title', 'Unknown Album'),
+                            'track': track_name,
+                            'album': album_name,
                             'duration': track.get('duration', 0),
                             'explicit_lyrics': track.get('explicit_lyrics', False)
                         })

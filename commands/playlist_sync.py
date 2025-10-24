@@ -497,8 +497,9 @@ class PlaylistSyncCommand(BaseCommand):
                     continue
                 
                 # Search for track in target library
+                album = track.get('album', '')
                 rating_key = self.target_client.search_for_track(
-                    track_name, artist, cached_data=cached_data
+                    track_name, artist, cached_data=cached_data, album_name=album
                 )
                 
                 if rating_key and rating_key not in existing_track_keys:

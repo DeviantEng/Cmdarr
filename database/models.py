@@ -26,6 +26,7 @@ class ConfigSetting(Base):
     description = Column(Text, nullable=True)
     is_sensitive = Column(Boolean, default=False)  # For API keys, tokens, etc.
     is_required = Column(Boolean, default=False)
+    is_hidden = Column(Boolean, default=False)  # Hide from UI (auto-managed settings)
     validation_regex = Column(String(500), nullable=True)  # Optional regex validation
     min_value = Column(Float, nullable=True)  # For numeric validation
     max_value = Column(Float, nullable=True)  # For numeric validation

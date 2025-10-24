@@ -266,14 +266,29 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             # Generate playlist description
             description = self._generate_playlist_description(playlist_data, playlist_key)
             
+            # Get library cache if available
+            cached_data = None
+            if self.library_cache_manager:
+                cached_data = self.library_cache_manager.get_library_cache(
+                    self.target_name.lower()
+                )
+                if cached_data:
+                    track_count = cached_data.get('total_tracks', 0)
+                    self.logger.info(f"Using library cache with {track_count:,} tracks")
+                else:
+                    self.logger.warning(
+                        f"Library cache not available for {self.target_name}. "
+                        "Playlist sync will use live API (slower performance expected)."
+                    )
+            
             # Sync playlist using parent class method
             self.logger.info(f"Syncing '{playlist_key}' ({len(tracks)} tracks) to {self.target_name} as '{target_title}'")
             
             sync_mode = self.config_json.get('sync_mode', 'full')
             if sync_mode == 'full':
-                result = await self._sync_full(target_title, tracks, description, None)
+                result = await self._sync_full(target_title, tracks, description, cached_data)
             else:
-                result = await self._sync_additive(target_title, tracks, description, None)
+                result = await self._sync_additive(target_title, tracks, description, cached_data)
             
             # Extract results
             success = result.get('success', False)

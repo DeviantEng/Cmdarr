@@ -240,6 +240,43 @@ class ConfigService:
             self.logger.error(f"Failed to get settings for category {category}: {e}")
             return {}
     
+    def get_visible_settings(self) -> Dict[str, Any]:
+        """Get all visible (non-hidden) configuration settings"""
+        try:
+            manager = get_database_manager()
+            session = manager.get_session_sync()
+            try:
+                settings = session.query(ConfigSetting).filter(ConfigSetting.is_hidden == False).all()
+                result = {}
+                for setting in settings:
+                    result[setting.key] = setting.get_effective_value()
+                return result
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to get visible settings: {e}")
+            return {}
+    
+    def get_visible_settings_by_category(self, category: str) -> Dict[str, Any]:
+        """Get visible settings by category"""
+        try:
+            manager = get_database_manager()
+            session = manager.get_session_sync()
+            try:
+                settings = session.query(ConfigSetting).filter(
+                    ConfigSetting.category == category,
+                    ConfigSetting.is_hidden == False
+                ).all()
+                result = {}
+                for setting in settings:
+                    result[setting.key] = setting.get_effective_value()
+                return result
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to get visible settings for category {category}: {e}")
+            return {}
+
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all configuration settings"""
         try:

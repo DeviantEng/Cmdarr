@@ -354,8 +354,13 @@ class LibraryCacheManager:
     def invalidate_cache(self, client_type: str, library_key: str = None) -> None:
         """Invalidate cache for a specific client and library"""
         try:
-            # Generate cache key
-            cache_key = f"{client_type}:{library_key or 'default'}"
+            # Generate cache key using the same logic as the client
+            if client_type in self.registered_clients:
+                client = self.registered_clients[client_type]
+                cache_key = client.get_cache_key(library_key)
+            else:
+                # Fallback to simple key if client not registered
+                cache_key = f"{client_type}:{library_key or 'default'}"
             
             # Remove from SQLite
             self._invalidate_sqlite_cache(cache_key)

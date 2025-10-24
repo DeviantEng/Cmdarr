@@ -201,17 +201,22 @@ class PlexClient(BaseAPIClient):
             artist = track["artist"]
             title = track["title"]
             
+            # Normalize punctuation for consistent matching
+            from utils.text_normalizer import normalize_text
+            normalized_artist = normalize_text(artist) if artist else ""
+            normalized_title = normalize_text(title) if title else ""
+            
             # Direct artist mapping for fastest lookup
-            if artist:
-                if artist not in artist_index:
-                    artist_index[artist] = []
-                artist_index[artist].append(rating_key)
+            if normalized_artist:
+                if normalized_artist not in artist_index:
+                    artist_index[normalized_artist] = []
+                artist_index[normalized_artist].append(rating_key)
             
             # Direct track title mapping
-            if title:
-                if title not in track_index:
-                    track_index[title] = []
-                track_index[title].append(rating_key)
+            if normalized_title:
+                if normalized_title not in track_index:
+                    track_index[normalized_title] = []
+                track_index[normalized_title].append(rating_key)
         
         cache_data["artist_index"] = artist_index
         cache_data["track_index"] = track_index
@@ -246,7 +251,7 @@ class PlexClient(BaseAPIClient):
         """Process cached library data for use (no transformation needed for Plex)"""
         return cached_data
     
-    def search_cached_library(self, track_name: str, artist_name: str, cached_data: Dict[str, Any]) -> Optional[str]:
+    def search_cached_library(self, track_name: str, artist_name: str, cached_data: Dict[str, Any], album_name: str = "") -> Optional[str]:
         """
         Ultra-fast search in optimized cached library data
         
@@ -254,46 +259,97 @@ class PlexClient(BaseAPIClient):
             Track ratingKey if found, None otherwise
         """
         if not cached_data or "tracks" not in cached_data:
+            self.logger.debug(f"🔍 CACHED SEARCH: No cached data available")
             return None
         
         tracks = cached_data["tracks"]
         artist_index = cached_data.get("artist_index", {})
         track_index = cached_data.get("track_index", {})
         
+        # Log original search terms
+        self.logger.debug(f"🔍 CACHED SEARCH: Searching for '{track_name}' by '{artist_name}' from album '{album_name}'")
+        
         track_lower = track_name.lower().strip()
         artist_lower = artist_name.lower().strip()
+        album_lower = album_name.lower().strip() if album_name else ""
+        
+        # Normalize punctuation for consistent matching
+        from utils.text_normalizer import normalize_text
+        original_track = track_lower
+        original_artist = artist_lower
+        original_album = album_lower
+        
+        track_lower = normalize_text(track_lower)
+        artist_lower = normalize_text(artist_lower)
+        album_lower = normalize_text(album_lower)
+        
+        # Log normalization results
+        if original_track != track_lower or original_artist != artist_lower or original_album != album_lower:
+            self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_track}' -> '{track_lower}'")
+            self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_artist}' -> '{artist_lower}'")
+            self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_album}' -> '{album_lower}'")
         
         # Strategy 1: Direct index lookups (fastest)
         candidate_keys = set()
         
         # Get candidates by artist (direct lookup)
         if artist_lower in artist_index:
-            candidate_keys.update(artist_index[artist_lower])
+            artist_candidates = set(artist_index[artist_lower])
+            candidate_keys.update(artist_candidates)
+            self.logger.debug(f"🔍 CACHED SEARCH: Artist '{artist_lower}' found {len(artist_candidates)} candidates: {sorted(list(artist_candidates))[:10]}")
+        else:
+            self.logger.debug(f"🔍 CACHED SEARCH: Artist '{artist_lower}' NOT found in artist index")
         
         # Get candidates by track title (direct lookup)
         if track_lower in track_index:
             track_candidates = set(track_index[track_lower])
+            self.logger.debug(f"🔍 CACHED SEARCH: Track '{track_lower}' found {len(track_candidates)} candidates: {sorted(list(track_candidates))}")
             
             # If we have both artist and track matches, use intersection for best results
             if candidate_keys:
+                intersection_before = len(candidate_keys)
                 candidate_keys = candidate_keys.intersection(track_candidates)
+                self.logger.debug(f"🔍 CACHED SEARCH: Intersection: {intersection_before} artist × {len(track_candidates)} track = {len(candidate_keys)} final candidates: {sorted(list(candidate_keys))}")
             else:
                 candidate_keys = track_candidates
+                self.logger.debug(f"🔍 CACHED SEARCH: Using track-only candidates: {len(candidate_keys)} keys")
+        else:
+            self.logger.debug(f"Track '{track_lower}' NOT found in track index")
         
         # Strategy 2: If direct lookup found candidates, score them
         if candidate_keys:
+            self.logger.debug(f"🔍 CACHED SEARCH: Scoring {len(candidate_keys)} candidates")
             best_match = None
             best_score = 0
+            scored_tracks = []
             
             for track in tracks:
                 if track["key"] in candidate_keys:
-                    score = self._score_track_match_optimized(track, track_lower, artist_lower)
+                    score = self._score_track_match_optimized(track, track_lower, artist_lower, album_lower)
+                    track_info = {
+                        'key': track["key"],
+                        'artist': track['artist'],
+                        'title': track['title'],
+                        'album': track.get('album', 'NO_ALBUM'),
+                        'score': score
+                    }
+                    scored_tracks.append(track_info)
+                    
                     if score > best_score:
                         best_score = score
                         best_match = track["key"]
             
+            # Log all scored tracks sorted by score
+            scored_tracks.sort(key=lambda x: x['score'], reverse=True)
+            self.logger.debug(f"🔍 CACHED SEARCH: Scored {len(scored_tracks)} tracks:")
+            for i, track_info in enumerate(scored_tracks[:5]):  # Show top 5
+                self.logger.debug(f"🔍 CACHED SEARCH:   #{i+1}: '{track_info['artist']}' - '{track_info['title']}' - '{track_info['album']}' - Score: {track_info['score']}")
+            
             if best_match and best_score >= 100:  # Require high confidence for direct matches
+                self.logger.debug(f"🔍 CACHED SEARCH: ✅ Best match: '{best_match}' with score {best_score}")
                 return best_match
+            else:
+                self.logger.debug(f"🔍 CACHED SEARCH: ❌ No high-confidence match (best score: {best_score}, threshold: 100)")
         
         # Strategy 3: Fuzzy matching fallback (only if no direct matches)
         if not candidate_keys:
@@ -305,7 +361,7 @@ class PlexClient(BaseAPIClient):
             track_sample = tracks[:sample_size] if len(tracks) > sample_size else tracks
             
             for track in track_sample:
-                score = self._score_track_match_optimized(track, track_lower, artist_lower)
+                score = self._score_track_match_optimized(track, track_lower, artist_lower, album_lower)
                 if score > best_score:
                     best_score = score
                     best_match = track["key"]
@@ -315,32 +371,77 @@ class PlexClient(BaseAPIClient):
         
         return None
     
-    def _score_track_match_optimized(self, track: Dict[str, Any], target_track: str, target_artist: str) -> int:
+    def _score_track_match_optimized(self, track: Dict[str, Any], target_track: str, target_artist: str, target_album: str = "") -> int:
         """
         Optimized track matching score using minimal track data
         
-        Returns score from 0-200 (higher is better)
+        Returns score from 0-250 (higher is better)
         """
         score = 0
+        score_breakdown = []
         
         plex_track = track.get("title", "")
         plex_artist = track.get("artist", "")
+        plex_album = track.get("album", "")
+        
+        # Normalize punctuation for consistent matching
+        from utils.text_normalizer import normalize_text
+        plex_track = normalize_text(plex_track)
+        plex_artist = normalize_text(plex_artist)
+        plex_album = normalize_text(plex_album)
+        
+        target_track = normalize_text(target_track)
+        target_artist = normalize_text(target_artist)
+        target_album = normalize_text(target_album)
         
         # Score track title match
         if plex_track == target_track:
             score += 100  # Exact match
+            score_breakdown.append("track_exact:100")
         elif target_track in plex_track or plex_track in target_track:
             score += 70   # Partial match
+            score_breakdown.append("track_partial:70")
         elif self._fuzzy_match(plex_track, target_track):
             score += 50   # Fuzzy match
+            score_breakdown.append("track_fuzzy:50")
         
         # Score artist name match
         if plex_artist == target_artist:
             score += 100  # Exact match
+            score_breakdown.append("artist_exact:100")
         elif target_artist in plex_artist or plex_artist in target_artist:
             score += 70   # Partial match
+            score_breakdown.append("artist_partial:70")
         elif self._fuzzy_match(plex_artist, target_artist):
             score += 50   # Fuzzy match
+            score_breakdown.append("artist_fuzzy:50")
+        
+        # Score album match (bonus scoring)
+        if target_album and plex_album:
+            if plex_album == target_album:
+                score += 50  # Exact match
+                score_breakdown.append("album_exact:50")
+                self.logger.debug(f"Cached album exact match: '{plex_album}' == '{target_album}' (+50)")
+            elif target_album in plex_album or plex_album in target_album:
+                score += 30   # Partial match
+                score_breakdown.append("album_partial:30")
+                self.logger.debug(f"Cached album partial match: '{plex_album}' <-> '{target_album}' (+30)")
+            elif self._fuzzy_match(plex_album, target_album):
+                score += 20   # Fuzzy match
+                score_breakdown.append("album_fuzzy:20")
+                self.logger.debug(f"Cached album fuzzy match: '{plex_album}' ~ '{target_album}' (+20)")
+            else:
+                self.logger.debug(f"Cached album no match: '{plex_album}' vs '{target_album}' (0)")
+        else:
+            if target_album:
+                self.logger.debug(f"Cached album missing from track: '{target_album}'")
+            else:
+                self.logger.debug("No album info provided for cached matching")
+        
+        # Log detailed scoring breakdown
+        self.logger.debug(f"🎯 SCORE BREAKDOWN: '{plex_artist}' - '{plex_track}' - '{plex_album}'")
+        self.logger.debug(f"🎯 SCORE BREAKDOWN:   Target: '{target_artist}' - '{target_track}' - '{target_album}'")
+        self.logger.debug(f"🎯 SCORE BREAKDOWN:   Breakdown: {' + '.join(score_breakdown)} = {score}")
         
         return score
     
@@ -361,7 +462,7 @@ class PlexClient(BaseAPIClient):
     
     # ==== ENHANCED SEARCH METHODS ====
     
-    def search_for_track(self, track_name, artist_name, mbids=None, cached_data=None):
+    def search_for_track(self, track_name, artist_name, mbids=None, cached_data=None, album_name=None):
         """
         Search for a track by name and artist with cache-first approach
         Enhanced with optimized library cache for dramatic performance improvements
@@ -371,7 +472,7 @@ class PlexClient(BaseAPIClient):
         
         # Try cached search first if available and library cache is enabled
         if cached_data and library_cache_enabled:
-            cached_result = self.search_cached_library(track_name, artist_name, cached_data)
+            cached_result = self.search_cached_library(track_name, artist_name, cached_data, album_name or "")
             if cached_result:
                 self.logger.debug(f"Cache hit: {artist_name} - {track_name}")
                 # Record cache hit
@@ -386,9 +487,9 @@ class PlexClient(BaseAPIClient):
         else:
             self.logger.debug(f"Using live API search: {artist_name} - {track_name}")
         
-        return self._search_for_track_live(track_name, artist_name, mbids)
+        return self._search_for_track_live(track_name, artist_name, mbids, album_name)
     
-    def _search_for_track_live(self, track_name, artist_name, mbids=None):
+    def _search_for_track_live(self, track_name, artist_name, mbids=None, album_name=None):
         """
         Original live API search implementation (fallback when cache unavailable)
         """
@@ -420,7 +521,7 @@ class PlexClient(BaseAPIClient):
                 tracks = self.search_tracks_in_library(library_key, query)
 
                 for track in tracks:
-                    score = self._score_track_match(track, track_name, artist_name, mbids)
+                    score = self._score_track_match(track, track_name, artist_name, mbids, album_name)
 
                     if score > best_score:
                         best_score = score
@@ -468,6 +569,8 @@ class PlexClient(BaseAPIClient):
                     self.logger.warning("Library cache not available, falling back to live API searches")
             else:
                 self.logger.warning("No library cache available, falling back to live API searches")
+            
+            self.logger.debug(f"Cache status: cached_data={cached_data is not None}, library_cache_manager={library_cache_manager is not None}")
 
             # Find tracks with progress tracking
             found_track_keys = []
@@ -485,7 +588,9 @@ class PlexClient(BaseAPIClient):
                 progress = f"[{processed}/{len(tracks)}]"
 
                 # Search using cache-optimized method
-                rating_key = self.search_for_track(track_name, artist, cached_data=cached_data)
+                album = track.get('album', '')
+                self.logger.debug(f"Searching for track: '{artist}' - '{track_name}' - Album: '{album}' - Cache: {cached_data is not None}")
+                rating_key = self.search_for_track(track_name, artist, cached_data=cached_data, album_name=album)
 
                 if rating_key:
                     found_track_keys.append(rating_key)
@@ -846,11 +951,11 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error getting recently added tracks from library {library_key}: {e}")
             return []
 
-    def _score_track_match(self, track, target_track_name, target_artist_name, mbids=None):
+    def _score_track_match(self, track, target_track_name, target_artist_name, mbids=None, target_album_name=None):
         """
         Score how well a Plex track matches our target track.
         Copied from proven working implementation.
-        Returns a score from 0-200 (higher is better).
+        Returns a score from 0-250 (higher is better).
         """
         score = 0
 
@@ -858,9 +963,21 @@ class PlexClient(BaseAPIClient):
         plex_track_title = track.get("title", "").lower()
         plex_artist_name = track.get("grandparentTitle", "").lower()  # Artist is grandparent
         plex_album_name = track.get("parentTitle", "").lower()        # Album is parent
+        
+        # Normalize punctuation for consistent matching
+        from utils.text_normalizer import normalize_text
+        plex_track_title = normalize_text(plex_track_title)
+        plex_artist_name = normalize_text(plex_artist_name)
+        plex_album_name = normalize_text(plex_album_name)
 
         target_track_lower = target_track_name.lower()
         target_artist_lower = target_artist_name.lower()
+        target_album_lower = (target_album_name or "").lower()
+        
+        # Normalize punctuation for consistent matching
+        target_track_lower = normalize_text(target_track_lower)
+        target_artist_lower = normalize_text(target_artist_lower)
+        target_album_lower = normalize_text(target_album_lower)
 
         # Score track title match
         if plex_track_title == target_track_lower:
@@ -878,6 +995,25 @@ class PlexClient(BaseAPIClient):
         elif self._fuzzy_match(plex_artist_name, target_artist_lower):
             score += 50   # Fuzzy match
 
+        # Score album match (bonus scoring)
+        if target_album_lower and plex_album_name:
+            if plex_album_name == target_album_lower:
+                score += 50  # Exact match
+                self.logger.debug(f"Album exact match: '{plex_album_name}' == '{target_album_lower}' (+50)")
+            elif target_album_lower in plex_album_name or plex_album_name in target_album_lower:
+                score += 30   # Partial match
+                self.logger.debug(f"Album partial match: '{plex_album_name}' <-> '{target_album_lower}' (+30)")
+            elif self._fuzzy_match(plex_album_name, target_album_lower):
+                score += 20   # Fuzzy match
+                self.logger.debug(f"Album fuzzy match: '{plex_album_name}' ~ '{target_album_lower}' (+20)")
+            else:
+                self.logger.debug(f"Album no match: '{plex_album_name}' vs '{target_album_lower}' (0)")
+        else:
+            if target_album_lower:
+                self.logger.debug(f"Album missing from Plex track: '{target_album_lower}'")
+            else:
+                self.logger.debug("No album info provided for matching")
+
         # Bonus for MusicBrainz ID match if available
         if mbids:
             plex_guid = track.get("guid", "").lower()
@@ -886,6 +1022,7 @@ class PlexClient(BaseAPIClient):
                     score += 50  # MusicBrainz ID bonus
                     break
 
+        self.logger.debug(f"Track match score: {score}/250 - '{plex_artist_name}' - '{plex_track_title}' - '{plex_album_name}'")
         return score
 
     def _fuzzy_match(self, str1, str2, threshold=0.8):

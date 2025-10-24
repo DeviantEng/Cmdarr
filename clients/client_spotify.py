@@ -222,10 +222,22 @@ class SpotifyClient(BaseAPIClient):
                         artists = track.get('artists', [])
                         artist_name = artists[0].get('name', 'Unknown Artist') if artists else 'Unknown Artist'
                         
+                        # Extract album name before normalization
+                        raw_album_name = track.get('album', {}).get('name', 'Unknown Album')
+                        
+                        # Normalize text for consistent matching
+                        from utils.text_normalizer import normalize_text
+                        artist_name = normalize_text(artist_name)
+                        track_name = normalize_text(track.get('name', 'Unknown Track'))
+                        album_name = normalize_text(raw_album_name)
+                        
+                        # Debug log album extraction
+                        self.logger.debug(f"🎵 SPOTIFY EXTRACT: '{track_name}' by '{artist_name}' from album '{album_name}' (raw: '{raw_album_name}')")
+                        
                         all_tracks.append({
                             'artist': artist_name,
-                            'track': track.get('name', 'Unknown Track'),
-                            'album': track.get('album', {}).get('name', 'Unknown Album')
+                            'track': track_name,
+                            'album': album_name
                         })
                 
                 # Check if we got less than requested (end of results)

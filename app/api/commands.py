@@ -865,6 +865,9 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             if playlist_type not in valid_types:
                 raise HTTPException(status_code=400, detail=f"Invalid playlist type: {playlist_type}")
         
+        # Create config instance
+        config = Config()
+        
         # Generate unique command ID (never reuse IDs for historical consistency)
         try:
             existing_commands = db.query(CommandConfig).filter(

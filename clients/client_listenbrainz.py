@@ -252,17 +252,31 @@ class ListenBrainzClient(BaseAPIClient):
                 track_title = track.get('title', '')
                 artist_name = track.get('creator', '')
                 
+                # Normalize text for consistent matching
+                from utils.text_normalizer import normalize_text
+                track_title = normalize_text(track_title)
+                artist_name = normalize_text(artist_name)
+                
                 # Extract additional metadata from extension data
-                album_name = ''
+                album_name = track.get('album', '')  # Get album from top-level field first
+                album_name = normalize_text(album_name)
                 artist_mbid = None
                 track_mbid = None
+                
+                # Debug: Log the raw track data structure
+                self.logger.debug(f"Raw track data for '{track_title}': {track}")
                 
                 if 'extension' in track:
                     mb_track_data = track['extension'].get('https://musicbrainz.org/doc/jspf#track', {})
                     additional_metadata = mb_track_data.get('additional_metadata', {})
                     
-                    # Get album name
-                    album_name = additional_metadata.get('release_name', '')
+                    # Debug: Log the extension data
+                    self.logger.debug(f"Extension data for '{track_title}': {mb_track_data}")
+                    self.logger.debug(f"Additional metadata for '{track_title}': {additional_metadata}")
+                    
+                    # Get album name from additional_metadata if not already found
+                    if not album_name:
+                        album_name = additional_metadata.get('release_name', '')
                     
                     # Get track MBID
                     track_mbid = additional_metadata.get('track_mbid')
@@ -271,6 +285,8 @@ class ListenBrainzClient(BaseAPIClient):
                     artists_list = additional_metadata.get('artists', [])
                     if artists_list and len(artists_list) > 0:
                         artist_mbid = artists_list[0].get('artist_mbid')
+                else:
+                    self.logger.debug(f"No extension data found for track '{track_title}'")
                 
                 # Skip if no essential data
                 if not track_title or not artist_name:
@@ -285,6 +301,12 @@ class ListenBrainzClient(BaseAPIClient):
                     'track_mbid': track_mbid,
                     'source': 'listenbrainz'
                 })
+                
+                # Debug logging for album extraction
+                if album_name:
+                    self.logger.debug(f"Extracted track: '{artist_name}' - '{track_title}' - Album: '{album_name}'")
+                else:
+                    self.logger.debug(f"Extracted track: '{artist_name}' - '{track_title}' - No album data")
             
             self.logger.info(f"Extracted {len(tracks)} valid tracks from playlist")
             return tracks
