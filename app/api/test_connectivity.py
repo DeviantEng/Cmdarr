@@ -12,7 +12,9 @@ from commands.config_adapter import ConfigAdapter
 from utils.logger import get_logger
 
 router = APIRouter()
-logger = get_logger('cmdarr.api.test_connectivity')
+# Lazy-load logger to avoid initialization issues
+def get_test_connectivity_logger():
+    return get_logger('cmdarr.api.test_connectivity')
 
 
 class ConnectivityTestResult(BaseModel):
@@ -76,7 +78,7 @@ async def test_connectivity():
         )
         
     except Exception as e:
-        logger.error(f"Connectivity test failed: {e}")
+        get_test_connectivity_logger().error(f"Connectivity test failed: {e}")
         raise HTTPException(status_code=500, detail=f"Connectivity test failed: {str(e)}")
 
 

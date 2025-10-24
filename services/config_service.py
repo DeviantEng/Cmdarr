@@ -8,7 +8,7 @@ import os
 import json
 from typing import Any, Dict, List, Optional, Union
 from sqlalchemy.orm import Session
-from database.models import ConfigSetting
+from database.config_models import ConfigSetting
 from database.database import get_database_manager
 from utils.logger import get_logger
 

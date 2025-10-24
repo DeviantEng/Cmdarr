@@ -9,13 +9,15 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
-from database.database import get_db
-from database.models import CommandConfig, CommandExecution
+from database.database import get_config_db
+from database.config_models import CommandConfig, CommandExecution
 from services.command_executor import command_executor
 from utils.logger import get_logger
 
 router = APIRouter()
-logger = get_logger('cmdarr.api.commands')
+# Lazy-load logger to avoid initialization issues
+def get_commands_logger():
+    return get_logger('cmdarr.api.commands')
 
 
 def utc_datetime_serializer(dt: Optional[datetime]) -> Optional[str]:
@@ -112,7 +114,7 @@ class CommandExecutionResponse(BaseModel):
 
 
 @router.get("/", response_model=List[CommandConfigResponse])
-async def get_all_commands(db: Session = Depends(get_db)):
+async def get_all_commands(db: Session = Depends(get_config_db)):
     """Get all command configurations (excluding helper commands)"""
     try:
         commands = db.query(CommandConfig).all()
@@ -129,12 +131,12 @@ async def get_all_commands(db: Session = Depends(get_db)):
         
         return [command_to_response(command) for command in visible_commands]
     except Exception as e:
-        logger.error(f"Failed to get commands: {e}")
+        get_commands_logger().error(f"Failed to get commands: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve commands")
 
 
 @router.get("/{command_name}", response_model=CommandConfigResponse)
-async def get_command(command_name: str, db: Session = Depends(get_db)):
+async def get_command(command_name: str, db: Session = Depends(get_config_db)):
     """Get a specific command configuration"""
     try:
         command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
@@ -145,7 +147,7 @@ async def get_command(command_name: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to get command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve command")
 
 
@@ -153,7 +155,7 @@ async def get_command(command_name: str, db: Session = Depends(get_db)):
 async def update_command(
     command_name: str, 
     request: CommandUpdateRequest, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_config_db)
 ):
     """Update a command configuration"""
     try:
@@ -174,7 +176,7 @@ async def update_command(
             if request.enabled and command.schedule_hours:
                 schedule_minutes = command.schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
+                get_commands_logger().info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
                 
         if request.schedule_hours is not None:
             command.schedule_hours = request.schedule_hours
@@ -183,7 +185,7 @@ async def update_command(
             if command.enabled and request.schedule_hours:
                 schedule_minutes = request.schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                logger.info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
+                get_commands_logger().info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
                 
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
@@ -208,13 +210,13 @@ async def update_command(
                 else:
                     await scheduler.disable_command(command_name)
             except Exception as e:
-                logger.warning(f"Failed to notify scheduler of command {command_name} change: {e}")
+                get_commands_logger().warning(f"Failed to notify scheduler of command {command_name} change: {e}")
         
         return {"message": f"Command {command_name} updated successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to update command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update command")
 
 
@@ -222,7 +224,7 @@ async def update_command(
 async def execute_command(
     command_name: str, 
     request: CommandExecutionRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_config_db)
 ):
     """Execute a command"""
     try:
@@ -235,7 +237,7 @@ async def execute_command(
             raise HTTPException(status_code=400, detail="Command is disabled")
         
         # Execute command using command executor
-        logger.info(f"API: Executing command {command_name} with triggered_by='{request.triggered_by}'")
+        get_commands_logger().info(f"API: Executing command {command_name} with triggered_by='{request.triggered_by}'")
         result = await command_executor.execute_command(command_name, None, request.triggered_by)
         
         if result['success']:
@@ -249,7 +251,7 @@ async def execute_command(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to execute command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to execute command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to execute command")
 
 
@@ -257,7 +259,7 @@ async def execute_command(
 async def get_command_executions(
     command_name: str, 
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_config_db)
 ):
     """Get execution history for a command"""
     try:
@@ -291,12 +293,12 @@ async def get_command_executions(
             result.append(CommandExecutionResponse(**execution_dict))
         return result
     except Exception as e:
-        logger.error(f"Failed to get executions for command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to get executions for command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve command executions")
 
 
 @router.get("/{command_name}/status")
-async def get_command_status(command_name: str, db: Session = Depends(get_db)):
+async def get_command_status(command_name: str, db: Session = Depends(get_config_db)):
     """Get current status of a command"""
     try:
         command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
@@ -316,7 +318,7 @@ async def get_command_status(command_name: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get status for command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to get status for command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve command status")
 
 
@@ -327,12 +329,12 @@ async def cleanup_stuck_executions():
         await command_executor.cleanup_stuck_executions()
         return {"message": "Stuck executions cleaned up successfully"}
     except Exception as e:
-        logger.error(f"Failed to cleanup stuck executions: {e}")
+        get_commands_logger().error(f"Failed to cleanup stuck executions: {e}")
         raise HTTPException(status_code=500, detail="Failed to cleanup stuck executions")
 
 
 @router.post("/executions/{execution_id}/kill")
-async def kill_execution(execution_id: int, db: Session = Depends(get_db)):
+async def kill_execution(execution_id: int, db: Session = Depends(get_config_db)):
     """Kill a running command execution"""
     try:
         # Get the execution
@@ -361,20 +363,20 @@ async def kill_execution(execution_id: int, db: Session = Depends(get_db)):
             from services.command_executor import command_executor
             command_executor.kill_execution(execution_id)
         except Exception as e:
-            logger.warning(f"Failed to kill process for execution {execution_id}: {e}")
+            get_commands_logger().warning(f"Failed to kill process for execution {execution_id}: {e}")
         
-        logger.info(f"Execution {execution_id} cancelled successfully")
+        get_commands_logger().info(f"Execution {execution_id} cancelled successfully")
         return {"message": f"Execution {execution_id} cancelled successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to kill execution {execution_id}: {e}")
+        get_commands_logger().error(f"Failed to kill execution {execution_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to kill execution")
 
 
 @router.delete("/executions/{execution_id}")
-async def delete_execution(execution_id: int, db: Session = Depends(get_db)):
+async def delete_execution(execution_id: int, db: Session = Depends(get_config_db)):
     """Delete a command execution from history"""
     try:
         # Get the execution
@@ -390,13 +392,13 @@ async def delete_execution(execution_id: int, db: Session = Depends(get_db)):
         db.delete(execution)
         db.commit()
         
-        logger.info(f"Execution {execution_id} deleted successfully")
+        get_commands_logger().info(f"Execution {execution_id} deleted successfully")
         return {"message": f"Execution {execution_id} deleted successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete execution {execution_id}: {e}")
+        get_commands_logger().error(f"Failed to delete execution {execution_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete execution")
 
 
@@ -405,7 +407,7 @@ async def clear_execution_history():
     """Clear all command execution history"""
     try:
         from database.database import get_database_manager
-        from database.models import CommandExecution
+        from database.config_models import CommandExecution
         
         db_manager = get_database_manager()
         session = db_manager.get_session_sync()
@@ -414,12 +416,12 @@ async def clear_execution_history():
             deleted_count = session.query(CommandExecution).delete()
             session.commit()
             
-            logger.info(f"Cleared {deleted_count} execution records")
+            get_commands_logger().info(f"Cleared {deleted_count} execution records")
             return {"message": f"Cleared {deleted_count} execution records"}
         finally:
             session.close()
     except Exception as e:
-        logger.error(f"Failed to clear execution history: {e}")
+        get_commands_logger().error(f"Failed to clear execution history: {e}")
         raise HTTPException(status_code=500, detail="Failed to clear execution history")
 
 
@@ -427,7 +429,7 @@ async def clear_execution_history():
 async def cleanup_executions(
     command_name: Optional[str] = None,
     keep_count: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_config_db)
 ):
     """Clean up old command executions, keeping only the most recent ones"""
     try:
@@ -457,7 +459,7 @@ async def cleanup_executions(
         deleted_count = len(executions_to_delete)
         db.commit()
         
-        logger.info(f"Cleaned up {deleted_count} old executions, kept {keep_count}")
+        get_commands_logger().info(f"Cleaned up {deleted_count} old executions, kept {keep_count}")
         return {
             "message": f"Cleaned up {deleted_count} old executions, kept {keep_count}",
             "deleted_count": deleted_count,
@@ -465,7 +467,7 @@ async def cleanup_executions(
         }
         
     except Exception as e:
-        logger.error(f"Failed to cleanup executions: {e}")
+        get_commands_logger().error(f"Failed to cleanup executions: {e}")
         raise HTTPException(status_code=500, detail="Failed to cleanup executions")
 
 
@@ -485,7 +487,7 @@ async def get_scheduler_status():
             "currently_running": queue_status['currently_running']
         }
     except Exception as e:
-        logger.error(f"Failed to get scheduler status: {e}")
+        get_commands_logger().error(f"Failed to get scheduler status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get scheduler status")
 
 
@@ -501,7 +503,7 @@ async def execute_cache_builder(request: Request):
         target = body.get('target', 'all')  # 'plex', 'jellyfin', or 'all'
         force_rebuild = body.get('force_rebuild', False)  # Renamed from force_refresh
         
-        logger.info(f"Cache builder API called with target='{target}', force_rebuild={force_rebuild}")
+        get_commands_logger().info(f"Cache builder API called with target='{target}', force_rebuild={force_rebuild}")
         
         # Create and execute command
         config = Config()
@@ -509,7 +511,7 @@ async def execute_cache_builder(request: Request):
         
         # Execute the command with parameters
         target_filter = target if target != 'all' else None
-        logger.info(f"Executing command with target_filter='{target_filter}', force_rebuild={force_rebuild}")
+        get_commands_logger().info(f"Executing command with target_filter='{target_filter}', force_rebuild={force_rebuild}")
         success = cmd.execute(force_rebuild=force_rebuild, target_filter=target_filter)
         
         if success:
@@ -528,7 +530,7 @@ async def execute_cache_builder(request: Request):
             }
         
     except Exception as e:
-        logger.error(f"Failed to execute cache builder: {e}")
+        get_commands_logger().error(f"Failed to execute cache builder: {e}")
         return {
             "success": False,
             "error": str(e),
@@ -617,7 +619,7 @@ async def validate_playlist_url(url: str):
             }
             
     except Exception as e:
-        logger.error(f"Failed to validate playlist URL: {e}")
+        get_commands_logger().error(f"Failed to validate playlist URL: {e}")
         return {
             "valid": False,
             "error": f"Failed to validate URL: {str(e)}"
@@ -625,7 +627,7 @@ async def validate_playlist_url(url: str):
 
 
 @router.post("/playlist-sync/create")
-async def create_playlist_sync(request: dict, db: Session = Depends(get_db)):
+async def create_playlist_sync(request: dict, db: Session = Depends(get_config_db)):
     """Create a new playlist sync command"""
     try:
         # Get playlist type from request
@@ -639,18 +641,18 @@ async def create_playlist_sync(request: dict, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create playlist sync: {e}")
+        get_commands_logger().error(f"Failed to create playlist sync: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create playlist sync: {str(e)}")
 
 
-async def create_external_playlist_sync(request: dict, db: Session = Depends(get_db)):
+async def create_external_playlist_sync(request: dict, db: Session = Depends(get_config_db)):
     """Create a new external playlist sync command (Spotify, Deezer, etc.)"""
     try:
         from utils.playlist_parser import parse_playlist_url
         from clients.client_spotify import SpotifyClient
         from clients.client_deezer import DeezerClient
         from commands.config_adapter import Config
-        from database.models import CommandConfig
+        from database.config_models import CommandConfig
         
         # Validate request
         playlist_url = request.get('playlist_url')
@@ -679,7 +681,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             try:
                 metadata = await spotify_client.get_playlist_info(playlist_url)
                 
-                logger.info(f"Spotify metadata response: {metadata}")
+                get_commands_logger().info(f"Spotify metadata response: {metadata}")
                 
                 if not metadata or not isinstance(metadata, dict):
                     raise HTTPException(status_code=400, detail='Invalid metadata response from Spotify')
@@ -698,7 +700,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             try:
                 metadata = await deezer_client.get_playlist_info(playlist_url)
                 
-                logger.info(f"Deezer metadata response: {metadata}")
+                get_commands_logger().info(f"Deezer metadata response: {metadata}")
                 
                 if not metadata or not isinstance(metadata, dict):
                     raise HTTPException(status_code=400, detail='Invalid metadata response from Deezer')
@@ -731,7 +733,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                     continue
             
             # Also check execution history for any orphaned IDs
-            from database.models import CommandExecution
+            from database.config_models import CommandExecution
             orphaned_executions = db.query(CommandExecution).filter(
                 CommandExecution.command_name.like('playlist_sync_%')
             ).all()
@@ -751,7 +753,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             command_name = f"playlist_sync_{next_id:05d}"
             
         except Exception as e:
-            logger.error(f"Failed to generate unique command ID: {e}")
+            get_commands_logger().error(f"Failed to generate unique command ID: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
         
         # Generate display name
@@ -784,7 +786,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             if enabled and schedule_hours:
                 schedule_minutes = schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                logger.info(f"Set placeholder last_run for new command {command_name} (next run in 5 minutes)")
+                get_commands_logger().info(f"Set placeholder last_run for new command {command_name} (next run in 5 minutes)")
             
             db.add(command)
             db.commit()
@@ -795,9 +797,9 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             command_executor._load_dynamic_playlist_sync_commands()
             
         except Exception as e:
-            logger.error(f"Failed to create command in database: {e}")
+            get_commands_logger().error(f"Failed to create command in database: {e}")
             import traceback
-            logger.error(f"Database creation traceback: {traceback.format_exc()}")
+            get_commands_logger().error(f"Database creation traceback: {traceback.format_exc()}")
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
         
@@ -805,7 +807,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
         warnings = []
         cache_enabled_key = f'LIBRARY_CACHE_{target.upper()}_ENABLED'
         if not config.get(cache_enabled_key, False):
-            logger.warning(
+            get_commands_logger().warning(
                 f"Creating playlist sync targeting {target} but library cache is disabled. "
                 "This may cause slow performance. Consider enabling library cache."
             )
@@ -829,15 +831,15 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create external playlist sync: {e}")
+        get_commands_logger().error(f"Failed to create external playlist sync: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create external playlist sync: {str(e)}")
 
 
-async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends(get_db)):
+async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends(get_config_db)):
     """Create a new ListenBrainz playlist sync command"""
     try:
         from commands.config_adapter import Config
-        from database.models import CommandConfig
+        from database.config_models import CommandConfig
         
         # Validate request
         playlist_types = request.get('playlist_types', [])
@@ -884,7 +886,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                     continue
             
             # Also check execution history for any orphaned IDs
-            from database.models import CommandExecution
+            from database.config_models import CommandExecution
             orphaned_executions = db.query(CommandExecution).filter(
                 CommandExecution.command_name.like('playlist_sync_%')
             ).all()
@@ -904,7 +906,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             command_name = f"playlist_sync_{next_id:05d}"
             
         except Exception as e:
-            logger.error(f"Failed to generate unique command ID: {e}")
+            get_commands_logger().error(f"Failed to generate unique command ID: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
         
         # Generate display name
@@ -947,7 +949,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             if enabled and schedule_hours:
                 schedule_minutes = schedule_hours * 60
                 command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                logger.info(f"Set placeholder last_run for new ListenBrainz command {command_name} (next run in 5 minutes)")
+                get_commands_logger().info(f"Set placeholder last_run for new ListenBrainz command {command_name} (next run in 5 minutes)")
             
             db.add(command)
             db.commit()
@@ -958,9 +960,9 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             command_executor._load_dynamic_playlist_sync_commands()
             
         except Exception as e:
-            logger.error(f"Failed to create command in database: {e}")
+            get_commands_logger().error(f"Failed to create command in database: {e}")
             import traceback
-            logger.error(f"Database creation traceback: {traceback.format_exc()}")
+            get_commands_logger().error(f"Database creation traceback: {traceback.format_exc()}")
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
         
@@ -968,7 +970,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
         warnings = []
         cache_enabled_key = f'LIBRARY_CACHE_{target.upper()}_ENABLED'
         if not config.get(cache_enabled_key, False):
-            logger.warning(
+            get_commands_logger().warning(
                 f"Creating ListenBrainz playlist sync targeting {target} but library cache is disabled. "
                 "This may cause slow performance. Consider enabling library cache."
             )
@@ -992,12 +994,12 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create ListenBrainz playlist sync: {e}")
+        get_commands_logger().error(f"Failed to create ListenBrainz playlist sync: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create ListenBrainz playlist sync: {str(e)}")
 
 
 @router.delete("/{command_name}")
-async def delete_command(command_name: str, db: Session = Depends(get_db)):
+async def delete_command(command_name: str, db: Session = Depends(get_config_db)):
     """Delete a command (enhanced to support playlist_sync_* commands)"""
     try:
         # Validate command_name parameter
@@ -1029,7 +1031,7 @@ async def delete_command(command_name: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete command {command_name}: {e}")
+        get_commands_logger().error(f"Failed to delete command {command_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete command")
 
 
@@ -1063,7 +1065,7 @@ async def get_playlist_sync_sources():
         return {"sources": sources}
         
     except Exception as e:
-        logger.error(f"Failed to get playlist sync sources: {e}")
+        get_commands_logger().error(f"Failed to get playlist sync sources: {e}")
         raise HTTPException(status_code=500, detail="Failed to get playlist sync sources")
 
 

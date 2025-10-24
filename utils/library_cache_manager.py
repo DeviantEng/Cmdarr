@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from sqlalchemy import func
 from .logger import get_logger
 from database.database import get_database_manager
-from database.models import LibraryCache
+from database.cache_models import LibraryCache
 
 
 class LibraryCacheManager:
@@ -145,7 +145,7 @@ class LibraryCacheManager:
             Dictionary with cache data or None if not found
         """
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Find the most recent cache entry for this client type
                 cache_entry = session.query(LibraryCache).filter(
                     LibraryCache.client_type == client_type,
@@ -165,7 +165,7 @@ class LibraryCacheManager:
     def _get_from_sqlite(self, cache_key: str, client_type: str, library_key: str) -> Optional[Dict[str, Any]]:
         """Retrieve cache data from SQLite if not expired"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 cache_entry = session.query(LibraryCache).filter(
                     LibraryCache.cache_key == cache_key,
                     LibraryCache.expires_at > datetime.utcnow()
@@ -224,7 +224,7 @@ class LibraryCacheManager:
             # Handle None library_key - use a default value
             stored_library_key = library_key if library_key is not None else 'default'
             
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Check if entry exists
                 existing = session.query(LibraryCache).filter(
                     LibraryCache.cache_key == cache_key
@@ -341,7 +341,7 @@ class LibraryCacheManager:
     def _invalidate_sqlite_cache(self, cache_key: str) -> None:
         """Remove cache entry from SQLite"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 session.query(LibraryCache).filter(
                     LibraryCache.cache_key == cache_key
                 ).delete()
@@ -378,7 +378,7 @@ class LibraryCacheManager:
     def cleanup_expired_cache(self) -> int:
         """Remove expired cache entries and return count of removed items"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 expired_count = session.query(LibraryCache).filter(
                     LibraryCache.expires_at <= datetime.utcnow()
                 ).delete()
@@ -397,7 +397,7 @@ class LibraryCacheManager:
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics and performance metrics"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Count by client type
                 cache_counts = {}
                 for client_type, count in session.query(LibraryCache.client_type, func.count(LibraryCache.id)).group_by(LibraryCache.client_type).all():
@@ -455,7 +455,7 @@ class LibraryCacheManager:
     def clear_all_cache(self, client_type: str = None) -> int:
         """Clear all cache entries, optionally filtered by client type"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 if client_type:
                     cleared_count = session.query(LibraryCache).filter(
                         LibraryCache.client_type == client_type

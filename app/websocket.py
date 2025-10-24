@@ -12,7 +12,9 @@ import time
 from collections import deque
 from utils.logger import get_logger
 
-logger = get_logger('cmdarr.websocket')
+# Lazy-load logger to avoid initialization issues
+def get_websocket_logger():
+    return get_logger('cmdarr.websocket')
 
 
 class ConnectionManager:
@@ -26,7 +28,7 @@ class ConnectionManager:
         """Accept a new WebSocket connection"""
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info(f"WebSocket connected: {client_id or 'unknown'}")
+        get_websocket_logger().info(f"WebSocket connected: {client_id or 'unknown'}")
     
     def disconnect(self, websocket: WebSocket, client_id: str = None):
         """Remove a WebSocket connection"""
@@ -38,14 +40,14 @@ class ConnectionManager:
             if websocket in connections:
                 connections.remove(websocket)
         
-        logger.info(f"WebSocket disconnected: {client_id or 'unknown'}")
+        get_websocket_logger().info(f"WebSocket disconnected: {client_id or 'unknown'}")
     
     async def send_personal_message(self, message: str, websocket: WebSocket):
         """Send a message to a specific WebSocket connection"""
         try:
             await websocket.send_text(message)
         except Exception as e:
-            logger.error(f"Failed to send personal message: {e}")
+            get_websocket_logger().error(f"Failed to send personal message: {e}")
     
     async def broadcast(self, message: str):
         """Broadcast a message to all connected clients"""
@@ -57,7 +59,7 @@ class ConnectionManager:
             try:
                 await connection.send_text(message)
             except Exception as e:
-                logger.error(f"Failed to broadcast message: {e}")
+                get_websocket_logger().error(f"Failed to broadcast message: {e}")
                 disconnected.append(connection)
         
         # Remove disconnected connections
@@ -82,7 +84,7 @@ class ConnectionManager:
                 try:
                     await connection.send_text(message)
                 except Exception as e:
-                    logger.error(f"Failed to send command update: {e}")
+                    get_websocket_logger().error(f"Failed to send command update: {e}")
                     disconnected.append(connection)
             
             # Remove disconnected connections
@@ -122,7 +124,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
                     command_name = message.get("command_name")
                     if command_name:
                         manager.subscribe_to_command(websocket, command_name)
-                        logger.info(f"Client subscribed to {command_name} updates")
+                        get_websocket_logger().info(f"Client subscribed to {command_name} updates")
                 
                 
                 elif message_type == "ping":
@@ -132,12 +134,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
                     )
                 
             except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON received: {data}")
+                get_websocket_logger().warning(f"Invalid JSON received: {data}")
             except Exception as e:
-                logger.error(f"Error processing WebSocket message: {e}")
+                get_websocket_logger().error(f"Error processing WebSocket message: {e}")
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket, client_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        get_websocket_logger().error(f"WebSocket error: {e}")
         manager.disconnect(websocket, client_id)

@@ -8,13 +8,15 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
-from database.database import get_db
-from database.models import ConfigSetting
+from database.database import get_config_db
+from database.config_models import ConfigSetting
 from services.config_service import config_service
 from utils.logger import get_logger
 
 router = APIRouter()
-logger = get_logger('cmdarr.api.config')
+# Lazy-load logger to avoid initialization issues
+def get_config_logger():
+    return get_logger('cmdarr.api.config')
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -47,7 +49,7 @@ async def get_all_config():
         filtered_settings = config_service.get_visible_settings()
         return {"settings": filtered_settings}
     except Exception as e:
-        logger.error(f"Failed to get all configuration: {e}")
+        get_config_logger().error(f"Failed to get all configuration: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 
@@ -60,7 +62,7 @@ async def get_config_by_category(category: str):
         filtered_settings = config_service.get_visible_settings_by_category(category)
         return {"category": category, "settings": filtered_settings}
     except Exception as e:
-        logger.error(f"Failed to get configuration for category {category}: {e}")
+        get_config_logger().error(f"Failed to get configuration for category {category}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 
@@ -76,12 +78,12 @@ async def get_config_setting(key: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get configuration {key}: {e}")
+        get_config_logger().error(f"Failed to get configuration {key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 
 @router.put("/{key}")
-async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Session = Depends(get_db)):
+async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Session = Depends(get_config_db)):
     """Update a configuration setting"""
     try:
         # Check if setting exists
@@ -113,9 +115,9 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
                 
                 # Clear the reconfiguring flag
                 delattr(CmdarrLogger, '_reconfiguring')
-                logger.info(f"Logging configuration reloaded with level: {request.value}")
+                get_config_logger().info(f"Logging configuration reloaded with level: {request.value}")
             except Exception as e:
-                logger.warning(f"Failed to reload logging configuration: {e}")
+                get_config_logger().warning(f"Failed to reload logging configuration: {e}")
                 # Clear the reconfiguring flag even if there was an error
                 if hasattr(CmdarrLogger, '_reconfiguring'):
                     delattr(CmdarrLogger, '_reconfiguring')
@@ -128,11 +130,11 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
             # If user is disabling cache, set enabled to false
             if request.value in [True, 'true', '1']:
                 config_service.set(enabled_key, False)
-                logger.info(f"User disabled {target} library cache")
+                get_config_logger().info(f"User disabled {target} library cache")
             # If user is enabling cache, set enabled to true
             elif request.value in [False, 'false', '0']:
                 config_service.set(enabled_key, True)
-                logger.info(f"User enabled {target} library cache")
+                get_config_logger().info(f"User enabled {target} library cache")
         
         # Update options if provided
         if request.options is not None:
@@ -147,12 +149,12 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update configuration {key}: {e}")
+        get_config_logger().error(f"Failed to update configuration {key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update configuration")
 
 
 @router.get("/details/{key}", response_model=ConfigSettingResponse)
-async def get_config_setting_details(key: str, db: Session = Depends(get_db)):
+async def get_config_setting_details(key: str, db: Session = Depends(get_config_db)):
     """Get detailed information about a configuration setting"""
     try:
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
@@ -183,18 +185,18 @@ async def get_config_setting_details(key: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get configuration details for {key}: {e}")
+        get_config_logger().error(f"Failed to get configuration details for {key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration details")
 
 
 @router.get("/categories/", response_model=List[str])
-async def get_config_categories(db: Session = Depends(get_db)):
+async def get_config_categories(db: Session = Depends(get_config_db)):
     """Get all configuration categories"""
     try:
         categories = db.query(ConfigSetting.category).distinct().all()
         return [category[0] for category in categories]
     except Exception as e:
-        logger.error(f"Failed to get configuration categories: {e}")
+        get_config_logger().error(f"Failed to get configuration categories: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration categories")
 
 
@@ -209,7 +211,7 @@ async def validate_configuration():
             "message": "Configuration is valid" if len(missing) == 0 else f"Missing {len(missing)} required settings"
         }
     except Exception as e:
-        logger.error(f"Failed to validate configuration: {e}")
+        get_config_logger().error(f"Failed to validate configuration: {e}")
         raise HTTPException(status_code=500, detail="Failed to validate configuration")
 
 
@@ -220,5 +222,5 @@ async def refresh_configuration():
         config_service.refresh_cache()
         return {"message": "Configuration cache refreshed successfully"}
     except Exception as e:
-        logger.error(f"Failed to refresh configuration cache: {e}")
+        get_config_logger().error(f"Failed to refresh configuration cache: {e}")
         raise HTTPException(status_code=500, detail="Failed to refresh configuration cache")

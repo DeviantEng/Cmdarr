@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from utils.logger import get_logger
 from database.database import get_database_manager
-from database.models import CacheEntry, FailedLookup
+from database.cache_models import CacheEntry, FailedLookup
 
 
 class CacheManager:
@@ -21,7 +21,7 @@ class CacheManager:
     def get(self, cache_key: str, source: str) -> Optional[Dict[str, Any]]:
         """Retrieve cached data if it exists and hasn't expired"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 cache_entry = session.query(CacheEntry).filter(
                     CacheEntry.cache_key == cache_key,
                     CacheEntry.source == source,
@@ -44,7 +44,7 @@ class CacheManager:
         try:
             expires_at = datetime.utcnow() + timedelta(days=ttl_days)
             
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Check if entry exists
                 existing = session.query(CacheEntry).filter(
                     CacheEntry.cache_key == cache_key,
@@ -74,7 +74,7 @@ class CacheManager:
     def is_failed_lookup(self, cache_key: str, source: str) -> bool:
         """Check if this lookup is known to fail recently"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 failed_entry = session.query(FailedLookup).filter(
                     FailedLookup.cache_key == cache_key,
                     FailedLookup.source == source,
@@ -92,7 +92,7 @@ class CacheManager:
         try:
             expires_at = datetime.utcnow() + timedelta(days=ttl_days)
             
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Check if entry exists
                 existing = session.query(FailedLookup).filter(
                     FailedLookup.cache_key == cache_key,
@@ -122,7 +122,7 @@ class CacheManager:
     def cleanup_expired(self) -> int:
         """Remove expired cache entries and return count of removed items"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Remove expired cache entries
                 expired_cache = session.query(CacheEntry).filter(
                     CacheEntry.expires_at <= datetime.utcnow()
@@ -148,7 +148,7 @@ class CacheManager:
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 # Count by source
                 cache_counts = {}
                 for source, count in session.query(CacheEntry.source, session.func.count(CacheEntry.id)).filter(
@@ -180,7 +180,7 @@ class CacheManager:
     def clear_cache(self, source: Optional[str] = None) -> int:
         """Clear cache entries, optionally filtered by source"""
         try:
-            with self.db_manager.get_session_context() as session:
+            with self.db_manager.get_cache_session_context() as session:
                 if source:
                     cleared_cache = session.query(CacheEntry).filter(
                         CacheEntry.source == source

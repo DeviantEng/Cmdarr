@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from database.database import get_database_manager
-from database.models import CommandExecution, CommandConfig
+from database.config_models import CommandExecution, CommandConfig
 from utils.logger import get_logger
 
 
@@ -136,7 +136,7 @@ class CommandExecutor:
         """Check if a command is currently running in the database"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 running_execution = session.query(CommandExecution).filter(
                     CommandExecution.command_name == command_name,
@@ -153,7 +153,7 @@ class CommandExecutor:
         """Check if a command exists in the database"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 # Look for the command configuration
                 command_config = session.query(CommandConfig).filter(
@@ -171,7 +171,7 @@ class CommandExecutor:
         """Clean up executions that have been running too long"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 from datetime import datetime, timedelta
                 cutoff_time = datetime.utcnow() - timedelta(hours=max_duration_hours)
@@ -221,7 +221,7 @@ class CommandExecutor:
             # Get command-specific configuration from database
             from database.database import get_database_manager
             manager = get_database_manager()
-            session = manager.get_session_sync()
+            session = manager.get_config_session_sync()
             self.logger.info(f"Getting command config for {command_name}")
             try:
                 command_config = session.query(CommandConfig).filter(
@@ -480,7 +480,7 @@ class CommandExecutor:
         try:
             self.logger.info(f"Creating execution record for {command_name} with triggered_by='{triggered_by}'")
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 execution = CommandExecution(
                     command_name=command_name,
@@ -503,7 +503,7 @@ class CommandExecutor:
         """Update command execution record with results"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 execution = session.query(CommandExecution).filter(
                     CommandExecution.id == execution_id
@@ -541,7 +541,7 @@ class CommandExecutor:
         """Clean up executions that have been running too long"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 from datetime import datetime, timedelta
                 cutoff_time = datetime.utcnow() - timedelta(hours=max_duration_hours)
@@ -568,7 +568,7 @@ class CommandExecutor:
         """Load dynamic playlist sync commands from database"""
         try:
             db_manager = get_database_manager()
-            session = db_manager.get_session_sync()
+            session = db_manager.get_config_session_sync()
             try:
                 # Get all playlist sync commands from database
                 playlist_sync_commands = session.query(CommandConfig).filter(
@@ -625,7 +625,7 @@ class CommandExecutor:
             last_execution = None
             try:
                 db_manager = get_database_manager()
-                session = db_manager.get_session_sync()
+                session = db_manager.get_config_session_sync()
                 try:
                     execution = session.query(CommandExecution).filter(
                         CommandExecution.command_name == command_name

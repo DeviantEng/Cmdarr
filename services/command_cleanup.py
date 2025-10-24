@@ -8,8 +8,8 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from database.models import CommandConfig, CommandExecution
-from database.database import get_db
+from database.config_models import CommandConfig, CommandExecution
+from database.database import get_config_db
 from utils.logger import get_logger
 
 logger = get_logger('cmdarr.command_cleanup')

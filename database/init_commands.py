@@ -12,7 +12,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from database.database import get_database_manager
-from database.models import CommandConfig
+from database.config_models import CommandConfig
 import logging
 
 # Setup basic logging

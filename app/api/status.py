@@ -11,14 +11,16 @@ import time
 import psutil
 import os
 
-from database.database import get_db
-from database.models import CommandConfig, CommandExecution, SystemStatus
+from database.database import get_config_db
+from database.config_models import CommandConfig, CommandExecution, SystemStatus
 from __version__ import __version__
 from services.config_service import config_service
 from utils.logger import get_logger
 
 router = APIRouter()
-logger = get_logger('cmdarr.api.status')
+# Lazy-load logger to avoid initialization issues
+def get_status_logger():
+    return get_logger('cmdarr.api.status')
 
 
 @router.get("/system")
@@ -62,7 +64,7 @@ async def get_system_status():
         
         return system_info
     except Exception as e:
-        logger.error(f"Failed to get system status: {e}")
+        get_status_logger().error(f"Failed to get system status: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve system status")
 
 
@@ -151,12 +153,12 @@ async def get_health_status():
         
         return health_status
     except Exception as e:
-        logger.error(f"Failed to get health status: {e}")
+        get_status_logger().error(f"Failed to get health status: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve health status")
 
 
 @router.get("/commands")
-async def get_commands_status(db: Session = Depends(get_db)):
+async def get_commands_status(db: Session = Depends(get_config_db)):
     """Get status of all commands"""
     try:
         all_commands = db.query(CommandConfig).all()
@@ -212,14 +214,14 @@ async def get_commands_status(db: Session = Depends(get_db)):
             "timestamp": datetime.utcnow().isoformat() + 'Z'
         }
     except Exception as e:
-        logger.error(f"Failed to get commands status: {e}")
+        get_status_logger().error(f"Failed to get commands status: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve commands status")
 
 
 @router.get("/executions/recent")
 async def get_recent_executions(
     limit: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_config_db)
 ):
     """Get recent command executions"""
     try:
@@ -264,12 +266,12 @@ async def get_recent_executions(
             "timestamp": datetime.utcnow().isoformat() + 'Z'
         }
     except Exception as e:
-        logger.error(f"Failed to get recent executions: {e}")
+        get_status_logger().error(f"Failed to get recent executions: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve recent executions")
 
 
 @router.get("/statistics")
-async def get_statistics(db: Session = Depends(get_db)):
+async def get_statistics(db: Session = Depends(get_config_db)):
     """Get application statistics"""
     try:
         # Get time range for statistics (last 30 days)
@@ -330,7 +332,7 @@ async def get_statistics(db: Session = Depends(get_db)):
             "timestamp": datetime.utcnow().isoformat() + 'Z'
         }
     except Exception as e:
-        logger.error(f"Failed to get statistics: {e}")
+        get_status_logger().error(f"Failed to get statistics: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve statistics")
 
 
@@ -372,7 +374,7 @@ async def _get_cache_status_for_target(target: str, cache_manager, cache_stats):
             else:
                 cache_info['status'] = 'Not built'
     except Exception as e:
-        logger.warning(f"Failed to get library cache for {target}: {e}")
+        get_status_logger().warning(f"Failed to get library cache for {target}: {e}")
         cache_info['status'] = 'Error'
         cache_info['error'] = str(e)
     
@@ -406,7 +408,7 @@ async def get_cache_status(target: str = None):
         return await _get_cache_status_for_target(target.lower(), cache_manager, cache_stats)
         
     except Exception as e:
-        logger.error(f"Failed to get cache status: {e}")
+        get_status_logger().error(f"Failed to get cache status: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve cache status")
 
 @router.post("/cache/reset")
@@ -428,5 +430,5 @@ async def reset_cache_stats():
         return {"message": "Cache statistics reset successfully"}
         
     except Exception as e:
-        logger.error(f"Failed to reset cache stats: {e}")
+        get_status_logger().error(f"Failed to reset cache stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset cache statistics")

@@ -10,7 +10,7 @@ from typing import Dict, Set, Optional, Any
 from sqlalchemy.orm import Session
 
 from database.database import get_database_manager
-from database.models import CommandConfig, CommandExecution
+from database.config_models import CommandConfig, CommandExecution
 from services.command_executor import command_executor
 from utils.logger import get_logger
 
@@ -96,7 +96,7 @@ class CommandScheduler:
         """Check all enabled commands and execute if scheduled time has passed"""
         try:
             manager = get_database_manager()
-            session = manager.get_session_sync()
+            session = manager.get_config_session_sync()
             try:
                 # Get all enabled commands with schedules
                 enabled_commands = session.query(CommandConfig).filter(
@@ -212,7 +212,7 @@ class CommandScheduler:
             if not task.cancelled() and not task.exception():
                 # Command completed successfully, update last_run timestamp
                 manager = get_database_manager()
-                session = manager.get_session_sync()
+                session = manager.get_config_session_sync()
                 try:
                     command = session.query(CommandConfig).filter(
                         CommandConfig.command_name == command_name
@@ -237,7 +237,7 @@ class CommandScheduler:
         """Initialize scheduled tasks for all enabled commands"""
         try:
             manager = get_database_manager()
-            session = manager.get_session_sync()
+            session = manager.get_config_session_sync()
             try:
                 enabled_commands = session.query(CommandConfig).filter(
                     CommandConfig.enabled == True,
@@ -257,7 +257,7 @@ class CommandScheduler:
         """Enable scheduling for a command"""
         try:
             manager = get_database_manager()
-            session = manager.get_session_sync()
+            session = manager.get_config_session_sync()
             try:
                 command = session.query(CommandConfig).filter(
                     CommandConfig.command_name == command_name
@@ -294,7 +294,7 @@ class CommandScheduler:
         """Update scheduling for a command (when schedule_hours changes)"""
         try:
             manager = get_database_manager()
-            session = manager.get_session_sync()
+            session = manager.get_config_session_sync()
             try:
                 command = session.query(CommandConfig).filter(
                     CommandConfig.command_name == command_name

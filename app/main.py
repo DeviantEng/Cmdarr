@@ -14,14 +14,15 @@ import time
 from datetime import datetime
 from __version__ import __version__
 
-from database.database import get_db, get_database_manager
+from database.database import get_config_db, get_database_manager
 from services.config_service import config_service
 from utils.logger import get_logger
 from app.websocket import websocket_endpoint
 
 
-# Initialize logger
-logger = get_logger('cmdarr.app')
+# Lazy-load logger to avoid initialization issues
+def get_app_logger():
+    return get_logger('cmdarr.app')
 
 
 def auto_enable_library_cache():
@@ -44,13 +45,13 @@ def auto_enable_library_cache():
                 # Only disable if user explicitly disabled
                 if cache_plex_user_disabled:
                     config_service.set('LIBRARY_CACHE_PLEX_ENABLED', False)
-                    logger.info("Plex library cache disabled by user preference")
+                    get_app_logger().info("Plex library cache disabled by user preference")
                 else:
-                    logger.info("Auto-enabled Plex library cache")
+                    get_app_logger().info("Auto-enabled Plex library cache")
             else:
                 # Disable cache if Plex client is disabled
                 config_service.set('LIBRARY_CACHE_PLEX_ENABLED', False)
-                logger.info("Plex library cache disabled (Plex client not enabled)")
+                get_app_logger().info("Plex library cache disabled (Plex client not enabled)")
                 
             # Check Jellyfin
             jellyfin_enabled = config_service.get('JELLYFIN_CLIENT_ENABLED', False)
@@ -65,13 +66,13 @@ def auto_enable_library_cache():
                 # Only disable if user explicitly disabled
                 if cache_jellyfin_user_disabled:
                     config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
-                    logger.info("Jellyfin library cache disabled by user preference")
+                    get_app_logger().info("Jellyfin library cache disabled by user preference")
                 else:
-                    logger.info("Auto-enabled Jellyfin library cache")
+                    get_app_logger().info("Auto-enabled Jellyfin library cache")
             else:
                 # Disable cache if Jellyfin client is disabled
                 config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
-                logger.info("Jellyfin library cache disabled (Jellyfin client not enabled)")
+                get_app_logger().info("Jellyfin library cache disabled (Jellyfin client not enabled)")
             
             # Enable cache builder command if any cache is enabled
             any_cache_enabled = (
@@ -80,7 +81,7 @@ def auto_enable_library_cache():
             )
             
             if any_cache_enabled:
-                from database.models import CommandConfig
+                from database.config_models import CommandConfig
                 cache_builder_cmd = session.query(CommandConfig).filter(
                     CommandConfig.command_name == 'library_cache_builder'
                 ).first()
@@ -88,7 +89,7 @@ def auto_enable_library_cache():
                 if cache_builder_cmd and not cache_builder_cmd.enabled:
                     cache_builder_cmd.enabled = True
                     session.commit()
-                    logger.info("Auto-enabled library_cache_builder command")
+                    get_app_logger().info("Auto-enabled library_cache_builder command")
                     
                     # Trigger immediate cache build (non-blocking)
                     trigger_immediate_cache_build()
@@ -97,7 +98,7 @@ def auto_enable_library_cache():
             session.close()
             
     except Exception as e:
-        logger.error(f"Error in auto-enable library cache: {e}")
+        get_app_logger().error(f"Error in auto-enable library cache: {e}")
         # Non-fatal, continue startup
 
 
@@ -114,9 +115,9 @@ def trigger_immediate_cache_build():
                 triggered_by='auto_enable'
             )
         )
-        logger.info("Queued library_cache_builder for immediate execution")
+        get_app_logger().info("Queued library_cache_builder for immediate execution")
     except Exception as e:
-        logger.error(f"Failed to trigger cache build: {e}")
+        get_app_logger().error(f"Failed to trigger cache build: {e}")
         # Non-fatal, log and continue
 
 
@@ -124,40 +125,40 @@ def trigger_immediate_cache_build():
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    logger.info("Starting Cmdarr FastAPI application")
+    get_app_logger().info("Starting Cmdarr FastAPI application")
     
     # Initialize database
     try:
         db_manager = get_database_manager()
-        logger.info("Database initialized successfully")
+        get_app_logger().info("Database initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
+        get_app_logger().error(f"Failed to initialize database: {e}")
         raise
     
-    # Run database migrations
+    # Run version-based database migrations
     try:
-        from database.migrate import run_migrations
-        run_migrations()
-        logger.info("Database migrations completed successfully")
+        from database.version_migrations import run_version_migrations
+        run_version_migrations()
+        get_app_logger().info("Version-based migrations completed successfully")
     except Exception as e:
-        logger.error(f"Failed to run database migrations: {e}")
+        get_app_logger().error(f"Failed to run version-based migrations: {e}")
         # Don't raise here as the app might still work with old schema
     
     # Initialize default commands
     try:
         from database.init_commands import init_default_commands
         init_default_commands()
-        logger.info("Default commands initialized successfully")
+        get_app_logger().info("Default commands initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize default commands: {e}")
+        get_app_logger().error(f"Failed to initialize default commands: {e}")
         # Don't raise here as commands can be added later via API
     
     # Auto-enable library cache for configured clients
     try:
         auto_enable_library_cache()
-        logger.info("Auto-enable library cache check completed")
+        get_app_logger().info("Auto-enable library cache check completed")
     except Exception as e:
-        logger.error(f"Failed to auto-enable library cache: {e}")
+        get_app_logger().error(f"Failed to auto-enable library cache: {e}")
         # Don't raise here as the app can still work
     
     
@@ -165,63 +166,63 @@ async def lifespan(app: FastAPI):
     try:
         from services.command_cleanup import command_cleanup
         await command_cleanup.cleanup_startup_stuck_commands()
-        logger.info("Startup command cleanup completed")
+        get_app_logger().info("Startup command cleanup completed")
     except Exception as e:
-        logger.error(f"Failed to cleanup startup stuck commands: {e}")
+        get_app_logger().error(f"Failed to cleanup startup stuck commands: {e}")
         # Don't raise here as the app can still work
     
     # Start command cleanup service
     try:
         from services.command_cleanup import command_cleanup
         await command_cleanup.start_cleanup_task()
-        logger.info("Command cleanup service started")
+        get_app_logger().info("Command cleanup service started")
     except Exception as e:
-        logger.error(f"Failed to start command cleanup service: {e}")
+        get_app_logger().error(f"Failed to start command cleanup service: {e}")
         # Don't raise here as the app can still work
     
     # Start command scheduler
     try:
         from services.scheduler import scheduler
         await scheduler.start()
-        logger.info("Command scheduler started successfully")
+        get_app_logger().info("Command scheduler started successfully")
     except Exception as e:
-        logger.error(f"Failed to start command scheduler: {e}")
+        get_app_logger().error(f"Failed to start command scheduler: {e}")
         # Don't raise here as manual execution still works
     
     # Validate required configuration
     missing_config = config_service.validate_required_settings()
     if missing_config:
-        logger.warning(f"Missing required configuration: {missing_config}")
+        get_app_logger().warning(f"Missing required configuration: {missing_config}")
     
     # Import and include commands router after logging is configured
     try:
         from app.api import commands
         app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
-        logger.info("Commands API router loaded successfully")
+        get_app_logger().info("Commands API router loaded successfully")
     except Exception as e:
-        logger.error(f"Failed to load commands API router: {e}")
+        get_app_logger().error(f"Failed to load commands API router: {e}")
         # Don't raise here as other APIs still work
     
     yield
     
     # Shutdown
-    logger.info("Shutting down Cmdarr FastAPI application")
+    get_app_logger().info("Shutting down Cmdarr FastAPI application")
     
     # Stop command cleanup service
     try:
         from services.command_cleanup import command_cleanup
         await command_cleanup.stop_cleanup_task()
-        logger.info("Command cleanup service stopped")
+        get_app_logger().info("Command cleanup service stopped")
     except Exception as e:
-        logger.error(f"Failed to stop command cleanup service: {e}")
+        get_app_logger().error(f"Failed to stop command cleanup service: {e}")
     
     # Stop command scheduler
     try:
         from services.scheduler import scheduler
         await scheduler.stop()
-        logger.info("Command scheduler stopped successfully")
+        get_app_logger().info("Command scheduler stopped successfully")
     except Exception as e:
-        logger.error(f"Failed to stop command scheduler: {e}")
+        get_app_logger().error(f"Failed to stop command scheduler: {e}")
 
 
 # Create FastAPI application
@@ -278,7 +279,7 @@ async def health_check():
             }
         )
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        get_app_logger().error(f"Health check failed: {e}")
         return JSONResponse(
             status_code=503,
             content={
@@ -300,7 +301,7 @@ async def status_page(request: Request):
 
 # API endpoint for raw status data
 @app.get("/api/status/raw")
-async def detailed_status_api(db: Session = Depends(get_db)):
+async def detailed_status_api(db: Session = Depends(get_config_db)):
     """Detailed status API endpoint with comprehensive information"""
     try:
         # Get system information
@@ -335,7 +336,7 @@ async def detailed_status_api(db: Session = Depends(get_db)):
             }
         })
     except Exception as e:
-        logger.error(f"Status check failed: {e}")
+        get_app_logger().error(f"Status check failed: {e}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
