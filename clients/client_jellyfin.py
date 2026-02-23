@@ -421,9 +421,9 @@ class JellyfinClient(BaseAPIClient):
             if match:
                 return match
             
-            # Strategy 7: Ultra-relaxed matching - title-only with very low threshold
-            self.logger.debug("No match found, trying ultra-relaxed title-only matching...")
-            match = self._find_best_match_ultra_relaxed(all_tracks, normalized_title, title)
+            # Strategy 7: Ultra-relaxed matching - requires artist match to avoid cross-artist false matches
+            self.logger.debug("No match found, trying ultra-relaxed matching...")
+            match = self._find_best_match_ultra_relaxed(all_tracks, normalized_title, title, normalized_artist)
             if match:
                 return match
             
@@ -438,7 +438,7 @@ class JellyfinClient(BaseAPIClient):
             self.logger.debug(f"Full search returned {len(full_tracks)} tracks")
             
             if full_tracks:
-                match = self._find_best_match_ultra_relaxed(full_tracks, normalized_title, title)
+                match = self._find_best_match_ultra_relaxed(full_tracks, normalized_title, title, normalized_artist)
                 if match:
                     self.logger.info(f"Full search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
                     return match
@@ -453,7 +453,7 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.debug(f"Truncated search returned {len(truncated_tracks)} tracks")
                 
                 if truncated_tracks:
-                    match = self._find_best_match_ultra_relaxed(truncated_tracks, normalized_title, title)
+                    match = self._find_best_match_ultra_relaxed(truncated_tracks, normalized_title, title, normalized_artist)
                     if match:
                         self.logger.info(f"Truncated search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
                         return match
@@ -663,7 +663,11 @@ class JellyfinClient(BaseAPIClient):
             
             # Combined score with album bonus (adjusted weights to accommodate album)
             combined_score = (artist_jaccard * 0.35) + (title_best * 0.55) + (album_score * 0.1)
-            
+
+            # Require minimum artist match to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)
+            if artist_jaccard < 0.2:
+                continue
+
             # Relaxed threshold (was 0.7, now 0.5)
             if combined_score > best_score and combined_score > 0.5:
                 best_score = combined_score
@@ -716,32 +720,40 @@ class JellyfinClient(BaseAPIClient):
         
         return min(similarity, 1.0)  # Cap at 1.0
     
-    def _find_best_match_ultra_relaxed(self, tracks: List[Dict[str, Any]], normalized_title: str, original_title: str) -> Optional[Dict[str, Any]]:
-        """Ultra-relaxed matching focusing only on title similarity with very low threshold"""
+    def _find_best_match_ultra_relaxed(self, tracks: List[Dict[str, Any]], normalized_title: str, original_title: str,
+                                       normalized_artist: str = "") -> Optional[Dict[str, Any]]:
+        """Ultra-relaxed matching - requires artist match to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)"""
         if not tracks:
             return None
-        
+
         best_match = None
         best_score = 0
-        
+
         for track in tracks:
             track_title_norm = self._normalize_text(track['name'])
-            
+            track_artist_norm = self._normalize_text(track.get('artist', ''))
+
+            # Require artist match - never match same title by different artist
+            if normalized_artist and track_artist_norm:
+                artist_score = self._calculate_similarity(normalized_artist, track_artist_norm)
+                if artist_score < 0.2:  # Reject cross-artist matches (Braeker vs Greywind = 0)
+                    continue
+
             # Multiple title similarity measures
             title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
             title_char_sim = self._calculate_character_similarity(normalized_title, track_title_norm)
             title_word_sim = self._calculate_word_order_similarity(normalized_title, track_title_norm)
-            
+
             # Take the best title similarity
             title_score = max(title_jaccard, title_char_sim, title_word_sim)
-            
+
             # Additional check for very short titles (like "ATTN.")
             if len(normalized_title.replace(' ', '')) <= 4 and len(track_title_norm.replace(' ', '')) <= 4:
                 # For very short titles, be more lenient with character matching
                 char_overlap = len(set(normalized_title.replace(' ', '')) & set(track_title_norm.replace(' ', '')))
                 if char_overlap >= 2:  # At least 2 characters match
                     title_score = max(title_score, 0.6)  # Boost score for short titles
-            
+
             # Very low threshold for ultra-relaxed matching (25% - even more relaxed)
             if title_score > best_score and title_score > 0.25:
                 best_score = title_score
