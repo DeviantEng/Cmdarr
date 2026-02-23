@@ -8,6 +8,7 @@ import type {
   ConnectivityTestResult,
   StatusInfo,
   NewReleasesResponse,
+  ImportListMetrics,
 } from './types'
 
 class ApiError extends Error {
@@ -112,24 +113,36 @@ class ApiClient {
   async getCommandExecutions(
     commandName: string
   ): Promise<CommandExecution[]> {
-    const response = await this.request<{ executions: CommandExecution[] }>(
+    return await this.request<CommandExecution[]>(
       `/api/commands/${commandName}/executions`
     )
-    return response.executions
   }
 
-  async getCommandExecution(
-    commandName: string,
-    executionId: string
-  ): Promise<CommandExecution> {
-    return await this.request<CommandExecution>(
-      `/api/commands/${commandName}/executions/${executionId}`
-    )
+  async killExecution(executionId: number): Promise<{ message: string }> {
+    return await this.request(`/api/commands/executions/${executionId}/kill`, {
+      method: 'POST',
+    })
   }
 
-  async getAllExecutions(): Promise<CommandExecution[]> {
+  async deleteExecution(executionId: number): Promise<{ message: string }> {
+    return await this.request(`/api/commands/executions/${executionId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async cleanupExecutions(commandName?: string, keepCount?: number): Promise<{ message: string; deleted_count?: number }> {
+    const params = new URLSearchParams()
+    if (commandName) params.set('command_name', commandName)
+    if (keepCount !== undefined) params.set('keep_count', String(keepCount))
+    const query = params.toString()
+    return await this.request(`/api/commands/executions/cleanup${query ? `?${query}` : ''}`, {
+      method: 'POST',
+    })
+  }
+
+  async getAllExecutions(limit = 50): Promise<CommandExecution[]> {
     const response = await this.request<{ executions: CommandExecution[] }>(
-      '/api/commands/executions/all'
+      `/api/status/executions/recent?limit=${limit}`
     )
     return response.executions
   }
@@ -197,6 +210,11 @@ class ApiClient {
   }
 
   // New Releases API
+  // Import Lists API
+  async getImportListMetrics(): Promise<ImportListMetrics> {
+    return await this.request<ImportListMetrics>('/import_lists/metrics')
+  }
+
   async getNewReleases(params?: {
     artist_limit?: number
     album_types?: string[]

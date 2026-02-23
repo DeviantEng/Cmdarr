@@ -17,7 +17,7 @@ from utils.cache_client import create_cache_client
 class JellyfinClient(BaseAPIClient):
     """Client for Jellyfin Media Server operations"""
     
-    def __init__(self, config, execution_id=None):
+    def __init__(self, config):
         jellyfin_url = config.get('JELLYFIN_URL', 'http://localhost:8096')
         
         super().__init__(
@@ -28,8 +28,7 @@ class JellyfinClient(BaseAPIClient):
             headers={
                 'X-Emby-Token': config.get('JELLYFIN_TOKEN', ''),
                 'Content-Type': 'application/json'
-            },
-            execution_id=execution_id
+            }
         )
         
         self.logger.debug(f"JellyfinClient init - JELLYFIN_URL from config: {jellyfin_url}")

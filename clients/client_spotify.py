@@ -18,14 +18,13 @@ from utils.playlist_parser import parse_playlist_url
 class SpotifyClient(BaseAPIClient):
     """Client for Spotify API operations"""
     
-    def __init__(self, config, execution_id=None):
+    def __init__(self, config):
         super().__init__(
             config=config,
             client_name='spotify',
             base_url='https://api.spotify.com/v1',
             rate_limit=10.0,  # Spotify allows 10 requests per second
-            headers={},
-            execution_id=execution_id
+            headers={}
         )
         
         self.client_id = config.SPOTIFY_CLIENT_ID

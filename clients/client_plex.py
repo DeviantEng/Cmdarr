@@ -20,15 +20,14 @@ from utils.cache_client import create_cache_client
 class PlexClient(BaseAPIClient):
     """Client for Plex Media Server operations with optimized library cache"""
     
-    def __init__(self, config, execution_id=None):
+    def __init__(self, config):
         # Plex uses synchronous requests, so we'll override the async behavior
         super().__init__(
             config=config,
             client_name='plex',
             base_url=config.PLEX_URL.rstrip("/"),
             rate_limit=1.0,  # Conservative rate limiting
-            headers={},
-            execution_id=execution_id
+            headers={}
         )
         
         self.token = config.PLEX_TOKEN

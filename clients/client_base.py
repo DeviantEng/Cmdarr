@@ -43,17 +43,11 @@ class BaseAPIClient(ABC):
     """Base class for all API clients with common functionality"""
     
     def __init__(self, config, client_name: str, base_url: str, 
-                 rate_limit: float = 1.0, headers: Dict[str, str] = None, execution_id: int = None):
+                 rate_limit: float = 1.0, headers: Dict[str, str] = None):
         self.config = config
         self.client_name = client_name
         self.base_url = base_url.rstrip('/')
-        
-        # Use execution-aware logger if execution_id is provided
-        if execution_id is not None:
-            from utils.execution_logger import get_execution_logger
-            self.logger = get_execution_logger(f'cmdarr.{client_name}', execution_id)
-        else:
-            self.logger = logging.getLogger(f'cmdarr.{client_name}')
+        self.logger = logging.getLogger(f'cmdarr.{client_name}')
             
         self.session = None
         self._rate_limiter = AsyncRateLimiter(rate_limit)

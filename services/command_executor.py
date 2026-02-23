@@ -238,8 +238,8 @@ class CommandExecutor:
                     for key, value in command_config.config_json.items():
                         setattr(config, f'COMMAND_{command_name.upper()}_{key.upper()}', value)
                 
-                # Create command instance with execution ID
-                command = command_class(config, execution_id)
+                # Create command instance
+                command = command_class(config)
                 
                 # Pass command-specific configuration to the command
                 if command_config and command_config.config_json:
@@ -614,6 +614,30 @@ class CommandExecutor:
             self.logger.error(f"Failed to load dynamic playlist sync commands: {e}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    async def wait_for_running_commands(self, timeout_seconds: float = 300) -> bool:
+        """
+        Wait for all running commands to complete (graceful shutdown).
+        Returns True if all completed within timeout, False if timeout reached.
+        """
+        self._ensure_initialized()
+        if not self.running_commands:
+            return True
+        tasks = list(self.running_commands.values())
+        names = list(self.running_commands.keys())
+        self.logger.info(f"Graceful shutdown: waiting up to {timeout_seconds}s for {len(tasks)} running command(s): {names}")
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=timeout_seconds, return_when=asyncio.ALL_COMPLETED)
+            if pending:
+                self.logger.warning(f"Graceful shutdown timeout: {len(pending)} command(s) still running after {timeout_seconds}s")
+                for t in pending:
+                    t.cancel()
+                return False
+            self.logger.info("Graceful shutdown: all running commands completed")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error waiting for commands: {e}")
+            return False
 
     async def get_command_status(self, command_name: str) -> Dict[str, Any]:
         """Get current status of a command"""

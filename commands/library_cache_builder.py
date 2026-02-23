@@ -22,8 +22,8 @@ class LibraryCacheBuilderCommand(BaseCommand):
     Runs independently of playlist sync operations for better performance
     """
     
-    def __init__(self, config=None, execution_id=None):
-        super().__init__(config, execution_id)
+    def __init__(self, config=None):
+        super().__init__(config)
         
         # Initialize library cache manager
         self.library_cache_manager = get_library_cache_manager(self.config)

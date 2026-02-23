@@ -18,12 +18,8 @@ from utils.logger import get_logger
 class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
     """Maintain the playlist sync discovery import list by removing stale entries"""
     
-    def __init__(self, config=None, execution_id=None):
-        super().__init__(config, execution_id)
-        # Override logger with execution-aware logger if execution_id is provided
-        if execution_id is not None:
-            from utils.execution_logger import get_execution_logger
-            self.logger = get_execution_logger('cmdarr.playlist_sync_discovery_maintenance', execution_id)
+    def __init__(self, config=None):
+        super().__init__(config)
         else:
             self.logger = get_logger('cmdarr.playlist_sync_discovery_maintenance')
         self.discovery_file = Path("data/import_lists/discovery_playlistsync.json")

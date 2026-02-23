@@ -22,14 +22,31 @@ export interface CommandConfig {
 export interface CommandExecution {
   id: number
   command_name: string
-  execution_id: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
   triggered_by: string
   started_at?: string
   completed_at?: string
+  duration?: number
   duration_seconds?: number
   result_summary?: Record<string, any>
+  output_summary?: string
   error_message?: string
+  is_running?: boolean
+  target?: string
+}
+
+export interface ImportListMetrics {
+  lastfm: ImportListMetric
+  unified: ImportListMetric
+  timestamp?: string
+}
+
+export interface ImportListMetric {
+  exists: boolean
+  entry_count: number
+  file_size: number
+  age_human: string
+  status: string
 }
 
 export interface CommandUpdateRequest {
