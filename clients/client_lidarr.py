@@ -4,11 +4,34 @@ Lidarr API Client
 Refactored to use BaseAPIClient for reduced code duplication
 """
 
+import re
 import aiohttp
 import asyncio
 from typing import List, Dict, Any, Optional, Set
 from urllib.parse import urljoin
 from .client_base import BaseAPIClient
+
+
+# Regex to extract Spotify artist ID from URLs like https://open.spotify.com/artist/0fLSXz9013NN5b1NoRXLJ9
+_SPOTIFY_ARTIST_URL_RE = re.compile(
+    r'https?://(?:open\.)?spotify\.com/artist/([a-zA-Z0-9]+)',
+    re.IGNORECASE
+)
+
+
+def _extract_spotify_id_from_links(links: List[Dict[str, Any]]) -> Optional[str]:
+    """
+    Extract Spotify artist ID from Lidarr artist links.
+    Lidarr links are [{url, name}, ...] - we find the Spotify one by URL pattern.
+    """
+    for link in links or []:
+        url = link.get('url') or link.get('Url') or ''
+        name = (link.get('name') or link.get('Name') or '').lower()
+        if 'spotify' in url.lower() or name == 'spotify':
+            m = _SPOTIFY_ARTIST_URL_RE.search(url)
+            if m:
+                return m.group(1)
+    return None
 
 
 class LidarrClient(BaseAPIClient):
@@ -131,9 +154,20 @@ class LidarrClient(BaseAPIClient):
             
         return False
     
+    def _get_artists_cache_key(self) -> str:
+        """Generate cache key for Lidarr artists (v2 includes spotifyArtistId from links)"""
+        return "lidarr_artists_v2"
+
     async def get_all_artists(self) -> List[Dict[str, Any]]:
-        """Get all artists from Lidarr with their MBIDs"""
+        """Get all artists from Lidarr with their MBIDs (cached 7 days)"""
         try:
+            cache_key = self._get_artists_cache_key()
+            if self.cache_enabled and self.cache:
+                cached = self.cache.get(cache_key, 'lidarr')
+                if cached is not None:
+                    self.logger.debug(f"Cache hit for Lidarr artists: {len(cached)} artists")
+                    return cached
+
             self.logger.info("Fetching all artists from Lidarr...")
             artists_data = await self._make_request('artist')
             
@@ -156,15 +190,24 @@ class LidarrClient(BaseAPIClient):
                     self.logger.warning(f"Artist with MBID '{mbid}' has no name")
                     continue
                 
+                # Extract Spotify artist ID from links if available (avoids name-search collisions)
+                spotify_artist_id = _extract_spotify_id_from_links(artist.get('links') or [])
+
                 artists.append({
                     'musicBrainzId': mbid,  # Rename to standard field name for consistency
                     'artistName': name,
                     'id': artist.get('id'),
                     'status': artist.get('status'),
-                    'monitored': artist.get('monitored', False)
+                    'monitored': artist.get('monitored', False),
+                    'monitorNewItems': artist.get('monitorNewItems', 'all'),
+                    'spotifyArtistId': spotify_artist_id,  # From Lidarr links when available
                 })
             
             self.logger.info(f"Retrieved {len(artists)} artists from Lidarr")
+
+            if self.cache_enabled and self.cache:
+                ttl = getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+                self.cache.set(cache_key, 'lidarr', artists, ttl)
             
             # Log any artists without MBIDs (should not happen)
             total_artists = len(artists_data)
@@ -335,6 +378,58 @@ class LidarrClient(BaseAPIClient):
             self.logger.error(f"Failed to get exclusion stats: {e}")
             return {'total_exclusions': 0, 'sample_exclusions': []}
     
+    def _get_albums_cache_key(self) -> str:
+        """Generate cache key for Lidarr albums"""
+        return "lidarr_albums"
+
+    async def get_all_albums(self) -> List[Dict[str, Any]]:
+        """
+        Get all albums from Lidarr with caching.
+        Used to filter out releases already in Lidarr from new releases discovery.
+        """
+        try:
+            cache_key = self._get_albums_cache_key()
+            if self.cache_enabled and self.cache:
+                cached = self.cache.get(cache_key, 'lidarr')
+                if cached is not None:
+                    self.logger.debug(f"Cache hit for Lidarr albums: {len(cached)} albums")
+                    return cached
+
+            self.logger.info("Fetching all albums from Lidarr...")
+            albums_data = await self._make_request('album')
+
+            if not albums_data:
+                self.logger.warning("No albums returned from Lidarr")
+                return []
+
+            # Handle both list and paginated response formats
+            if isinstance(albums_data, dict):
+                albums_data = albums_data.get('records', albums_data.get('items', []))
+
+            albums = []
+            for album in (albums_data or []):
+                artist_id = album.get('artistId')
+                foreign_album_id = album.get('foreignAlbumId')
+                title = album.get('title', '')
+                if artist_id and title:
+                    albums.append({
+                        'artistId': artist_id,
+                        'foreignAlbumId': foreign_album_id,
+                        'title': title,
+                        'monitored': album.get('monitored', False),
+                    })
+
+            if self.cache_enabled and self.cache:
+                ttl = getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+                self.cache.set(cache_key, 'lidarr', albums, ttl)
+
+            self.logger.info(f"Retrieved {len(albums)} albums from Lidarr")
+            return albums
+
+        except Exception as e:
+            self.logger.error(f"Failed to get albums from Lidarr: {e}")
+            return []
+
     async def get_api_stats(self) -> Dict[str, Any]:
         """Get basic API usage statistics"""
         stats = await super().get_api_stats()

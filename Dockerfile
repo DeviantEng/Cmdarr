@@ -1,4 +1,12 @@
-# Use Python 3.13 slim image
+# Stage 1: Build React frontend
+FROM node:20-slim AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Python application
 FROM python:3.13-slim
 
 # Set working directory
@@ -32,6 +40,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create app user for security (will be modified at runtime if needed)
 RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser

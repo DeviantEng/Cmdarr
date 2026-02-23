@@ -88,6 +88,7 @@ class ConfigService:
             # Spotify Configuration
             {'key': 'SPOTIFY_CLIENT_ID', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client ID', 'is_sensitive': True},
             {'key': 'SPOTIFY_CLIENT_SECRET', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client Secret', 'is_sensitive': True},
+            {'key': 'NEW_RELEASES_CACHE_DAYS', 'default_value': '14', 'data_type': 'int', 'category': 'spotify', 'description': 'Cache TTL in days for New Releases data (Lidarr, Spotify, MusicBrainz)'},
             
             # Web Server Configuration
             {'key': 'WEB_PORT', 'default_value': '8080', 'data_type': 'int', 'category': 'web_server', 'description': 'Web server port'},

@@ -9,6 +9,7 @@ A modular music automation platform that bridges services for your self-hosted m
 ### 🎵 **Automatic Music Discovery**
 - **Find Similar Artists**: Automatically discovers new artists similar to those in your Lidarr library using Last.fm
 - **Playlist-Based Discovery**: Discovers artists from synced playlists and adds them directly to Lidarr
+- **New Releases Discovery**: Find Spotify releases from your Lidarr artists that are missing from MusicBrainz—add them via Harmony with one click
 - **Smart Filtering**: Automatically excludes artists you already have and those on your exclusion lists
 - **Quality Control**: Uses MusicBrainz fuzzy matching to ensure high-quality artist data
 
@@ -100,6 +101,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **⚙️ Configuration**: Web-based configuration interface with validation
 - **🎛️ Command Management**: Enable/disable commands, view execution status, trigger manual runs
 - **📈 System Status**: Detailed system information, health metrics, and cache status
+- **🆕 New Releases**: Discover Spotify releases missing from MusicBrainz; open Lidarr, MusicBrainz, or Harmony with one click
 
 ### Key Features
 - **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
@@ -135,6 +137,20 @@ Access Cmdarr at `http://localhost:8080` for:
 - Automatically cleans up old discovery entries based on configurable age threshold
 - Prevents import list bloat and improves Lidarr performance
 - Runs automatically as a scheduled maintenance task
+
+### New Releases Discovery
+
+**What it does**: Scans your Lidarr artists for releases on Spotify that are missing from MusicBrainz  
+**Access**: Web UI → New Releases (`/new-releases`)
+
+**Benefits**:
+- Uses Lidarr's Spotify links when available (avoids name collisions like Emmure vs emmurée)
+- 1 MusicBrainz API call per artist (release groups), no per-album lookups
+- Filters out live recordings, compilations, and guest appearances
+- One-click links to Lidarr, MusicBrainz artist page, or Harmony to add the album
+
+**Requirements**: Lidarr, Spotify credentials, MusicBrainz contact  
+**Configuration**: `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources → Spotify
 
 ### Playlist Sync Commands
 
@@ -473,6 +489,7 @@ python run_fastapi.py
   - `/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
   - `/import_lists/discovery_listenbrainz` - JSON endpoint for ListenBrainz Weekly Discovery artists
   - `/import_lists/metrics` - Metrics for import list files
+- **New Releases**: `/api/new-releases` - Scan for Spotify releases missing from MusicBrainz (query params: `artist_limit`, `album_types`)
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
 - **Configuration API**: `/api/config/` - RESTful configuration management
 - **Commands API**: `/api/commands/` - Command management and execution

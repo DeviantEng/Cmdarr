@@ -264,6 +264,125 @@ class SpotifyClient(BaseAPIClient):
                 'error': f"Failed to fetch tracks: {str(e)}"
             }
     
+    async def search_artists(self, name: str, limit: int = 5) -> Dict[str, Any]:
+        """
+        Search for artists by name on Spotify.
+        
+        Args:
+            name: Artist name to search for
+            limit: Maximum number of results (default 5, max 50)
+            
+        Returns:
+            Dict with success, artists list (id, name, uri) or error info
+        """
+        try:
+            params = {
+                'q': f'artist:"{name}"',
+                'type': 'artist',
+                'limit': min(limit, 50)
+            }
+            result = await self._get('/search', params=params)
+            
+            if not result:
+                return {'success': False, 'error': 'No response from Spotify', 'artists': []}
+            
+            artists_data = result.get('artists', {}).get('items', [])
+            artists = []
+            for artist in artists_data:
+                artists.append({
+                    'id': artist.get('id'),
+                    'name': artist.get('name'),
+                    'uri': artist.get('uri'),
+                    'external_url': artist.get('external_urls', {}).get('spotify')
+                })
+            
+            return {
+                'success': True,
+                'artists': artists
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error searching for artist '{name}': {e}")
+            return {'success': False, 'error': str(e), 'artists': []}
+    
+    def _get_artist_albums_cache_key(self, artist_id: str) -> str:
+        """Generate cache key for artist albums (v2 includes primary_artist_id)"""
+        return f"spotify_artist_albums_v2:{artist_id}"
+
+    async def get_artist_albums(self, artist_id: str, limit: int = 50,
+                               include_groups: str = 'album,single,compilation,appears_on',
+                               fetch_all: bool = False) -> Dict[str, Any]:
+        """
+        Get albums for an artist from Spotify.
+        
+        Args:
+            artist_id: Spotify artist ID
+            limit: Maximum albums per request (max 50)
+            include_groups: Album types - album, single, appears_on, compilation
+            fetch_all: If True, paginate to get all albums (no limit)
+            
+        Returns:
+            Dict with success, albums list (id, name, release_date, total_tracks, etc.) or error info
+        """
+        try:
+            cache_key = self._get_artist_albums_cache_key(artist_id)
+            if self.cache_enabled and self.cache and fetch_all:
+                cached = self.cache.get(cache_key, 'spotify')
+                if cached is not None:
+                    self.logger.debug(f"Cache hit for Spotify albums: {artist_id}")
+                    return {'success': True, 'albums': cached}
+
+            all_albums = []
+            offset = 0
+            page_limit = min(limit, 50)
+            
+            while True:
+                params = {
+                    'limit': page_limit,
+                    'offset': offset,
+                    'include_groups': include_groups
+                }
+                result = await self._get(f'/artists/{artist_id}/albums', params=params)
+                
+                if not result:
+                    break
+                
+                items = result.get('items', [])
+                for item in items:
+                    external_url = item.get('external_urls', {}).get('spotify')
+                    artists = item.get('artists', [])
+                    primary_artist_id = artists[0].get('id') if artists else None
+                    all_albums.append({
+                        'id': item.get('id'),
+                        'name': item.get('name'),
+                        'release_date': item.get('release_date', ''),
+                        'release_date_precision': item.get('release_date_precision', 'year'),
+                        'album_type': item.get('album_type', ''),
+                        'total_tracks': item.get('total_tracks', 0),
+                        'primary_artist_id': primary_artist_id,
+                        'external_url': external_url,
+                        'spotify_url': external_url
+                    })
+                
+                if not fetch_all or len(items) < page_limit:
+                    break
+                offset += page_limit
+                if offset >= 200:  # Spotify caps at 200 albums per artist
+                    break
+
+            if self.cache_enabled and self.cache and fetch_all:
+                ttl = getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+                self.cache.set(cache_key, 'spotify', all_albums, ttl)
+            
+            return {
+                'success': True,
+                'albums': all_albums
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting albums for artist {artist_id}: {e}")
+            return {'success': False, 'error': str(e), 'albums': []}
+    
     async def test_connection(self) -> bool:
         """Test connection to Spotify API"""
         try:
