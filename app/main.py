@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 import os
@@ -233,12 +234,38 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Mount static files
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+# Add CORS middleware for development
+# In production with same origin, this won't be needed
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Setup templates
-templates = Jinja2Templates(directory="templates")
+# Mount React frontend in production (if built)
+frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+frontend_exists = os.path.exists(frontend_dist)
+
+if frontend_exists:
+    # Serve React static assets
+    frontend_assets = os.path.join(frontend_dist, "assets")
+    if os.path.exists(frontend_assets):
+        app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
+
+# Mount legacy static files (for backwards compatibility during transition)
+legacy_static = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(legacy_static):
+    app.mount("/static", StaticFiles(directory=legacy_static), name="static")
+
+# Setup templates (for legacy routes during transition)
+templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
+if os.path.exists(templates_dir):
+    templates = Jinja2Templates(directory=templates_dir)
 
 
 # Health check endpoint (for Docker health checks)
@@ -340,53 +367,80 @@ async def detailed_status_api(db: Session = Depends(get_config_db)):
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
-# Main index page (now serves commands)
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Main index page - now serves commands page"""
-    return templates.TemplateResponse("commands/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+# Serve React app for frontend routes (if built)
+if frontend_exists:
+    from fastapi.responses import FileResponse
+    
+    @app.get("/", response_class=HTMLResponse)
+    async def react_app(request: Request):
+        """Serve React app"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/config", response_class=HTMLResponse)
+    async def react_config(request: Request):
+        """Serve React app for config route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/status", response_class=HTMLResponse)
+    async def react_status(request: Request):
+        """Serve React app for status route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/import-lists", response_class=HTMLResponse)
+    async def react_import_lists(request: Request):
+        """Serve React app for import-lists route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
 
+    @app.get("/new-releases", response_class=HTMLResponse)
+    async def react_new_releases(request: Request):
+        """Serve React app for new-releases route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+else:
+    # Fallback to legacy Jinja2 templates if React build doesn't exist
+    get_app_logger().warning("React frontend not built, serving legacy templates")
+    
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        """Main index page - serves commands page"""
+        return templates.TemplateResponse("commands/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
-# Configuration page
-@app.get("/config", response_class=HTMLResponse)
-async def config_page(request: Request):
-    """Configuration management page"""
-    return templates.TemplateResponse("config/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+    @app.get("/config", response_class=HTMLResponse)
+    async def config_page(request: Request):
+        """Configuration management page"""
+        return templates.TemplateResponse("config/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
+    @app.get("/commands", response_class=HTMLResponse)
+    async def commands_page(request: Request):
+        """Command management page"""
+        return templates.TemplateResponse("commands/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
-# Commands page
-@app.get("/commands", response_class=HTMLResponse)
-async def commands_page(request: Request):
-    """Command management page"""
-    return templates.TemplateResponse("commands/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
-
-
-@app.get("/import-lists", response_class=HTMLResponse)
-async def import_lists_page(request: Request):
-    """Import lists page"""
-    return templates.TemplateResponse("import_lists.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+    @app.get("/import-lists", response_class=HTMLResponse)
+    async def import_lists_page(request: Request):
+        """Import lists page"""
+        return templates.TemplateResponse("import_lists.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
 
 # API Routes - Import after logging is configured
-from app.api import config, status, import_lists, test_connectivity
+from app.api import config, status, import_lists, test_connectivity, new_releases
 
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
+app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 
 
 # WebSocket endpoint for real-time updates

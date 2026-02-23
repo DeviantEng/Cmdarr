@@ -77,6 +77,7 @@ class ConfigAdapter:
         # Spotify Configuration
         self.SPOTIFY_CLIENT_ID = config_service.get('SPOTIFY_CLIENT_ID', '')
         self.SPOTIFY_CLIENT_SECRET = config_service.get('SPOTIFY_CLIENT_SECRET', '')
+        self.NEW_RELEASES_CACHE_DAYS = config_service.get('NEW_RELEASES_CACHE_DAYS', 14)
         
         # Processing Configuration
         self.GENERATE_DEBUG_VALIDATION_CALLS = config_service.get('GENERATE_DEBUG_VALIDATION_CALLS', True)
