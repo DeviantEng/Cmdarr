@@ -558,19 +558,42 @@ class JellyfinClient(BaseAPIClient):
                     track_album_norm = self._normalize_text(track['album'])
                     if track_album_norm == normalized_album:
                         album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                    elif (len(normalized_album) >= 2 and len(track_album_norm) >= 2 and
+                          (normalized_album in track_album_norm or track_album_norm in normalized_album)):
                         album_bonus = 0.1  # 10% bonus for partial album match
-                
                 self.logger.debug(f"Exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
                 return track
         
         # Strategy 2: Normalized exact match - with album bonus
+        # Skip when both normalize to empty (e.g. "†") - would match wrong tracks
+        if normalized_artist or normalized_title:
+            for track in tracks:
+                track_artist_norm = self._normalize_text(track['artist'])
+                track_title_norm = self._normalize_text(track['name'])
+                
+                if (track_artist_norm == normalized_artist and 
+                    track_title_norm == normalized_title):
+                    # Check album match for bonus scoring
+                    album_bonus = 0
+                    if normalized_album and track.get('album'):
+                        track_album_norm = self._normalize_text(track['album'])
+                        if track_album_norm == normalized_album:
+                            album_bonus = 0.2  # 20% bonus for exact album match
+                        elif (len(normalized_album) >= 2 and len(track_album_norm) >= 2 and
+                              (normalized_album in track_album_norm or track_album_norm in normalized_album)):
+                            album_bonus = 0.1  # 10% bonus for partial album match
+                    self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
+                    return track
+        
+        # Strategy 3: Partial match (both artist and title contain search terms) - with album bonus
+        # Require min length - empty/single-char (e.g. "†") would match everything
+        min_partial_len = 2
         for track in tracks:
             track_artist_norm = self._normalize_text(track['artist'])
             track_title_norm = self._normalize_text(track['name'])
-            
-            if (track_artist_norm == normalized_artist and 
-                track_title_norm == normalized_title):
+            if (len(normalized_artist) >= min_partial_len and len(normalized_title) >= min_partial_len and
+                len(track_artist_norm) >= min_partial_len and len(track_title_norm) >= min_partial_len and
+                normalized_artist in track_artist_norm and normalized_title in track_title_norm):
                 
                 # Check album match for bonus scoring
                 album_bonus = 0
@@ -578,24 +601,8 @@ class JellyfinClient(BaseAPIClient):
                     track_album_norm = self._normalize_text(track['album'])
                     if track_album_norm == normalized_album:
                         album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
-                        album_bonus = 0.1  # 10% bonus for partial album match
-                
-                self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
-                return track
-        
-        # Strategy 3: Partial match (both artist and title contain search terms) - with album bonus
-        for track in tracks:
-            if (normalized_artist in self._normalize_text(track['artist']) and 
-                normalized_title in self._normalize_text(track['name'])):
-                
-                # Check album match for bonus scoring
-                album_bonus = 0
-                if normalized_album and track.get('album'):
-                    track_album_norm = self._normalize_text(track['album'])
-                    if track_album_norm == normalized_album:
-                        album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                    elif (len(normalized_album) >= min_partial_len and len(track_album_norm) >= min_partial_len and
+                          (normalized_album in track_album_norm or track_album_norm in normalized_album)):
                         album_bonus = 0.1  # 10% bonus for partial album match
                 
                 self.logger.debug(f"Partial match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
@@ -1585,7 +1592,8 @@ class JellyfinClient(BaseAPIClient):
             return True
         
         # Contains match
-        if search_term in cached_term or cached_term in search_term:
+        # Require min length - empty/single-char (e.g. "†") would match everything
+        if len(search_term) >= 2 and len(cached_term) >= 2 and (search_term in cached_term or cached_term in search_term):
             return True
         
         # Word boundary match (handle "The Beatles" vs "Beatles")

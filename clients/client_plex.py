@@ -324,7 +324,10 @@ class PlexClient(BaseAPIClient):
             
             for track in tracks:
                 if track["key"] in candidate_keys:
-                    total_score, artist_score = self._score_track_match_optimized(track, track_lower, artist_lower, album_lower)
+                    total_score, artist_score = self._score_track_match_optimized(
+                        track, track_lower, artist_lower, album_lower,
+                        original_track=track_name, original_artist=artist_name
+                    )
                     track_info = {
                         'key': track["key"],
                         'artist': track['artist'],
@@ -362,7 +365,10 @@ class PlexClient(BaseAPIClient):
             track_sample = tracks[:sample_size] if len(tracks) > sample_size else tracks
 
             for track in track_sample:
-                total_score, artist_score = self._score_track_match_optimized(track, track_lower, artist_lower, album_lower)
+                total_score, artist_score = self._score_track_match_optimized(
+                    track, track_lower, artist_lower, album_lower,
+                    original_track=track_name, original_artist=artist_name
+                )
                 # Require artist match to avoid cross-artist false matches
                 if total_score > best_score and artist_score >= 50:
                     best_score = total_score
@@ -373,7 +379,8 @@ class PlexClient(BaseAPIClient):
         
         return None
     
-    def _score_track_match_optimized(self, track: Dict[str, Any], target_track: str, target_artist: str, target_album: str = "") -> tuple:
+    def _score_track_match_optimized(self, track: Dict[str, Any], target_track: str, target_artist: str, target_album: str = "",
+                                     original_track: str = "", original_artist: str = "") -> tuple:
         """
         Optimized track matching score using minimal track data.
         Artist match is required - never match same title by different artist (e.g. Antidote/Braeker vs Antidote/Greywind).
@@ -384,6 +391,8 @@ class PlexClient(BaseAPIClient):
         artist_score = 0
         score_breakdown = []
 
+        plex_track_orig = track.get("title", "").lower()
+        plex_artist_orig = track.get("artist", "").lower()
         plex_track = track.get("title", "")
         plex_artist = track.get("artist", "")
         plex_album = track.get("album", "")
@@ -398,11 +407,25 @@ class PlexClient(BaseAPIClient):
         target_artist = normalize_text(target_artist)
         target_album = normalize_text(target_album)
 
+        # Use originals for empty-string fallback (e.g. "†" normalizes to "")
+        orig_track = (original_track or "").lower()
+        orig_artist = (original_artist or "").lower()
+
         # Score track title match
+        # Require min length for partial match - empty/single-char (e.g. "†") would match everything
+        min_partial_len = 2
         if plex_track == target_track:
-            score += 100  # Exact match
-            score_breakdown.append("track_exact:100")
-        elif target_track in plex_track or plex_track in target_track:
+            # When both normalize to empty (e.g. "†" vs "‡"), require original exact match
+            if not target_track and not plex_track:
+                if orig_track and plex_track_orig == orig_track:
+                    score += 100
+                    score_breakdown.append("track_exact:100")
+                # else: no match - different symbol-only titles or missing original
+            else:
+                score += 100  # Exact match
+                score_breakdown.append("track_exact:100")
+        elif (len(target_track) >= min_partial_len and len(plex_track) >= min_partial_len and
+              (target_track in plex_track or plex_track in target_track)):
             score += 70   # Partial match
             score_breakdown.append("track_partial:70")
         elif self._fuzzy_match(plex_track, target_track):
@@ -411,10 +434,18 @@ class PlexClient(BaseAPIClient):
 
         # Score artist name match (REQUIRED - no cross-artist matches)
         if plex_artist == target_artist:
-            artist_score = 100  # Exact match
-            score += artist_score
-            score_breakdown.append("artist_exact:100")
-        elif target_artist in plex_artist or plex_artist in target_artist:
+            if not target_artist and not plex_artist:
+                if orig_artist and plex_artist_orig == orig_artist:
+                    artist_score = 100
+                    score += artist_score
+                    score_breakdown.append("artist_exact:100")
+                # else: no match - different symbol-only artist names or missing original
+            else:
+                artist_score = 100  # Exact match
+                score += artist_score
+                score_breakdown.append("artist_exact:100")
+        elif (len(target_artist) >= min_partial_len and len(plex_artist) >= min_partial_len and
+              (target_artist in plex_artist or plex_artist in target_artist)):
             artist_score = 70   # Partial match
             score += artist_score
             score_breakdown.append("artist_partial:70")
@@ -429,7 +460,8 @@ class PlexClient(BaseAPIClient):
                 score += 50  # Exact match
                 score_breakdown.append("album_exact:50")
                 self.logger.debug(f"Cached album exact match: '{plex_album}' == '{target_album}' (+50)")
-            elif target_album in plex_album or plex_album in target_album:
+            elif (len(target_album) >= min_partial_len and len(plex_album) >= min_partial_len and
+                  (target_album in plex_album or plex_album in target_album)):
                 score += 30   # Partial match
                 score_breakdown.append("album_partial:30")
                 self.logger.debug(f"Cached album partial match: '{plex_album}' <-> '{target_album}' (+30)")
@@ -988,19 +1020,38 @@ class PlexClient(BaseAPIClient):
         target_artist_lower = normalize_text(target_artist_lower)
         target_album_lower = normalize_text(target_album_lower)
 
+        # Require min length for partial match - empty/single-char (e.g. "†") would match everything
+        min_partial_len = 2
+        plex_track_orig = track.get("title", "").lower()
+        plex_artist_orig = track.get("grandparentTitle", "").lower()
+
         # Score track title match
         if plex_track_title == target_track_lower:
-            score += 100  # Exact match
-        elif target_track_lower in plex_track_title or plex_track_title in target_track_lower:
+            # When both normalize to empty (e.g. "†" vs "‡"), require original exact match
+            if not target_track_lower and not plex_track_title:
+                if plex_track_orig == target_track_name.lower():
+                    score += 100  # Exact match on originals
+                # else: no match - different symbol-only titles
+            else:
+                score += 100  # Exact match
+        elif (len(target_track_lower) >= min_partial_len and len(plex_track_title) >= min_partial_len and
+              (target_track_lower in plex_track_title or plex_track_title in target_track_lower)):
             score += 70   # Partial match
         elif self._fuzzy_match(plex_track_title, target_track_lower):
             score += 50   # Fuzzy match
 
         # Score artist name match (REQUIRED - no cross-artist matches)
         if plex_artist_name == target_artist_lower:
-            artist_score = 100  # Exact match
-            score += artist_score
-        elif target_artist_lower in plex_artist_name or plex_artist_name in target_artist_lower:
+            if not target_artist_lower and not plex_artist_name:
+                if plex_artist_orig == target_artist_name.lower():
+                    artist_score = 100
+                    score += artist_score
+                # else: no match - different symbol-only artist names
+            else:
+                artist_score = 100  # Exact match
+                score += artist_score
+        elif (len(target_artist_lower) >= min_partial_len and len(plex_artist_name) >= min_partial_len and
+              (target_artist_lower in plex_artist_name or plex_artist_name in target_artist_lower)):
             artist_score = 70   # Partial match
             score += artist_score
         elif self._fuzzy_match(plex_artist_name, target_artist_lower):
@@ -1012,7 +1063,8 @@ class PlexClient(BaseAPIClient):
             if plex_album_name == target_album_lower:
                 score += 50  # Exact match
                 self.logger.debug(f"Album exact match: '{plex_album_name}' == '{target_album_lower}' (+50)")
-            elif target_album_lower in plex_album_name or plex_album_name in target_album_lower:
+            elif (len(target_album_lower) >= min_partial_len and len(plex_album_name) >= min_partial_len and
+                  (target_album_lower in plex_album_name or plex_album_name in target_album_lower)):
                 score += 30   # Partial match
                 self.logger.debug(f"Album partial match: '{plex_album_name}' <-> '{target_album_lower}' (+30)")
             elif self._fuzzy_match(plex_album_name, target_album_lower):
