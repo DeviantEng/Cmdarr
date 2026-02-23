@@ -5,6 +5,13 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Force full rebuild (no cache) - use when frontend/cache is stale'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -78,3 +85,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
