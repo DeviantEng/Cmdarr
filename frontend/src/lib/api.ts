@@ -8,6 +8,8 @@ import type {
   ConnectivityTestResult,
   StatusInfo,
   NewReleasesResponse,
+  PendingReleasesResponse,
+  LidarrArtistSuggestion,
   ImportListMetrics,
 } from './types'
 
@@ -107,6 +109,12 @@ class ApiClient {
   ): Promise<{ message: string }> {
     return await this.request(`/api/commands/${commandName}/cancel`, {
       method: 'POST',
+    })
+  }
+
+  async deleteCommand(commandName: string): Promise<{ message: string }> {
+    return await this.request(`/api/commands/${commandName}`, {
+      method: 'DELETE',
     })
   }
 
@@ -226,6 +234,77 @@ class ApiClient {
     return this.request<NewReleasesResponse>(
       `/api/new-releases${query ? `?${query}` : ''}`
     )
+  }
+
+  // New Releases - DB-backed (pending, dismiss, run-batch, scan-artist)
+  async getPendingReleases(params?: {
+    status?: string
+    limit?: number
+    offset?: number
+  }): Promise<PendingReleasesResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
+    if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return this.request<PendingReleasesResponse>(
+      `/api/new-releases/pending${query ? `?${query}` : ''}`
+    )
+  }
+
+  async dismissRelease(itemId: number): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/dismiss/${itemId}`, { method: 'POST' })
+  }
+
+  async getDismissedReleases(params?: { limit?: number; offset?: number }): Promise<{
+    success: boolean
+    total: number
+    items: { id: number; artist_mbid: string; artist_name: string; album_title: string; release_date?: string; dismissed_at?: string }[]
+  }> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return this.request(`/api/new-releases/dismissed${query ? `?${query}` : ''}`)
+  }
+
+  async restoreDismissed(dismissedId: number): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/restore/${dismissedId}`, { method: 'POST' })
+  }
+
+  async getNewReleasesCommandStatus(): Promise<{
+    enabled: boolean
+    config_json?: Record<string, any> | null
+    schedule_hours?: number | null
+  }> {
+    return this.request(`/api/new-releases/command-status`)
+  }
+
+  async runBatch(): Promise<{ success: boolean; execution_id?: string }> {
+    return this.request(`/api/new-releases/run-batch`, { method: 'POST' })
+  }
+
+  async scanArtist(params: { artist_mbid?: string; artist_name?: string; album_types?: string[] }): Promise<{
+    success: boolean
+    execution_id?: string
+    artist_name?: string
+  }> {
+    return this.request(`/api/new-releases/scan-artist`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getLidarrArtists(q: string, limit = 20): Promise<{
+    success: boolean
+    artists: LidarrArtistSuggestion[]
+  }> {
+    const params = new URLSearchParams({ q, limit: String(limit) })
+    return this.request(`/api/new-releases/lidarr-artists?${params}`)
+  }
+
+  async syncLidarrArtists(): Promise<{ success: boolean; synced?: number; updated?: number }> {
+    return this.request(`/api/new-releases/sync-lidarr-artists`, { method: 'POST' })
   }
 }
 

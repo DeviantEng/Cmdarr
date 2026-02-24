@@ -17,8 +17,18 @@ from __version__ import __version__
 
 from database.database import get_config_db, get_database_manager
 from services.config_service import config_service
-from utils.logger import get_logger
+from utils.logger import CmdarrLogger, setup_application_logging, get_logger
 from app.websocket import websocket_endpoint
+
+# Ensure logging is configured when app is loaded (e.g. via uvicorn app.main:app)
+# run_fastapi.py also calls this; CmdarrLogger handles re-init safely
+if not CmdarrLogger._configured:
+    _minimal_config = type('Config', (), {
+        'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO').upper(),
+        'LOG_FILE': 'data/logs/cmdarr.log',
+        'LOG_RETENTION_DAYS': 7,
+    })()
+    setup_application_logging(_minimal_config)
 
 
 # Lazy-load logger to avoid initialization issues
@@ -163,15 +173,19 @@ async def lifespan(app: FastAPI):
         # Don't raise here as the app can still work
     
     
-    # Clean up stuck commands from previous runs
+    # Clean up stuck commands from previous runs and queue retries for interrupted commands
     try:
         from services.command_cleanup import command_cleanup
-        await command_cleanup.cleanup_startup_stuck_commands()
+        import asyncio
+        commands_to_retry = await command_cleanup.cleanup_startup_stuck_commands()
         get_app_logger().info("Startup command cleanup completed")
+        if commands_to_retry:
+            asyncio.create_task(command_cleanup.run_restart_retries(commands_to_retry))
+            get_app_logger().info(f"Queued {len(commands_to_retry)} command(s) for restart retry")
     except Exception as e:
         get_app_logger().error(f"Failed to cleanup startup stuck commands: {e}")
         # Don't raise here as the app can still work
-    
+
     # Start command cleanup service
     try:
         from services.command_cleanup import command_cleanup
@@ -208,7 +222,23 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     get_app_logger().info("Shutting down Cmdarr FastAPI application")
-    
+
+    # Stop command scheduler (prevents new commands from starting)
+    try:
+        from services.scheduler import scheduler
+        await scheduler.stop()
+        get_app_logger().info("Command scheduler stopped successfully")
+    except Exception as e:
+        get_app_logger().error(f"Failed to stop command scheduler: {e}")
+
+    # Graceful shutdown: wait for running commands to complete (e.g. playlist syncs)
+    try:
+        from services.command_executor import command_executor
+        timeout = float(config_service.get("SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS", 300))
+        await command_executor.wait_for_running_commands(timeout_seconds=timeout)
+    except Exception as e:
+        get_app_logger().error(f"Failed during graceful command shutdown: {e}")
+
     # Stop command cleanup service
     try:
         from services.command_cleanup import command_cleanup
@@ -216,14 +246,6 @@ async def lifespan(app: FastAPI):
         get_app_logger().info("Command cleanup service stopped")
     except Exception as e:
         get_app_logger().error(f"Failed to stop command cleanup service: {e}")
-    
-    # Stop command scheduler
-    try:
-        from services.scheduler import scheduler
-        await scheduler.stop()
-        get_app_logger().info("Command scheduler stopped successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to stop command scheduler: {e}")
 
 
 # Create FastAPI application

@@ -67,6 +67,7 @@ services:
       - LIBRARY_CACHE_PLEX_ENABLED=true
       - LIBRARY_CACHE_JELLYFIN_ENABLED=true
     restart: unless-stopped
+    stop_grace_period: 320s  # Allow running commands (e.g. playlist syncs) to finish before force-kill
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -247,6 +248,12 @@ LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true
 LIBRARY_CACHE_SCHEDULE_HOURS=24
 
+# Restart retry: auto-retry commands interrupted by restart (default: true)
+RESTART_RETRY_ENABLED=true
+
+# Graceful shutdown (wait for running commands before exit)
+SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
+
 # Rate limiting optimization
 LASTFM_RATE_LIMIT=8.0
 MUSICBRAINZ_RATE_LIMIT=1.0
@@ -289,6 +296,10 @@ curl -X POST http://localhost:8080/api/commands/library_cache_builder/execute \
 ```bash
 curl http://localhost:8080/api/config/
 ```
+
+**"Command was running when application restarted"**: Commands (e.g. playlist syncs) were interrupted by a restart. Cmdarr handles this by:
+- **Restart retry**: On next startup, interrupted commands are automatically re-queued and run as soon as possible (configurable via `RESTART_RETRY_ENABLED`)
+- **Graceful shutdown** (optional): Add `stop_grace_period: 320s` to docker-compose so Docker waits for running commands to finish before SIGKILL
 
 ### Performance Monitoring
 Monitor command execution and web server performance:

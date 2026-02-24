@@ -263,6 +263,24 @@ class SpotifyClient(BaseAPIClient):
                 'error': f"Failed to fetch tracks: {str(e)}"
             }
     
+    async def get_artist(self, artist_id: str) -> Dict[str, Any]:
+        """
+        Get artist by Spotify ID (for name validation when using Lidarr's Spotify link).
+        Returns dict with id, name, or error.
+        """
+        try:
+            result = await self._get(f'/artists/{artist_id}')
+            if not result:
+                return {'success': False, 'error': 'No response', 'name': None}
+            return {
+                'success': True,
+                'id': result.get('id'),
+                'name': result.get('name'),
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching artist {artist_id}: {e}")
+            return {'success': False, 'error': str(e), 'name': None}
+
     async def search_artists(self, name: str, limit: int = 5) -> Dict[str, Any]:
         """
         Search for artists by name on Spotify.

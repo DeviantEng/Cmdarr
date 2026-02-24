@@ -25,6 +25,8 @@ type ViewMode = 'card' | 'list'
 type SortField = 'name' | 'last_run' | 'status'
 type SortDirection = 'asc' | 'desc'
 
+const BUILTIN_COMMANDS = ['discovery_lastfm', 'library_cache_builder', 'new_releases_discovery', 'playlist_sync_discovery_maintenance']
+
 export function CommandsPage() {
   const [commands, setCommands] = useState<CommandConfig[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,6 +39,11 @@ export function CommandsPage() {
   const [sortDirection] = useState<SortDirection>('asc')
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false)
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null)
+  const [editForm, setEditForm] = useState<{
+    schedule_hours?: number
+    artists_per_run?: number
+    album_types?: string[]
+  }>({})
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([])
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null)
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null)
@@ -157,7 +164,11 @@ export function CommandsPage() {
     try {
       await api.updateCommand(command.command_name, { enabled: !command.enabled })
       toast.success(`Command ${command.enabled ? 'disabled' : 'enabled'}`)
-      loadCommands()
+      await loadCommands()
+      if (editingCommand?.command_name === command.command_name) {
+        const updated = (await api.getCommands()).find((c) => c.command_name === command.command_name)
+        if (updated) setEditingCommand(updated)
+      }
     } catch (error) {
       toast.error('Failed to update command')
       console.error(error)
@@ -166,13 +177,45 @@ export function CommandsPage() {
 
   const handleEdit = (command: CommandConfig) => {
     setEditingCommand(command)
+    const cfg = command.config_json || {}
+    const typesStr = (cfg.album_types as string) || 'album'
+    setEditForm({
+      schedule_hours: command.schedule_hours ?? 1,
+      artists_per_run: typeof cfg.artists_per_run === 'number' ? cfg.artists_per_run : 5,
+      album_types: typesStr.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    })
+  }
+
+  const handleSaveCommand = async (updates: {
+    schedule_hours?: number
+    config_json?: Record<string, any>
+  }) => {
+    if (!editingCommand) return
+    try {
+      await api.updateCommand(editingCommand.command_name, updates)
+      toast.success('Command updated')
+      await loadCommands()
+      const updated = (await api.getCommands()).find((c) => c.command_name === editingCommand.command_name)
+      if (updated) setEditingCommand(updated)
+    } catch (error) {
+      toast.error('Failed to update command')
+      console.error(error)
+    }
   }
 
   const handleDelete = async (commandName: string) => {
-    if (!confirm(`Are you sure you want to delete the command "${commandName}"?`)) {
+    if (BUILTIN_COMMANDS.includes(commandName)) return
+    if (!confirm(`Are you sure you want to delete the command "${commandName}"? This cannot be undone.`)) {
       return
     }
-    toast.info('Delete functionality coming soon')
+    try {
+      await api.deleteCommand(commandName)
+      toast.success('Command deleted')
+      loadCommands()
+    } catch (error) {
+      toast.error('Failed to delete command')
+      console.error(error)
+    }
   }
 
   // Filter and sort commands (defensive check to ensure commands is an array)
@@ -409,13 +452,15 @@ export function CommandsPage() {
                       <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
                         {command.enabled ? 'Disable' : 'Enable'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => handleDelete(command.command_name)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
+                      {!BUILTIN_COMMANDS.includes(command.command_name) && (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDelete(command.command_name)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -507,13 +552,15 @@ export function CommandsPage() {
                           <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
                             {command.enabled ? 'Disable' : 'Enable'}
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDelete(command.command_name)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
+                          {!BUILTIN_COMMANDS.includes(command.command_name) && (
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDelete(command.command_name)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -763,8 +810,79 @@ export function CommandsPage() {
                   </Badge>
                 </div>
 
-                {/* Schedule */}
-                {editingCommand.schedule_hours && (
+                {/* New Releases Discovery - editable fields */}
+                {editingCommand.command_name === 'new_releases_discovery' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-schedule">Schedule (hours)</Label>
+                      <Input
+                        id="edit-schedule"
+                        type="number"
+                        min={1}
+                        max={168}
+                        value={editForm.schedule_hours ?? 1}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            schedule_hours: Math.max(1, Math.min(168, parseInt(e.target.value, 10) || 1)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Runs every N hours when enabled
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-artists">Artists per run</Label>
+                      <Input
+                        id="edit-artists"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={editForm.artists_per_run ?? 5}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            artists_per_run: Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 5)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Max artists to scan per batch (1–50)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Release types to include</Label>
+                      <div className="flex flex-wrap gap-4">
+                        {['album', 'ep', 'single', 'other'].map((t) => (
+                          <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input
+                              type="checkbox"
+                              checked={(editForm.album_types ?? ['album']).includes(t)}
+                              onChange={(e) => {
+                                setEditForm((f) => {
+                                  const current = f.album_types ?? ['album']
+                                  const next = e.target.checked
+                                    ? [...current, t]
+                                    : current.filter((x) => x !== t)
+                                  return { ...f, album_types: next.length ? next : ['album'] }
+                                })
+                              }}
+                              className="rounded border-input"
+                            />
+                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Used for batch runs and ad-hoc artist scans
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Schedule - generic (non-new_releases) */}
+                {editingCommand.command_name !== 'new_releases_discovery' && editingCommand.schedule_hours != null && (
                   <div className="space-y-2">
                     <Label>Schedule (Hours)</Label>
                     <Input value={editingCommand.schedule_hours} disabled />
@@ -793,16 +911,26 @@ export function CommandsPage() {
                 )}
               </div>
 
-              <div className="rounded-lg bg-muted p-4">
-                <p className="text-sm text-muted-foreground">
-                  Full command editing functionality is under development. For now, use the toggle buttons to enable/disable commands, or modify settings in the backend configuration.
-                </p>
-              </div>
-
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setEditingCommand(null)}>
                   Close
                 </Button>
+                {editingCommand.command_name === 'new_releases_discovery' && (
+                  <Button
+                    onClick={() =>
+                      handleSaveCommand({
+                        schedule_hours: editForm.schedule_hours,
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          artists_per_run: editForm.artists_per_run,
+                          album_types: (editForm.album_types ?? ['album']).join(','),
+                        },
+                      })
+                    }
+                  >
+                    Save
+                  </Button>
+                )}
                 <Button onClick={() => handleToggleEnabled(editingCommand)}>
                   {editingCommand.enabled ? 'Disable' : 'Enable'}
                 </Button>

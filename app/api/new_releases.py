@@ -7,18 +7,25 @@ Flow:
 2. Get Spotify albums for each artist (cached), filter by type
 3. Get MB release groups per artist (1 call/artist, cached)
 4. Local compare: if Spotify album title matches MB, skip; else show with Harmony link
+
+New: DB-backed pending table, dismiss, recheck, run-batch, scan-artist.
 """
 
 import random
+from datetime import datetime, timezone
 from typing import List, Optional, Set
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from commands.config_adapter import ConfigAdapter
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
+from database.config_models import NewReleasePending, DismissedArtistAlbum
+from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
 from utils.text_normalizer import normalize_text
 
@@ -268,3 +275,284 @@ async def get_new_releases(
     except Exception as e:
         logger.exception(f"New releases scan failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- DB-backed endpoints ---
+
+def _pending_to_dict(r: NewReleasePending) -> dict:
+    """Convert NewReleasePending to API response dict."""
+    return {
+        "id": r.id,
+        "artist_mbid": r.artist_mbid,
+        "artist_name": r.artist_name,
+        "spotify_artist_id": r.spotify_artist_id,
+        "album_title": r.album_title,
+        "album_type": r.album_type,
+        "release_date": r.release_date,
+        "total_tracks": r.total_tracks,
+        "spotify_url": r.spotify_url,
+        "harmony_url": r.harmony_url,
+        "lidarr_artist_id": r.lidarr_artist_id,
+        "lidarr_artist_url": r.lidarr_artist_url,
+        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{r.artist_mbid}" if r.artist_mbid else None,
+        "added_at": r.added_at.isoformat() if r.added_at else None,
+        "source": r.source,
+        "status": r.status,
+    }
+
+
+@router.get("/new-releases/pending")
+async def get_pending_releases(
+    status: Optional[str] = Query("pending", description="Filter: pending, recheck_requested, resolved, dismissed"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_config_db),
+):
+    """List pending new releases from DB (paginated)."""
+    logger = get_logger("cmdarr.api.new_releases")
+    q = db.query(NewReleasePending).filter(NewReleasePending.status == status)
+    total = q.count()
+    rows = q.order_by(NewReleasePending.added_at.desc()).offset(offset).limit(limit).all()
+    return {
+        "success": True,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [_pending_to_dict(r) for r in rows],
+    }
+
+
+@router.post("/new-releases/dismiss/{item_id}")
+async def dismiss_release(item_id: int, db: Session = Depends(get_config_db)):
+    """Dismiss a pending release - add to dismissed table, set status. Won't reappear on next scan."""
+    logger = get_logger("cmdarr.api.new_releases")
+    row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    release_date = (row.release_date or "").strip() or None
+    existing = db.query(DismissedArtistAlbum).filter(
+        DismissedArtistAlbum.artist_mbid == row.artist_mbid,
+        DismissedArtistAlbum.album_title == row.album_title,
+        DismissedArtistAlbum.release_date == release_date,
+    ).first()
+    if not existing:
+        db.add(DismissedArtistAlbum(
+            artist_mbid=row.artist_mbid,
+            artist_name=row.artist_name,
+            album_title=row.album_title,
+            release_date=release_date,
+        ))
+    row.status = "dismissed"
+    row.resolved_at = datetime.now(timezone.utc)
+    row.resolved_reason = "manual_dismiss"
+    db.commit()
+    return {"success": True, "message": "Dismissed"}
+
+
+@router.get("/new-releases/dismissed")
+async def get_dismissed_releases(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_config_db),
+):
+    """List dismissed artist+album combinations (can be restored)."""
+    from database.config_models import DismissedArtistAlbum
+    q = db.query(DismissedArtistAlbum).order_by(DismissedArtistAlbum.dismissed_at.desc())
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+    return {
+        "success": True,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            {
+                "id": r.id,
+                "artist_mbid": r.artist_mbid,
+                "artist_name": getattr(r, "artist_name", None) or "(unknown)",
+                "album_title": r.album_title,
+                "release_date": r.release_date,
+                "dismissed_at": r.dismissed_at.isoformat() if r.dismissed_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/new-releases/restore/{dismissed_id}")
+async def restore_dismissed(dismissed_id: int, db: Session = Depends(get_config_db)):
+    """Restore a dismissed item - removes from dismissed table so it can reappear on next scan."""
+    from database.config_models import DismissedArtistAlbum
+    row = db.query(DismissedArtistAlbum).filter(DismissedArtistAlbum.id == dismissed_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Dismissed item not found")
+    db.delete(row)
+    db.commit()
+    return {"success": True, "message": "Restored - will reappear on next scan"}
+
+
+@router.post("/new-releases/recheck/{item_id}")
+async def recheck_release(item_id: int, db: Session = Depends(get_config_db)):
+    """Mark item for recheck - status set to recheck_requested (background job can re-validate MB)."""
+    row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    row.status = "recheck_requested"
+    db.commit()
+    return {"success": True, "message": "Marked for recheck"}
+
+
+@router.get("/new-releases/command-status")
+async def get_new_releases_command_status(db: Session = Depends(get_config_db)):
+    """Get new_releases_discovery command status (enabled, config) for UI."""
+    from database.config_models import CommandConfig
+    row = db.query(CommandConfig).filter(
+        CommandConfig.command_name == "new_releases_discovery"
+    ).first()
+    if not row:
+        return {"enabled": False, "config_json": None}
+    return {
+        "enabled": row.enabled,
+        "config_json": row.config_json,
+        "schedule_hours": row.schedule_hours,
+    }
+
+
+@router.post("/new-releases/run-batch")
+async def run_batch(db: Session = Depends(get_config_db)):
+    """Trigger the next batch scan (same logic as scheduled command)."""
+    from database.config_models import CommandConfig
+    from services.command_executor import command_executor
+
+    cmd = db.query(CommandConfig).filter(
+        CommandConfig.command_name == "new_releases_discovery"
+    ).first()
+    if not cmd:
+        raise HTTPException(status_code=400, detail="New Releases Discovery command not found")
+    if not cmd.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="New Releases Discovery command is disabled. Enable it in Commands first.",
+        )
+    result = await command_executor.execute_command("new_releases_discovery", triggered_by="api")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Batch run failed"))
+    return {"success": True, "execution_id": result.get("execution_id")}
+
+
+class ScanArtistRequest(BaseModel):
+    artist_mbid: Optional[str] = None
+    artist_name: Optional[str] = None
+    album_types: Optional[List[str]] = None
+
+
+@router.post("/new-releases/scan-artist")
+async def scan_artist(body: ScanArtistRequest):
+    """Manually scan a single artist. Provide artist_mbid (preferred) or artist_name."""
+    from services.command_executor import command_executor
+    from clients.client_lidarr import LidarrClient
+
+    config = ConfigAdapter()
+    if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+        raise HTTPException(status_code=503, detail="Lidarr not configured")
+
+    async with LidarrClient(config) as lidarr_client:
+        artists = await lidarr_client.get_all_artists()
+
+    artist = None
+    if body.artist_mbid:
+        artist = next((a for a in artists if a.get("musicBrainzId") == body.artist_mbid), None)
+    elif body.artist_name:
+        name_lower = (body.artist_name or "").strip().lower()
+        artist = next((a for a in artists if (a.get("artistName") or "").lower() == name_lower), None)
+        if not artist:
+            artist = next((a for a in artists if name_lower in (a.get("artistName") or "").lower()), None)
+
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artist not found in Lidarr")
+
+    album_types_str = None
+    if body.album_types:
+        album_types_str = ",".join(t.strip().lower() for t in body.album_types if t)
+    config_override = {"artists": [artist], "source": "manual"}
+    if album_types_str:
+        config_override["album_types"] = album_types_str
+    result = await command_executor.execute_command(
+        "new_releases_discovery",
+        config_override=config_override,
+        triggered_by="api",
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+    return {"success": True, "execution_id": result.get("execution_id"), "artist_name": artist.get("artistName")}
+
+
+@router.get("/new-releases/lidarr-artists")
+async def lidarr_artists_autocomplete(
+    q: str = Query("", min_length=1),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_config_db),
+):
+    """Autocomplete for Lidarr artists (from synced lidarr_artist table)."""
+    from database.config_models import LidarrArtist
+
+    q_clean = (q or "").strip()
+    if not q_clean:
+        return {"success": True, "artists": []}
+    pattern = f"%{q_clean}%"
+    rows = (
+        db.query(LidarrArtist)
+        .filter(LidarrArtist.artist_name.ilike(pattern))
+        .order_by(LidarrArtist.artist_name)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "success": True,
+        "artists": [
+            {
+                "artist_mbid": r.artist_mbid,
+                "artist_name": r.artist_name,
+                "lidarr_id": r.lidarr_id,
+                "spotify_artist_id": r.spotify_artist_id,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/new-releases/sync-lidarr-artists")
+async def sync_lidarr_artists(db: Session = Depends(get_config_db)):
+    """Sync Lidarr artists into lidarr_artist table for autocomplete."""
+    from database.config_models import LidarrArtist
+
+    config = ConfigAdapter()
+    if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+        raise HTTPException(status_code=503, detail="Lidarr not configured")
+
+    async with LidarrClient(config) as lidarr_client:
+        artists = await lidarr_client.get_all_artists()
+
+    now = datetime.now(timezone.utc)
+    updated = 0
+    for a in artists:
+        mbid = a.get("musicBrainzId")
+        if not mbid:
+            continue
+        existing = db.query(LidarrArtist).filter(LidarrArtist.artist_mbid == mbid).first()
+        if existing:
+            existing.artist_name = a.get("artistName", "")
+            existing.lidarr_id = a.get("id")
+            existing.spotify_artist_id = a.get("spotifyArtistId")
+            existing.last_synced_at = now
+            updated += 1
+        else:
+            db.add(LidarrArtist(
+                artist_mbid=mbid,
+                artist_name=a.get("artistName", ""),
+                lidarr_id=a.get("id"),
+                spotify_artist_id=a.get("spotifyArtistId"),
+                last_synced_at=now,
+            ))
+    db.commit()
+    return {"success": True, "synced": len(artists), "updated": updated}

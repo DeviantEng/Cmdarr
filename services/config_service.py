@@ -97,8 +97,9 @@ class ConfigService:
             # Command Configuration
             {'key': 'COMMAND_CLEANUP_RETENTION', 'default_value': '50', 'data_type': 'int', 'category': 'commands', 'description': 'Number of command executions to keep per command'},
             {'key': 'MAX_PARALLEL_COMMANDS', 'default_value': '3', 'data_type': 'int', 'category': 'commands', 'description': 'Maximum number of commands that can run in parallel', 'min_value': 1, 'max_value': 10},
-            
-            
+            {'key': 'SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS', 'default_value': '300', 'data_type': 'int', 'category': 'commands', 'description': 'Seconds to wait for running commands to complete on shutdown (prevents "Command was running when application restarted")'},
+            {'key': 'RESTART_RETRY_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'commands', 'description': 'On startup, automatically retry commands that were interrupted by a restart'},
+
             # Cache Configuration
             {'key': 'CACHE_FILE', 'default_value': 'data/cmdarr.db', 'data_type': 'string', 'category': 'cache', 'description': 'Cache database file location'},
             {'key': 'CACHE_LASTFM_TTL_DAYS', 'default_value': '7', 'data_type': 'int', 'category': 'cache', 'description': 'Cache TTL for Last.fm API responses (days)'},

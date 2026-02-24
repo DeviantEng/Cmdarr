@@ -124,18 +124,22 @@ class CommandCleanupService:
             if 'db' in locals():
                 db.close()
     
-    async def cleanup_startup_stuck_commands(self):
-        """Clean up any commands that were running when the application was shut down"""
+    async def cleanup_startup_stuck_commands(self) -> List[str]:
+        """
+        Clean up any commands that were running when the application was shut down.
+        Returns list of unique command names to retry (for restart-retry feature).
+        """
+        commands_to_retry: List[str] = []
         try:
             from database.database import get_database_manager
             manager = get_database_manager()
             db = manager.get_session_sync()
-            
+
             # Find all commands that were running (likely from previous app instance)
             stuck_commands = db.query(CommandExecution).filter(
                 CommandExecution.status == 'running'
             ).all()
-            
+
             for execution in stuck_commands:
                 await self._mark_command_failed(
                     execution,
@@ -143,16 +147,20 @@ class CommandCleanupService:
                     db
                 )
                 logger.info(f"Marked startup stuck command {execution.command_name} (ID: {execution.id}) as failed")
-            
+                if execution.command_name not in commands_to_retry:
+                    commands_to_retry.append(execution.command_name)
+
             if stuck_commands:
                 db.commit()
                 logger.info(f"Cleaned up {len(stuck_commands)} startup stuck commands")
-            
+
         except Exception as e:
             logger.error(f"Failed to cleanup startup stuck commands: {e}")
         finally:
             if 'db' in locals():
                 db.close()
+
+        return commands_to_retry
     
     async def _mark_command_failed(self, execution: CommandExecution, reason: str, db: Session):
         """Mark a command execution as failed"""
@@ -249,6 +257,59 @@ class CommandCleanupService:
         finally:
             if 'db' in locals():
                 db.close()
+
+
+    async def run_restart_retries(self, command_names: List[str], delay_seconds: float = 10):
+        """
+        Retry commands that were interrupted by restart. Runs after a short delay to let the app stabilize.
+        Executes one at a time, waiting for each to complete before starting the next.
+        """
+        if not command_names:
+            return
+        try:
+            from services.config_service import config_service
+            enabled = config_service.get('RESTART_RETRY_ENABLED', 'true')
+            if str(enabled).lower() in ('false', '0', 'no'):
+                logger.info("Restart retry disabled by config, skipping")
+                return
+        except Exception:
+            pass  # Default to enabled if config fails
+
+        logger.info(f"Restart retry: will retry {len(command_names)} command(s) in {delay_seconds}s: {command_names}")
+        await asyncio.sleep(delay_seconds)
+
+        from services.command_executor import command_executor
+        from database.database import get_database_manager
+
+        for cmd in command_names:
+            try:
+                # Verify command still exists (could have been deleted)
+                manager = get_database_manager()
+                db = manager.get_config_session_sync()
+                try:
+                    from database.config_models import CommandConfig
+                    exists = db.query(CommandConfig).filter(CommandConfig.command_name == cmd).first() is not None
+                finally:
+                    db.close()
+
+                if not exists:
+                    logger.warning(f"Restart retry: skipping {cmd} (command no longer exists)")
+                    continue
+
+                logger.info(f"Restart retry: executing {cmd}")
+                result = await command_executor.execute_command(cmd, triggered_by='restart_retry')
+                if not result.get('success'):
+                    logger.warning(f"Restart retry: could not start {cmd}: {result.get('error', 'unknown')}")
+                    continue
+
+                # Wait for this command to complete before starting the next
+                while cmd in command_executor.running_commands:
+                    await asyncio.sleep(5)
+                logger.info(f"Restart retry: {cmd} completed")
+            except Exception as e:
+                logger.error(f"Restart retry failed for {cmd}: {e}")
+
+        logger.info("Restart retry: all retries completed")
 
 
 # Global cleanup service instance

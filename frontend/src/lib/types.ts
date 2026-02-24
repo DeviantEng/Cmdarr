@@ -132,3 +132,38 @@ export interface NewReleasesResponse {
   results: NewReleaseArtist[]
 }
 
+// DB-backed pending items (flat, one per album)
+export interface NewReleasePendingItem {
+  id: number
+  artist_mbid: string
+  artist_name: string
+  spotify_artist_id?: string | null
+  album_title: string
+  album_type?: string | null
+  release_date?: string | null
+  total_tracks?: number | null
+  spotify_url?: string | null
+  harmony_url?: string | null
+  lidarr_artist_id?: number | null
+  lidarr_artist_url?: string | null
+  musicbrainz_artist_url?: string | null
+  added_at?: string | null
+  source: string
+  status: string
+}
+
+export interface PendingReleasesResponse {
+  success: boolean
+  total: number
+  limit: number
+  offset: number
+  items: NewReleasePendingItem[]
+}
+
+export interface LidarrArtistSuggestion {
+  artist_mbid: string
+  artist_name: string
+  lidarr_id?: number | null
+  spotify_artist_id?: string | null
+}
+

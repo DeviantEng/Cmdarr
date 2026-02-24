@@ -1,21 +1,47 @@
 import { useState, useEffect } from 'react'
-import { Activity, CheckCircle2, XCircle, Clock, Server } from 'lucide-react'
+import { Activity, CheckCircle2, XCircle, Clock, Server, RotateCcw } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { StatusInfo } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 
 export function StatusPage() {
   const [status, setStatus] = useState<StatusInfo | null>(null)
   const [health, setHealth] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [dismissedOpen, setDismissedOpen] = useState(false)
+  const [dismissed, setDismissed] = useState<{ id: number; artist_name: string; album_title: string; release_date?: string }[]>([])
+  const [dismissedTotal, setDismissedTotal] = useState(0)
 
   useEffect(() => {
     loadStatus()
     const interval = setInterval(loadStatus, 30000) // Refresh every 30 seconds
     return () => clearInterval(interval)
   }, [])
+
+  const loadDismissed = async () => {
+    try {
+      const data = await api.getDismissedReleases({ limit: 100 })
+      setDismissed(data.items)
+      setDismissedTotal(data.total)
+    } catch {
+      setDismissed([])
+      setDismissedTotal(0)
+    }
+  }
+
+  const handleRestore = async (id: number) => {
+    try {
+      await api.restoreDismissed(id)
+      toast.success('Restored - will reappear on next scan')
+      loadDismissed()
+    } catch {
+      toast.error('Failed to restore')
+    }
+  }
 
   const loadStatus = async () => {
     try {
@@ -31,6 +57,11 @@ export function StatusPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const openDismissed = () => {
+    setDismissedOpen(true)
+    loadDismissed()
   }
 
   const formatUptime = (seconds: number) => {
@@ -155,6 +186,64 @@ export function StatusPage() {
           </Card>
         </div>
       )}
+
+      {/* Dismissed Releases */}
+      <Card>
+        <CardHeader>
+          <CardTitle>New Releases</CardTitle>
+          <CardDescription>
+            Dismissed releases from New Releases can be restored here
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={openDismissed}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            View / Restore Dismissed
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Dismissed Dialog */}
+      <Dialog open={dismissedOpen} onOpenChange={setDismissedOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Dismissed Releases</DialogTitle>
+            <DialogDescription>
+              Restore to allow them to reappear on the next New Releases scan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-2 py-4">
+            {dismissed.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No dismissed releases.</p>
+            ) : (
+              dismissed.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg border p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium">{item.artist_name}</span>
+                    <span className="mx-2 text-muted-foreground">—</span>
+                    <span>{item.album_title}</span>
+                    {item.release_date && (
+                      <span className="ml-2 text-xs text-muted-foreground">{item.release_date}</span>
+                    )}
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                </div>
+              ))
+            )}
+            {dismissedTotal > dismissed.length && (
+              <p className="text-xs text-muted-foreground">
+                Showing {dismissed.length} of {dismissedTotal}
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* API Endpoints */}
       <Card>

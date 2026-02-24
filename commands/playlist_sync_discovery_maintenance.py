@@ -20,8 +20,6 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
     
     def __init__(self, config=None):
         super().__init__(config)
-        else:
-            self.logger = get_logger('cmdarr.playlist_sync_discovery_maintenance')
         self.discovery_file = Path("data/import_lists/discovery_playlistsync.json")
         self.backup_file = Path("data/import_lists/discovery_playlistsync.json.backup")
     

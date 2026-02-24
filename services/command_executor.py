@@ -45,12 +45,14 @@ class CommandExecutor:
         from commands.library_cache_builder import LibraryCacheBuilderCommand
         from commands.playlist_sync import PlaylistSyncCommand
         from commands.playlist_sync_discovery_maintenance import PlaylistSyncDiscoveryMaintenanceCommand
+        from commands.new_releases_discovery import NewReleasesDiscoveryCommand
         
         if self.command_classes is None:
             self.command_classes = {
                 'discovery_lastfm': DiscoveryLastfmCommand,
                 'library_cache_builder': LibraryCacheBuilderCommand,
-                'playlist_sync_discovery_maintenance': PlaylistSyncDiscoveryMaintenanceCommand
+                'playlist_sync_discovery_maintenance': PlaylistSyncDiscoveryMaintenanceCommand,
+                'new_releases_discovery': NewReleasesDiscoveryCommand
             }
             
             # Load dynamic playlist sync commands from database
@@ -213,8 +215,11 @@ class CommandExecutor:
             
             # Create config with overrides if provided
             config = self.config
+            # Clear previous run-specific overrides so they don't persist (e.g. artists from scan-artist)
+            for key in ('artists', 'source', 'album_types'):
+                if hasattr(config, key):
+                    delattr(config, key)
             if config_override:
-                # Apply overrides to config
                 for key, value in config_override.items():
                     setattr(config, key, value)
             

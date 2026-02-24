@@ -1014,7 +1014,7 @@ async def delete_command(command_name: str, db: Session = Depends(get_config_db)
         if command_name.startswith('playlist_sync_'):
             # Allow deletion of dynamic playlist sync commands
             pass
-        elif command_name in ['discovery_lastfm', 'library_cache_builder']:
+        elif command_name in ['discovery_lastfm', 'library_cache_builder', 'new_releases_discovery', 'playlist_sync_discovery_maintenance']:
             raise HTTPException(status_code=400, detail="Cannot delete built-in commands")
         
         db.delete(command)
