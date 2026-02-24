@@ -567,7 +567,9 @@ class PlexClient(BaseAPIClient):
                         best_score = total_score
                         best_match = track
 
-        if best_match and best_score >= 50:  # Minimum threshold for a match (artist already enforced above)
+        # Require total_score >= 100 so we need a real track match, not just artist fuzzy match.
+        # Artist-only fuzzy (e.g. "october ends" ~ "scott & brendo") with no track match would add wrong track.
+        if best_match and best_score >= 100:
             return best_match["ratingKey"]
 
         return None
