@@ -3,10 +3,12 @@
 Similar Artists Discovery Command
 Queries Lidarr artists and finds similar artists via Last.fm and MusicBrainz
 REFACTORED: Uses utils/discovery.py to eliminate code duplication
+Samples X Lidarr artists, gets Y similar per artist - configurable for performance.
 """
 
 import json
 import os
+import random
 from typing import List, Dict, Any
 
 from .command_base import BaseCommand
@@ -68,15 +70,35 @@ class DiscoveryLastfmCommand(BaseCommand):
         
         # Get all Lidarr artists for Last.fm processing
         lidarr_artists = await self.lidarr.get_all_artists()
-        artist_lookup = {artist['musicBrainzId']: artist['artistName'] for artist in lidarr_artists}
+        artist_lookup = {a['musicBrainzId']: a['artistName'] for a in lidarr_artists if a.get('musicBrainzId')}
+        
+        # Command config: artists_to_query (X), similar_per_artist (Y), min_match_score, limit
+        cfg = getattr(self, 'config_json', None) or {}
+        artists_to_query = max(1, int(cfg.get('artists_to_query', 3)))
+        similar_per_artist = max(1, int(cfg.get('similar_per_artist') or cfg.get('similar_count', 1)))
+        
+        # Sample X artists from Lidarr (instead of querying all)
+        artist_items = list(artist_lookup.items())
+        if len(artist_items) <= artists_to_query:
+            sampled_lookup = dict(artist_items)
+        else:
+            sampled = random.sample(artist_items, artists_to_query)
+            sampled_lookup = dict(sampled)
+        
+        self.logger.info(
+            f"Sampling {len(sampled_lookup)} of {len(artist_lookup)} Lidarr artists, "
+            f"requesting {similar_per_artist} similar per artist"
+        )
         
         # Statistics tracking
         stats = FilteringStats()
         stats.exclusions_count = len(excluded_mbids)
         
-        # Get raw similar artists from Last.fm
+        # Get raw similar artists from Last.fm (only for sampled artists)
         self.logger.info("Querying Last.fm for similar artists...")
-        all_raw_similar, all_skipped_artists = await self._fetch_lastfm_similar_artists(artist_lookup)
+        all_raw_similar, all_skipped_artists = await self._fetch_lastfm_similar_artists(
+            sampled_lookup, similar_per_artist
+        )
         
         # Process skipped artists through MusicBrainz
         musicbrainz_recovered = []
@@ -120,15 +142,14 @@ class DiscoveryLastfmCommand(BaseCommand):
                     stats.filtered_in_exclusions += 1
                 continue
             
-            # Check minimum match score
+            # Check minimum match score (0-1, default 0.9)
             try:
                 match_score = float(similar['match'])
-                # Use command-specific min_match_score if available, otherwise fall back to global config
-                min_match_score = 0.0  # Default fallback
-                if hasattr(self, 'config_json') and self.config_json and 'min_match_score' in self.config_json:
-                    min_match_score = self.config_json['min_match_score']
-                elif hasattr(self.config, 'LASTFM_MIN_MATCH_SCORE'):
-                    min_match_score = self.config.LASTFM_MIN_MATCH_SCORE
+                cfg = getattr(self, 'config_json', None) or {}
+                min_match_score = float(cfg.get('min_match_score', 0.9))
+                if hasattr(self.config, 'LASTFM_MIN_MATCH_SCORE') and 'min_match_score' not in cfg:
+                    min_match_score = float(self.config.LASTFM_MIN_MATCH_SCORE)
+                min_match_score = max(0.0, min(1.0, min_match_score))
                 
                 if match_score < min_match_score:
                     stats.filtered_low_score += 1
@@ -154,12 +175,10 @@ class DiscoveryLastfmCommand(BaseCommand):
         stats.valid_candidates = len(final_artists)
         
         # Apply random sampling using shared utility
-        # Use command-specific limit if available, otherwise fall back to global config
-        limit = 5  # Default fallback
-        if hasattr(self, 'config_json') and self.config_json and 'limit' in self.config_json:
-            limit = self.config_json['limit']
-        elif hasattr(self.config, 'DISCOVERY_LASTFM_LIMIT'):
-            limit = self.config.DISCOVERY_LASTFM_LIMIT
+        cfg = getattr(self, 'config_json', None) or {}
+        limit = int(cfg.get('limit', 5))
+        if limit <= 0:
+            limit = getattr(self.config, 'DISCOVERY_LASTFM_LIMIT', 5)
         
         output_artists, limited_count, random_sampling = self.utils.apply_random_sampling(
             final_artists, limit, "discovery_lastfm"
@@ -181,8 +200,15 @@ class DiscoveryLastfmCommand(BaseCommand):
         self.logger.info(f"Final result: {len(output_artists)} unique similar artists for output")
         return output_artists
     
-    async def _fetch_lastfm_similar_artists(self, artist_lookup: Dict[str, str]) -> tuple:
-        """Fetch similar artists from Last.fm with fallback to name-based search"""
+    async def _fetch_lastfm_similar_artists(
+        self, artist_lookup: Dict[str, str], similar_per_artist: int = 1
+    ) -> tuple:
+        """Fetch similar artists from Last.fm with fallback to name-based search.
+        
+        Args:
+            artist_lookup: Dict of mbid -> artist_name (already sampled to X artists)
+            similar_per_artist: Number of similar artists to request per Lidarr artist (Y)
+        """
         all_raw_similar = []
         all_skipped_artists = []
         failed_lookups = []
@@ -194,7 +220,9 @@ class DiscoveryLastfmCommand(BaseCommand):
         for mbid, artist_name in artist_lookup.items():
             try:
                 # Get similar artists from Last.fm (with name fallback and caching)
-                lastfm_similar, skipped_artists = await self.lastfm.get_similar_artists(mbid, artist_name)
+                lastfm_similar, skipped_artists = await self.lastfm.get_similar_artists(
+                    mbid, artist_name, limit=similar_per_artist
+                )
                 
                 if lastfm_similar or skipped_artists:
                     lastfm_mbid_success += 1

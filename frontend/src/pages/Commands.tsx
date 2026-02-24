@@ -43,6 +43,10 @@ export function CommandsPage() {
     schedule_hours?: number
     artists_per_run?: number
     album_types?: string[]
+    artists_to_query?: number
+    similar_per_artist?: number
+    limit?: number
+    min_match_score?: number
   }>({})
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([])
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null)
@@ -183,6 +187,10 @@ export function CommandsPage() {
       schedule_hours: command.schedule_hours ?? 1,
       artists_per_run: typeof cfg.artists_per_run === 'number' ? cfg.artists_per_run : 5,
       album_types: typesStr.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+      artists_to_query: typeof cfg.artists_to_query === 'number' ? cfg.artists_to_query : 3,
+      similar_per_artist: typeof cfg.similar_per_artist === 'number' ? cfg.similar_per_artist : 1,
+      limit: typeof cfg.limit === 'number' ? cfg.limit : 5,
+      min_match_score: typeof cfg.min_match_score === 'number' ? cfg.min_match_score : 0.9,
     })
   }
 
@@ -810,6 +818,89 @@ export function CommandsPage() {
                   </Badge>
                 </div>
 
+                {/* Last.fm Discovery - editable fields */}
+                {editingCommand.command_name === 'discovery_lastfm' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-artists-to-query">Lidarr artists to sample</Label>
+                      <Input
+                        id="edit-artists-to-query"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={editForm.artists_to_query ?? 3}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            artists_to_query: Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 3)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Number of Lidarr artists to query Last.fm (1–100). Lower = faster.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-similar-per-artist">Similar per artist</Label>
+                      <Input
+                        id="edit-similar-per-artist"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={editForm.similar_per_artist ?? 1}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            similar_per_artist: Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Similar artists to request per Lidarr artist (1–50)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lastfm-limit">Output limit</Label>
+                      <Input
+                        id="edit-lastfm-limit"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={editForm.limit ?? 5}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            limit: Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 5)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Max artists in final output (1–50)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-min-match-score">Min match score (0–1)</Label>
+                      <Input
+                        id="edit-min-match-score"
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={editForm.min_match_score ?? 0.9}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            min_match_score: Math.max(0, Math.min(1, parseFloat(e.target.value) || 0.9)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Minimum Last.fm match score (0–1, default 0.9)
+                      </p>
+                    </div>
+                  </>
+                )}
+
                 {/* New Releases Discovery - editable fields */}
                 {editingCommand.command_name === 'new_releases_discovery' && (
                   <>
@@ -924,6 +1015,23 @@ export function CommandsPage() {
                           ...(editingCommand.config_json || {}),
                           artists_per_run: editForm.artists_per_run,
                           album_types: (editForm.album_types ?? ['album']).join(','),
+                        },
+                      })
+                    }
+                  >
+                    Save
+                  </Button>
+                )}
+                {editingCommand.command_name === 'discovery_lastfm' && (
+                  <Button
+                    onClick={() =>
+                      handleSaveCommand({
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          artists_to_query: editForm.artists_to_query ?? 3,
+                          similar_per_artist: editForm.similar_per_artist ?? 1,
+                          limit: editForm.limit ?? 5,
+                          min_match_score: editForm.min_match_score ?? 0.9,
                         },
                       })
                     }

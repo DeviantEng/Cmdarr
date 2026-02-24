@@ -33,9 +33,10 @@ def init_default_commands():
             'timeout_minutes': 30,
             'command_type': 'discovery',
             'config_json': {
+                'artists_to_query': 3,
+                'similar_per_artist': 1,
                 'limit': 5,
-                'similar_count': 1,
-                'min_match_score': 0.5
+                'min_match_score': 0.9
             }
         },
         {

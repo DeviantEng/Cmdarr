@@ -35,10 +35,17 @@ class LastFMClient(BaseAPIClient):
         # Use parent class method
         return await super()._make_request('', params=params)
     
-    async def get_similar_artists(self, mbid: str, artist_name: str = None) -> List[Dict[str, Any]]:
-        """Get similar artists for a given MBID, with artist name fallback and caching"""
+    async def get_similar_artists(self, mbid: str, artist_name: str = None, limit: int = None) -> tuple:
+        """Get similar artists for a given MBID, with artist name fallback and caching.
         
-        # Try cache first if enabled
+        Args:
+            mbid: MusicBrainz artist ID
+            artist_name: Artist name for fallback lookup
+            limit: Max similar artists to request (overrides config if provided)
+        """
+        similar_limit = limit if limit is not None else self.config.LASTFM_SIMILAR_COUNT
+        
+        # Try cache first if enabled (cache key includes limit for correctness)
         cache_key = self._get_cache_key(mbid=mbid)
         if self.cache_enabled and self.cache:
             # Check if this is a known failed lookup
@@ -46,17 +53,19 @@ class LastFMClient(BaseAPIClient):
                 self.logger.debug(f"Skipping known failed lookup: {mbid}")
                 return [], []
             
-            # Try to get from cache
+            # Try to get from cache (cached results may have more items; we slice when returning)
             cached_result = self.cache.get(cache_key, 'lastfm')
             if cached_result is not None:
                 self.logger.debug(f"Cache hit for Last.fm similar artists: {mbid}")
-                return cached_result.get('processed', []), cached_result.get('skipped', [])
+                proc = cached_result.get('processed', [])[:similar_limit]
+                skip = cached_result.get('skipped', [])[:similar_limit]
+                return proc, skip
         
         # Try MBID-based query first
         params = {
             'method': 'artist.getsimilar',
             'mbid': mbid,
-            'limit': str(self.config.LASTFM_SIMILAR_COUNT)
+            'limit': str(similar_limit)
         }
         
         try:
@@ -81,7 +90,7 @@ class LastFMClient(BaseAPIClient):
                 params = {
                     'method': 'artist.getsimilar',
                     'artist': artist_name,
-                    'limit': str(self.config.LASTFM_SIMILAR_COUNT)
+                    'limit': str(similar_limit)
                 }
                 response = await self._make_request(params, context_info=f"artist '{artist_name}' (name fallback)")
                 
