@@ -262,13 +262,16 @@ class MusicBrainzClient(BaseAPIClient):
         """
         Check if a release exists in MusicBrainz by artist MBID and title.
         Uses fuzzy matching - catches cases like "Deconstructed" vs "Deconstructed (Live)".
+        Pass cache_ttl_days=0 to bypass cache (e.g. for recheck after user adds via Harmony).
         """
         if not artist_mbid or not release_title:
             return False
 
         cache_key = self._get_release_search_cache_key(artist_mbid, release_title)
-        ttl = cache_ttl_days or getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
-        if self.cache_enabled and self.cache:
+        skip_cache = cache_ttl_days is not None and cache_ttl_days == 0
+        ttl = cache_ttl_days if (cache_ttl_days is not None and cache_ttl_days > 0) else getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+
+        if not skip_cache and self.cache_enabled and self.cache:
             cached = self.cache.get(cache_key, 'musicbrainz')
             if cached is not None:
                 return cached
@@ -290,7 +293,7 @@ class MusicBrainzClient(BaseAPIClient):
             response = await self._make_request('release', params)
 
             if not response or 'releases' not in response:
-                if self.cache_enabled and self.cache:
+                if not skip_cache and self.cache_enabled and self.cache:
                     self.cache.set(cache_key, 'musicbrainz', False, ttl)
                 return False
 
@@ -299,11 +302,11 @@ class MusicBrainzClient(BaseAPIClient):
             for r in releases:
                 mb_title = r.get('title', '')
                 if self._calculate_similarity(release_title, mb_title) >= 0.7:
-                    if self.cache_enabled and self.cache:
+                    if not skip_cache and self.cache_enabled and self.cache:
                         self.cache.set(cache_key, 'musicbrainz', True, ttl)
                     return True
 
-            if self.cache_enabled and self.cache:
+            if not skip_cache and self.cache_enabled and self.cache:
                 self.cache.set(cache_key, 'musicbrainz', False, ttl)
             return False
         except Exception as e:
