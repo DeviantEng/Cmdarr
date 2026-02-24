@@ -334,6 +334,15 @@ async def clear_release(item_id: int, db: Session = Depends(get_config_db)):
     return {"success": True, "message": "Cleared"}
 
 
+@router.post("/new-releases/clear-all")
+async def clear_all_pending(db: Session = Depends(get_config_db)):
+    """Clear all pending releases. They will reappear on next scan if still not in MusicBrainz."""
+    logger = get_logger("cmdarr.api.new_releases")
+    deleted = db.query(NewReleasePending).filter(NewReleasePending.status == "pending").delete()
+    db.commit()
+    return {"success": True, "message": f"Cleared {deleted} items", "cleared": deleted}
+
+
 @router.post("/new-releases/ignore/{item_id}")
 async def ignore_release(item_id: int, db: Session = Depends(get_config_db)):
     """Ignore a pending release - add to dismissed table. Won't reappear on next scan."""

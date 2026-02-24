@@ -256,6 +256,10 @@ class ApiClient {
     return this.request(`/api/new-releases/clear/${itemId}`, { method: 'POST' })
   }
 
+  async clearAllPendingReleases(): Promise<{ success: boolean; cleared?: number }> {
+    return this.request(`/api/new-releases/clear-all`, { method: 'POST' })
+  }
+
   async ignoreRelease(itemId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/ignore/${itemId}`, { method: 'POST' })
   }

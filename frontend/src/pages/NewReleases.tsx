@@ -85,6 +85,20 @@ export function NewReleasesPage() {
     }
   }
 
+  const handleClearAll = async () => {
+    if (!confirm(`Clear all ${total} pending releases? They will reappear on next scan if still not in MusicBrainz.`)) {
+      return
+    }
+    try {
+      const res = await api.clearAllPendingReleases()
+      setPending([])
+      setTotal(0)
+      toast.success(res.cleared != null ? `Cleared ${res.cleared} items` : 'Cleared all')
+    } catch (err: any) {
+      toast.error(err?.message || 'Clear all failed')
+    }
+  }
+
   const handleIgnore = async (item: NewReleasePendingItem) => {
     if (!confirm(`Ignore "${item.album_title}" by ${item.artist_name}? It won't reappear. Restore from Status if needed.`)) {
       return
@@ -278,10 +292,24 @@ export function NewReleasesPage() {
       {/* Pending table */}
       <Card>
         <CardHeader>
-          <CardTitle>Pending Releases</CardTitle>
-          <CardDescription>
-            {total} items. Use links to open Lidarr, MusicBrainz, Spotify, or Add to MB (Harmony). Actions: Clear (reappears), Recheck (verify MB), Ignore (never show).
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle>Pending Releases</CardTitle>
+              <CardDescription>
+                {total} items. Use links to open Lidarr, MusicBrainz, Spotify, or Add to MB (Harmony). Actions: Clear (reappears), Recheck (verify MB), Ignore (never show).
+              </CardDescription>
+            </div>
+            {pending.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearAll}
+                className="shrink-0"
+              >
+                Clear all
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
