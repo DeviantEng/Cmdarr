@@ -35,6 +35,7 @@ def init_default_commands():
             'config_json': {
                 'artists_to_query': 3,
                 'similar_per_artist': 1,
+                'artist_cooldown_days': 30,
                 'limit': 5,
                 'min_match_score': 0.9
             }

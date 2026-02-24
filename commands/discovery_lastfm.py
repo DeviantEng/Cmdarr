@@ -4,12 +4,15 @@ Similar Artists Discovery Command
 Queries Lidarr artists and finds similar artists via Last.fm and MusicBrainz
 REFACTORED: Uses utils/discovery.py to eliminate code duplication
 Samples X Lidarr artists, gets Y similar per artist - configurable for performance.
+Time-based exclusion: artists queried recently (configurable days) are skipped.
 """
 
 import json
 import os
 import random
-from typing import List, Dict, Any
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import List, Dict, Any, Set, Tuple
 
 from .command_base import BaseCommand
 from clients.client_lidarr import LidarrClient
@@ -50,10 +53,14 @@ class DiscoveryLastfmCommand(BaseCommand):
             await self.utils.cleanup_expired_cache()
             
             # Discover similar artists with shared utilities
-            similar_artists = await self._discover_similar_artists()
+            similar_artists, sampled_mbids = await self._discover_similar_artists()
             
             # Save results
             self._save_results(similar_artists)
+            
+            # Record sampled artists for time-based exclusion
+            if sampled_mbids:
+                self._save_queried_artists(sampled_mbids)
             
             self.logger.info("Similar artists discovery completed successfully")
             return True
@@ -62,8 +69,66 @@ class DiscoveryLastfmCommand(BaseCommand):
             self.logger.error(f"Similar artists discovery failed: {e}")
             return False
     
-    async def _discover_similar_artists(self) -> List[Dict[str, Any]]:
-        """Main processing function using shared utilities"""
+    def _get_queried_file_path(self) -> Path:
+        """Path to JSON file storing recently queried artist MBIDs."""
+        output_dir = Path(self.config.OUTPUT_FILE).parent
+        return output_dir / "discovery_lastfm_queried.json"
+
+    def _load_queried_artists(self, cooldown_days: int) -> Set[str]:
+        """Load artist MBIDs queried within cooldown_days. Prunes expired entries."""
+        path = self._get_queried_file_path()
+        if not path.exists():
+            return set()
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            self.logger.warning(f"Could not load queried artists file: {e}")
+            return set()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=cooldown_days)
+        cutoff_iso = cutoff.isoformat()
+        recent = set()
+        pruned = {}
+        for mbid, queried_at in (data or {}).items():
+            if queried_at >= cutoff_iso:
+                recent.add(mbid)
+                pruned[mbid] = queried_at
+        if len(pruned) < len(data or {}):
+            self._write_queried_file(pruned)
+        return recent
+
+    def _write_queried_file(self, data: Dict[str, str]) -> None:
+        """Write queried artists to JSON file."""
+        path = self._get_queried_file_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=0)
+        except OSError as e:
+            self.logger.warning(f"Could not save queried artists file: {e}")
+
+    def _save_queried_artists(self, mbids: List[str]) -> None:
+        """Append sampled MBIDs with current timestamp. Prunes old entries."""
+        path = self._get_queried_file_path()
+        cfg = getattr(self, 'config_json', None) or {}
+        cooldown_days = max(1, int(cfg.get('artist_cooldown_days', 30)))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=cooldown_days)
+        cutoff_iso = cutoff.isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        existing = {}
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = json.load(f) or {}
+            except (json.JSONDecodeError, OSError):
+                pass
+        for mbid in mbids:
+            existing[mbid] = now_iso
+        pruned = {k: v for k, v in existing.items() if v >= cutoff_iso}
+        self._write_queried_file(pruned)
+
+    async def _discover_similar_artists(self) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Main processing function using shared utilities. Returns (output_artists, sampled_mbids)."""
         
         # Get Lidarr context (existing artists + exclusions)
         existing_mbids, existing_names, excluded_mbids = await self.utils.get_lidarr_context()
@@ -72,18 +137,34 @@ class DiscoveryLastfmCommand(BaseCommand):
         lidarr_artists = await self.lidarr.get_all_artists()
         artist_lookup = {a['musicBrainzId']: a['artistName'] for a in lidarr_artists if a.get('musicBrainzId')}
         
-        # Command config: artists_to_query (X), similar_per_artist (Y), min_match_score, limit
+        # Command config: artists_to_query (X), similar_per_artist (Y), artist_cooldown_days, etc.
         cfg = getattr(self, 'config_json', None) or {}
         artists_to_query = max(1, int(cfg.get('artists_to_query', 3)))
         similar_per_artist = max(1, int(cfg.get('similar_per_artist') or cfg.get('similar_count', 1)))
+        cooldown_days = max(1, int(cfg.get('artist_cooldown_days', 30)))
         
-        # Sample X artists from Lidarr (instead of querying all)
-        artist_items = list(artist_lookup.items())
+        # Load recently queried artists (time-based exclusion)
+        recently_queried = self._load_queried_artists(cooldown_days)
+        if recently_queried:
+            self.logger.info(f"Excluding {len(recently_queried)} artists queried within last {cooldown_days} days")
+        
+        # Filter to artists not in cooldown
+        artist_items = [(m, n) for m, n in artist_lookup.items() if m not in recently_queried]
+        if len(artist_items) < artists_to_query:
+            if artist_items:
+                self.logger.info(f"Only {len(artist_items)} artists available (cooldown), using all")
+            else:
+                self.logger.info("All artists in cooldown, sampling from full library")
+                artist_items = list(artist_lookup.items())
+        
+        # Sample X artists from Lidarr
         if len(artist_items) <= artists_to_query:
             sampled_lookup = dict(artist_items)
         else:
             sampled = random.sample(artist_items, artists_to_query)
             sampled_lookup = dict(sampled)
+        
+        sampled_mbids = list(sampled_lookup.keys())
         
         self.logger.info(
             f"Sampling {len(sampled_lookup)} of {len(artist_lookup)} Lidarr artists, "
@@ -198,7 +279,7 @@ class DiscoveryLastfmCommand(BaseCommand):
         self.utils.log_filtering_statistics("Last.fm Discovery", stats.to_dict())
         
         self.logger.info(f"Final result: {len(output_artists)} unique similar artists for output")
-        return output_artists
+        return output_artists, sampled_mbids
     
     async def _fetch_lastfm_similar_artists(
         self, artist_lookup: Dict[str, str], similar_per_artist: int = 1

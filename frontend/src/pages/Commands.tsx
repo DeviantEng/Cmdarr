@@ -45,6 +45,7 @@ export function CommandsPage() {
     album_types?: string[]
     artists_to_query?: number
     similar_per_artist?: number
+    artist_cooldown_days?: number
     limit?: number
     min_match_score?: number
   }>({})
@@ -189,6 +190,7 @@ export function CommandsPage() {
       album_types: typesStr.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
       artists_to_query: typeof cfg.artists_to_query === 'number' ? cfg.artists_to_query : 3,
       similar_per_artist: typeof cfg.similar_per_artist === 'number' ? cfg.similar_per_artist : 1,
+      artist_cooldown_days: typeof cfg.artist_cooldown_days === 'number' ? cfg.artist_cooldown_days : 30,
       limit: typeof cfg.limit === 'number' ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === 'number' ? cfg.min_match_score : 0.9,
     })
@@ -841,6 +843,25 @@ export function CommandsPage() {
                       </p>
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="edit-artist-cooldown-days">Artist cooldown (days)</Label>
+                      <Input
+                        id="edit-artist-cooldown-days"
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={editForm.artist_cooldown_days ?? 30}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            artist_cooldown_days: Math.max(1, Math.min(365, parseInt(e.target.value, 10) || 30)),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Don&apos;t re-query an artist for this many days (1–365, default 30)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="edit-similar-per-artist">Similar per artist</Label>
                       <Input
                         id="edit-similar-per-artist"
@@ -1030,6 +1051,7 @@ export function CommandsPage() {
                           ...(editingCommand.config_json || {}),
                           artists_to_query: editForm.artists_to_query ?? 3,
                           similar_per_artist: editForm.similar_per_artist ?? 1,
+                          artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
                           limit: editForm.limit ?? 5,
                           min_match_score: editForm.min_match_score ?? 0.9,
                         },
