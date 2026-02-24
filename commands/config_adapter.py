@@ -64,7 +64,7 @@ class ConfigAdapter:
         # Plex Configuration
         self.PLEX_URL = config_service.get('PLEX_URL', 'http://localhost:32400')
         self.PLEX_TOKEN = config_service.get('PLEX_TOKEN', '')
-        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 30)
+        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 60)
         self.PLEX_IGNORE_TLS = config_service.get('PLEX_IGNORE_TLS', False)
         
         # Jellyfin Configuration

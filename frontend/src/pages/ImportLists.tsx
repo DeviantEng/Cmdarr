@@ -49,10 +49,27 @@ export function ImportListsPage() {
 
   const copyToClipboard = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(url)
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        toast.success('URL copied to clipboard')
+        return
+      }
+    } catch {
+      /* fall through to legacy fallback */
+    }
+    // Fallback for HTTP/non-secure contexts where clipboard API is blocked
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = url
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
       toast.success('URL copied to clipboard')
     } catch {
-      toast.error('Failed to copy URL')
+      toast.error('Failed to copy URL (try selecting and copying manually)')
     }
   }
 
@@ -183,7 +200,7 @@ export function ImportListsPage() {
               )}
             </div>
             <p className="text-muted-foreground mb-4">
-              Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.)
+              Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when tracks fail to match in your library. Requires &quot;Enable artist discovery&quot; to be checked in the playlist sync command settings (Commands → Edit).
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Endpoint URL</label>

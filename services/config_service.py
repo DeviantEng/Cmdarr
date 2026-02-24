@@ -74,7 +74,7 @@ class ConfigService:
             {'key': 'PLEX_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable Plex client functionality'},
             {'key': 'PLEX_URL', 'default_value': 'http://localhost:32400', 'data_type': 'string', 'category': 'plex', 'description': 'Plex Media Server URL'},
             {'key': 'PLEX_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex authentication token', 'is_sensitive': True},
-            {'key': 'PLEX_TIMEOUT', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds'},
+            {'key': 'PLEX_TIMEOUT', 'default_value': '60', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds (increase for large libraries)'},
             {'key': 'PLEX_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Ignore TLS certificate verification'},
             
             # Jellyfin Configuration

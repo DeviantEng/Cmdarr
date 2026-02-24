@@ -957,14 +957,22 @@ class PlexClient(BaseAPIClient):
             "query": query
         }
 
-        try:
-            results = self._get(f"/library/sections/{library_key}/search", params=params)
-            media_container = results.get("MediaContainer", {})
-            tracks = media_container.get("Metadata", [])
-            return tracks
-        except Exception as e:
-            self.logger.error(f"Error searching library {library_key}: {e}")
-            return []
+        for attempt in range(2):  # retry once on timeout
+            try:
+                results = self._get(f"/library/sections/{library_key}/search", params=params)
+                media_container = results.get("MediaContainer", {})
+                tracks = media_container.get("Metadata", [])
+                return tracks
+            except requests.exceptions.Timeout as e:
+                if attempt == 0:
+                    self.logger.warning(f"Plex search timeout for '{query}': {e}. Retrying...")
+                else:
+                    self.logger.error(f"Error searching library {library_key}: {e}")
+                    return []
+            except Exception as e:
+                self.logger.error(f"Error searching library {library_key}: {e}")
+                return []
+        return []
 
     def get_recently_added_tracks(self, library_key, days=1):
         """Get tracks added in the last N days using Plex's recentlyAdded endpoint"""
