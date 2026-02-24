@@ -17,14 +17,13 @@ from utils.playlist_parser import parse_playlist_url
 class DeezerClient(BaseAPIClient):
     """Client for Deezer API operations"""
     
-    def __init__(self, config, execution_id=None):
+    def __init__(self, config):
         super().__init__(
             config=config,
             client_name='deezer',
             base_url='https://api.deezer.com',
             rate_limit=50.0,  # Deezer allows 50 requests per 5 seconds
-            headers={},
-            execution_id=execution_id
+            headers={}
         )
         
         self.app_id = config.DEEZER_APP_ID if hasattr(config, 'DEEZER_APP_ID') else None

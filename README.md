@@ -9,6 +9,7 @@ A modular music automation platform that bridges services for your self-hosted m
 ### 🎵 **Automatic Music Discovery**
 - **Find Similar Artists**: Automatically discovers new artists similar to those in your Lidarr library using Last.fm
 - **Playlist-Based Discovery**: Discovers artists from synced playlists and adds them directly to Lidarr
+- **New Releases Discovery**: Find Spotify releases from your Lidarr artists that are missing from MusicBrainz—add them via Harmony with one click
 - **Smart Filtering**: Automatically excludes artists you already have and those on your exclusion lists
 - **Quality Control**: Uses MusicBrainz fuzzy matching to ensure high-quality artist data
 
@@ -66,6 +67,7 @@ services:
       - LIBRARY_CACHE_PLEX_ENABLED=true
       - LIBRARY_CACHE_JELLYFIN_ENABLED=true
     restart: unless-stopped
+    stop_grace_period: 320s  # Allow running commands (e.g. playlist syncs) to finish before force-kill
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -100,6 +102,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **⚙️ Configuration**: Web-based configuration interface with validation
 - **🎛️ Command Management**: Enable/disable commands, view execution status, trigger manual runs
 - **📈 System Status**: Detailed system information, health metrics, and cache status
+- **🆕 New Releases**: Discover Spotify releases missing from MusicBrainz; open Lidarr, MusicBrainz, or Harmony with one click
 
 ### Key Features
 - **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
@@ -135,6 +138,20 @@ Access Cmdarr at `http://localhost:8080` for:
 - Automatically cleans up old discovery entries based on configurable age threshold
 - Prevents import list bloat and improves Lidarr performance
 - Runs automatically as a scheduled maintenance task
+
+### New Releases Discovery
+
+**What it does**: Scans your Lidarr artists for releases on Spotify that are missing from MusicBrainz  
+**Access**: Web UI → New Releases (`/new-releases`)
+
+**Benefits**:
+- Uses Lidarr's Spotify links when available (avoids name collisions like Emmure vs emmurée)
+- 1 MusicBrainz API call per artist (release groups), no per-album lookups
+- Filters out live recordings, compilations, and guest appearances
+- One-click links to Lidarr, MusicBrainz artist page, or Harmony to add the album
+
+**Requirements**: Lidarr, Spotify credentials, MusicBrainz contact  
+**Configuration**: `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources → Spotify
 
 ### Playlist Sync Commands
 
@@ -195,7 +212,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 Add Cmdarr as a Custom List in Lidarr:
 1. Go to Settings → Import Lists
 2. Add a new "Custom List" 
-3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_listenbrainz`
+3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_playlistsync`
 4. Configure sync interval as desired (recommend 24-48 hours)
 
 ### Performance Optimization
@@ -230,6 +247,12 @@ LIBRARY_CACHE_MEMORY_LIMIT_MB=512
 LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true
 LIBRARY_CACHE_SCHEDULE_HOURS=24
+
+# Restart retry: auto-retry commands interrupted by restart (default: true)
+RESTART_RETRY_ENABLED=true
+
+# Graceful shutdown (wait for running commands before exit)
+SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
 
 # Rate limiting optimization
 LASTFM_RATE_LIMIT=8.0
@@ -274,6 +297,10 @@ curl -X POST http://localhost:8080/api/commands/library_cache_builder/execute \
 curl http://localhost:8080/api/config/
 ```
 
+**"Command was running when application restarted"**: Commands (e.g. playlist syncs) were interrupted by a restart. Cmdarr handles this by:
+- **Restart retry**: On next startup, interrupted commands are automatically re-queued and run as soon as possible (configurable via `RESTART_RETRY_ENABLED`)
+- **Graceful shutdown** (optional): Add `stop_grace_period: 320s` to docker-compose so Docker waits for running commands to finish before SIGKILL
+
 ### Performance Monitoring
 Monitor command execution and web server performance:
 - **Health endpoint**: `http://localhost:8080/health`
@@ -298,10 +325,18 @@ cmdarr/
 │   └── api/               # API endpoints
 │       ├── config.py      # Configuration management API
 │       ├── commands.py    # Command management API
+│       ├── new_releases.py # New Releases Discovery API
 │       ├── status.py      # Status and health API
 │       └── import_lists.py # Import list serving API
+├── frontend/               # React/Vite web UI (primary)
+│   ├── src/
+│   │   ├── pages/         # Commands, Config, Status, New Releases, Import Lists
+│   │   ├── components/    # UI components (shadcn-style)
+│   │   └── lib/           # API client, types, theme
+│   └── dist/              # Built assets (served by FastAPI)
 ├── database/              # Database layer
 │   ├── models.py          # SQLAlchemy models
+│   ├── config_models.py   # Command config, new releases, scan logs
 │   ├── database.py        # Database connection management
 │   └── init_commands.py   # Default command initialization
 ├── services/              # Business logic services
@@ -318,30 +353,29 @@ cmdarr/
 │   ├── command_base.py    # Abstract base class
 │   ├── config_adapter.py  # Configuration adapter for commands
 │   ├── discovery_lastfm.py
-│   ├── discovery_listenbrainz.py
-│   └── playlist_sync_listenbrainz_curated.py
+│   ├── new_releases_discovery.py
+│   ├── playlist_sync_discovery_maintenance.py
+│   ├── playlist_sync.py   # Dynamic playlist sync
+│   └── library_cache_builder.py
 ├── clients/               # Service API clients with shared base class
 │   ├── client_base.py     # Base class with common functionality
 │   ├── client_lidarr.py
 │   ├── client_lastfm.py
 │   ├── client_listenbrainz.py
 │   ├── client_musicbrainz.py
+│   ├── client_spotify.py  # Spotify API (playlist sync, new releases)
 │   ├── client_plex.py     # Enhanced with library cache support
 │   └── client_jellyfin.py # Jellyfin API client with playlist support
-└── templates/             # Jinja2 templates for web interface
-    ├── base.html          # Base template with Alpine.js and Tailwind
-    ├── index.html         # Main dashboard
-    ├── config/            # Configuration pages
-    ├── commands/          # Command management pages
-    └── status/            # Status pages
+└── templates/             # Legacy Jinja2 templates (e.g. /status)
+    └── status/            # Status page (during transition)
 ```
 
 ### Modern Architecture Features
 - **FastAPI**: High-performance async web framework
 - **SQLAlchemy ORM**: Database abstraction with SQLite backend
-- **Alpine.js**: Lightweight JavaScript framework for interactivity
-- **Tailwind CSS**: Utility-first CSS framework for styling
-- **Jinja2**: Template engine for server-side rendering
+- **React + Vite + TypeScript**: Primary web UI; built to `frontend/dist`, served by FastAPI
+- **Tailwind CSS**: Utility-first CSS framework; Radix UI primitives for components
+- **Legacy Jinja2**: Templates retained for `/status` and import list pages during transition
 - **Thread-Pool Execution**: Commands run in isolation without blocking the web server
 - **Database-Driven Config**: All configuration stored in SQLite with environment variable override
 - **RESTful APIs**: Clean API design for all functionality
@@ -416,7 +450,7 @@ LOG_RETENTION_DAYS=7
 
 Mount `/app/data` to persist:
 - **Database**: `cmdarr.db` (SQLite database with all data)
-- **Import Lists**: `import_lists/discovery_lastfm.json`, `import_lists/discovery_listenbrainz.json`
+- **Import Lists**: `import_lists/discovery_lastfm.json`, `import_lists/discovery_playlistsync.json`
 - **Logs**: `logs/cmdarr.log` and rotated files
 
 ### Manual Commands
@@ -426,8 +460,7 @@ While designed for Docker automation, individual commands can be triggered throu
 ```bash
 # Execute commands via API
 curl -X POST http://localhost:8080/api/commands/discovery_lastfm/execute
-curl -X POST http://localhost:8080/api/commands/discovery_listenbrainz/execute
-curl -X POST http://localhost:8080/api/commands/playlist_sync_listenbrainz_curated/execute
+curl -X POST http://localhost:8080/api/commands/new_releases_discovery/execute
 
 # Check configuration and status
 curl http://localhost:8080/api/config/
@@ -464,15 +497,21 @@ export LIDARR_API_KEY=your_lidarr_api_key
 export LASTFM_API_KEY=your_lastfm_api_key
 export MUSICBRAINZ_CONTACT=your-email@example.com
 
+# Build the React frontend (required for full UI)
+cd frontend && npm install && npm run build && cd ..
+
 # Run the FastAPI application
 python run_fastapi.py
 ```
 
+For frontend development with hot reload, run `npm run dev` in `frontend/` and access the app at `http://localhost:5173` (CORS is configured for the Vite dev server).
+
 ### API Endpoints
 - **Import Lists**: 
   - `/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
-  - `/import_lists/discovery_listenbrainz` - JSON endpoint for ListenBrainz Weekly Discovery artists
+  - `/import_lists/discovery_playlistsync` - JSON endpoint for playlist sync discovered artists
   - `/import_lists/metrics` - Metrics for import list files
+- **New Releases**: `/api/new-releases/` - Pending releases, dismiss, recheck, run-batch, scan-artist, lidarr-artists, sync, command-status, dismissed, restore
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
 - **Configuration API**: `/api/config/` - RESTful configuration management
 - **Commands API**: `/api/commands/` - Command management and execution

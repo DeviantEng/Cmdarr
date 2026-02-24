@@ -35,6 +35,9 @@ class MusicBrainzClient(BaseAPIClient):
     async def _make_request(self, endpoint: str, params: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """Make rate-limited HTTP request to MusicBrainz API using HTTP utilities with retry logic"""
         params['fmt'] = 'json'  # Always request JSON format
+
+        # Apply rate limiting (MusicBrainz: 1 req/sec per IP)
+        await self._rate_limiter.acquire()
         
         # Ensure session exists
         if not self.session:
@@ -190,6 +193,154 @@ class MusicBrainzClient(BaseAPIClient):
                 )
             return None
     
+    def _get_release_groups_cache_key(self, artist_mbid: str) -> str:
+        """Generate cache key for artist release groups"""
+        return f"mb_release_groups:{artist_mbid}"
+
+    async def get_artist_release_groups(
+        self, artist_mbid: str, cache_ttl_days: int = None
+    ) -> List[str]:
+        """
+        Get all release group titles for an artist from MusicBrainz (1 API call per 100).
+        Used for local comparison - no per-album MB lookups needed.
+        """
+        cache_key = self._get_release_groups_cache_key(artist_mbid)
+        ttl = cache_ttl_days or getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+        if self.cache_enabled and self.cache:
+            cached = self.cache.get(cache_key, 'musicbrainz')
+            if cached is not None:
+                self.logger.debug(f"Cache hit for MB release groups: {artist_mbid}")
+                return cached
+
+        titles = []
+        offset = 0
+        limit = 100
+
+        try:
+            while True:
+                params = {
+                    'artist': artist_mbid,
+                    'limit': str(limit),
+                    'offset': str(offset),
+                }
+                response = await self._make_request('release-group', params)
+                if not response:
+                    break
+
+                groups = response.get('release-groups', [])
+                for rg in groups:
+                    title = rg.get('title', '')
+                    if title:
+                        titles.append(title)
+
+                if len(groups) < limit:
+                    break
+                offset += limit
+                if offset >= 500:  # Safety cap
+                    break
+
+            if self.cache_enabled and self.cache:
+                self.cache.set(cache_key, 'musicbrainz', titles, ttl)
+
+            return titles
+        except Exception as e:
+            self.logger.debug(f"MusicBrainz release groups for {artist_mbid}: {e}")
+            return []
+
+    def _get_spotify_url_cache_key(self, spotify_url: str) -> str:
+        """Generate cache key for Spotify URL MusicBrainz lookup"""
+        return f"mb_release_by_spotify:{spotify_url}"
+
+    def _get_release_search_cache_key(self, artist_mbid: str, title: str) -> str:
+        """Generate cache key for release search by artist+title"""
+        norm = title.lower().strip()[:50]
+        return f"mb_release_exists:{artist_mbid}:{norm}"
+
+    async def release_exists_by_artist_and_title(
+        self, artist_mbid: str, release_title: str, cache_ttl_days: int = None
+    ) -> bool:
+        """
+        Check if a release exists in MusicBrainz by artist MBID and title.
+        Uses fuzzy matching - catches cases like "Deconstructed" vs "Deconstructed (Live)".
+        """
+        if not artist_mbid or not release_title:
+            return False
+
+        cache_key = self._get_release_search_cache_key(artist_mbid, release_title)
+        ttl = cache_ttl_days or getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+        if self.cache_enabled and self.cache:
+            cached = self.cache.get(cache_key, 'musicbrainz')
+            if cached is not None:
+                return cached
+
+        try:
+            # Use word-based search to match "Deconstructed" vs "Deconstructed (Live)" etc.
+            # Take first significant word (skip common articles) for broad match
+            skip = {'the', 'a', 'an'}
+            words = [
+                w for w in release_title.replace('(', ' ').replace(')', ' ').split()
+                if len(w) > 1 and w.lower() not in skip
+            ]
+            search_term = words[0] if words else release_title[:20]
+            safe_term = search_term.replace('"', '\\"').replace('\\', '\\\\')
+            params = {
+                'query': f'arid:{artist_mbid} AND release:{safe_term}',
+                'limit': '25',
+            }
+            response = await self._make_request('release', params)
+
+            if not response or 'releases' not in response:
+                if self.cache_enabled and self.cache:
+                    self.cache.set(cache_key, 'musicbrainz', False, ttl)
+                return False
+
+            releases = response.get('releases', [])
+
+            for r in releases:
+                mb_title = r.get('title', '')
+                if self._calculate_similarity(release_title, mb_title) >= 0.7:
+                    if self.cache_enabled and self.cache:
+                        self.cache.set(cache_key, 'musicbrainz', True, ttl)
+                    return True
+
+            if self.cache_enabled and self.cache:
+                self.cache.set(cache_key, 'musicbrainz', False, ttl)
+            return False
+        except Exception as e:
+            self.logger.debug(f"MusicBrainz release search for {artist_mbid}/{release_title}: {e}")
+            return False
+
+    async def release_exists_by_spotify_url(
+        self, spotify_url: str, cache_ttl_days: int = None
+    ) -> bool:
+        """
+        Check if a release already exists in MusicBrainz by its Spotify URL.
+        Returns True if the release is linked in MusicBrainz, False otherwise.
+        """
+        if not spotify_url or 'open.spotify.com/album/' not in spotify_url:
+            return False
+
+        cache_key = self._get_spotify_url_cache_key(spotify_url)
+        ttl = cache_ttl_days or getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+        if self.cache_enabled and self.cache:
+            cached = self.cache.get(cache_key, 'musicbrainz')
+            if cached is not None:
+                return cached
+
+        try:
+            params = {'query': f'url:"{spotify_url}"'}
+            response = await self._make_request('url', params)
+
+            exists = bool(response and response.get('urls') and len(response.get('urls', [])) > 0)
+
+            if self.cache_enabled and self.cache:
+                self.cache.set(cache_key, 'musicbrainz', exists, ttl)
+
+            return exists
+        except Exception as e:
+            self.logger.debug(f"MusicBrainz URL lookup for {spotify_url}: {e}")
+            return False
+
     async def get_artist_by_mbid(self, mbid: str) -> Optional[Dict[str, Any]]:
         """Get artist details by MBID"""
         try:

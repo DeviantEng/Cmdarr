@@ -17,7 +17,7 @@ from utils.cache_client import create_cache_client
 class JellyfinClient(BaseAPIClient):
     """Client for Jellyfin Media Server operations"""
     
-    def __init__(self, config, execution_id=None):
+    def __init__(self, config):
         jellyfin_url = config.get('JELLYFIN_URL', 'http://localhost:8096')
         
         super().__init__(
@@ -28,8 +28,7 @@ class JellyfinClient(BaseAPIClient):
             headers={
                 'X-Emby-Token': config.get('JELLYFIN_TOKEN', ''),
                 'Content-Type': 'application/json'
-            },
-            execution_id=execution_id
+            }
         )
         
         self.logger.debug(f"JellyfinClient init - JELLYFIN_URL from config: {jellyfin_url}")
@@ -421,9 +420,9 @@ class JellyfinClient(BaseAPIClient):
             if match:
                 return match
             
-            # Strategy 7: Ultra-relaxed matching - title-only with very low threshold
-            self.logger.debug("No match found, trying ultra-relaxed title-only matching...")
-            match = self._find_best_match_ultra_relaxed(all_tracks, normalized_title, title)
+            # Strategy 7: Ultra-relaxed matching - requires artist match to avoid cross-artist false matches
+            self.logger.debug("No match found, trying ultra-relaxed matching...")
+            match = self._find_best_match_ultra_relaxed(all_tracks, normalized_title, title, normalized_artist)
             if match:
                 return match
             
@@ -438,7 +437,7 @@ class JellyfinClient(BaseAPIClient):
             self.logger.debug(f"Full search returned {len(full_tracks)} tracks")
             
             if full_tracks:
-                match = self._find_best_match_ultra_relaxed(full_tracks, normalized_title, title)
+                match = self._find_best_match_ultra_relaxed(full_tracks, normalized_title, title, normalized_artist)
                 if match:
                     self.logger.info(f"Full search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
                     return match
@@ -453,7 +452,7 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.debug(f"Truncated search returned {len(truncated_tracks)} tracks")
                 
                 if truncated_tracks:
-                    match = self._find_best_match_ultra_relaxed(truncated_tracks, normalized_title, title)
+                    match = self._find_best_match_ultra_relaxed(truncated_tracks, normalized_title, title, normalized_artist)
                     if match:
                         self.logger.info(f"Truncated search match found: '{match['artist']}' - '{match['name']}' for '{artist}' - '{title}'")
                         return match
@@ -559,19 +558,42 @@ class JellyfinClient(BaseAPIClient):
                     track_album_norm = self._normalize_text(track['album'])
                     if track_album_norm == normalized_album:
                         album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                    elif (len(normalized_album) >= 2 and len(track_album_norm) >= 2 and
+                          (normalized_album in track_album_norm or track_album_norm in normalized_album)):
                         album_bonus = 0.1  # 10% bonus for partial album match
-                
                 self.logger.debug(f"Exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
                 return track
         
         # Strategy 2: Normalized exact match - with album bonus
+        # Skip when both normalize to empty (e.g. "†") - would match wrong tracks
+        if normalized_artist or normalized_title:
+            for track in tracks:
+                track_artist_norm = self._normalize_text(track['artist'])
+                track_title_norm = self._normalize_text(track['name'])
+                
+                if (track_artist_norm == normalized_artist and 
+                    track_title_norm == normalized_title):
+                    # Check album match for bonus scoring
+                    album_bonus = 0
+                    if normalized_album and track.get('album'):
+                        track_album_norm = self._normalize_text(track['album'])
+                        if track_album_norm == normalized_album:
+                            album_bonus = 0.2  # 20% bonus for exact album match
+                        elif (len(normalized_album) >= 2 and len(track_album_norm) >= 2 and
+                              (normalized_album in track_album_norm or track_album_norm in normalized_album)):
+                            album_bonus = 0.1  # 10% bonus for partial album match
+                    self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
+                    return track
+        
+        # Strategy 3: Partial match (both artist and title contain search terms) - with album bonus
+        # Require min length - empty/single-char (e.g. "†") would match everything
+        min_partial_len = 2
         for track in tracks:
             track_artist_norm = self._normalize_text(track['artist'])
             track_title_norm = self._normalize_text(track['name'])
-            
-            if (track_artist_norm == normalized_artist and 
-                track_title_norm == normalized_title):
+            if (len(normalized_artist) >= min_partial_len and len(normalized_title) >= min_partial_len and
+                len(track_artist_norm) >= min_partial_len and len(track_title_norm) >= min_partial_len and
+                normalized_artist in track_artist_norm and normalized_title in track_title_norm):
                 
                 # Check album match for bonus scoring
                 album_bonus = 0
@@ -579,24 +601,8 @@ class JellyfinClient(BaseAPIClient):
                     track_album_norm = self._normalize_text(track['album'])
                     if track_album_norm == normalized_album:
                         album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
-                        album_bonus = 0.1  # 10% bonus for partial album match
-                
-                self.logger.debug(f"Normalized exact match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
-                return track
-        
-        # Strategy 3: Partial match (both artist and title contain search terms) - with album bonus
-        for track in tracks:
-            if (normalized_artist in self._normalize_text(track['artist']) and 
-                normalized_title in self._normalize_text(track['name'])):
-                
-                # Check album match for bonus scoring
-                album_bonus = 0
-                if normalized_album and track.get('album'):
-                    track_album_norm = self._normalize_text(track['album'])
-                    if track_album_norm == normalized_album:
-                        album_bonus = 0.2  # 20% bonus for exact album match
-                    elif normalized_album in track_album_norm or track_album_norm in normalized_album:
+                    elif (len(normalized_album) >= min_partial_len and len(track_album_norm) >= min_partial_len and
+                          (normalized_album in track_album_norm or track_album_norm in normalized_album)):
                         album_bonus = 0.1  # 10% bonus for partial album match
                 
                 self.logger.debug(f"Partial match found: '{track['artist']}' - '{track['name']}' (album bonus: {album_bonus:.1%})")
@@ -663,7 +669,11 @@ class JellyfinClient(BaseAPIClient):
             
             # Combined score with album bonus (adjusted weights to accommodate album)
             combined_score = (artist_jaccard * 0.35) + (title_best * 0.55) + (album_score * 0.1)
-            
+
+            # Require minimum artist match to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)
+            if artist_jaccard < 0.2:
+                continue
+
             # Relaxed threshold (was 0.7, now 0.5)
             if combined_score > best_score and combined_score > 0.5:
                 best_score = combined_score
@@ -716,32 +726,40 @@ class JellyfinClient(BaseAPIClient):
         
         return min(similarity, 1.0)  # Cap at 1.0
     
-    def _find_best_match_ultra_relaxed(self, tracks: List[Dict[str, Any]], normalized_title: str, original_title: str) -> Optional[Dict[str, Any]]:
-        """Ultra-relaxed matching focusing only on title similarity with very low threshold"""
+    def _find_best_match_ultra_relaxed(self, tracks: List[Dict[str, Any]], normalized_title: str, original_title: str,
+                                       normalized_artist: str = "") -> Optional[Dict[str, Any]]:
+        """Ultra-relaxed matching - requires artist match to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)"""
         if not tracks:
             return None
-        
+
         best_match = None
         best_score = 0
-        
+
         for track in tracks:
             track_title_norm = self._normalize_text(track['name'])
-            
+            track_artist_norm = self._normalize_text(track.get('artist', ''))
+
+            # Require artist match - never match same title by different artist
+            if normalized_artist and track_artist_norm:
+                artist_score = self._calculate_similarity(normalized_artist, track_artist_norm)
+                if artist_score < 0.2:  # Reject cross-artist matches (Braeker vs Greywind = 0)
+                    continue
+
             # Multiple title similarity measures
             title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
             title_char_sim = self._calculate_character_similarity(normalized_title, track_title_norm)
             title_word_sim = self._calculate_word_order_similarity(normalized_title, track_title_norm)
-            
+
             # Take the best title similarity
             title_score = max(title_jaccard, title_char_sim, title_word_sim)
-            
+
             # Additional check for very short titles (like "ATTN.")
             if len(normalized_title.replace(' ', '')) <= 4 and len(track_title_norm.replace(' ', '')) <= 4:
                 # For very short titles, be more lenient with character matching
                 char_overlap = len(set(normalized_title.replace(' ', '')) & set(track_title_norm.replace(' ', '')))
                 if char_overlap >= 2:  # At least 2 characters match
                     title_score = max(title_score, 0.6)  # Boost score for short titles
-            
+
             # Very low threshold for ultra-relaxed matching (25% - even more relaxed)
             if title_score > best_score and title_score > 0.25:
                 best_score = title_score
@@ -1574,7 +1592,8 @@ class JellyfinClient(BaseAPIClient):
             return True
         
         # Contains match
-        if search_term in cached_term or cached_term in search_term:
+        # Require min length - empty/single-char (e.g. "†") would match everything
+        if len(search_term) >= 2 and len(cached_term) >= 2 and (search_term in cached_term or cached_term in search_term):
             return True
         
         # Word boundary match (handle "The Beatles" vs "Beatles")

@@ -188,6 +188,20 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         description="Split single database into config and cache databases",
         up_func=migrate_database_split
     ))
+
+    def migrate_dismissed_artist_name(cursor):
+        """Add artist_name to dismissed_artist_album for restore UI"""
+        cursor.execute("PRAGMA table_info(dismissed_artist_album)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if 'artist_name' not in cols:
+            cursor.execute("ALTER TABLE dismissed_artist_album ADD COLUMN artist_name VARCHAR(500)")
+
+    runner.add_migration(VersionMigration(
+        version="0.2.4",
+        name="dismissed_artist_name",
+        description="Add artist_name to dismissed_artist_album",
+        up_func=migrate_dismissed_artist_name
+    ))
     
     # Add future migrations here for new versions
     # Example:

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 import os
@@ -16,8 +17,18 @@ from __version__ import __version__
 
 from database.database import get_config_db, get_database_manager
 from services.config_service import config_service
-from utils.logger import get_logger
+from utils.logger import CmdarrLogger, setup_application_logging, get_logger
 from app.websocket import websocket_endpoint
+
+# Ensure logging is configured when app is loaded (e.g. via uvicorn app.main:app)
+# run_fastapi.py also calls this; CmdarrLogger handles re-init safely
+if not CmdarrLogger._configured:
+    _minimal_config = type('Config', (), {
+        'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO').upper(),
+        'LOG_FILE': 'data/logs/cmdarr.log',
+        'LOG_RETENTION_DAYS': 7,
+    })()
+    setup_application_logging(_minimal_config)
 
 
 # Lazy-load logger to avoid initialization issues
@@ -162,15 +173,19 @@ async def lifespan(app: FastAPI):
         # Don't raise here as the app can still work
     
     
-    # Clean up stuck commands from previous runs
+    # Clean up stuck commands from previous runs and queue retries for interrupted commands
     try:
         from services.command_cleanup import command_cleanup
-        await command_cleanup.cleanup_startup_stuck_commands()
+        import asyncio
+        commands_to_retry = await command_cleanup.cleanup_startup_stuck_commands()
         get_app_logger().info("Startup command cleanup completed")
+        if commands_to_retry:
+            asyncio.create_task(command_cleanup.run_restart_retries(commands_to_retry))
+            get_app_logger().info(f"Queued {len(commands_to_retry)} command(s) for restart retry")
     except Exception as e:
         get_app_logger().error(f"Failed to cleanup startup stuck commands: {e}")
         # Don't raise here as the app can still work
-    
+
     # Start command cleanup service
     try:
         from services.command_cleanup import command_cleanup
@@ -207,7 +222,23 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     get_app_logger().info("Shutting down Cmdarr FastAPI application")
-    
+
+    # Stop command scheduler (prevents new commands from starting)
+    try:
+        from services.scheduler import scheduler
+        await scheduler.stop()
+        get_app_logger().info("Command scheduler stopped successfully")
+    except Exception as e:
+        get_app_logger().error(f"Failed to stop command scheduler: {e}")
+
+    # Graceful shutdown: wait for running commands to complete (e.g. playlist syncs)
+    try:
+        from services.command_executor import command_executor
+        timeout = float(config_service.get("SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS", 300))
+        await command_executor.wait_for_running_commands(timeout_seconds=timeout)
+    except Exception as e:
+        get_app_logger().error(f"Failed during graceful command shutdown: {e}")
+
     # Stop command cleanup service
     try:
         from services.command_cleanup import command_cleanup
@@ -215,14 +246,6 @@ async def lifespan(app: FastAPI):
         get_app_logger().info("Command cleanup service stopped")
     except Exception as e:
         get_app_logger().error(f"Failed to stop command cleanup service: {e}")
-    
-    # Stop command scheduler
-    try:
-        from services.scheduler import scheduler
-        await scheduler.stop()
-        get_app_logger().info("Command scheduler stopped successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to stop command scheduler: {e}")
 
 
 # Create FastAPI application
@@ -233,12 +256,38 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Mount static files
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+# Add CORS middleware for development
+# In production with same origin, this won't be needed
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Setup templates
-templates = Jinja2Templates(directory="templates")
+# Mount React frontend in production (if built)
+frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+frontend_exists = os.path.exists(frontend_dist)
+
+if frontend_exists:
+    # Serve React static assets
+    frontend_assets = os.path.join(frontend_dist, "assets")
+    if os.path.exists(frontend_assets):
+        app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
+
+# Mount legacy static files (for backwards compatibility during transition)
+legacy_static = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(legacy_static):
+    app.mount("/static", StaticFiles(directory=legacy_static), name="static")
+
+# Setup templates (for legacy routes during transition)
+templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
+if os.path.exists(templates_dir):
+    templates = Jinja2Templates(directory=templates_dir)
 
 
 # Health check endpoint (for Docker health checks)
@@ -340,53 +389,80 @@ async def detailed_status_api(db: Session = Depends(get_config_db)):
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
-# Main index page (now serves commands)
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Main index page - now serves commands page"""
-    return templates.TemplateResponse("commands/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+# Serve React app for frontend routes (if built)
+if frontend_exists:
+    from fastapi.responses import FileResponse
+    
+    @app.get("/", response_class=HTMLResponse)
+    async def react_app(request: Request):
+        """Serve React app"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/config", response_class=HTMLResponse)
+    async def react_config(request: Request):
+        """Serve React app for config route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/status", response_class=HTMLResponse)
+    async def react_status(request: Request):
+        """Serve React app for status route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    
+    @app.get("/import-lists", response_class=HTMLResponse)
+    async def react_import_lists(request: Request):
+        """Serve React app for import-lists route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
 
+    @app.get("/new-releases", response_class=HTMLResponse)
+    async def react_new_releases(request: Request):
+        """Serve React app for new-releases route"""
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+else:
+    # Fallback to legacy Jinja2 templates if React build doesn't exist
+    get_app_logger().warning("React frontend not built, serving legacy templates")
+    
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        """Main index page - serves commands page"""
+        return templates.TemplateResponse("commands/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
-# Configuration page
-@app.get("/config", response_class=HTMLResponse)
-async def config_page(request: Request):
-    """Configuration management page"""
-    return templates.TemplateResponse("config/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+    @app.get("/config", response_class=HTMLResponse)
+    async def config_page(request: Request):
+        """Configuration management page"""
+        return templates.TemplateResponse("config/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
+    @app.get("/commands", response_class=HTMLResponse)
+    async def commands_page(request: Request):
+        """Command management page"""
+        return templates.TemplateResponse("commands/index.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
-# Commands page
-@app.get("/commands", response_class=HTMLResponse)
-async def commands_page(request: Request):
-    """Command management page"""
-    return templates.TemplateResponse("commands/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
-
-
-@app.get("/import-lists", response_class=HTMLResponse)
-async def import_lists_page(request: Request):
-    """Import lists page"""
-    return templates.TemplateResponse("import_lists.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
+    @app.get("/import-lists", response_class=HTMLResponse)
+    async def import_lists_page(request: Request):
+        """Import lists page"""
+        return templates.TemplateResponse("import_lists.html", {
+            "request": request,
+            "app_name": "Cmdarr"
+        })
 
 
 # API Routes - Import after logging is configured
-from app.api import config, status, import_lists, test_connectivity
+from app.api import config, status, import_lists, test_connectivity, new_releases
 
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
+app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 
 
 # WebSocket endpoint for real-time updates

@@ -74,7 +74,7 @@ class ConfigService:
             {'key': 'PLEX_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable Plex client functionality'},
             {'key': 'PLEX_URL', 'default_value': 'http://localhost:32400', 'data_type': 'string', 'category': 'plex', 'description': 'Plex Media Server URL'},
             {'key': 'PLEX_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex authentication token', 'is_sensitive': True},
-            {'key': 'PLEX_TIMEOUT', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds'},
+            {'key': 'PLEX_TIMEOUT', 'default_value': '60', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds (increase for large libraries)'},
             {'key': 'PLEX_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Ignore TLS certificate verification'},
             
             # Jellyfin Configuration
@@ -88,6 +88,7 @@ class ConfigService:
             # Spotify Configuration
             {'key': 'SPOTIFY_CLIENT_ID', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client ID', 'is_sensitive': True},
             {'key': 'SPOTIFY_CLIENT_SECRET', 'default_value': '', 'data_type': 'string', 'category': 'spotify', 'description': 'Spotify API Client Secret', 'is_sensitive': True},
+            {'key': 'NEW_RELEASES_CACHE_DAYS', 'default_value': '14', 'data_type': 'int', 'category': 'spotify', 'description': 'Cache TTL in days for New Releases data (Lidarr, Spotify, MusicBrainz)'},
             
             # Web Server Configuration
             {'key': 'WEB_PORT', 'default_value': '8080', 'data_type': 'int', 'category': 'web_server', 'description': 'Web server port'},
@@ -96,8 +97,9 @@ class ConfigService:
             # Command Configuration
             {'key': 'COMMAND_CLEANUP_RETENTION', 'default_value': '50', 'data_type': 'int', 'category': 'commands', 'description': 'Number of command executions to keep per command'},
             {'key': 'MAX_PARALLEL_COMMANDS', 'default_value': '3', 'data_type': 'int', 'category': 'commands', 'description': 'Maximum number of commands that can run in parallel', 'min_value': 1, 'max_value': 10},
-            
-            
+            {'key': 'SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS', 'default_value': '300', 'data_type': 'int', 'category': 'commands', 'description': 'Seconds to wait for running commands to complete on shutdown (prevents "Command was running when application restarted")'},
+            {'key': 'RESTART_RETRY_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'commands', 'description': 'On startup, automatically retry commands that were interrupted by a restart'},
+
             # Cache Configuration
             {'key': 'CACHE_FILE', 'default_value': 'data/cmdarr.db', 'data_type': 'string', 'category': 'cache', 'description': 'Cache database file location'},
             {'key': 'CACHE_LASTFM_TTL_DAYS', 'default_value': '7', 'data_type': 'int', 'category': 'cache', 'description': 'Cache TTL for Last.fm API responses (days)'},

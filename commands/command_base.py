@@ -6,22 +6,15 @@ Base command class for modular application architecture
 from abc import ABC, abstractmethod
 from .config_adapter import Config
 from utils.logger import get_logger
-from utils.execution_logger import get_execution_logger
 
 
 class BaseCommand(ABC):
     """Abstract base class for all commands"""
     
-    def __init__(self, config: Config = None, execution_id: int = None):
+    def __init__(self, config: Config = None):
         # Use provided config or create new one
         self.config = config if config else Config()
-        self.execution_id = execution_id
-        
-        # Use execution-aware logger if execution_id is provided
-        if execution_id is not None:
-            self.logger = get_execution_logger(self.get_logger_name(), execution_id)
-        else:
-            self.logger = get_logger(self.get_logger_name())
+        self.logger = get_logger(self.get_logger_name())
     
     @abstractmethod
     async def execute(self) -> bool:

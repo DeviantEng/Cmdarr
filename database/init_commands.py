@@ -62,6 +62,19 @@ def init_default_commands():
             'config_json': {
                 'age_threshold_days': 30
             }
+        },
+        {
+            'command_name': 'new_releases_discovery',
+            'display_name': 'New Releases Discovery',
+            'description': 'Scan Lidarr artists for Spotify releases missing from MusicBrainz',
+            'enabled': False,
+            'schedule_hours': 1,
+            'timeout_minutes': 30,
+            'command_type': 'discovery',
+            'config_json': {
+                'artists_per_run': 5,
+                'album_types': 'album'
+            }
         }
     ]
     

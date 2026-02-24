@@ -64,7 +64,7 @@ class ConfigAdapter:
         # Plex Configuration
         self.PLEX_URL = config_service.get('PLEX_URL', 'http://localhost:32400')
         self.PLEX_TOKEN = config_service.get('PLEX_TOKEN', '')
-        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 30)
+        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 60)
         self.PLEX_IGNORE_TLS = config_service.get('PLEX_IGNORE_TLS', False)
         
         # Jellyfin Configuration
@@ -77,6 +77,7 @@ class ConfigAdapter:
         # Spotify Configuration
         self.SPOTIFY_CLIENT_ID = config_service.get('SPOTIFY_CLIENT_ID', '')
         self.SPOTIFY_CLIENT_SECRET = config_service.get('SPOTIFY_CLIENT_SECRET', '')
+        self.NEW_RELEASES_CACHE_DAYS = config_service.get('NEW_RELEASES_CACHE_DAYS', 14)
         
         # Processing Configuration
         self.GENERATE_DEBUG_VALIDATION_CALLS = config_service.get('GENERATE_DEBUG_VALIDATION_CALLS', True)
