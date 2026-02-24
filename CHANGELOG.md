@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-02-23
+
+### 🔒 Security Fixes
+- **ReDoS**: Fixed regex denial-of-service in Deezer URL parser (`utils/playlist_parser.py`)
+- **XSS**: Escaped user input in Spotify OAuth callback template
+- **Exception Exposure**: API handlers now return generic error messages instead of raw exception details
+
+### 🆕 New Releases Discovery
+- **Dismiss, Recheck, Ignore**: Three distinct actions with square icon buttons and tooltips
+  - **Dismiss**: Clear from pending; will reappear on next rescan
+  - **Recheck**: Verify in MusicBrainz; remove if album found
+  - **Ignore**: Never show again (adds to dismissed table)
+- **Link vs Action Separation**: Visual distinction between external links (Lidarr, MusicBrainz, Spotify, Add to MB) and action buttons
+- **Backend Endpoints**: `/clear`, `/ignore`, `/recheck` with correct semantics
+- **Clear All**: Button to clear entire pending list (items reappear on next scan)
+- **Recheck Cache Fix**: Bypass MusicBrainz cache when rechecking so Harmony-added releases are found immediately
+
+### 🎵 Last.fm Discovery
+- **Configurable Sampling**: Query X Lidarr artists (default 3) instead of all—major performance fix for large libraries
+- **Similar Per Artist**: Configurable Y similar artists per request (default 1)
+- **Time-Based Cooldown**: Don't re-query an artist for N days (default 30); persists to `discovery_lastfm_queried.json`
+- **Min Match Score**: Configurable 0–1 threshold (default 0.9) in command settings
+- **Commands UI**: Editable `artists_to_query`, `similar_per_artist`, `artist_cooldown_days`, `limit`, `min_match_score`
+
 ## [0.3.0] - 2026-02-23
 
 ### 🆕 New Releases Discovery
