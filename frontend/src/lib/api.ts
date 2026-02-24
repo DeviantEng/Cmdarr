@@ -252,6 +252,19 @@ class ApiClient {
     )
   }
 
+  async clearRelease(itemId: number): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/clear/${itemId}`, { method: 'POST' })
+  }
+
+  async ignoreRelease(itemId: number): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/ignore/${itemId}`, { method: 'POST' })
+  }
+
+  async recheckRelease(itemId: number): Promise<{ success: boolean; removed?: boolean }> {
+    return this.request(`/api/new-releases/recheck/${itemId}`, { method: 'POST' })
+  }
+
+  /** @deprecated Use clearRelease or ignoreRelease */
   async dismissRelease(itemId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/dismiss/${itemId}`, { method: 'POST' })
   }

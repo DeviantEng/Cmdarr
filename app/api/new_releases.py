@@ -322,9 +322,21 @@ async def get_pending_releases(
     }
 
 
-@router.post("/new-releases/dismiss/{item_id}")
-async def dismiss_release(item_id: int, db: Session = Depends(get_config_db)):
-    """Dismiss a pending release - add to dismissed table, set status. Won't reappear on next scan."""
+@router.post("/new-releases/clear/{item_id}")
+async def clear_release(item_id: int, db: Session = Depends(get_config_db)):
+    """Clear a pending release from the list. Will reappear on next scan if still not in MusicBrainz."""
+    logger = get_logger("cmdarr.api.new_releases")
+    row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(row)
+    db.commit()
+    return {"success": True, "message": "Cleared"}
+
+
+@router.post("/new-releases/ignore/{item_id}")
+async def ignore_release(item_id: int, db: Session = Depends(get_config_db)):
+    """Ignore a pending release - add to dismissed table. Won't reappear on next scan."""
     logger = get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
@@ -344,9 +356,15 @@ async def dismiss_release(item_id: int, db: Session = Depends(get_config_db)):
         ))
     row.status = "dismissed"
     row.resolved_at = datetime.now(timezone.utc)
-    row.resolved_reason = "manual_dismiss"
+    row.resolved_reason = "manual_ignore"
     db.commit()
-    return {"success": True, "message": "Dismissed"}
+    return {"success": True, "message": "Ignored"}
+
+
+@router.post("/new-releases/dismiss/{item_id}")
+async def dismiss_release(item_id: int, db: Session = Depends(get_config_db)):
+    """Legacy: same as ignore. Prefer /clear or /ignore."""
+    return await ignore_release(item_id, db)
 
 
 @router.get("/new-releases/dismissed")
@@ -393,13 +411,23 @@ async def restore_dismissed(dismissed_id: int, db: Session = Depends(get_config_
 
 @router.post("/new-releases/recheck/{item_id}")
 async def recheck_release(item_id: int, db: Session = Depends(get_config_db)):
-    """Mark item for recheck - status set to recheck_requested (background job can re-validate MB)."""
+    """Verify in MusicBrainz; if album found, remove from pending."""
+    logger = get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
-    row.status = "recheck_requested"
-    db.commit()
-    return {"success": True, "message": "Marked for recheck"}
+    config = ConfigAdapter()
+    found_in_mb = False
+    if config.MUSICBRAINZ_ENABLED and row.artist_mbid and row.album_title:
+        async with MusicBrainzClient(config) as mb_client:
+            found_in_mb = await mb_client.release_exists_by_artist_and_title(
+                row.artist_mbid, row.album_title, cache_ttl_days=0
+            )
+    if found_in_mb:
+        db.delete(row)
+        db.commit()
+        return {"success": True, "message": "Found in MusicBrainz, removed", "removed": True}
+    return {"success": True, "message": "Not found in MusicBrainz", "removed": False}
 
 
 @router.get("/new-releases/command-status")

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, ExternalLink, Disc3, Loader2, Play, X, Database } from 'lucide-react'
+import { Search, ExternalLink, Disc3, Loader2, Play, Database, EyeOff, RefreshCw, Ban } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { NewReleasePendingItem } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,17 +59,43 @@ export function NewReleasesPage() {
     fetchCommandStatus()
   }, [fetchPending, fetchCommandStatus])
 
-  const handleDismiss = async (item: NewReleasePendingItem) => {
-    if (!confirm(`Dismiss "${item.album_title}" by ${item.artist_name}? You can restore it from Status.`)) {
+  const handleClear = async (item: NewReleasePendingItem) => {
+    try {
+      await api.clearRelease(item.id)
+      setPending((prev) => prev.filter((p) => p.id !== item.id))
+      setTotal((t) => Math.max(0, t - 1))
+      toast.success('Cleared – will reappear on rescan')
+    } catch (err: any) {
+      toast.error(err?.message || 'Clear failed')
+    }
+  }
+
+  const handleRecheck = async (item: NewReleasePendingItem) => {
+    try {
+      const res = await api.recheckRelease(item.id)
+      if (res.removed) {
+        setPending((prev) => prev.filter((p) => p.id !== item.id))
+        setTotal((t) => Math.max(0, t - 1))
+        toast.success('Found in MusicBrainz, removed')
+      } else {
+        toast.info('Not found in MusicBrainz')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Recheck failed')
+    }
+  }
+
+  const handleIgnore = async (item: NewReleasePendingItem) => {
+    if (!confirm(`Ignore "${item.album_title}" by ${item.artist_name}? It won't reappear. Restore from Status if needed.`)) {
       return
     }
     try {
-      await api.dismissRelease(item.id)
+      await api.ignoreRelease(item.id)
       setPending((prev) => prev.filter((p) => p.id !== item.id))
       setTotal((t) => Math.max(0, t - 1))
-      toast.success('Dismissed')
+      toast.success('Ignored')
     } catch (err: any) {
-      toast.error(err?.message || 'Dismiss failed')
+      toast.error(err?.message || 'Ignore failed')
     }
   }
 
@@ -254,7 +280,7 @@ export function NewReleasesPage() {
         <CardHeader>
           <CardTitle>Pending Releases</CardTitle>
           <CardDescription>
-            {total} items. Click &quot;Add to MusicBrainz&quot; to open Harmony. Dismissed items won&apos;t reappear.
+            {total} items. Use links to open Lidarr, MusicBrainz, Spotify, or Add to MB (Harmony). Actions: Clear (reappears), Recheck (verify MB), Ignore (never show).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -276,7 +302,9 @@ export function NewReleasesPage() {
                 <PendingRow
                   key={item.id}
                   item={item}
-                  onDismiss={() => handleDismiss(item)}
+                  onClear={() => handleClear(item)}
+                  onRecheck={() => handleRecheck(item)}
+                  onIgnore={() => handleIgnore(item)}
                   onOpenHarmony={openHarmony}
                 />
               ))}
@@ -290,11 +318,15 @@ export function NewReleasesPage() {
 
 function PendingRow({
   item,
-  onDismiss,
+  onClear,
+  onRecheck,
+  onIgnore,
   onOpenHarmony,
 }: {
   item: NewReleasePendingItem
-  onDismiss: () => void
+  onClear: () => void
+  onRecheck: () => void
+  onIgnore: () => void
   onOpenHarmony: (url: string) => void
 }) {
   return (
@@ -311,34 +343,66 @@ function PendingRow({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {item.lidarr_artist_url && (
-          <Button variant="outline" size="sm" asChild>
-            <a href={item.lidarr_artist_url} target="_blank" rel="noopener noreferrer">
-              Lidarr
-            </a>
-          </Button>
-        )}
-        {item.spotify_url && (
-          <Button variant="outline" size="sm" asChild>
-            <a href={item.spotify_url} target="_blank" rel="noopener noreferrer">
-              Spotify
-            </a>
-          </Button>
-        )}
-        {item.harmony_url && (
+        {/* Links — open external pages */}
+        <div className="flex items-center gap-1.5">
+          {item.lidarr_artist_url && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={item.lidarr_artist_url} target="_blank" rel="noopener noreferrer">
+                Lidarr
+              </a>
+            </Button>
+          )}
+          {item.musicbrainz_artist_url && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={item.musicbrainz_artist_url} target="_blank" rel="noopener noreferrer">
+                MusicBrainz
+              </a>
+            </Button>
+          )}
+          {item.spotify_url && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={item.spotify_url} target="_blank" rel="noopener noreferrer">
+                Spotify
+              </a>
+            </Button>
+          )}
+          {item.harmony_url && (
+            <Button variant="outline" size="sm" onClick={() => onOpenHarmony(item.harmony_url!)}>
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+              Add to MB
+            </Button>
+          )}
+        </div>
+        {/* Actions — icon-only square buttons with tooltips */}
+        <div className="flex items-center gap-1 border-l pl-2 border-border/60">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenHarmony(item.harmony_url!)}
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={onClear}
+            title="Clear for now, will reappear on rescan"
           >
-            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            Add to MusicBrainz
+            <EyeOff className="h-4 w-4" />
           </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={onDismiss} className="text-muted-foreground">
-          <X className="mr-1.5 h-3.5 w-3.5" />
-          Dismiss
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={onRecheck}
+            title="Verify in MusicBrainz and remove if found"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+            onClick={onIgnore}
+            title="Never show again"
+          >
+            <Ban className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )
