@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-23
+
+### 🆕 New Releases Discovery
+- **New Command**: `new_releases_discovery` scans Lidarr artists for Spotify releases missing from MusicBrainz
+- **Round-Robin Scanning**: Prioritizes never-scanned artists, then by last scan time; configurable `artists_per_run` (default 5)
+- **Smart Filtering**: Excludes live recordings, compilations, guest appearances; configurable album types (album, EP, single)
+- **One-Click Actions**: Open Lidarr, MusicBrainz artist page, or Harmony to add albums; Spotify album links
+- **Dismiss & Restore**: Dismiss pending releases with optional restore from Status page
+- **Artist Matching**: Lidarr Spotify link validation with fuzzy name matching; skip search for short names (≤4 chars); try all search results for best match instead of first hit only
+
+### 🎨 Frontend Rewrite (Alpine.js → React)
+- **React + Vite + TypeScript**: Full rewrite of the web UI with modern tooling
+- **Component Library**: Radix UI primitives with Tailwind CSS and shadcn-style components
+- **Client-Side Routing**: React Router for Commands, Config, Status, Import Lists, New Releases
+- **Theme Support**: Dark/light mode with persistence
+- **Improved UX**: Sonner toasts, responsive layout, cleaner forms and dialogs
+- **Build Integration**: Frontend built to `frontend/dist`, served by FastAPI; CORS for Vite dev server (localhost:5173)
+- **Legacy Fallback**: Jinja2 templates retained for `/status` and import list pages during transition
+
+### 🏗️ Architecture & Database
+- **New Models**: `NewReleasePending`, `ArtistScanLog`, `LidarrArtist`, `DismissedArtistAlbum`
+- **Version Migrations**: Schema migrations for new tables and `artist_name` on dismissed items
+- **Built-in Command Protection**: Delete disabled for discovery_lastfm, library_cache_builder, new_releases_discovery, playlist_sync_discovery_maintenance
+- **Command Configuration**: Editable schedule, `artists_per_run`, and album types for new_releases_discovery
+
+### 🔧 Fixes and Improvements
+- **Startup Logging**: `setup_application_logging()` called in app lifespan; fixes missing logs on startup
+- **MusicBrainz Client**: Wrapped in async context manager to avoid unclosed aiohttp sessions
+- **Run Batch**: Clears artist/source/album_type filters before each run to avoid stale scan-artist data
+- **Lidarr URLs**: Use MBID-based artist URLs (`/artist/{mbid}`) instead of numeric IDs
+- **Playlist Sync**: Symbol-only track matching fix (e.g. †) for improved sync accuracy
+- **Import Lists**: Clipboard copy fallback for HTTP/non-secure contexts; note about enable_artist_discovery
+- **Plex**: Default timeout 30s→60s for large libraries; retry on search timeout
+
+## [0.2.3] - 2025-11-15
+
+Version 0.2.3 is the last 0.2.x release. Contains various fixes and enhancements, including improved playlist sync matching. Cmdarr is migrating from Alpine.js to a Node-based frontend (React/Vite). v0.2.3 remains stable(-ish) and fully functional(-ish), but no further development will happen in that form.
+
 ## [0.2.2] - 2025-10-23
 
 🚀 New Features

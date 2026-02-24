@@ -212,7 +212,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 Add Cmdarr as a Custom List in Lidarr:
 1. Go to Settings → Import Lists
 2. Add a new "Custom List" 
-3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_listenbrainz`
+3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_playlistsync`
 4. Configure sync interval as desired (recommend 24-48 hours)
 
 ### Performance Optimization
@@ -325,10 +325,18 @@ cmdarr/
 │   └── api/               # API endpoints
 │       ├── config.py      # Configuration management API
 │       ├── commands.py    # Command management API
+│       ├── new_releases.py # New Releases Discovery API
 │       ├── status.py      # Status and health API
 │       └── import_lists.py # Import list serving API
+├── frontend/               # React/Vite web UI (primary)
+│   ├── src/
+│   │   ├── pages/         # Commands, Config, Status, New Releases, Import Lists
+│   │   ├── components/    # UI components (shadcn-style)
+│   │   └── lib/           # API client, types, theme
+│   └── dist/              # Built assets (served by FastAPI)
 ├── database/              # Database layer
 │   ├── models.py          # SQLAlchemy models
+│   ├── config_models.py   # Command config, new releases, scan logs
 │   ├── database.py        # Database connection management
 │   └── init_commands.py   # Default command initialization
 ├── services/              # Business logic services
@@ -345,30 +353,29 @@ cmdarr/
 │   ├── command_base.py    # Abstract base class
 │   ├── config_adapter.py  # Configuration adapter for commands
 │   ├── discovery_lastfm.py
-│   ├── discovery_listenbrainz.py
-│   └── playlist_sync_listenbrainz_curated.py
+│   ├── new_releases_discovery.py
+│   ├── playlist_sync_discovery_maintenance.py
+│   ├── playlist_sync.py   # Dynamic playlist sync
+│   └── library_cache_builder.py
 ├── clients/               # Service API clients with shared base class
 │   ├── client_base.py     # Base class with common functionality
 │   ├── client_lidarr.py
 │   ├── client_lastfm.py
 │   ├── client_listenbrainz.py
 │   ├── client_musicbrainz.py
+│   ├── client_spotify.py  # Spotify API (playlist sync, new releases)
 │   ├── client_plex.py     # Enhanced with library cache support
 │   └── client_jellyfin.py # Jellyfin API client with playlist support
-└── templates/             # Jinja2 templates for web interface
-    ├── base.html          # Base template with Alpine.js and Tailwind
-    ├── index.html         # Main dashboard
-    ├── config/            # Configuration pages
-    ├── commands/          # Command management pages
-    └── status/            # Status pages
+└── templates/             # Legacy Jinja2 templates (e.g. /status)
+    └── status/            # Status page (during transition)
 ```
 
 ### Modern Architecture Features
 - **FastAPI**: High-performance async web framework
 - **SQLAlchemy ORM**: Database abstraction with SQLite backend
-- **Alpine.js**: Lightweight JavaScript framework for interactivity
-- **Tailwind CSS**: Utility-first CSS framework for styling
-- **Jinja2**: Template engine for server-side rendering
+- **React + Vite + TypeScript**: Primary web UI; built to `frontend/dist`, served by FastAPI
+- **Tailwind CSS**: Utility-first CSS framework; Radix UI primitives for components
+- **Legacy Jinja2**: Templates retained for `/status` and import list pages during transition
 - **Thread-Pool Execution**: Commands run in isolation without blocking the web server
 - **Database-Driven Config**: All configuration stored in SQLite with environment variable override
 - **RESTful APIs**: Clean API design for all functionality
@@ -443,7 +450,7 @@ LOG_RETENTION_DAYS=7
 
 Mount `/app/data` to persist:
 - **Database**: `cmdarr.db` (SQLite database with all data)
-- **Import Lists**: `import_lists/discovery_lastfm.json`, `import_lists/discovery_listenbrainz.json`
+- **Import Lists**: `import_lists/discovery_lastfm.json`, `import_lists/discovery_playlistsync.json`
 - **Logs**: `logs/cmdarr.log` and rotated files
 
 ### Manual Commands
@@ -453,8 +460,7 @@ While designed for Docker automation, individual commands can be triggered throu
 ```bash
 # Execute commands via API
 curl -X POST http://localhost:8080/api/commands/discovery_lastfm/execute
-curl -X POST http://localhost:8080/api/commands/discovery_listenbrainz/execute
-curl -X POST http://localhost:8080/api/commands/playlist_sync_listenbrainz_curated/execute
+curl -X POST http://localhost:8080/api/commands/new_releases_discovery/execute
 
 # Check configuration and status
 curl http://localhost:8080/api/config/
@@ -491,16 +497,21 @@ export LIDARR_API_KEY=your_lidarr_api_key
 export LASTFM_API_KEY=your_lastfm_api_key
 export MUSICBRAINZ_CONTACT=your-email@example.com
 
+# Build the React frontend (required for full UI)
+cd frontend && npm install && npm run build && cd ..
+
 # Run the FastAPI application
 python run_fastapi.py
 ```
 
+For frontend development with hot reload, run `npm run dev` in `frontend/` and access the app at `http://localhost:5173` (CORS is configured for the Vite dev server).
+
 ### API Endpoints
 - **Import Lists**: 
   - `/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
-  - `/import_lists/discovery_listenbrainz` - JSON endpoint for ListenBrainz Weekly Discovery artists
+  - `/import_lists/discovery_playlistsync` - JSON endpoint for playlist sync discovered artists
   - `/import_lists/metrics` - Metrics for import list files
-- **New Releases**: `/api/new-releases` - Scan for Spotify releases missing from MusicBrainz (query params: `artist_limit`, `album_types`)
+- **New Releases**: `/api/new-releases/` - Pending releases, dismiss, recheck, run-batch, scan-artist, lidarr-artists, sync, command-status, dismissed, restore
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
 - **Configuration API**: `/api/config/` - RESTful configuration management
 - **Commands API**: `/api/commands/` - Command management and execution
