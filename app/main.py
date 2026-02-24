@@ -333,7 +333,7 @@ async def health_check():
             status_code=503,
             content={
                 "status": "unhealthy",
-                "message": f"Health check failed: {str(e)}",
+                "message": "Health check failed",
                 "timestamp": datetime.utcnow().isoformat() + 'Z'
             }
         )
@@ -386,7 +386,7 @@ async def detailed_status_api(db: Session = Depends(get_config_db)):
         })
     except Exception as e:
         get_app_logger().error(f"Status check failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Status check failed")
 
 
 # Serve React app for frontend routes (if built)

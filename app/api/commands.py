@@ -533,7 +533,7 @@ async def execute_cache_builder(request: Request):
         get_commands_logger().error(f"Failed to execute cache builder: {e}")
         return {
             "success": False,
-            "error": str(e),
+            "error": "Cache operation failed",
             "message": "Failed to execute cache builder"
         }
 
@@ -622,7 +622,7 @@ async def validate_playlist_url(url: str):
         get_commands_logger().error(f"Failed to validate playlist URL: {e}")
         return {
             "valid": False,
-            "error": f"Failed to validate URL: {str(e)}"
+            "error": "Failed to validate URL"
         }
 
 
@@ -642,7 +642,7 @@ async def create_playlist_sync(request: dict, db: Session = Depends(get_config_d
         raise
     except Exception as e:
         get_commands_logger().error(f"Failed to create playlist sync: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create playlist sync: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create playlist sync")
 
 
 async def create_external_playlist_sync(request: dict, db: Session = Depends(get_config_db)):
@@ -754,7 +754,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             
         except Exception as e:
             get_commands_logger().error(f"Failed to generate unique command ID: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
         
         # Generate display name
         display_name = f"[{source.title()}] {playlist_name} → {target.title()}"
@@ -801,7 +801,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             import traceback
             get_commands_logger().error(f"Database creation traceback: {traceback.format_exc()}")
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to create command in database")
         
         # Check for cache warnings
         warnings = []
@@ -832,7 +832,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
         raise
     except Exception as e:
         get_commands_logger().error(f"Failed to create external playlist sync: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create external playlist sync: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create external playlist sync")
 
 
 async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends(get_config_db)):
@@ -907,7 +907,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             
         except Exception as e:
             get_commands_logger().error(f"Failed to generate unique command ID: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate unique command ID: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
         
         # Generate display name
         if len(playlist_types) == 1:
@@ -964,7 +964,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             import traceback
             get_commands_logger().error(f"Database creation traceback: {traceback.format_exc()}")
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to create command in database: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to create command in database")
         
         # Check for cache warnings
         warnings = []
@@ -995,7 +995,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
         raise
     except Exception as e:
         get_commands_logger().error(f"Failed to create ListenBrainz playlist sync: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create ListenBrainz playlist sync: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create ListenBrainz playlist sync")
 
 
 @router.delete("/{command_name}")

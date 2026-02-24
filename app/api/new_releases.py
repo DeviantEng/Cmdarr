@@ -274,7 +274,7 @@ async def get_new_releases(
         raise
     except Exception as e:
         logger.exception(f"New releases scan failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="New releases scan failed")
 
 
 # --- DB-backed endpoints ---

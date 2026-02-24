@@ -68,6 +68,14 @@
     </div>
 
     <script>
+        // Escape user-provided values to prevent XSS
+        function escapeHtml(str) {
+            if (str == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
         // Extract authorization code from URL
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
@@ -78,11 +86,11 @@
         const expectedState = sessionStorage.getItem('spotify_oauth_state');
         
         if (error) {
-            // Handle error
+            // Handle error (escape user-provided error to prevent XSS)
             document.getElementById('status').innerHTML = `
                 <div class="error">
                     <h2>❌ Authorization Failed</h2>
-                    <p>Error: ${error}</p>
+                    <p>Error: ${escapeHtml(error)}</p>
                     <p>You can close this window and try again.</p>
                 </div>
             `;
@@ -172,12 +180,12 @@
                     // Error from server
                     throw new Error(result.detail || 'Failed to exchange token');
                 }
-            } catch (error) {
-                console.error('Token exchange error:', error);
+            } catch (err) {
+                console.error('Token exchange error:', err);
                 document.getElementById('status').innerHTML = `
                     <div class="error">
                         <h2>❌ Token Exchange Failed</h2>
-                        <p>${error.message}</p>
+                        <p>${escapeHtml(err.message)}</p>
                         <p>You can close this window and try again.</p>
                     </div>
                 `;
@@ -185,7 +193,7 @@
                 if (window.opener) {
                     window.opener.postMessage({
                         type: 'spotify_oauth_error',
-                        error: error.message
+                        error: err.message
                     }, '*');
                 }
             }

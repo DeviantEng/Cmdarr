@@ -79,7 +79,7 @@ async def test_connectivity():
         
     except Exception as e:
         get_test_connectivity_logger().error(f"Connectivity test failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Connectivity test failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Connectivity test failed")
 
 
 async def _test_lidarr() -> ConnectivityTestResult:
@@ -123,11 +123,12 @@ async def _test_lidarr() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"Lidarr test failed: {e}")
         return ConnectivityTestResult(
             service="Lidarr",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -172,11 +173,12 @@ async def _test_lastfm() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"Last.fm test failed: {e}")
         return ConnectivityTestResult(
             service="Last.fm",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -233,11 +235,12 @@ async def _test_plex() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"Plex test failed: {e}")
         return ConnectivityTestResult(
             service="Plex",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -294,11 +297,12 @@ async def _test_jellyfin() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"Jellyfin test failed: {e}")
         return ConnectivityTestResult(
             service="Jellyfin",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -343,11 +347,12 @@ async def _test_listenbrainz() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"ListenBrainz test failed: {e}")
         return ConnectivityTestResult(
             service="ListenBrainz",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -383,11 +388,12 @@ async def _test_musicbrainz() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"MusicBrainz test failed: {e}")
         return ConnectivityTestResult(
             service="MusicBrainz",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )
 
@@ -433,10 +439,11 @@ async def _test_spotify() -> ConnectivityTestResult:
             )
             
     except Exception as e:
+        get_test_connectivity_logger().error(f"Spotify test failed: {e}")
         return ConnectivityTestResult(
             service="Spotify",
             success=False,
             message="Test failed",
-            error=str(e),
+            error="Connection test failed",
             status="error"
         )

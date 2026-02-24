@@ -93,9 +93,10 @@ async def get_health_status():
             finally:
                 session.close()
         except Exception as e:
+            get_status_logger().error(f"Database connection check failed: {e}")
             health_status["checks"]["database"] = {
                 "status": "unhealthy",
-                "message": f"Database connection failed: {str(e)}"
+                "message": "Database connection failed"
             }
             health_status["overall_status"] = "unhealthy"
         
@@ -114,9 +115,10 @@ async def get_health_status():
                     "message": "All required configuration present"
                 }
         except Exception as e:
+            get_status_logger().error(f"Configuration validation check failed: {e}")
             health_status["checks"]["configuration"] = {
                 "status": "unhealthy",
-                "message": f"Configuration validation failed: {str(e)}"
+                "message": "Configuration validation failed"
             }
             health_status["overall_status"] = "unhealthy"
         
@@ -145,9 +147,10 @@ async def get_health_status():
             finally:
                 session.close()
         except Exception as e:
+            get_status_logger().error(f"Command status check failed: {e}")
             health_status["checks"]["commands"] = {
                 "status": "unhealthy",
-                "message": f"Command status check failed: {str(e)}"
+                "message": "Command status check failed"
             }
             health_status["overall_status"] = "unhealthy"
         
@@ -376,7 +379,7 @@ async def _get_cache_status_for_target(target: str, cache_manager, cache_stats):
     except Exception as e:
         get_status_logger().warning(f"Failed to get library cache for {target}: {e}")
         cache_info['status'] = 'Error'
-        cache_info['error'] = str(e)
+        cache_info['error'] = 'Failed to retrieve cache status'
     
     return cache_info
 

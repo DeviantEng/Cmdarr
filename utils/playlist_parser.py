@@ -45,8 +45,9 @@ def parse_playlist_url(url: str) -> Dict[str, any]:
             'error': None
         }
     
-    # Deezer pattern: deezer.com/*/playlist/{id}
-    deezer_pattern = r'deezer\.com/.+/playlist/([0-9]+)'
+    # Deezer pattern: deezer.com/{locale}/playlist/{id}
+    # Use [^/]+ instead of .+ to avoid ReDoS (polynomial backtracking on malicious input)
+    deezer_pattern = r'deezer\.com/[^/]+/playlist/([0-9]+)'
     deezer_match = re.search(deezer_pattern, url)
     
     if deezer_match:
