@@ -165,11 +165,11 @@ class CommandScheduler:
                         if last_run is None:
                             needs_maintenance = True
                         else:
-                        last_run_utc = (
-                            last_run.astimezone(timezone.utc)
-                            if last_run.tzinfo
-                            else last_run.replace(tzinfo=timezone.utc)
-                        )
+                            last_run_utc = (
+                                last_run.astimezone(timezone.utc)
+                                if last_run.tzinfo
+                                else last_run.replace(tzinfo=timezone.utc)
+                            )
                             needs_maintenance = last_run_utc < cutoff
                         if needs_maintenance:
                             already_queued = any(name == self.MAINTENANCE_COMMAND for _, name in due_commands)
