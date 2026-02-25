@@ -137,20 +137,24 @@ class PlexClient(BaseAPIClient):
             return {}
     
     def _fetch_minimal_library_tracks(self, library_key: str) -> List[Dict[str, Any]]:
-        """Fetch all tracks from a library with minimal data for memory optimization"""
+        """Fetch all tracks from a library with minimal data. Smaller batches + includeFields for large libraries."""
         all_tracks = []
         container_start = 0
-        container_size = 1000  # Larger batches for efficiency
+        container_size = 250  # Smaller batches to reduce per-request load on 500k+ libraries
+        
+        # Request only fields we need to reduce payload and server processing
+        include_fields = "ratingKey,title,grandparentTitle,parentTitle,duration"
         
         while True:
             try:
                 params = {
                     "type": 10,  # Track type
                     "X-Plex-Container-Start": container_start,
-                    "X-Plex-Container-Size": container_size
+                    "X-Plex-Container-Size": container_size,
+                    "includeFields": include_fields,
                 }
                 
-                results = self._get(f"/library/sections/{library_key}/all", params=params, timeout=getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180))
+                results = self._get(f"/library/sections/{library_key}/all", params=params)
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
                 
@@ -530,24 +534,22 @@ class PlexClient(BaseAPIClient):
     
     def _search_for_track_live(self, track_name, artist_name, mbids=None, album_name=None):
         """
-        Original live API search implementation (fallback when cache unavailable)
+        Live API search using mediaQuery on /all (fallback when cache unavailable).
+        Tries artist+track, track-only, artist-only, and partial track strategies.
         """
         music_libraries = self.get_music_libraries()
         if not music_libraries:
             self.logger.warning("No music libraries found")
             return None
 
-        # Try different search strategies
-        search_queries = [
-            f"{artist_name} {track_name}",      # Artist + Track
-            f"{track_name} {artist_name}",      # Track + Artist
-            track_name,                         # Just track name
-            artist_name,                        # Just artist name
-            # Add partial searches for better matching
-            " ".join(track_name.split()[:3]),   # First 3 words of track
-            " ".join(track_name.split()[:2]),   # First 2 words of track
-            " ".join(track_name.split()[-3:]),  # Last 3 words of track
-            " ".join(track_name.split()[1:4]),  # Middle words of track
+        # Search strategies as (artist, track) for targeted mediaQuery
+        search_strategies = [
+            (artist_name, track_name),           # Artist + Track (primary)
+            (None, track_name),                  # Track only
+            (artist_name, None),                 # Artist only
+            (None, " ".join(track_name.split()[:3]) if track_name else None),   # First 3 words
+            (None, " ".join(track_name.split()[:2]) if track_name else None),   # First 2 words
+            (None, " ".join(track_name.split()[-3:]) if track_name else None),  # Last 3 words
         ]
 
         best_match = None
@@ -556,19 +558,26 @@ class PlexClient(BaseAPIClient):
         for library in music_libraries:
             library_key = library["key"]
 
-            for query in search_queries:
-                tracks = self.search_tracks_in_library(library_key, query)
+            for artist_str, track_str in search_strategies:
+                has_artist = artist_str and str(artist_str).strip()
+                has_track = track_str and str(track_str).strip()
+                if not has_artist and not has_track:
+                    continue
+                tracks = self.search_tracks_in_library(
+                    library_key, artist_name=artist_str, track_name=track_str
+                )
 
-                for track in tracks:
-                    total_score, artist_score = self._score_track_match(track, track_name, artist_name, mbids, album_name)
+                for track_obj in tracks:
+                    total_score, artist_score = self._score_track_match(
+                        track_obj, track_name, artist_name, mbids, album_name
+                    )
 
-                    # Require artist match to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)
+                    # Require artist match to avoid cross-artist false matches
                     if total_score > best_score and artist_score >= 50:
                         best_score = total_score
-                        best_match = track
+                        best_match = track_obj
 
-        # Require total_score >= 100 so we need a real track match, not just artist fuzzy match.
-        # Artist-only fuzzy (e.g. "october ends" ~ "scott & brendo") with no track match would add wrong track.
+        # Require total_score >= 100 so we need a real track match, not just artist fuzzy match
         if best_match and best_score >= 100:
             return best_match["ratingKey"]
 
@@ -721,8 +730,8 @@ class PlexClient(BaseAPIClient):
         key_parts = [operation] + [str(arg) for arg in args]
         return ":".join(key_parts)
     
-    def _get(self, path, params=None, timeout=None):
-        """GET request to Plex API. Use timeout param for heavy operations (library search/fetch)."""
+    def _get(self, path, params=None):
+        """GET request to Plex API."""
         if params is None:
             params = {}
         params["X-Plex-Token"] = self.token
@@ -730,7 +739,7 @@ class PlexClient(BaseAPIClient):
         headers = {
             "Accept": "application/json",
         }
-        req_timeout = timeout if timeout is not None else self.config.PLEX_TIMEOUT
+        req_timeout = self.config.PLEX_TIMEOUT
         try:
             r = requests.get(url, params=params, headers=headers, timeout=req_timeout)
             r.raise_for_status()
@@ -750,7 +759,14 @@ class PlexClient(BaseAPIClient):
                 return {}
                 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request failed for {path}: {e}")
+            # Log request details on timeout to help diagnose problematic queries
+            if isinstance(e, requests.exceptions.Timeout):
+                safe_params = {k: v for k, v in params.items() if k != "X-Plex-Token"}
+                self.logger.error(
+                    f"Request timeout for {path} (timeout={req_timeout}s) params={safe_params}"
+                )
+            else:
+                self.logger.error(f"Request failed for {path}: {e}")
             raise
 
     def _post(self, path, params=None, data=None):
@@ -952,27 +968,39 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error getting music libraries: {e}")
             return []
 
-    def search_tracks_in_library(self, library_key, query):
-        """Search for tracks in a specific library section - copied from proven working implementation"""
-        params = {
-            "type": 10,  # Track type
-            "query": query
-        }
+    def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):
+        """
+        Search for tracks using mediaQuery on /all (official API) instead of undocumented /search.
+        Uses type=10 (track) with title/grandparentTitle filters for targeted lookups.
+        """
+        # Build mediaQuery params: type=10 for tracks, = for contains
+        params = {"type": 10}
+        if artist_name and track_name:
+            params["grandparentTitle"] = artist_name
+            params["title"] = track_name
+        elif track_name:
+            params["title"] = track_name
+        elif artist_name:
+            params["grandparentTitle"] = artist_name
+        elif query:
+            params["title"] = query
+        else:
+            return []
 
-        library_timeout = getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
-        for attempt in range(2):  # retry once on timeout with longer timeout
+        for attempt in range(2):
             try:
-                # Second attempt uses 1.5x timeout for very large libraries
-                timeout = int(library_timeout * (1.5 if attempt == 1 else 1))
-                results = self._get(f"/library/sections/{library_key}/search", params=params, timeout=timeout)
+                results = self._get(f"/library/sections/{library_key}/all", params=params)
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
                 return tracks
             except requests.exceptions.Timeout as e:
-                if attempt == 0:
-                    self.logger.warning(f"Plex search timeout for '{query}': {e}. Retrying with longer timeout...")
-                else:
-                    self.logger.error(f"Error searching library {library_key}: {e}")
+                search_desc = f"artist={artist_name!r} track={track_name!r}" if (artist_name or track_name) else f"query={query!r}"
+                self.logger.warning(
+                    f"Plex API timeout library={library_key} {search_desc}: {e}. "
+                    f"Attempt {attempt + 1}/2."
+                )
+                if attempt == 1:
+                    self.logger.error(f"Plex search failed for library {library_key} after retry")
                     return []
             except Exception as e:
                 self.logger.error(f"Error searching library {library_key}: {e}")
@@ -980,7 +1008,7 @@ class PlexClient(BaseAPIClient):
         return []
 
     def get_recently_added_tracks(self, library_key, days=1):
-        """Get tracks added in the last N days using Plex's recentlyAdded endpoint"""
+        """Get tracks added in the last N days. Uses addedAt>>= per Plex mediaQuery (after)."""
         from datetime import datetime, timedelta
         
         # Calculate timestamp for N days ago
@@ -989,13 +1017,12 @@ class PlexClient(BaseAPIClient):
         
         params = {
             "type": 10,  # Track type
-            "addedAt>>": cutoff_timestamp
+            "addedAt>>=": cutoff_timestamp  # MediaQuery: >>= is "after"
         }
 
         try:
             self.logger.debug(f"Getting tracks added in last {days} days (since {cutoff_date.isoformat()})")
-            library_timeout = getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
-            results = self._get(f"/library/sections/{library_key}/all", params=params, timeout=library_timeout)
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
             media_container = results.get("MediaContainer", {})
             tracks = media_container.get("Metadata", [])
             
@@ -1414,7 +1441,6 @@ class PlexClient(BaseAPIClient):
         stats.update({
             'server_url': self.config.PLEX_URL,
             'timeout': self.config.PLEX_TIMEOUT,
-            'library_search_timeout': getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180),
             'ignore_tls': self.config.PLEX_IGNORE_TLS,
         })
         return stats

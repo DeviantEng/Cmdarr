@@ -258,10 +258,6 @@ RESTART_RETRY_ENABLED=true
 # Graceful shutdown (wait for running commands before exit)
 SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
 
-# Plex (large libraries: increase library search timeout)
-PLEX_TIMEOUT=60
-PLEX_LIBRARY_SEARCH_TIMEOUT=180
-
 # Rate limiting optimization
 LASTFM_RATE_LIMIT=8.0
 MUSICBRAINZ_RATE_LIMIT=1.5
@@ -286,7 +282,7 @@ LOG_RETENTION_DAYS=7
 docker logs cmdarr | grep -i "lidarr"
 ```
 
-**Playlist sync timeouts**: Enable library cache optimization. For very large libraries (500k+ tracks), increase `PLEX_LIBRARY_SEARCH_TIMEOUT` (default 180s) to 300 or higher in Config → Plex.
+**Playlist sync timeouts**: Enable library cache optimization.
 ```bash
 # Check if library cache is enabled
 curl http://localhost:8080/api/config/ | grep -i "library_cache"

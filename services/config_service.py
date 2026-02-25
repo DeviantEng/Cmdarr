@@ -72,8 +72,7 @@ class ConfigService:
             {'key': 'PLEX_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable Plex client functionality'},
             {'key': 'PLEX_URL', 'default_value': 'http://localhost:32400', 'data_type': 'string', 'category': 'plex', 'description': 'Plex Media Server URL'},
             {'key': 'PLEX_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex authentication token', 'is_sensitive': True},
-            {'key': 'PLEX_TIMEOUT', 'default_value': '60', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds for general Plex API calls'},
-            {'key': 'PLEX_LIBRARY_SEARCH_TIMEOUT', 'default_value': '180', 'data_type': 'int', 'category': 'plex', 'description': 'Timeout for library search/fetch operations (increase for 500k+ track libraries)'},
+            {'key': 'PLEX_TIMEOUT', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds for Plex API calls'},
             {'key': 'PLEX_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Ignore TLS certificate verification'},
             
             # Jellyfin Configuration
@@ -158,8 +157,8 @@ class ConfigService:
                 
                 session.commit()
                 self.logger.info(f"Initialized {len(defaults)} default configuration settings")
-                # Remove deprecated MusicBrainz settings (UA/contact now hardcoded)
-                for deprecated_key in ('MUSICBRAINZ_USER_AGENT', 'MUSICBRAINZ_CONTACT'):
+                # Remove deprecated settings
+                for deprecated_key in ('MUSICBRAINZ_USER_AGENT', 'MUSICBRAINZ_CONTACT', 'PLEX_LIBRARY_SEARCH_TIMEOUT'):
                     session.query(ConfigSetting).filter(ConfigSetting.key == deprecated_key).delete()
                 session.commit()
             finally:

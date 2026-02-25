@@ -62,8 +62,7 @@ class ConfigAdapter:
         # Plex Configuration
         self.PLEX_URL = config_service.get('PLEX_URL', 'http://localhost:32400')
         self.PLEX_TOKEN = config_service.get('PLEX_TOKEN', '')
-        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 60)
-        self.PLEX_LIBRARY_SEARCH_TIMEOUT = config_service.get('PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
+        self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 30)
         self.PLEX_IGNORE_TLS = config_service.get('PLEX_IGNORE_TLS', False)
         
         # Jellyfin Configuration
@@ -138,7 +137,6 @@ class ConfigAdapter:
             'listenbrainz_plex_playlist_enabled': self.LISTENBRAINZ_PLEX_PLAYLIST_ENABLED,
             'plex_url': self.PLEX_URL,
             'plex_timeout': self.PLEX_TIMEOUT,
-            'plex_library_search_timeout': self.PLEX_LIBRARY_SEARCH_TIMEOUT,
             'plex_ignore_tls': self.PLEX_IGNORE_TLS,
             'musicbrainz_enabled': self.MUSICBRAINZ_ENABLED,
             'musicbrainz_min_similarity': self.MUSICBRAINZ_MIN_SIMILARITY,

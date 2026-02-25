@@ -37,10 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **get_artist_release_groups**: Returns `None` on error so callers can distinguish "fetch failed" from "not in MB"
 - **Hardcoded User-Agent**: `Cmdarr/{version} (https://github.com/DeviantEng/Cmdarr)`; removed `MUSICBRAINZ_USER_AGENT` and `MUSICBRAINZ_CONTACT` config
 
-### 🎵 Plex Large Library Support
-- **PLEX_LIBRARY_SEARCH_TIMEOUT**: Configurable timeout (default 180s) for library search/fetch; increase for 500k+ track libraries
-- **PLEX_TIMEOUT**: General API timeout (default 60s) remains configurable
-- **Retry with backoff**: Search retries with 1.5× timeout on first failure
+### 🎵 Plex API Rework (official API alignment)
+- **Track search**: Replaced undocumented `/search` with mediaQuery on `/all` (type=10, title, grandparentTitle)
+- **Recently added**: Fixed `addedAt>>` to `addedAt>>=` per Plex mediaQuery spec
+- **Library fetch**: Smaller batches (250 vs 1000), includeFields to reduce payload
+- **Timeout**: Reverted to 30s default; detailed logging on timeout for diagnostics
 
 ### 🛠️ Fixes & Improvements
 - **Uptime Widget**: Fixed status page uptime (was always &lt;1m); now tracks app start time correctly
