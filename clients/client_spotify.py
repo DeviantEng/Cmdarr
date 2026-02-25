@@ -128,7 +128,7 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error getting playlist info: {e}")
             return {
                 'success': False,
-                'error': f"Failed to fetch playlist info: {str(e)}"
+                'error': 'Failed to fetch playlist info'
             }
     
     async def _get_playlist_info_async(self, playlist_id: str) -> Dict[str, Any]:
@@ -157,7 +157,7 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error fetching playlist info: {e}")
             return {
                 'success': False,
-                'error': f"Failed to fetch playlist: {str(e)}"
+                'error': 'Failed to fetch playlist from Spotify'
             }
     
     async def get_playlist_tracks(self, url: str) -> Dict[str, Any]:

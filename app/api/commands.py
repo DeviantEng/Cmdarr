@@ -570,7 +570,7 @@ async def validate_playlist_url(url: str):
                 else:
                     return {
                         "valid": False,
-                        "error": metadata.get('error', 'Failed to fetch playlist metadata')
+                        "error": "Failed to fetch playlist metadata"
                     }
             finally:
                 await spotify_client.close()
@@ -594,7 +594,7 @@ async def validate_playlist_url(url: str):
                 else:
                     return {
                         "valid": False,
-                        "error": metadata.get('error', 'Failed to fetch playlist metadata')
+                        "error": "Failed to fetch playlist metadata"
                     }
             finally:
                 await deezer_client.close()
@@ -674,8 +674,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                     raise HTTPException(status_code=400, detail='Invalid metadata response from Spotify')
                 
                 if not metadata.get('success'):
-                    error_msg = metadata.get('error', 'Failed to fetch playlist') if metadata else 'No metadata received'
-                    raise HTTPException(status_code=400, detail=error_msg)
+                    raise HTTPException(status_code=400, detail='Failed to fetch playlist metadata from Spotify')
                 
                 playlist_name = metadata.get('name')
                 if not playlist_name:
@@ -693,8 +692,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                     raise HTTPException(status_code=400, detail='Invalid metadata response from Deezer')
                 
                 if not metadata.get('success'):
-                    error_msg = metadata.get('error', 'Failed to fetch playlist') if metadata else 'No metadata received'
-                    raise HTTPException(status_code=400, detail=error_msg)
+                    raise HTTPException(status_code=400, detail='Failed to fetch playlist metadata from Deezer')
                 
                 playlist_name = metadata.get('name')
                 if not playlist_name:

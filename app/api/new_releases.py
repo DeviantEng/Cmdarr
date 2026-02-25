@@ -477,7 +477,7 @@ async def run_batch(db: Session = Depends(get_config_db)):
         )
     result = await command_executor.execute_command("new_releases_discovery", triggered_by="api")
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Batch run failed"))
+        raise HTTPException(status_code=400, detail="Batch run failed")
     return {"success": True, "execution_id": result.get("execution_id")}
 
 
@@ -524,7 +524,7 @@ async def scan_artist(body: ScanArtistRequest):
         triggered_by="api",
     )
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+        raise HTTPException(status_code=400, detail="Scan failed")
     return {"success": True, "execution_id": result.get("execution_id"), "artist_name": artist.get("artistName")}
 
 
