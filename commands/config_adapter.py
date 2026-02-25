@@ -56,8 +56,6 @@ class ConfigAdapter:
         self.MUSICBRAINZ_ENABLED = config_service.get('MUSICBRAINZ_ENABLED', True)
         self.MUSICBRAINZ_RATE_LIMIT = config_service.get('MUSICBRAINZ_RATE_LIMIT', 1.5)
         self.MUSICBRAINZ_MIN_SIMILARITY = config_service.get('MUSICBRAINZ_MIN_SIMILARITY', 0.85)
-        self.MUSICBRAINZ_USER_AGENT = config_service.get('MUSICBRAINZ_USER_AGENT', 'Cmdarr')
-        self.MUSICBRAINZ_CONTACT = config_service.get('MUSICBRAINZ_CONTACT', 'your-email@example.com')
         self.MUSICBRAINZ_MAX_RETRIES = config_service.get('MUSICBRAINZ_MAX_RETRIES', 3)
         self.MUSICBRAINZ_RETRY_DELAY = config_service.get('MUSICBRAINZ_RETRY_DELAY', 2.0)
         
@@ -65,6 +63,7 @@ class ConfigAdapter:
         self.PLEX_URL = config_service.get('PLEX_URL', 'http://localhost:32400')
         self.PLEX_TOKEN = config_service.get('PLEX_TOKEN', '')
         self.PLEX_TIMEOUT = config_service.get('PLEX_TIMEOUT', 60)
+        self.PLEX_LIBRARY_SEARCH_TIMEOUT = config_service.get('PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
         self.PLEX_IGNORE_TLS = config_service.get('PLEX_IGNORE_TLS', False)
         
         # Jellyfin Configuration
@@ -139,9 +138,9 @@ class ConfigAdapter:
             'listenbrainz_plex_playlist_enabled': self.LISTENBRAINZ_PLEX_PLAYLIST_ENABLED,
             'plex_url': self.PLEX_URL,
             'plex_timeout': self.PLEX_TIMEOUT,
+            'plex_library_search_timeout': self.PLEX_LIBRARY_SEARCH_TIMEOUT,
             'plex_ignore_tls': self.PLEX_IGNORE_TLS,
             'musicbrainz_enabled': self.MUSICBRAINZ_ENABLED,
-            'musicbrainz_contact': self.MUSICBRAINZ_CONTACT,
             'musicbrainz_min_similarity': self.MUSICBRAINZ_MIN_SIMILARITY,
             'generate_debug_calls': self.GENERATE_DEBUG_VALIDATION_CALLS,
             'web_port': self.WEB_PORT,

@@ -67,14 +67,13 @@ class ConfigService:
             {'key': 'MUSICBRAINZ_MAX_RETRIES', 'default_value': '3', 'data_type': 'int', 'category': 'musicbrainz', 'description': 'Maximum retry attempts for rate limit errors'},
             {'key': 'MUSICBRAINZ_RETRY_DELAY', 'default_value': '2.0', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Initial retry delay in seconds (exponential backoff)'},
             {'key': 'MUSICBRAINZ_MIN_SIMILARITY', 'default_value': '0.85', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Minimum similarity score for fuzzy matching'},
-            {'key': 'MUSICBRAINZ_USER_AGENT', 'default_value': 'Cmdarr', 'data_type': 'string', 'category': 'musicbrainz', 'description': 'User agent identifier'},
-            {'key': 'MUSICBRAINZ_CONTACT', 'default_value': 'your-email@example.com', 'data_type': 'string', 'category': 'musicbrainz', 'description': 'Contact email (required by MusicBrainz API)'},
             
             # Plex Configuration
             {'key': 'PLEX_CLIENT_ENABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable Plex client functionality'},
             {'key': 'PLEX_URL', 'default_value': 'http://localhost:32400', 'data_type': 'string', 'category': 'plex', 'description': 'Plex Media Server URL'},
             {'key': 'PLEX_TOKEN', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex authentication token', 'is_sensitive': True},
-            {'key': 'PLEX_TIMEOUT', 'default_value': '60', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds (increase for large libraries)'},
+            {'key': 'PLEX_TIMEOUT', 'default_value': '60', 'data_type': 'int', 'category': 'plex', 'description': 'Request timeout in seconds for general Plex API calls'},
+            {'key': 'PLEX_LIBRARY_SEARCH_TIMEOUT', 'default_value': '180', 'data_type': 'int', 'category': 'plex', 'description': 'Timeout for library search/fetch operations (increase for 500k+ track libraries)'},
             {'key': 'PLEX_IGNORE_TLS', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Ignore TLS certificate verification'},
             
             # Jellyfin Configuration
@@ -159,6 +158,10 @@ class ConfigService:
                 
                 session.commit()
                 self.logger.info(f"Initialized {len(defaults)} default configuration settings")
+                # Remove deprecated MusicBrainz settings (UA/contact now hardcoded)
+                for deprecated_key in ('MUSICBRAINZ_USER_AGENT', 'MUSICBRAINZ_CONTACT'):
+                    session.query(ConfigSetting).filter(ConfigSetting.key == deprecated_key).delete()
+                session.commit()
             finally:
                 session.close()
         except Exception as e:

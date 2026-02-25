@@ -31,6 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Streaming Logs Dropped**: WebSocket endpoint and client removed (never fully implemented)
 - **Commands Page**: Manual refresh after run; no real-time updates
 
+### 🎵 MusicBrainz Rate Limiting
+- **MUSICBRAINZ_RATE_LIMIT**: Default 0.8 req/sec (~1.25s between requests); MusicBrainz allows 1/sec per IP
+- **Don't add on rate limit**: When MB API returns 503 (rate limit), skip artist instead of adding to New Releases pending
+- **get_artist_release_groups**: Returns `None` on error so callers can distinguish "fetch failed" from "not in MB"
+- **Hardcoded User-Agent**: `Cmdarr/{version} (https://github.com/DeviantEng/Cmdarr)`; removed `MUSICBRAINZ_USER_AGENT` and `MUSICBRAINZ_CONTACT` config
+
+### 🎵 Plex Large Library Support
+- **PLEX_LIBRARY_SEARCH_TIMEOUT**: Configurable timeout (default 180s) for library search/fetch; increase for 500k+ track libraries
+- **PLEX_TIMEOUT**: General API timeout (default 60s) remains configurable
+- **Retry with backoff**: Search retries with 1.5× timeout on first failure
+
 ### 🛠️ Fixes & Improvements
 - **Uptime Widget**: Fixed status page uptime (was always &lt;1m); now tracks app start time correctly
 - **Command Queue**: When at capacity, new commands are queued instead of failing

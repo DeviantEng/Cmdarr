@@ -150,7 +150,7 @@ class PlexClient(BaseAPIClient):
                     "X-Plex-Container-Size": container_size
                 }
                 
-                results = self._get(f"/library/sections/{library_key}/all", params=params)
+                results = self._get(f"/library/sections/{library_key}/all", params=params, timeout=getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180))
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
                 
@@ -721,8 +721,8 @@ class PlexClient(BaseAPIClient):
         key_parts = [operation] + [str(arg) for arg in args]
         return ":".join(key_parts)
     
-    def _get(self, path, params=None):
-        """GET request to Plex API - copied from proven working implementation"""
+    def _get(self, path, params=None, timeout=None):
+        """GET request to Plex API. Use timeout param for heavy operations (library search/fetch)."""
         if params is None:
             params = {}
         params["X-Plex-Token"] = self.token
@@ -730,9 +730,9 @@ class PlexClient(BaseAPIClient):
         headers = {
             "Accept": "application/json",
         }
-        
+        req_timeout = timeout if timeout is not None else self.config.PLEX_TIMEOUT
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+            r = requests.get(url, params=params, headers=headers, timeout=req_timeout)
             r.raise_for_status()
 
             # Handle both XML and JSON responses
@@ -959,15 +959,18 @@ class PlexClient(BaseAPIClient):
             "query": query
         }
 
-        for attempt in range(2):  # retry once on timeout
+        library_timeout = getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
+        for attempt in range(2):  # retry once on timeout with longer timeout
             try:
-                results = self._get(f"/library/sections/{library_key}/search", params=params)
+                # Second attempt uses 1.5x timeout for very large libraries
+                timeout = int(library_timeout * (1.5 if attempt == 1 else 1))
+                results = self._get(f"/library/sections/{library_key}/search", params=params, timeout=timeout)
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
                 return tracks
             except requests.exceptions.Timeout as e:
                 if attempt == 0:
-                    self.logger.warning(f"Plex search timeout for '{query}': {e}. Retrying...")
+                    self.logger.warning(f"Plex search timeout for '{query}': {e}. Retrying with longer timeout...")
                 else:
                     self.logger.error(f"Error searching library {library_key}: {e}")
                     return []
@@ -991,7 +994,8 @@ class PlexClient(BaseAPIClient):
 
         try:
             self.logger.debug(f"Getting tracks added in last {days} days (since {cutoff_date.isoformat()})")
-            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            library_timeout = getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180)
+            results = self._get(f"/library/sections/{library_key}/all", params=params, timeout=library_timeout)
             media_container = results.get("MediaContainer", {})
             tracks = media_container.get("Metadata", [])
             
@@ -1410,6 +1414,7 @@ class PlexClient(BaseAPIClient):
         stats.update({
             'server_url': self.config.PLEX_URL,
             'timeout': self.config.PLEX_TIMEOUT,
+            'library_search_timeout': getattr(self.config, 'PLEX_LIBRARY_SEARCH_TIMEOUT', 180),
             'ignore_tls': self.config.PLEX_IGNORE_TLS,
         })
         return stats
