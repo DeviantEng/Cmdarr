@@ -27,31 +27,22 @@ def utc_datetime_serializer(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() + 'Z'
 
 
-def calculate_next_run(last_run: Optional[datetime], schedule_hours: Optional[int]) -> Optional[datetime]:
-    """Calculate the next run time based on last run and schedule hours"""
-    if not schedule_hours:
-        return None
-    
-    if not last_run:
-        # If no last run but there is a schedule, this means the command was just enabled
-        # Return None to indicate it should run immediately (scheduler will handle it)
-        return None
-    
-    # Calculate next run from last run
-    next_run = last_run + timedelta(hours=schedule_hours)
-    
-    # If the calculated next run is in the past, return a stable "overdue" time
-    # Use the last_run + schedule_hours as the base, which gives a consistent time
-    if next_run < datetime.utcnow():
-        return next_run  # This will be in the past, but stable
-    
-    return next_run
+def _get_next_run_for_command(command: CommandConfig) -> Optional[datetime]:
+    """Calculate next run time for command using cron (global or per-command override)."""
+    from services.scheduler import calculate_next_run_cron
+    from zoneinfo import ZoneInfo
+    import os
+    from services.config_service import config_service
+    tz_str = config_service.get('SCHEDULER_TIMEZONE') or os.environ.get('TZ') or 'UTC'
+    tz = ZoneInfo(tz_str.strip() if tz_str and tz_str.strip() else 'UTC')
+    return calculate_next_run_cron(command, tz)
 
 
 class CommandUpdateRequest(BaseModel):
     """Request model for updating command configuration"""
     enabled: Optional[bool] = None
-    schedule_hours: Optional[int] = None
+    schedule_cron: Optional[str] = None
+    schedule_override: Optional[bool] = None  # True = use schedule_cron, False = use global
     timeout_minutes: Optional[int] = None
     config_json: Optional[Dict[str, Any]] = None
 
@@ -68,7 +59,8 @@ class CommandConfigResponse(BaseModel):
     display_name: str
     description: Optional[str]
     enabled: bool
-    schedule_hours: Optional[int]
+    schedule_cron: Optional[str]
+    schedule_override: Optional[bool]  # True when using per-command cron
     timeout_minutes: Optional[int]
     config_json: Optional[Dict[str, Any]]
     command_type: Optional[str]
@@ -84,16 +76,12 @@ class CommandConfigResponse(BaseModel):
 def command_to_response(command: CommandConfig) -> CommandConfigResponse:
     """Convert CommandConfig to CommandConfigResponse with next_run calculation"""
     command_dict = command.__dict__.copy()
-    
-    # Calculate next_run
-    next_run = calculate_next_run(command.last_run, command.schedule_hours)
-    
-    # Serialize datetime fields with Z suffix for proper JavaScript parsing
+    next_run = _get_next_run_for_command(command)
+    command_dict['schedule_override'] = bool(command.schedule_cron and command.schedule_cron.strip())
     command_dict['last_run'] = utc_datetime_serializer(command.last_run)
     command_dict['next_run'] = utc_datetime_serializer(next_run)
     command_dict['created_at'] = utc_datetime_serializer(command.created_at)
     command_dict['updated_at'] = utc_datetime_serializer(command.updated_at)
-    
     return CommandConfigResponse(**command_dict)
 
 
@@ -165,27 +153,21 @@ async def update_command(
         
         # Track if enabled status or schedule changed
         enabled_changed = request.enabled is not None and request.enabled != command.enabled
-        schedule_changed = request.schedule_hours is not None and request.schedule_hours != command.schedule_hours
-        
-        # Update fields if provided
+        schedule_changed = (
+            request.schedule_cron is not None and request.schedule_cron != (command.schedule_cron or '')
+        ) or (request.schedule_override is not None)
+
         if request.enabled is not None:
             command.enabled = request.enabled
-            
-            # If enabling a command, set a placeholder last_run timestamp for immediate execution
-            # This makes next_run = last_run + schedule_hours = 5 minutes from now
-            if request.enabled and command.schedule_hours:
-                schedule_minutes = command.schedule_hours * 60
-                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                get_commands_logger().info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
-                
-        if request.schedule_hours is not None:
-            command.schedule_hours = request.schedule_hours
-            
-            # If setting schedule on an enabled command, set placeholder last_run for immediate execution
-            if command.enabled and request.schedule_hours:
-                schedule_minutes = request.schedule_hours * 60
-                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                get_commands_logger().info(f"Set placeholder last_run for {command_name} (next run in 5 minutes)")
+
+        if request.schedule_override is not None:
+            if not request.schedule_override:
+                command.schedule_cron = None
+            elif request.schedule_cron:
+                command.schedule_cron = request.schedule_cron.strip() or None
+
+        if request.schedule_cron is not None and request.schedule_override:
+            command.schedule_cron = request.schedule_cron.strip() or None
                 
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
@@ -202,7 +184,7 @@ async def update_command(
         if enabled_changed or schedule_changed:
             try:
                 from services.scheduler import scheduler
-                if command.enabled and command.schedule_hours:
+                if command.enabled:
                     if schedule_changed:
                         await scheduler.update_command_schedule(command_name)
                     else:
@@ -311,7 +293,7 @@ async def get_command_status(command_name: str, db: Session = Depends(get_config
         return {
             "command_name": command_name,
             "enabled": command.enabled,
-            "schedule_hours": command.schedule_hours,
+            "schedule_cron": command.schedule_cron,
             "is_running": status.get('is_running', False),
             "last_execution": status.get('last_execution')
         }
@@ -658,7 +640,8 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
         playlist_url = request.get('playlist_url')
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = int(request.get('schedule_hours', 24))
+        schedule_cron = request.get('schedule_cron')  # None = use global default
+        schedule_override = bool(schedule_cron and schedule_cron.strip())
         enabled = request.get('enabled', True)
         
         if not playlist_url:
@@ -776,17 +759,11 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 display_name=display_name,
                 description=f"Sync {source.title()} playlist '{playlist_name}' to {target.title()}",
                 enabled=enabled,
-                schedule_hours=schedule_hours,
-                timeout_minutes=30,  # Default timeout for playlist sync commands
+                schedule_cron=schedule_cron.strip() if schedule_override and schedule_cron else None,
+                timeout_minutes=30,
                 command_type="playlist_sync",
                 config_json=config_json
             )
-            
-            # If creating an enabled command, set placeholder last_run for immediate execution
-            if enabled and schedule_hours:
-                schedule_minutes = schedule_hours * 60
-                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                get_commands_logger().info(f"Set placeholder last_run for new command {command_name} (next run in 5 minutes)")
             
             db.add(command)
             db.commit()
@@ -845,7 +822,8 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
         playlist_types = request.get('playlist_types', [])
         target = request.get('target')
         sync_mode = request.get('sync_mode', 'full')
-        schedule_hours = int(request.get('schedule_hours', 24))
+        schedule_cron = request.get('schedule_cron')
+        schedule_override = bool(schedule_cron and schedule_cron.strip())
         enabled = request.get('enabled', True)
         
         # Retention settings
@@ -939,17 +917,11 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 display_name=display_name,
                 description=f"Sync ListenBrainz curated playlists to {target.title()}",
                 enabled=enabled,
-                schedule_hours=schedule_hours,
-                timeout_minutes=30,  # Default timeout for playlist sync commands
+                schedule_cron=schedule_cron.strip() if schedule_override and schedule_cron else None,
+                timeout_minutes=30,
                 command_type="playlist_sync",
                 config_json=config_json
             )
-            
-            # If creating an enabled command, set placeholder last_run for immediate execution
-            if enabled and schedule_hours:
-                schedule_minutes = schedule_hours * 60
-                command.last_run = datetime.utcnow() - timedelta(minutes=schedule_minutes) + timedelta(minutes=5)
-                get_commands_logger().info(f"Set placeholder last_run for new ListenBrainz command {command_name} (next run in 5 minutes)")
             
             db.add(command)
             db.commit()

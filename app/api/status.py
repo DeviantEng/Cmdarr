@@ -199,7 +199,7 @@ async def get_commands_status(db: Session = Depends(get_config_db)):
                 "command_name": command.command_name,
                 "display_name": command.display_name,
                 "enabled": command.enabled,
-                "schedule_hours": command.schedule_hours,
+                "schedule_cron": command.schedule_cron,
                 "is_running": is_running,
                 "last_run": command.last_run.isoformat() + 'Z' if command.last_run else None,
                 "last_success": command.last_success,

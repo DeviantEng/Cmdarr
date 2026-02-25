@@ -15,7 +15,7 @@ A modular music automation platform that bridges services for your self-hosted m
 
 ### 🎶 **Intelligent Playlist Management**
 - **Multi-Source Support**: Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin
-- **Modular Command System**: Create unlimited playlist sync commands with custom schedules
+- **Modular Command System**: Create unlimited playlist sync commands with cron-based schedules
 - **Direct Lidarr Integration**: Artists from playlists are automatically added to Lidarr for monitoring
 - **Automatic Cleanup**: Removes old playlists based on your retention preferences
 - **Duplicate Prevention**: Prevents creating duplicate playlists with the same tracks
@@ -25,8 +25,12 @@ A modular music automation platform that bridges services for your self-hosted m
 - **Library Cache System**: Dramatically improves playlist operations (6x faster)
 - **Intelligent Rate Limiting**: Handles API limits gracefully with retry logic
 - **Modern Web Interface**: Clean, responsive dashboard for monitoring and configuration
-- **Scheduled Automation**: Set it and forget it with configurable schedules
+- **Scheduled Automation**: Cron-based scheduling with a configurable global default and per-command overrides
 - **Docker Native**: Designed for easy deployment and management
+
+### 🕐 Scheduling
+
+Commands run on cron schedules. A global default (e.g. 3 AM daily) is configurable in Config → Scheduler, with timezone support via `SCHEDULER_TIMEZONE` or the `TZ` environment variable. Individual commands can override the default with a custom cron expression in the command edit dialog.
 
 ## Quick Start
 
@@ -246,7 +250,10 @@ LIBRARY_CACHE_TTL_DAYS=30
 LIBRARY_CACHE_MEMORY_LIMIT_MB=512
 LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true
-LIBRARY_CACHE_SCHEDULE_HOURS=24
+
+# Scheduler (cron-based; TZ also used for schedule interpretation)
+DEFAULT_SCHEDULE_CRON="0 3 * * *"
+SCHEDULER_TIMEZONE=America/New_York
 
 # Restart retry: auto-retry commands interrupted by restart (default: true)
 RESTART_RETRY_ENABLED=true
@@ -256,7 +263,7 @@ SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
 
 # Rate limiting optimization
 LASTFM_RATE_LIMIT=8.0
-MUSICBRAINZ_RATE_LIMIT=1.0
+MUSICBRAINZ_RATE_LIMIT=1.5
 MUSICBRAINZ_MAX_RETRIES=3
 MUSICBRAINZ_RETRY_DELAY=2.0
 
@@ -366,8 +373,6 @@ cmdarr/
 │   ├── client_spotify.py  # Spotify API (playlist sync, new releases)
 │   ├── client_plex.py     # Enhanced with library cache support
 │   └── client_jellyfin.py # Jellyfin API client with playlist support
-└── templates/             # Legacy Jinja2 templates (e.g. /status)
-    └── status/            # Status page (during transition)
 ```
 
 ### Modern Architecture Features
@@ -375,7 +380,6 @@ cmdarr/
 - **SQLAlchemy ORM**: Database abstraction with SQLite backend
 - **React + Vite + TypeScript**: Primary web UI; built to `frontend/dist`, served by FastAPI
 - **Tailwind CSS**: Utility-first CSS framework; Radix UI primitives for components
-- **Legacy Jinja2**: Templates retained for `/status` and import list pages during transition
 - **Thread-Pool Execution**: Commands run in isolation without blocking the web server
 - **Database-Driven Config**: All configuration stored in SQLite with environment variable override
 - **RESTful APIs**: Clean API design for all functionality
@@ -472,7 +476,9 @@ docker logs cmdarr --tail 50
 
 ### Local Python Environment
 
-For development or direct Python execution:
+For development or direct Python execution (without Docker):
+
+> **Important:** You must build the React frontend before starting the app. The application will not start without it.
 
 ```bash
 # Clone the repository
@@ -491,18 +497,20 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Build the React frontend (required - app will not start without this)
+cd frontend && npm install && npm run build && cd ..
+
 # Set required environment variables
 export LIDARR_URL=http://localhost:8686
 export LIDARR_API_KEY=your_lidarr_api_key
 export LASTFM_API_KEY=your_lastfm_api_key
 export MUSICBRAINZ_CONTACT=your-email@example.com
 
-# Build the React frontend (required for full UI)
-cd frontend && npm install && npm run build && cd ..
-
 # Run the FastAPI application
 python run_fastapi.py
 ```
+
+Then visit `http://localhost:8080` for the web UI.
 
 For frontend development with hot reload, run `npm run dev` in `frontend/` and access the app at `http://localhost:5173` (CORS is configured for the Vite dev server).
 

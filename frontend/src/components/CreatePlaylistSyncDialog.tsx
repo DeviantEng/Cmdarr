@@ -47,7 +47,6 @@ export function CreatePlaylistSyncDialog({
     playlist_types: [] as string[],
     target: 'plex',
     sync_mode: 'full',
-    schedule_hours: 12,
     enabled: true,
     weekly_exploration_keep: 3,
     weekly_jams_keep: 3,
@@ -72,7 +71,6 @@ export function CreatePlaylistSyncDialog({
         playlist_types: [],
         target: 'plex',
         sync_mode: 'full',
-        schedule_hours: 12,
         enabled: true,
         weekly_exploration_keep: 3,
         weekly_jams_keep: 3,
@@ -438,24 +436,9 @@ export function CreatePlaylistSyncDialog({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Schedule (Hours)</Label>
-              <Input
-                type="number"
-                min="1"
-                max="168"
-                value={formData.schedule_hours}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    schedule_hours: parseInt(e.target.value),
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Sync every {formData.schedule_hours} hours
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              New commands use the global schedule (Config → Scheduler). You can override per-command after creation.
+            </p>
 
             <label className="flex items-center space-x-2">
               <input

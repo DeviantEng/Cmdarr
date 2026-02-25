@@ -40,7 +40,8 @@ export function CommandsPage() {
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false)
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null)
   const [editForm, setEditForm] = useState<{
-    schedule_hours?: number
+    schedule_override?: boolean
+    schedule_cron?: string
     artists_per_run?: number
     album_types?: string[]
     artists_to_query?: number
@@ -185,7 +186,8 @@ export function CommandsPage() {
     const cfg = command.config_json || {}
     const typesStr = (cfg.album_types as string) || 'album'
     setEditForm({
-      schedule_hours: command.schedule_hours ?? 1,
+      schedule_override: !!command.schedule_override,
+      schedule_cron: command.schedule_cron || '0 3 * * *',
       artists_per_run: typeof cfg.artists_per_run === 'number' ? cfg.artists_per_run : 5,
       album_types: typesStr.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
       artists_to_query: typeof cfg.artists_to_query === 'number' ? cfg.artists_to_query : 3,
@@ -197,7 +199,8 @@ export function CommandsPage() {
   }
 
   const handleSaveCommand = async (updates: {
-    schedule_hours?: number
+    schedule_cron?: string
+    schedule_override?: boolean
     config_json?: Record<string, any>
   }) => {
     if (!editingCommand) return
@@ -922,28 +925,45 @@ export function CommandsPage() {
                   </>
                 )}
 
-                {/* New Releases Discovery - editable fields */}
-                {editingCommand.command_name === 'new_releases_discovery' && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-schedule">Schedule (hours)</Label>
+                {/* Schedule - all commands (override default cron) */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="edit-schedule-override"
+                      checked={editForm.schedule_override ?? false}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, schedule_override: e.target.checked }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="edit-schedule-override">Override default schedule</Label>
+                  </div>
+                  {editForm.schedule_override && (
+                    <>
                       <Input
-                        id="edit-schedule"
-                        type="number"
-                        min={1}
-                        max={168}
-                        value={editForm.schedule_hours ?? 1}
+                        id="edit-schedule-cron"
+                        placeholder="0 3 * * *"
+                        value={editForm.schedule_cron ?? '0 3 * * *'}
                         onChange={(e) =>
-                          setEditForm((f) => ({
-                            ...f,
-                            schedule_hours: Math.max(1, Math.min(168, parseInt(e.target.value, 10) || 1)),
-                          }))
+                          setEditForm((f) => ({ ...f, schedule_cron: e.target.value }))
                         }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Runs every N hours when enabled
+                        Cron format: minute hour day month weekday (e.g. 0 3 * * * = 3 AM daily)
                       </p>
-                    </div>
+                    </>
+                  )}
+                  {!editForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses global default (Config → Scheduler)
+                    </p>
+                  )}
+                </div>
+
+                {/* New Releases Discovery - editable fields */}
+                {editingCommand.command_name === 'new_releases_discovery' && (
+                  <>
                     <div className="space-y-2">
                       <Label htmlFor="edit-artists">Artists per run</Label>
                       <Input
@@ -993,17 +1013,6 @@ export function CommandsPage() {
                   </>
                 )}
 
-                {/* Schedule - generic (non-new_releases) */}
-                {editingCommand.command_name !== 'new_releases_discovery' && editingCommand.schedule_hours != null && (
-                  <div className="space-y-2">
-                    <Label>Schedule (Hours)</Label>
-                    <Input value={editingCommand.schedule_hours} disabled />
-                    <p className="text-xs text-muted-foreground">
-                      Runs every {editingCommand.schedule_hours} hours
-                    </p>
-                  </div>
-                )}
-
                 {/* Last Run */}
                 {editingCommand.last_run && (
                   <div className="space-y-2">
@@ -1031,7 +1040,8 @@ export function CommandsPage() {
                   <Button
                     onClick={() =>
                       handleSaveCommand({
-                        schedule_hours: editForm.schedule_hours,
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override ? editForm.schedule_cron : undefined,
                         config_json: {
                           ...(editingCommand.config_json || {}),
                           artists_per_run: editForm.artists_per_run,
@@ -1047,6 +1057,8 @@ export function CommandsPage() {
                   <Button
                     onClick={() =>
                       handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override ? editForm.schedule_cron : undefined,
                         config_json: {
                           ...(editingCommand.config_json || {}),
                           artists_to_query: editForm.artists_to_query ?? 3,
@@ -1055,6 +1067,18 @@ export function CommandsPage() {
                           limit: editForm.limit ?? 5,
                           min_match_score: editForm.min_match_score ?? 0.9,
                         },
+                      })
+                    }
+                  >
+                    Save
+                  </Button>
+                )}
+                {(editingCommand.command_name !== 'new_releases_discovery' && editingCommand.command_name !== 'discovery_lastfm') && (
+                  <Button
+                    onClick={() =>
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override ? editForm.schedule_cron : undefined,
                       })
                     }
                   >

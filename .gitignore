@@ -112,6 +112,9 @@ config.ini
 similar_artists.json
 skipped_artists_no_mbid.json
 
+# Orphaned build output (React builds to frontend/dist)
+app/static/
+
 # Backup files
 *.bak
 *.backup

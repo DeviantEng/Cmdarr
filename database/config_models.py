@@ -74,7 +74,7 @@ class CommandConfig(ConfigBase):
     display_name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     enabled = Column(Boolean, default=False, nullable=False)
-    schedule_hours = Column(Integer, nullable=True)  # NULL means manual only
+    schedule_cron = Column(String(100), nullable=True)  # NULL = use global DEFAULT_SCHEDULE_CRON
     timeout_minutes = Column(Integer, nullable=True)  # Timeout in minutes (NULL = no timeout)
     config_json = Column(JSON, nullable=True)  # Command-specific settings
     command_type = Column(String(50), nullable=True, index=True)  # 'discovery', 'playlist_sync'

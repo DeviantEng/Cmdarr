@@ -202,6 +202,22 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         description="Add artist_name to dismissed_artist_album",
         up_func=migrate_dismissed_artist_name
     ))
+
+    def migrate_scheduler_cron(cursor):
+        """Replace schedule_hours with schedule_cron for cron-only scheduler"""
+        cursor.execute("PRAGMA table_info(command_configs)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if 'schedule_cron' not in cols:
+            cursor.execute("ALTER TABLE command_configs ADD COLUMN schedule_cron VARCHAR(100)")
+        if 'schedule_hours' in cols:
+            cursor.execute("ALTER TABLE command_configs DROP COLUMN schedule_hours")
+
+    runner.add_migration(VersionMigration(
+        version="0.3.2",
+        name="scheduler_cron",
+        description="Replace schedule_hours with schedule_cron for cron-only scheduler",
+        up_func=migrate_scheduler_cron
+    ))
     
     # Add future migrations here for new versions
     # Example:

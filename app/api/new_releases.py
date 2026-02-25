@@ -451,7 +451,7 @@ async def get_new_releases_command_status(db: Session = Depends(get_config_db)):
     return {
         "enabled": row.enabled,
         "config_json": row.config_json,
-        "schedule_hours": row.schedule_hours,
+        "schedule_cron": row.schedule_cron,
     }
 
 

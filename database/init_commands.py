@@ -29,7 +29,6 @@ def init_default_commands():
             'display_name': 'Last.fm Discovery',
             'description': 'Discover similar artists from Last.fm and MusicBrainz for Lidarr import',
             'enabled': False,
-            'schedule_hours': 24,
             'timeout_minutes': 30,
             'command_type': 'discovery',
             'config_json': {
@@ -45,7 +44,6 @@ def init_default_commands():
             'display_name': 'Library Cache Builder',
             'description': 'Builds and maintains library caches for configured music players (helper command)',
             'enabled': False,
-            'schedule_hours': 24,
             'timeout_minutes': 180,
             'command_type': None,
             'config_json': {
@@ -58,7 +56,6 @@ def init_default_commands():
             'display_name': 'Playlist Sync Discovery Maintenance',
             'description': 'Maintains the unified discovery import list by removing stale entries',
             'enabled': False,
-            'schedule_hours': 24,
             'timeout_minutes': 30,
             'command_type': 'discovery',
             'config_json': {
@@ -70,7 +67,6 @@ def init_default_commands():
             'display_name': 'New Releases Discovery',
             'description': 'Scan Lidarr artists for Spotify releases missing from MusicBrainz',
             'enabled': False,
-            'schedule_hours': 1,
             'timeout_minutes': 30,
             'command_type': 'discovery',
             'config_json': {

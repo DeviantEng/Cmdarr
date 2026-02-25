@@ -5,8 +5,7 @@ FastAPI application for Cmdarr configuration and management
 
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
@@ -269,25 +268,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount React frontend in production (if built)
+# React frontend (required - build with: cd frontend && npm run build)
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-frontend_exists = os.path.exists(frontend_dist)
-
-if frontend_exists:
-    # Serve React static assets
-    frontend_assets = os.path.join(frontend_dist, "assets")
-    if os.path.exists(frontend_assets):
-        app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
-
-# Mount legacy static files (for backwards compatibility during transition)
-legacy_static = os.path.join(os.path.dirname(__file__), "..", "static")
-if os.path.exists(legacy_static):
-    app.mount("/static", StaticFiles(directory=legacy_static), name="static")
-
-# Setup templates (for legacy routes during transition)
-templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
-if os.path.exists(templates_dir):
-    templates = Jinja2Templates(directory=templates_dir)
+frontend_assets = os.path.join(frontend_dist, "assets")
+if not os.path.exists(frontend_dist) or not os.path.exists(frontend_assets):
+    raise RuntimeError(
+        "React frontend not built. Run: cd frontend && npm install && npm run build"
+    )
+app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
 
 
 # Health check endpoint (for Docker health checks)
@@ -339,15 +327,6 @@ async def health_check():
         )
 
 
-# Status endpoint (detailed information)
-@app.get("/status", response_class=HTMLResponse)
-async def status_page(request: Request):
-    """Status page with comprehensive system information"""
-    return templates.TemplateResponse("status/index.html", {
-        "request": request,
-        "app_name": "Cmdarr"
-    })
-
 # API endpoint for raw status data
 @app.get("/api/status/raw")
 async def detailed_status_api(db: Session = Depends(get_config_db)):
@@ -389,69 +368,35 @@ async def detailed_status_api(db: Session = Depends(get_config_db)):
         raise HTTPException(status_code=500, detail="Status check failed")
 
 
-# Serve React app for frontend routes (if built)
-if frontend_exists:
-    from fastapi.responses import FileResponse
-    
-    @app.get("/", response_class=HTMLResponse)
-    async def react_app(request: Request):
-        """Serve React app"""
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
-    
-    @app.get("/config", response_class=HTMLResponse)
-    async def react_config(request: Request):
-        """Serve React app for config route"""
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
-    
-    @app.get("/status", response_class=HTMLResponse)
-    async def react_status(request: Request):
-        """Serve React app for status route"""
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
-    
-    @app.get("/import-lists", response_class=HTMLResponse)
-    async def react_import_lists(request: Request):
-        """Serve React app for import-lists route"""
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
+# Serve React app for frontend routes
+@app.get("/", response_class=HTMLResponse)
+async def react_app(request: Request):
+    """Serve React app"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
 
-    @app.get("/new-releases", response_class=HTMLResponse)
-    async def react_new_releases(request: Request):
-        """Serve React app for new-releases route"""
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
-else:
-    # Fallback to legacy Jinja2 templates if React build doesn't exist
-    get_app_logger().warning("React frontend not built, serving legacy templates")
-    
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request):
-        """Main index page - serves commands page"""
-        return templates.TemplateResponse("commands/index.html", {
-            "request": request,
-            "app_name": "Cmdarr"
-        })
 
-    @app.get("/config", response_class=HTMLResponse)
-    async def config_page(request: Request):
-        """Configuration management page"""
-        return templates.TemplateResponse("config/index.html", {
-            "request": request,
-            "app_name": "Cmdarr"
-        })
+@app.get("/config", response_class=HTMLResponse)
+async def react_config(request: Request):
+    """Serve React app for config route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
 
-    @app.get("/commands", response_class=HTMLResponse)
-    async def commands_page(request: Request):
-        """Command management page"""
-        return templates.TemplateResponse("commands/index.html", {
-            "request": request,
-            "app_name": "Cmdarr"
-        })
 
-    @app.get("/import-lists", response_class=HTMLResponse)
-    async def import_lists_page(request: Request):
-        """Import lists page"""
-        return templates.TemplateResponse("import_lists.html", {
-            "request": request,
-            "app_name": "Cmdarr"
-        })
+@app.get("/status", response_class=HTMLResponse)
+async def react_status(request: Request):
+    """Serve React app for status route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+@app.get("/import-lists", response_class=HTMLResponse)
+async def react_import_lists(request: Request):
+    """Serve React app for import-lists route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+@app.get("/new-releases", response_class=HTMLResponse)
+async def react_new_releases(request: Request):
+    """Serve React app for new-releases route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
 # API Routes - Import after logging is configured

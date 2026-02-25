@@ -39,6 +39,7 @@ const categoryGroups: CategoryGroup[] = [
   { name: 'Media Servers', icon: '📺', categories: ['plex', 'jellyfin'] },
   { name: 'Music Management', icon: '🎯', categories: ['lidarr'] },
   { name: 'Performance', icon: '⚡', categories: ['cache', 'library', 'commands'] },
+  { name: 'Scheduler', icon: '🕐', categories: ['scheduler'] },
 ]
 
 export function ConfigPage() {
@@ -287,7 +288,7 @@ export function ConfigPage() {
 
       {/* Tabbed Configuration */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {categoryGroups.map((group) => (
             <TabsTrigger
               key={group.name.toLowerCase()}

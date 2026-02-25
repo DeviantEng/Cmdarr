@@ -63,7 +63,7 @@ class ConfigService:
             
             # MusicBrainz Configuration
             {'key': 'MUSICBRAINZ_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'musicbrainz', 'description': 'Enable MusicBrainz fuzzy matching'},
-            {'key': 'MUSICBRAINZ_RATE_LIMIT', 'default_value': '1.0', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Rate limit in requests per second'},
+            {'key': 'MUSICBRAINZ_RATE_LIMIT', 'default_value': '1.5', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Rate limit in requests per second'},
             {'key': 'MUSICBRAINZ_MAX_RETRIES', 'default_value': '3', 'data_type': 'int', 'category': 'musicbrainz', 'description': 'Maximum retry attempts for rate limit errors'},
             {'key': 'MUSICBRAINZ_RETRY_DELAY', 'default_value': '2.0', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Initial retry delay in seconds (exponential backoff)'},
             {'key': 'MUSICBRAINZ_MIN_SIMILARITY', 'default_value': '0.85', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Minimum similarity score for fuzzy matching'},
@@ -96,7 +96,10 @@ class ConfigService:
             
             # Command Configuration
             {'key': 'COMMAND_CLEANUP_RETENTION', 'default_value': '50', 'data_type': 'int', 'category': 'commands', 'description': 'Number of command executions to keep per command'},
-            {'key': 'MAX_PARALLEL_COMMANDS', 'default_value': '3', 'data_type': 'int', 'category': 'commands', 'description': 'Maximum number of commands that can run in parallel', 'min_value': 1, 'max_value': 10},
+            {'key': 'MAX_PARALLEL_COMMANDS', 'default_value': '1', 'data_type': 'int', 'category': 'commands', 'description': 'Maximum number of commands that can run in parallel', 'min_value': 1, 'max_value': 10},
+            # Scheduler Configuration (cron-based)
+            {'key': 'DEFAULT_SCHEDULE_CRON', 'default_value': '0 3 * * *', 'data_type': 'string', 'category': 'scheduler', 'description': 'Default cron schedule for all commands (e.g. 0 3 * * * = 3 AM daily)'},
+            {'key': 'SCHEDULER_TIMEZONE', 'default_value': '', 'data_type': 'string', 'category': 'scheduler', 'description': 'Timezone for cron schedules (e.g. America/New_York). Empty = use TZ env or UTC'},
             {'key': 'SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS', 'default_value': '300', 'data_type': 'int', 'category': 'commands', 'description': 'Seconds to wait for running commands to complete on shutdown (prevents "Command was running when application restarted")'},
             {'key': 'RESTART_RETRY_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'commands', 'description': 'On startup, automatically retry commands that were interrupted by a restart'},
 

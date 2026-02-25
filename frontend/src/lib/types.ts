@@ -6,7 +6,8 @@ export interface CommandConfig {
   display_name: string
   description?: string
   enabled: boolean
-  schedule_hours?: number
+  schedule_cron?: string | null
+  schedule_override?: boolean
   timeout_minutes?: number
   config_json?: Record<string, any>
   command_type?: string
@@ -51,7 +52,8 @@ export interface ImportListMetric {
 
 export interface CommandUpdateRequest {
   enabled?: boolean
-  schedule_hours?: number
+  schedule_cron?: string
+  schedule_override?: boolean
   timeout_minutes?: number
   config_json?: Record<string, any>
 }

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-02-23
+
+### 🗑️ Alpine.js Frontend Removed
+- **Legacy UI Removed**: All Jinja2/Alpine.js templates and static assets removed
+- **React Only**: Application now requires `frontend/dist`; run `cd frontend && npm run build` before starting
+- **Clear Error**: App fails fast with instructions if frontend not built
+
+### 🕐 Cron-Only Scheduler
+- **Replaced Interval Model**: Removed `schedule_hours`; all commands now use cron expressions
+- **Global Default**: `DEFAULT_SCHEDULE_CRON` (default `0 3 * * *` = 3 AM daily) in Config → Scheduler
+- **Timezone**: `SCHEDULER_TIMEZONE` config (or `TZ` env) for cron interpretation (e.g. `America/New_York`)
+- **Per-Command Override**: Toggle "Override default schedule" in command edit dialog with custom cron
+- **Queue by ID**: When multiple commands are due, queued in order by command id
+- **Concurrency**: `MAX_PARALLEL_COMMANDS` default 1 (configurable); multiple workers process queue
+
+### 🎨 Dark Theme
+- **Softer Dark Mode**: Background changed from black to dark blue (`oklch(18% 0.03 255)`)
+
+### ⚙️ Other
+- **MUSICBRAINZ_RATE_LIMIT**: Default increased 1.0 → 1.5 to reduce rate-limit warnings
+- **README**: Prominent note that `npm run build` is required when running from source
+
 ## [0.3.1] - 2026-02-23
 
 ### 🔒 Security Fixes
