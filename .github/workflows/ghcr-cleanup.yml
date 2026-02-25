@@ -36,14 +36,13 @@ jobs:
         with:
           package-name: cmdarr
           package-type: container
-          min-versions-to-keep: 5
+          min-versions-to-keep: 7
           delete-only-untagged-versions: true
 
       - name: Summary
         run: |
           echo "Cleanup completed for ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           echo "Retention policy:"
-          echo "  - develop: Keep last 5 images"
-          echo "  - latest: Keep last 3 images" 
-          echo "  - SHA-tagged: Keep last 3 images"
-          echo "  - Untagged images: Deleted"
+          echo "  - develop: Keep last 7 images"
+          echo "  - main (release tags v*): Keep all"
+          echo "  - Untagged images: Deleted (except last 7)"

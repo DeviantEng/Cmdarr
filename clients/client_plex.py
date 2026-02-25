@@ -1017,7 +1017,7 @@ class PlexClient(BaseAPIClient):
         
         params = {
             "type": 10,  # Track type
-            "addedAt>>=": cutoff_timestamp  # MediaQuery: >>= is "after"
+            "addedAt>>=": cutoff_timestamp  # Plex API date: >>= (after) returns media added on or after timestamp
         }
 
         try:

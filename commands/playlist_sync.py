@@ -281,99 +281,103 @@ class PlaylistSyncCommand(BaseCommand):
                     'error': 'MusicBrainz is disabled'
                 }
             
-            # Get Lidarr context for filtering
-            discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
-            existing_mbids, existing_names, excluded_mbids = await discovery_utils.get_lidarr_context()
-            
-            # Process each artist
-            artists_added = 0
-            artists_skipped = 0
-            artists_failed = 0
-            added_artists = []
-            skipped_artists = []
-            failed_artists = []
-            new_discoveries = []
-            
-            for artist_name in unique_artists:
-                try:
-                    # Skip if already in Lidarr (by name)
-                    if artist_name.lower() in existing_names:
-                        artists_skipped += 1
-                        skipped_artists.append({
-                            'name': artist_name,
-                            'reason': 'Already in Lidarr'
-                        })
-                        continue
-                    
-                    # Look up MBID in MusicBrainz
-                    mbid_result = await musicbrainz_client.fuzzy_search_artist(artist_name)
-                    
-                    if not mbid_result or not mbid_result.get('mbid'):
-                        self.logger.debug(f"No MBID found for artist: {artist_name}")
-                        artists_skipped += 1
-                        skipped_artists.append({
-                            'name': artist_name,
-                            'reason': 'No MBID found in MusicBrainz'
-                        })
-                        continue
-                    
-                    mbid = mbid_result['mbid']
-                    resolved_name = mbid_result.get('name', artist_name)
-                    
-                    # Skip if MBID is already in Lidarr or excluded
-                    if mbid in existing_mbids or mbid in excluded_mbids:
-                        artists_skipped += 1
-                        skipped_artists.append({
+            try:
+                # Get Lidarr context for filtering
+                discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
+                existing_mbids, existing_names, excluded_mbids = await discovery_utils.get_lidarr_context()
+                
+                # Process each artist
+                artists_added = 0
+                artists_skipped = 0
+                artists_failed = 0
+                added_artists = []
+                skipped_artists = []
+                failed_artists = []
+                new_discoveries = []
+                
+                for artist_name in unique_artists:
+                    try:
+                        # Skip if already in Lidarr (by name)
+                        if artist_name.lower() in existing_names:
+                            artists_skipped += 1
+                            skipped_artists.append({
+                                'name': artist_name,
+                                'reason': 'Already in Lidarr'
+                            })
+                            continue
+                        
+                        # Look up MBID in MusicBrainz
+                        mbid_result = await musicbrainz_client.fuzzy_search_artist(artist_name)
+                        
+                        if not mbid_result or not mbid_result.get('mbid'):
+                            self.logger.debug(f"No MBID found for artist: {artist_name}")
+                            artists_skipped += 1
+                            skipped_artists.append({
+                                'name': artist_name,
+                                'reason': 'No MBID found in MusicBrainz'
+                            })
+                            continue
+                        
+                        mbid = mbid_result['mbid']
+                        resolved_name = mbid_result.get('name', artist_name)
+                        
+                        # Skip if MBID is already in Lidarr or excluded
+                        if mbid in existing_mbids or mbid in excluded_mbids:
+                            artists_skipped += 1
+                            skipped_artists.append({
+                                'name': artist_name,
+                                'resolved_name': resolved_name,
+                                'mbid': mbid,
+                                'reason': 'MBID already in Lidarr or excluded'
+                            })
+                            continue
+                        
+                        # Create artist entry for import list
+                        artist_entry = discovery_utils.create_artist_entry(
+                            mbid=mbid,
+                            name=resolved_name,
+                            source=self.config_json.get('playlist_name', 'unknown'),  # Use playlist name, not command name
+                            dateAdded=datetime.utcnow().strftime('%Y-%m-%d, %H:%M:%S')
+                        )
+                        
+                        new_discoveries.append(artist_entry)
+                        artists_added += 1
+                        added_artists.append({
                             'name': artist_name,
                             'resolved_name': resolved_name,
-                            'mbid': mbid,
-                            'reason': 'MBID already in Lidarr or excluded'
+                            'mbid': mbid
                         })
+                        self.logger.info(f"Discovered artist: {resolved_name} (MBID: {mbid})")
+                        
+                    except Exception as e:
+                        artists_failed += 1
+                        failed_artists.append({
+                            'name': artist_name,
+                            'error': str(e)
+                        })
+                        self.logger.warning(f"Error processing artist {artist_name}: {e}")
                         continue
-                    
-                    # Create artist entry for import list
-                    artist_entry = discovery_utils.create_artist_entry(
-                        mbid=mbid,
-                        name=resolved_name,
-                        source=self.config_json.get('playlist_name', 'unknown'),  # Use playlist name, not command name
-                        dateAdded=datetime.utcnow().strftime('%Y-%m-%d, %H:%M:%S')
-                    )
-                    
-                    new_discoveries.append(artist_entry)
-                    artists_added += 1
-                    added_artists.append({
-                        'name': artist_name,
-                        'resolved_name': resolved_name,
-                        'mbid': mbid
-                    })
-                    self.logger.info(f"Discovered artist: {resolved_name} (MBID: {mbid})")
-                    
-                except Exception as e:
-                    artists_failed += 1
-                    failed_artists.append({
-                        'name': artist_name,
-                        'error': str(e)
-                    })
-                    self.logger.warning(f"Error processing artist {artist_name}: {e}")
-                    continue
-            
-            # Save discovered artists to import list
-            if new_discoveries:
-                await self._save_discovered_artists(new_discoveries)
-            
-            # Log summary
-            self.logger.info(f"Artist discovery completed: {artists_added} added to import list, {artists_skipped} skipped, {artists_failed} failed")
-            
-            # Return detailed statistics
-            return {
-                'total_artists': len(unique_artists),
-                'artists_added': artists_added,
-                'artists_skipped': artists_skipped,
-                'artists_failed': artists_failed,
-                'added_artists': added_artists,
-                'skipped_artists': skipped_artists,
-                'failed_artists': failed_artists
-            }
+                
+                # Save discovered artists to import list
+                if new_discoveries:
+                    await self._save_discovered_artists(new_discoveries)
+                
+                # Log summary
+                self.logger.info(f"Artist discovery completed: {artists_added} added to import list, {artists_skipped} skipped, {artists_failed} failed")
+                
+                # Return detailed statistics
+                return {
+                    'total_artists': len(unique_artists),
+                    'artists_added': artists_added,
+                    'artists_skipped': artists_skipped,
+                    'artists_failed': artists_failed,
+                    'added_artists': added_artists,
+                    'skipped_artists': skipped_artists,
+                    'failed_artists': failed_artists
+                }
+            finally:
+                if musicbrainz_client and hasattr(musicbrainz_client, 'close'):
+                    await musicbrainz_client.close()
             
         except Exception as e:
             self.logger.error(f"Error during artist discovery: {e}")

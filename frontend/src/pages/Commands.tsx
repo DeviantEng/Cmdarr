@@ -60,6 +60,7 @@ export function CommandsPage() {
     artist_cooldown_days?: number
     limit?: number
     min_match_score?: number
+    enable_artist_discovery?: boolean
   }>({})
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([])
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null)
@@ -195,6 +196,7 @@ export function CommandsPage() {
       artist_cooldown_days: typeof cfg.artist_cooldown_days === 'number' ? cfg.artist_cooldown_days : 30,
       limit: typeof cfg.limit === 'number' ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === 'number' ? cfg.min_match_score : 0.9,
+      enable_artist_discovery: !!cfg.enable_artist_discovery,
     })
   }
 
@@ -836,6 +838,27 @@ export function CommandsPage() {
                   </div>
                 )}
 
+                {/* Playlist sync - artist discovery option */}
+                {editingCommand.command_name.startsWith('playlist_sync_') && (
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="edit-enable-artist-discovery">Enable artist discovery</Label>
+                      <div className="text-sm text-muted-foreground">
+                        When tracks fail to match in your library, discover and add artists from those tracks
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="edit-enable-artist-discovery"
+                      checked={editForm.enable_artist_discovery ?? false}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, enable_artist_discovery: e.target.checked }))
+                      }
+                      className="rounded border-input"
+                    />
+                  </div>
+                )}
+
                 {/* Last.fm Discovery - editable fields */}
                 {editingCommand.command_name === 'discovery_lastfm' && (
                   <>
@@ -1086,7 +1109,25 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
-                {(editingCommand.command_name !== 'new_releases_discovery' && editingCommand.command_name !== 'discovery_lastfm') && (
+                {editingCommand.command_name.startsWith('playlist_sync_') && (
+                  <Button
+                    onClick={() =>
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override ? editForm.schedule_cron : undefined,
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                        },
+                      })
+                    }
+                  >
+                    Save
+                  </Button>
+                )}
+                {(editingCommand.command_name !== 'new_releases_discovery' &&
+                  editingCommand.command_name !== 'discovery_lastfm' &&
+                  !editingCommand.command_name.startsWith('playlist_sync_')) && (
                   <Button
                     onClick={() =>
                       handleSaveCommand({

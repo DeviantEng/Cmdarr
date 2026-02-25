@@ -1014,30 +1014,34 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 self.logger.error("MusicBrainz is disabled - cannot discover artists without MBID lookup")
                 return
             
-            discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
-            
-            # Get Lidarr context for filtering
-            self.logger.info("Getting Lidarr context for filtering...")
-            existing_mbids, existing_names, excluded_mbids = await discovery_utils.get_lidarr_context()
-            self.logger.info(f"Lidarr context: {len(existing_mbids)} existing MBIDs, {len(existing_names)} existing names, {len(excluded_mbids)} excluded MBIDs")
-            
-            # Process artists through MusicBrainz
-            artists_without_mbids = [{'name': artist_name} for artist_name in unmatched_artists]
-            self.logger.info(f"Processing {len(artists_without_mbids)} artists through MusicBrainz...")
-            
-            discovered_artists = await discovery_utils.process_artists_through_musicbrainz(
-                artists_without_mbids, existing_mbids, existing_names, excluded_mbids, 
-                f"listenbrainz_playlist_sync_{self.config_json.get('unique_id', 'unknown')}"
-            )
-            
-            self.logger.info(f"MusicBrainz processing returned {len(discovered_artists) if discovered_artists else 0} discovered artists")
-            
-            if discovered_artists:
-                # Save to unified discovery file
-                await self._save_discovered_artists(discovered_artists)
-                self.logger.info(f"Discovered {len(discovered_artists)} new artists for Lidarr import")
-            else:
-                self.logger.info("No new artists discovered (all were already in Lidarr or excluded)")
+            try:
+                discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
+                
+                # Get Lidarr context for filtering
+                self.logger.info("Getting Lidarr context for filtering...")
+                existing_mbids, existing_names, excluded_mbids = await discovery_utils.get_lidarr_context()
+                self.logger.info(f"Lidarr context: {len(existing_mbids)} existing MBIDs, {len(existing_names)} existing names, {len(excluded_mbids)} excluded MBIDs")
+                
+                # Process artists through MusicBrainz
+                artists_without_mbids = [{'name': artist_name} for artist_name in unmatched_artists]
+                self.logger.info(f"Processing {len(artists_without_mbids)} artists through MusicBrainz...")
+                
+                discovered_artists = await discovery_utils.process_artists_through_musicbrainz(
+                    artists_without_mbids, existing_mbids, existing_names, excluded_mbids, 
+                    f"listenbrainz_playlist_sync_{self.config_json.get('unique_id', 'unknown')}"
+                )
+                
+                self.logger.info(f"MusicBrainz processing returned {len(discovered_artists) if discovered_artists else 0} discovered artists")
+                
+                if discovered_artists:
+                    # Save to unified discovery file
+                    await self._save_discovered_artists(discovered_artists)
+                    self.logger.info(f"Discovered {len(discovered_artists)} new artists for Lidarr import")
+                else:
+                    self.logger.info("No new artists discovered (all were already in Lidarr or excluded)")
+            finally:
+                if musicbrainz_client and hasattr(musicbrainz_client, 'close'):
+                    await musicbrainz_client.close()
                 
         except Exception as e:
             self.logger.error(f"Error during artist discovery: {e}", exc_info=True)

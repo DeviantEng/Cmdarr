@@ -162,11 +162,26 @@ class LibraryCacheBuilderCommand(BaseCommand):
                 # Invalidate existing cache
                 self.library_cache_manager.invalidate_cache(target)
             else:
-                # Smart refresh - always run incremental update (36-hour lookback)
+                # Smart refresh - run incremental only if cache is not freshly built
                 existing_cache = self.library_cache_manager.get_library_cache(target)
                 if existing_cache:
                     cache_age_hours = (time.time() - existing_cache.get('built_at', 0)) / 3600
                     ttl_hours = self.get_target_ttl_days(target) * 24
+                    # Skip incremental if cache was just built (< 1h) - avoids redundant work and Plex returning all tracks
+                    if cache_age_hours < 1.0:
+                        self.logger.info(f"Smart refresh for {target}: cache is {cache_age_hours:.1f}h old, skipping incremental (just built)")
+                        cache_data = existing_cache.copy()
+                        cache_data['last_incremental_update'] = time.time()
+                        cache_data['new_tracks_added'] = 0
+                        self.library_cache_manager.set_library_cache(target, cache_data)
+                        return {
+                            'success': True,
+                            'cached': False,
+                            'track_count': cache_data.get('total_tracks', 0),
+                            'new_tracks_added': 0,
+                            'build_time_seconds': 0,
+                            'message': f'Cache fresh, no incremental needed ({cache_data.get("total_tracks", 0):,} tracks)'
+                        }
                     self.logger.info(f"Smart refresh for {target}: cache is {cache_age_hours:.1f}h old (TTL: {ttl_hours}h), running incremental update")
                 else:
                     self.logger.info(f"Smart refresh for {target}: no existing cache, will perform full rebuild")
@@ -256,19 +271,20 @@ class LibraryCacheBuilderCommand(BaseCommand):
                     if recent_tracks:
                         self.logger.info(f"Found {len(recent_tracks)} tracks added in last {lookback_days:.1f} days in {library_name}")
                         
+                        # Build set of existing keys for O(1) lookup (avoids O(n*m) when many recent tracks)
+                        existing_tracks = existing_cache.get('tracks', [])
+                        existing_keys = {t.get('key') for t in existing_tracks if t.get('key')}
+                        
                         # Process each track
                         for track in recent_tracks:
-                            track_key = track.get('key')
+                            track_key = track.get('key') or track.get('ratingKey')
                             if track_key:
-                                # Check if track already exists in cache
-                                existing_tracks = existing_cache.get('tracks', [])
                                 existing_track = None
-                                
-                                # Find existing track by key
-                                for existing in existing_tracks:
-                                    if existing.get('key') == track_key:
-                                        existing_track = existing
-                                        break
+                                if track_key in existing_keys:
+                                    for existing in existing_tracks:
+                                        if existing.get('key') == track_key:
+                                            existing_track = existing
+                                            break
                                 
                                 if not existing_track:
                                     # New track - add to cache
@@ -295,7 +311,7 @@ class LibraryCacheBuilderCommand(BaseCommand):
                 # Add new tracks to existing cache
                 existing_tracks = existing_cache.get('tracks', [])
                 for track in new_tracks:
-                    track_key = track.get('key')
+                    track_key = track.get('key') or track.get('ratingKey')
                     if track_key:
                         # Check if track already exists and update it, or add new
                         found = False
