@@ -54,7 +54,7 @@ class ConfigAdapter:
         
         # MusicBrainz Configuration
         self.MUSICBRAINZ_ENABLED = config_service.get('MUSICBRAINZ_ENABLED', True)
-        self.MUSICBRAINZ_RATE_LIMIT = config_service.get('MUSICBRAINZ_RATE_LIMIT', 1.5)
+        self.MUSICBRAINZ_RATE_LIMIT = config_service.get('MUSICBRAINZ_RATE_LIMIT', 0.8)
         self.MUSICBRAINZ_MIN_SIMILARITY = config_service.get('MUSICBRAINZ_MIN_SIMILARITY', 0.85)
         self.MUSICBRAINZ_USER_AGENT = config_service.get('MUSICBRAINZ_USER_AGENT', 'Cmdarr')
         self.MUSICBRAINZ_CONTACT = config_service.get('MUSICBRAINZ_CONTACT', 'your-email@example.com')

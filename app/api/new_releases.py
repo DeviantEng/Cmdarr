@@ -208,6 +208,10 @@ async def get_new_releases(
                     mb_titles = await musicbrainz_client.get_artist_release_groups(
                         mbid, cache_ttl_days=cache_ttl
                     )
+                    if mb_titles is None:
+                        # API error (e.g. rate limit) - skip artist, don't add to pending
+                        logger.warning(f"Skipping {artist_name}: MusicBrainz fetch failed (rate limit?)")
+                        continue
 
                 new_albums = []
                 for album in albums_result["albums"]:

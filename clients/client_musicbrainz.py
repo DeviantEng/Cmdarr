@@ -199,10 +199,11 @@ class MusicBrainzClient(BaseAPIClient):
 
     async def get_artist_release_groups(
         self, artist_mbid: str, cache_ttl_days: int = None
-    ) -> List[str]:
+    ) -> Optional[List[str]]:
         """
         Get all release group titles for an artist from MusicBrainz (1 API call per 100).
         Used for local comparison - no per-album MB lookups needed.
+        Returns None on error (e.g. rate limit 503) so callers can skip adding to pending.
         """
         cache_key = self._get_release_groups_cache_key(artist_mbid)
         ttl = cache_ttl_days or getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
@@ -225,7 +226,9 @@ class MusicBrainzClient(BaseAPIClient):
                 }
                 response = await self._make_request('release-group', params)
                 if not response:
-                    break
+                    # API error (e.g. 503 rate limit after retries) - don't cache, return None
+                    self.logger.warning(f"MusicBrainz API error for {artist_mbid} (possible rate limit)")
+                    return None
 
                 groups = response.get('release-groups', [])
                 for rg in groups:
@@ -245,7 +248,7 @@ class MusicBrainzClient(BaseAPIClient):
             return titles
         except Exception as e:
             self.logger.debug(f"MusicBrainz release groups for {artist_mbid}: {e}")
-            return []
+            return None
 
     def _get_spotify_url_cache_key(self, spotify_url: str) -> str:
         """Generate cache key for Spotify URL MusicBrainz lookup"""

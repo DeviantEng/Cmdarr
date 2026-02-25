@@ -23,25 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🎨 Dark Theme
 - **Softer Dark Mode**: Background changed from black to dark blue (`oklch(18% 0.03 255)`)
 
-### 🔒 Config & Security
-- **Secrets Obfuscation**: API returns `***` for sensitive config values; Config page masks by default
-- **Show Key Button**: Eye icon to reveal sensitive values for verification (e.g. copy/paste errors)
-
-### 🔌 WebSocket Removed
-- **Streaming Logs Dropped**: WebSocket endpoint and client removed (never fully implemented)
-- **Commands Page**: Manual refresh after run; no real-time updates
-
-### 🛠️ Fixes & Improvements
-- **Uptime Widget**: Fixed status page uptime (was always &lt;1m); now tracks app start time correctly
-- **Command Queue**: When at capacity, new commands are queued instead of failing
-- **Toast Display Names**: Run/queue toasts show friendly names (e.g. `[Deezer] Hard Rock Now -> Plex`) not backend IDs
-- **Kill Execution**: Implemented `kill_execution`; cancels asyncio task (DB shows cancelled; thread may run to completion)
-- **Timezone Handling**: TZ env priority, `tzdata` in requirements for minimal Linux/Docker; fallback to UTC when ZoneInfo fails
-- **Maintenance First**: `playlist_sync_discovery_maintenance` is id 1; runs before playlist syncs if not run in 24h
-- **Job History Refresh**: Manually triggered commands appear in history immediately without page refresh
+### 🎵 MusicBrainz Rate Limiting
+- **MUSICBRAINZ_RATE_LIMIT**: Default 0.8 req/sec (~1.25s between requests); MusicBrainz allows 1/sec per IP
+- **Don't add on rate limit**: When MB API returns 503 (rate limit), skip artist instead of adding to New Releases pending
+- **get_artist_release_groups**: Returns `None` on error so callers can distinguish "fetch failed" from "not in MB"
 
 ### ⚙️ Other
-- **MUSICBRAINZ_RATE_LIMIT**: Default increased 1.0 → 1.5 to reduce rate-limit warnings
 - **README**: Prominent note that `npm run build` is required when running from source
 
 ## [0.3.1] - 2026-02-23

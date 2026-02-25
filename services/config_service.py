@@ -63,7 +63,7 @@ class ConfigService:
             
             # MusicBrainz Configuration
             {'key': 'MUSICBRAINZ_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'musicbrainz', 'description': 'Enable MusicBrainz fuzzy matching'},
-            {'key': 'MUSICBRAINZ_RATE_LIMIT', 'default_value': '1.5', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Rate limit in requests per second'},
+            {'key': 'MUSICBRAINZ_RATE_LIMIT', 'default_value': '0.8', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Max requests per second (MusicBrainz allows 1/sec per IP; 0.8 = ~1.25s between requests)'},
             {'key': 'MUSICBRAINZ_MAX_RETRIES', 'default_value': '3', 'data_type': 'int', 'category': 'musicbrainz', 'description': 'Maximum retry attempts for rate limit errors'},
             {'key': 'MUSICBRAINZ_RETRY_DELAY', 'default_value': '2.0', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Initial retry delay in seconds (exponential backoff)'},
             {'key': 'MUSICBRAINZ_MIN_SIMILARITY', 'default_value': '0.85', 'data_type': 'float', 'category': 'musicbrainz', 'description': 'Minimum similarity score for fuzzy matching'},
