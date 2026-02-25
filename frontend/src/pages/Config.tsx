@@ -51,6 +51,8 @@ export function ConfigPage() {
   const [testingConnectivity, setTestingConnectivity] = useState(false)
   const [connectivityResults, setConnectivityResults] = useState<any[]>([])
   const [showConnectivityDialog, setShowConnectivityDialog] = useState(false)
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({})
 
   useEffect(() => {
     loadConfiguration()
