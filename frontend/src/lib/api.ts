@@ -11,6 +11,7 @@ import type {
   PendingReleasesResponse,
   LidarrArtistSuggestion,
   ImportListMetrics,
+  LibraryCacheStatus,
 } from './types'
 
 class ApiError extends Error {
@@ -216,6 +217,24 @@ class ApiClient {
     timestamp: string
   }> {
     return await this.request('/health')
+  }
+
+  async getCacheStatus(): Promise<{
+    plex: LibraryCacheStatus
+    jellyfin: LibraryCacheStatus
+  }> {
+    return await this.request('/api/status/cache')
+  }
+
+  async refreshLibraryCache(target: 'plex' | 'jellyfin' | 'all' = 'all', forceRebuild = false): Promise<{
+    success: boolean
+    message?: string
+    error?: string
+  }> {
+    return await this.request('/api/commands/library_cache_builder/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ target, force_rebuild: forceRebuild }),
+    })
   }
 
   // New Releases API

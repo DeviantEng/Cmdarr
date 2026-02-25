@@ -169,3 +169,18 @@ export interface LidarrArtistSuggestion {
   spotify_artist_id?: string | null
 }
 
+export interface LibraryCacheStatus {
+  target: string
+  status: string
+  last_generated: number | null
+  size_mb: number
+  object_count: number
+  cache_hits?: number
+  cache_misses?: number
+  hit_rate?: number
+  last_used?: number | null
+  memory_usage_mb?: number
+  message?: string
+  error?: string
+}
+

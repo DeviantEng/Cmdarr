@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Activity, CheckCircle2, XCircle, Clock, Server, RotateCcw } from 'lucide-react'
+import { Activity, CheckCircle2, XCircle, Clock, Server, RotateCcw, Database, RefreshCw, RotateCw } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { StatusInfo } from '@/lib/types'
+import type { StatusInfo, LibraryCacheStatus } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 export function StatusPage() {
   const [status, setStatus] = useState<StatusInfo | null>(null)
   const [health, setHealth] = useState<any>(null)
+  const [cacheStatus, setCacheStatus] = useState<{ plex: LibraryCacheStatus; jellyfin: LibraryCacheStatus } | null>(null)
+  const [cacheActionLoading, setCacheActionLoading] = useState<'refresh' | 'rebuild' | null>(null)
   const [loading, setLoading] = useState(true)
   const [dismissedOpen, setDismissedOpen] = useState(false)
   const [dismissed, setDismissed] = useState<{ id: number; artist_name: string; album_title: string; release_date?: string }[]>([])
@@ -45,17 +47,41 @@ export function StatusPage() {
 
   const loadStatus = async () => {
     try {
-      const [statusData, healthData] = await Promise.all([
+      const [statusData, healthData, cacheData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
+        api.getCacheStatus().catch(() => null),
       ])
       setStatus(statusData)
       setHealth(healthData)
+      setCacheStatus(cacheData)
     } catch (error) {
       toast.error('Failed to load status')
       console.error(error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const formatCacheTime = (ts: number | null) => {
+    if (!ts) return 'Never'
+    return new Date(ts * 1000).toLocaleString()
+  }
+
+  const handleCacheRefresh = async (forceRebuild: boolean) => {
+    setCacheActionLoading(forceRebuild ? 'rebuild' : 'refresh')
+    try {
+      const result = await api.refreshLibraryCache('all', forceRebuild)
+      if (result.success) {
+        toast.success(result.message ?? (forceRebuild ? 'Cache rebuilt' : 'Cache refreshed'))
+        loadStatus()
+      } else {
+        toast.error(result.error ?? 'Cache operation failed')
+      }
+    } catch (err) {
+      toast.error('Cache operation failed')
+    } finally {
+      setCacheActionLoading(null)
     }
   }
 
@@ -185,6 +211,103 @@ export function StatusPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Library Cache */}
+      {cacheStatus && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Library Cache
+                </CardTitle>
+                <CardDescription>
+                  Plex and Jellyfin music library cache stats and controls
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCacheRefresh(false)}
+                  disabled={!!cacheActionLoading}
+                >
+                  <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === 'refresh' ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCacheRefresh(true)}
+                  disabled={!!cacheActionLoading}
+                >
+                  <RotateCw className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === 'rebuild' ? 'animate-spin' : ''}`} />
+                  Force Rebuild
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border p-4">
+                <div className="font-medium capitalize mb-2">Plex</div>
+                <dl className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Objects</dt>
+                    <dd>{cacheStatus.plex.object_count.toLocaleString()}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Last built</dt>
+                    <dd>{formatCacheTime(cacheStatus.plex.last_generated)}</dd>
+                  </div>
+                  {cacheStatus.plex.hit_rate != null && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Hit rate</dt>
+                      <dd>{(cacheStatus.plex.hit_rate * 100).toFixed(1)}%</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd>
+                      <Badge variant={cacheStatus.plex.status === 'Available' ? 'default' : 'secondary'}>
+                        {cacheStatus.plex.status}
+                      </Badge>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="font-medium capitalize mb-2">Jellyfin</div>
+                <dl className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Objects</dt>
+                    <dd>{cacheStatus.jellyfin.object_count.toLocaleString()}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Last built</dt>
+                    <dd>{formatCacheTime(cacheStatus.jellyfin.last_generated)}</dd>
+                  </div>
+                  {cacheStatus.jellyfin.hit_rate != null && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Hit rate</dt>
+                      <dd>{(cacheStatus.jellyfin.hit_rate * 100).toFixed(1)}%</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd>
+                      <Badge variant={cacheStatus.jellyfin.status === 'Available' ? 'default' : 'secondary'}>
+                        {cacheStatus.jellyfin.status}
+                      </Badge>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Dismissed Releases */}

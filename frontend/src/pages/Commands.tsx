@@ -26,11 +26,23 @@ type SortDirection = 'asc' | 'desc'
 
 const BUILTIN_COMMANDS = ['discovery_lastfm', 'library_cache_builder', 'new_releases_discovery', 'playlist_sync_discovery_maintenance']
 
+const VIEW_MODE_KEY = 'cmdarr_commands_view_mode'
+
+function getStoredViewMode(): ViewMode {
+  try {
+    const stored = localStorage.getItem(VIEW_MODE_KEY)
+    if (stored === 'card' || stored === 'list') return stored
+  } catch {
+    /* ignore */
+  }
+  return 'card'
+}
+
 export function CommandsPage() {
   const [commands, setCommands] = useState<CommandConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('card')
+  const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -57,6 +69,14 @@ export function CommandsPage() {
     loadCommands()
     loadExecutions()
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, viewMode)
+    } catch {
+      /* ignore */
+    }
+  }, [viewMode])
 
   const loadExecutions = async () => {
     try {
@@ -802,6 +822,19 @@ export function CommandsPage() {
                     {editingCommand.enabled ? 'Enabled' : 'Disabled'}
                   </Badge>
                 </div>
+
+                {/* Playlist sync - read-only playlist URL */}
+                {editingCommand.command_name.startsWith('playlist_sync_') &&
+                  editingCommand.config_json?.playlist_url && (
+                  <div className="space-y-2">
+                    <Label>Playlist URL</Label>
+                    <Input
+                      value={editingCommand.config_json.playlist_url}
+                      disabled
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                )}
 
                 {/* Last.fm Discovery - editable fields */}
                 {editingCommand.command_name === 'discovery_lastfm' && (

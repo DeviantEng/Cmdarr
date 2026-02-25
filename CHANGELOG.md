@@ -8,52 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.2] - 2026-02-23
 
 ### 🗑️ Alpine.js Frontend Removed
-- **Legacy UI Removed**: All Jinja2/Alpine.js templates and static assets removed
-- **React Only**: Application now requires `frontend/dist`; run `cd frontend && npm run build` before starting
+- **React Only**: All Jinja2/Alpine.js templates removed; app requires `frontend/dist` (run `npm run build` in frontend/)
 - **Clear Error**: App fails fast with instructions if frontend not built
 
 ### 🕐 Cron-Only Scheduler
-- **Replaced Interval Model**: Removed `schedule_hours`; all commands now use cron expressions
-- **Global Default**: `DEFAULT_SCHEDULE_CRON` (default `0 3 * * *` = 3 AM daily) in Config → Scheduler
-- **Timezone**: `SCHEDULER_TIMEZONE` config (or `TZ` env) for cron interpretation (e.g. `America/New_York`)
-- **Per-Command Override**: Toggle "Override default schedule" in command edit dialog with custom cron
-- **Queue by ID**: When multiple commands are due, queued in order by command id
-- **Concurrency**: `MAX_PARALLEL_COMMANDS` default 1 (configurable); multiple workers process queue
+- **Cron-based**: Replaced `schedule_hours`; all commands use cron expressions with global default (`0 3 * * *`) and per-command override
+- **Timezone**: `SCHEDULER_TIMEZONE` or `TZ` env for cron interpretation
+- **Queue & Concurrency**: Commands queued by ID when due; `MAX_PARALLEL_COMMANDS` (default 1) configurable
 
-### 🎨 Dark Theme
-- **Softer Dark Mode**: Background changed from black to dark blue (`oklch(18% 0.03 255)`)
+### 🎨 UI & Config
+- **Dark Theme**: Softer dark mode (dark blue instead of black)
+- **Secrets Obfuscation**: API returns `***` for sensitive config; show-key button to reveal for verification
+- **Library Cache Stats**: Status page shows Plex/Jellyfin cache object count, last built, hit rate; Refresh and Force Rebuild buttons
+- **Playlist URL**: Read-only playlist URL in command edit dialog for external playlist syncs
+- **Commands View**: Card/list view toggle persisted in localStorage
 
-### 🔒 Config & Security
-- **Secrets Obfuscation**: API returns `***` for sensitive config values; Config page masks by default
-- **Show Key Button**: Eye icon to reveal sensitive values for verification (e.g. copy/paste errors)
+### 🎵 Plex & MusicBrainz
+- **Plex API**: Replaced undocumented `/search` with mediaQuery on `/all`; fixed `addedAt>>` to `addedAt>>=`; smaller batches (250)
+- **MusicBrainz**: Rate limit 0.8 req/sec; hardcoded User-Agent; skip artist on 503 instead of adding to pending
 
-### 🔌 WebSocket Removed
-- **Streaming Logs Dropped**: WebSocket endpoint and client removed (never fully implemented)
-- **Commands Page**: Manual refresh after run; no real-time updates
-
-### 🎵 MusicBrainz Rate Limiting
-- **MUSICBRAINZ_RATE_LIMIT**: Default 0.8 req/sec (~1.25s between requests); MusicBrainz allows 1/sec per IP
-- **Don't add on rate limit**: When MB API returns 503 (rate limit), skip artist instead of adding to New Releases pending
-- **get_artist_release_groups**: Returns `None` on error so callers can distinguish "fetch failed" from "not in MB"
-- **Hardcoded User-Agent**: `Cmdarr/{version} (https://github.com/DeviantEng/Cmdarr)`; removed `MUSICBRAINZ_USER_AGENT` and `MUSICBRAINZ_CONTACT` config
-
-### 🎵 Plex API Rework (official API alignment)
-- **Track search**: Replaced undocumented `/search` with mediaQuery on `/all` (type=10, title, grandparentTitle)
-- **Recently added**: Fixed `addedAt>>` to `addedAt>>=` per Plex mediaQuery spec
-- **Library fetch**: Smaller batches (250 vs 1000), includeFields to reduce payload
-- **Timeout**: Reverted to 30s default; detailed logging on timeout for diagnostics
-
-### 🛠️ Fixes & Improvements
-- **Uptime Widget**: Fixed status page uptime (was always &lt;1m); now tracks app start time correctly
-- **Command Queue**: When at capacity, new commands are queued instead of failing
-- **Toast Display Names**: Run/queue toasts show friendly names (e.g. `[Deezer] Hard Rock Now -> Plex`) not backend IDs
-- **Kill Execution**: Implemented `kill_execution`; cancels asyncio task (DB shows cancelled; thread may run to completion)
-- **Timezone Handling**: TZ env priority, `tzdata` in requirements for minimal Linux/Docker; fallback to UTC when ZoneInfo fails
-- **Maintenance First**: `playlist_sync_discovery_maintenance` is id 1; runs before playlist syncs if not run in 24h
-- **Job History Refresh**: Manually triggered commands appear in history immediately without page refresh
-
-### ⚙️ Other
-- **README**: Prominent note that `npm run build` is required when running from source
+### 🔧 Fixes & Improvements
+- **Uptime Widget**: Fixed status page uptime (was always &lt;1m)
+- **Command Queue**: Queued instead of failing when at capacity
+- **Kill Execution**: Implemented `kill_execution`; cancels asyncio task
+- **WebSocket Removed**: Streaming logs dropped; manual refresh after run
 
 ## [0.3.1] - 2026-02-23
 
