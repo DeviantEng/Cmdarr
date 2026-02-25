@@ -54,7 +54,6 @@ services:
       - LIDARR_URL=http://lidarr:8686
       - LIDARR_API_KEY=your_lidarr_api_key
       - LASTFM_API_KEY=your_lastfm_api_key
-      - MUSICBRAINZ_CONTACT=your-email@example.com
       # Optional: Additional services
       - LISTENBRAINZ_TOKEN=your_listenbrainz_token
       - LISTENBRAINZ_USERNAME=your_username
@@ -112,7 +111,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
 - **Advanced Filtering**: Filter commands by status (enabled/disabled) and type (discovery/playlist sync)
 - **Sortable Columns**: Sort by name, schedule, last run, or next run with visual indicators
-- **Execution Monitoring**: View command status and job history; refresh after manual run
+- **Real-time Updates**: Live status updates and command execution monitoring
 - **Manual Cache Refresh**: UI buttons for on-demand cache rebuilding
 - **Execution Tracking**: See whether commands were triggered manually or by scheduler
 - **Configuration Validation**: Dropdown support with current value display
@@ -154,7 +153,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - Filters out live recordings, compilations, and guest appearances
 - One-click links to Lidarr, MusicBrainz artist page, or Harmony to add the album
 
-**Requirements**: Lidarr, Spotify credentials, MusicBrainz contact  
+**Requirements**: Lidarr, Spotify credentials  
 **Configuration**: `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources → Spotify
 
 ### Playlist Sync Commands
@@ -204,7 +203,6 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 - **Lidarr API Key**: Found in Lidarr Settings → General → Security
 - **Last.fm API Key**: Register at [Last.fm API](https://www.last.fm/api/account/create)
-- **MusicBrainz Contact**: Your email address (required by MusicBrainz API)
 - **ListenBrainz Token**: Get from [ListenBrainz Profile](https://listenbrainz.org/profile/) (for playlist features)
 - **Plex Token**: Get from [Plex Support Guide](https://support.plex.tv/articles/204059436/) (for playlist sync)
 - **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
@@ -232,7 +230,6 @@ All configuration can be set via environment variables:
 LIDARR_URL=http://lidarr:8686
 LIDARR_API_KEY=your_lidarr_api_key
 LASTFM_API_KEY=your_lastfm_api_key
-MUSICBRAINZ_CONTACT=your-email@example.com
 
 # Optional Services
 LISTENBRAINZ_TOKEN=your_listenbrainz_token
@@ -251,7 +248,7 @@ LIBRARY_CACHE_MEMORY_LIMIT_MB=512
 LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true
 
-# Scheduler (cron-based; TZ env takes priority over SCHEDULER_TIMEZONE)
+# Scheduler (cron-based; TZ also used for schedule interpretation)
 DEFAULT_SCHEDULE_CRON="0 3 * * *"
 SCHEDULER_TIMEZONE=America/New_York
 
@@ -260,6 +257,10 @@ RESTART_RETRY_ENABLED=true
 
 # Graceful shutdown (wait for running commands before exit)
 SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
+
+# Plex (large libraries: increase library search timeout)
+PLEX_TIMEOUT=60
+PLEX_LIBRARY_SEARCH_TIMEOUT=180
 
 # Rate limiting optimization
 LASTFM_RATE_LIMIT=8.0
@@ -285,7 +286,7 @@ LOG_RETENTION_DAYS=7
 docker logs cmdarr | grep -i "lidarr"
 ```
 
-**Playlist sync timeouts**: Enable library cache optimization
+**Playlist sync timeouts**: Enable library cache optimization. For very large libraries (500k+ tracks), increase `PLEX_LIBRARY_SEARCH_TIMEOUT` (default 180s) to 300 or higher in Config → Plex.
 ```bash
 # Check if library cache is enabled
 curl http://localhost:8080/api/config/ | grep -i "library_cache"
@@ -494,7 +495,7 @@ source .venv/bin/activate
 # On Windows:
 .venv\Scripts\activate
 
-# Install dependencies (includes tzdata for timezone support on minimal Linux)
+# Install dependencies
 pip install -r requirements.txt
 
 # Build the React frontend (required - app will not start without this)
@@ -504,7 +505,6 @@ cd frontend && npm install && npm run build && cd ..
 export LIDARR_URL=http://localhost:8686
 export LIDARR_API_KEY=your_lidarr_api_key
 export LASTFM_API_KEY=your_lastfm_api_key
-export MUSICBRAINZ_CONTACT=your-email@example.com
 
 # Run the FastAPI application
 python run_fastapi.py
@@ -521,7 +521,7 @@ For frontend development with hot reload, run `npm run dev` in `frontend/` and a
   - `/import_lists/metrics` - Metrics for import list files
 - **New Releases**: `/api/new-releases/` - Pending releases, dismiss, recheck, run-batch, scan-artist, lidarr-artists, sync, command-status, dismissed, restore
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
-- **Configuration API**: `/api/config/` - RESTful configuration management (sensitive values obfuscated; use `?reveal=true` on details for verification)
+- **Configuration API**: `/api/config/` - RESTful configuration management
 - **Commands API**: `/api/commands/` - Command management and execution
 
 ### Debug Mode

@@ -9,14 +9,16 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlencode
 from difflib import SequenceMatcher
 from .client_base import BaseAPIClient
+from __version__ import __version__
+
+# Hardcoded per MusicBrainz API guidelines: AppName/Version (contact)
+# Parentheses required; project URL for maintainer contact
+MUSICBRAINZ_USER_AGENT = f"Cmdarr/{__version__} (https://github.com/DeviantEng/Cmdarr)"
 
 
 class MusicBrainzClient(BaseAPIClient):
     def __init__(self, config):
-        # User agent is required by MusicBrainz
-        headers = {
-            'User-Agent': f'{config.MUSICBRAINZ_USER_AGENT}/1.0 ({config.MUSICBRAINZ_CONTACT})'
-        }
+        headers = {'User-Agent': MUSICBRAINZ_USER_AGENT}
         
         super().__init__(
             config=config,
