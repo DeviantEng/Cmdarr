@@ -23,7 +23,20 @@ logger = logging.getLogger('cmdarr.init_commands')
 def init_default_commands():
     """Initialize default command configurations"""
     
+    # Order matters: ids are assigned by insertion order. Maintenance first (id 1) so it runs
+    # before playlist syncs when the scheduler sorts due commands by id.
     default_commands = [
+        {
+            'command_name': 'playlist_sync_discovery_maintenance',
+            'display_name': 'Playlist Sync Discovery Maintenance',
+            'description': 'Maintains the unified discovery import list by removing stale entries',
+            'enabled': True,
+            'timeout_minutes': 30,
+            'command_type': 'discovery',
+            'config_json': {
+                'age_threshold_days': 30
+            }
+        },
         {
             'command_name': 'discovery_lastfm',
             'display_name': 'Last.fm Discovery',
@@ -49,17 +62,6 @@ def init_default_commands():
             'config_json': {
                 'plex_enabled': False,
                 'jellyfin_enabled': False
-            }
-        },
-        {
-            'command_name': 'playlist_sync_discovery_maintenance',
-            'display_name': 'Playlist Sync Discovery Maintenance',
-            'description': 'Maintains the unified discovery import list by removing stale entries',
-            'enabled': False,
-            'timeout_minutes': 30,
-            'command_type': 'discovery',
-            'config_json': {
-                'age_threshold_days': 30
             }
         },
         {

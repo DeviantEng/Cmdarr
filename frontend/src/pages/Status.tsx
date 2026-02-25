@@ -274,13 +274,6 @@ export function StatusPage() {
               </div>
               <Badge variant="outline">REST</Badge>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="font-medium">WebSocket</div>
-                <div className="text-sm text-muted-foreground">/ws</div>
-              </div>
-              <Badge variant="outline">WS</Badge>
-            </div>
           </div>
         </CardContent>
       </Card>

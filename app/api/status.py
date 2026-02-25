@@ -32,7 +32,7 @@ async def get_system_status():
             "app_name": "Cmdarr",
             "version": __version__,
             "uptime_seconds": time.time() - psutil.Process().create_time(),
-            "timestamp": datetime.utcnow().isoformat() + 'Z' + 'Z',
+            "timestamp": datetime.utcnow().isoformat() + 'Z',
             "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
             "platform": os.name
         }

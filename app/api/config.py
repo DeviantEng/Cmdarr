@@ -42,11 +42,10 @@ class ConfigSettingResponse(BaseModel):
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_all_config():
-    """Get all configuration settings"""
+    """Get all configuration settings (sensitive values obfuscated)"""
     try:
-        settings = config_service.get_all_settings()
-        # Filter out hidden settings
-        filtered_settings = config_service.get_visible_settings()
+        # Filter out hidden settings and obfuscate secrets for API safety
+        filtered_settings = config_service.get_visible_settings(obfuscate_sensitive=True)
         return {"settings": filtered_settings}
     except Exception as e:
         get_config_logger().error(f"Failed to get all configuration: {e}")
@@ -55,11 +54,12 @@ async def get_all_config():
 
 @router.get("/category/{category}", response_model=Dict[str, Any])
 async def get_config_by_category(category: str):
-    """Get configuration settings by category"""
+    """Get configuration settings by category (sensitive values obfuscated)"""
     try:
-        settings = config_service.get_all_by_category(category)
-        # Filter out hidden settings
-        filtered_settings = config_service.get_visible_settings_by_category(category)
+        # Filter out hidden settings and obfuscate secrets for API safety
+        filtered_settings = config_service.get_visible_settings_by_category(
+            category, obfuscate_sensitive=True
+        )
         return {"category": category, "settings": filtered_settings}
     except Exception as e:
         get_config_logger().error(f"Failed to get configuration for category {category}: {e}")
@@ -67,12 +67,16 @@ async def get_config_by_category(category: str):
 
 
 @router.get("/{key}")
-async def get_config_setting(key: str):
-    """Get a specific configuration setting"""
+async def get_config_setting(key: str, db: Session = Depends(get_config_db)):
+    """Get a specific configuration setting (sensitive values obfuscated)"""
     try:
-        value = config_service.get(key)
-        if value is None:
+        setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
+        if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
+        
+        value = config_service.get(key)
+        if value is not None and setting.is_sensitive:
+            value = "***"
         
         return {"key": key, "value": value}
     except HTTPException:
@@ -90,6 +94,10 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
         if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
+        
+        # For sensitive settings, "***" means "leave unchanged" (user didn't reveal the value)
+        if setting.is_sensitive and request.value in ("***", ""):
+            return {"key": key, "value": "***", "message": "Sensitive value unchanged"}
         
         # Update setting
         success = config_service.set(key, request.value, request.data_type)
@@ -170,6 +178,10 @@ async def get_config_setting_details(key: str, db: Session = Depends(get_config_
             except (json.JSONDecodeError, TypeError):
                 options = None
         
+        effective_value = setting.get_effective_value()
+        if setting.is_sensitive and effective_value:
+            effective_value = "***"
+        
         return ConfigSettingResponse(
             key=setting.key,
             value=setting.value,
@@ -179,7 +191,7 @@ async def get_config_setting_details(key: str, db: Session = Depends(get_config_
             description=setting.description,
             is_sensitive=setting.is_sensitive,
             is_required=setting.is_required,
-            effective_value=setting.get_effective_value(),
+            effective_value=effective_value,
             options=options
         )
     except HTTPException:

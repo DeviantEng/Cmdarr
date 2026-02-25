@@ -5,7 +5,7 @@ Background scheduler service for automatic command execution (cron-based)
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Set, Optional, Any, List, Tuple
 from zoneinfo import ZoneInfo
 
@@ -134,6 +134,9 @@ class CommandScheduler:
                 self.logger.error(f"Scheduler loop error: {e}")
                 await asyncio.sleep(self.check_interval)
 
+    MAINTENANCE_COMMAND = 'playlist_sync_discovery_maintenance'
+    MAINTENANCE_PREREQ_HOURS = 24  # Run maintenance before playlist sync if not run in last 24h
+
     async def _check_and_execute_commands(self):
         """Check all enabled commands and queue those due to run (ordered by command id)."""
         try:
@@ -157,7 +160,39 @@ class CommandScheduler:
                     if next_run and now_utc >= next_run:
                         due_commands.append((command.id, command.command_name))
 
-                # Queue in order by command id
+                # If any playlist sync is due, ensure maintenance runs first if enabled and not run in 24h
+                has_playlist_sync_due = any(
+                    name.startswith('playlist_sync_') and name != self.MAINTENANCE_COMMAND
+                    for _, name in due_commands
+                )
+                if has_playlist_sync_due:
+                    maintenance = next(
+                        (c for c in enabled_commands if c.command_name == self.MAINTENANCE_COMMAND),
+                        None
+                    )
+                    if maintenance:
+                        last_run = maintenance.last_run
+                        cutoff = now_utc - timedelta(hours=self.MAINTENANCE_PREREQ_HOURS)
+                        if last_run is None:
+                            needs_maintenance = True
+                        else:
+                            last_run_utc = (
+                                last_run.astimezone(ZoneInfo('UTC'))
+                                if last_run.tzinfo
+                                else last_run.replace(tzinfo=ZoneInfo('UTC'))
+                            )
+                            needs_maintenance = last_run_utc < cutoff
+                        if needs_maintenance:
+                            already_queued = any(name == self.MAINTENANCE_COMMAND for _, name in due_commands)
+                            if not already_queued:
+                                due_commands.insert(0, (maintenance.id, maintenance.command_name))
+                                self.logger.info(
+                                    f"Queuing {self.MAINTENANCE_COMMAND} before playlist sync "
+                                    f"(last run {last_run or 'never'})"
+                                )
+
+                # Sort by id and queue in order
+                due_commands.sort(key=lambda x: x[0])
                 for cmd_id, cmd_name in due_commands:
                     await self._queue_command_execution(cmd_id, cmd_name)
 

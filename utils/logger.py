@@ -19,7 +19,7 @@ class HealthCheckFilter(logging.Filter):
         # Suppress health check, status endpoint, static assets, and WebSocket connections
         if hasattr(record, 'getMessage'):
             message = record.getMessage()
-            if any(endpoint in message for endpoint in ['/health', '/status', '/static/', '/ws']):
+            if any(endpoint in message for endpoint in ['/health', '/status', '/static/']):
                 return False
         return True
 
@@ -43,7 +43,7 @@ class HTTPAccessFilter(logging.Filter):
                         # For successful responses (2xx), check if it's a routine request
                         if 200 <= status_code < 300:
                             # Check if this is a routine request that should be DEBUG level
-                            if any(routine in message for routine in ['/health', '/status', '/static/', 'GET / ', '/ws']):
+                            if any(routine in message for routine in ['/health', '/status', '/static/', 'GET / ']):
                                 record.levelno = logging.DEBUG
                                 record.levelname = 'DEBUG'
                             else:
@@ -83,7 +83,7 @@ class UvicornHealthCheckFilter(logging.Filter):
                 # Downgrade health check requests to DEBUG
                 record.levelno = logging.DEBUG
                 record.levelname = 'DEBUG'
-            elif any(endpoint in message for endpoint in ['/status HTTP/', '/static/', '/ws']):
+            elif any(endpoint in message for endpoint in ['/status HTTP/', '/static/']):
                 # Also downgrade other routine endpoints
                 record.levelno = logging.DEBUG
                 record.levelname = 'DEBUG'

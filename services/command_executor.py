@@ -26,7 +26,7 @@ class CommandExecutor:
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cmdarr-cmd")
         self.running_commands: Dict[str, asyncio.Task] = {}
         self.command_classes = None
-        self.max_parallel_commands = 3  # Default, will be updated from config
+        self.max_parallel_commands = 1  # Default, will be updated from config
     
     def _ensure_initialized(self):
         """Lazy initialization to avoid circular imports"""
@@ -38,7 +38,7 @@ class CommandExecutor:
             
         # Update max parallel commands from config
         from services.config_service import config_service
-        self.max_parallel_commands = config_service.get_int('MAX_PARALLEL_COMMANDS', 3)
+        self.max_parallel_commands = config_service.get_int('MAX_PARALLEL_COMMANDS', 1)
         
         # Import command classes
         from commands.discovery_lastfm import DiscoveryLastfmCommand

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { LayoutGrid, List, Play, Pencil, Trash2, MoreVertical, Plus, Filter, Search, ChevronDown, ChevronUp, X, Trash } from 'lucide-react'
 import { api } from '@/lib/api'
-import { wsClient } from '@/lib/websocket'
 import type { CommandConfig, CommandExecution } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -57,27 +56,6 @@ export function CommandsPage() {
   useEffect(() => {
     loadCommands()
     loadExecutions()
-
-    // Connect to WebSocket for real-time updates (non-blocking)
-    try {
-      wsClient.connect()
-      const unsubscribe = wsClient.subscribe((message) => {
-        if (message.type === 'command_update' || message.type === 'execution_update') {
-          loadCommands()
-          loadExecutions()
-        }
-      })
-
-      return () => {
-        try {
-          unsubscribe()
-        } catch (e) {
-          console.warn('Error unsubscribing from WebSocket:', e)
-        }
-      }
-    } catch (e) {
-      console.warn('WebSocket connection failed, continuing without real-time updates:', e)
-    }
   }, [])
 
   const loadExecutions = async () => {

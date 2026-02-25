@@ -3,7 +3,7 @@
 FastAPI application for Cmdarr configuration and management
 """
 
-from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,8 +17,6 @@ from __version__ import __version__
 from database.database import get_config_db, get_database_manager
 from services.config_service import config_service
 from utils.logger import CmdarrLogger, setup_application_logging, get_logger
-from app.websocket import websocket_endpoint
-
 # Ensure logging is configured when app is loaded (e.g. via uvicorn app.main:app)
 # run_fastapi.py also calls this; CmdarrLogger handles re-init safely
 if not CmdarrLogger._configured:
@@ -135,6 +133,7 @@ def trigger_immediate_cache_build():
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
+    app.state.start_time = time.time()
     get_app_logger().info("Starting Cmdarr FastAPI application")
     
     # Initialize database
@@ -409,12 +408,6 @@ app.include_router(import_lists.router, prefix="/import_lists", tags=["import_li
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 
-
-# WebSocket endpoint for real-time updates
-@app.websocket("/ws")
-async def websocket_route(websocket: WebSocket, client_id: str = None):
-    """WebSocket endpoint for real-time command updates"""
-    await websocket_endpoint(websocket, client_id)
 
 
 

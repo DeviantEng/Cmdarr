@@ -245,8 +245,9 @@ class ConfigService:
             self.logger.error(f"Failed to get settings for category {category}: {e}")
             return {}
     
-    def get_visible_settings(self) -> Dict[str, Any]:
-        """Get all visible (non-hidden) configuration settings"""
+    def get_visible_settings(self, obfuscate_sensitive: bool = False) -> Dict[str, Any]:
+        """Get all visible (non-hidden) configuration settings.
+        When obfuscate_sensitive=True, sensitive values are replaced with '***' for API responses."""
         try:
             manager = get_database_manager()
             session = manager.get_session_sync()
@@ -254,16 +255,21 @@ class ConfigService:
                 settings = session.query(ConfigSetting).filter(ConfigSetting.is_hidden == False).all()
                 result = {}
                 for setting in settings:
-                    result[setting.key] = setting.get_effective_value()
+                    value = setting.get_effective_value()
+                    if obfuscate_sensitive and setting.is_sensitive and value:
+                        result[setting.key] = "***"
+                    else:
+                        result[setting.key] = value
                 return result
             finally:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to get visible settings: {e}")
             return {}
-    
-    def get_visible_settings_by_category(self, category: str) -> Dict[str, Any]:
-        """Get visible settings by category"""
+
+    def get_visible_settings_by_category(self, category: str, obfuscate_sensitive: bool = False) -> Dict[str, Any]:
+        """Get visible settings by category.
+        When obfuscate_sensitive=True, sensitive values are replaced with '***' for API responses."""
         try:
             manager = get_database_manager()
             session = manager.get_session_sync()
@@ -274,7 +280,11 @@ class ConfigService:
                 ).all()
                 result = {}
                 for setting in settings:
-                    result[setting.key] = setting.get_effective_value()
+                    value = setting.get_effective_value()
+                    if obfuscate_sensitive and setting.is_sensitive and value:
+                        result[setting.key] = "***"
+                    else:
+                        result[setting.key] = value
                 return result
             finally:
                 session.close()
