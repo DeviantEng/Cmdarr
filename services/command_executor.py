@@ -25,6 +25,7 @@ class CommandExecutor:
         self.config = None
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cmdarr-cmd")
         self.running_commands: Dict[str, asyncio.Task] = {}
+        self._execution_id_to_task: Dict[int, asyncio.Task] = {}  # For kill_execution
         self.command_classes = None
         self.max_parallel_commands = 1  # Default, will be updated from config
     
@@ -83,12 +84,16 @@ class CommandExecutor:
         """
         self._ensure_initialized()
         
-        # Check parallel command limit
+        # When at capacity, queue for later instead of failing
         if len(self.running_commands) >= self.max_parallel_commands:
+            if not hasattr(self, '_pending_queue') or self._pending_queue is None:
+                self._pending_queue = asyncio.Queue()
+            await self._pending_queue.put((command_name, config_override, triggered_by))
+            self.logger.info(f"Command {command_name} queued (at capacity)")
             return {
-                'success': False,
-                'error': f'Maximum parallel commands limit reached ({self.max_parallel_commands}). Please wait for other commands to complete.',
-                'execution_id': None
+                'success': True,
+                'execution_id': None,
+                'message': f'Command {command_name} queued (will run when a slot is available)'
             }
         
         # Check in-memory running commands
@@ -127,6 +132,7 @@ class CommandExecutor:
         # Add execution_id to task for kill functionality
         task.execution_id = execution_id
         self.running_commands[command_name] = task
+        self._execution_id_to_task[execution_id] = task
         
         return {
             'success': True,
@@ -296,7 +302,20 @@ class CommandExecutor:
         finally:
             # Remove from running commands
             if command_name in self.running_commands:
-                del self.running_commands[command_name]
+                task = self.running_commands.pop(command_name)
+                self._execution_id_to_task.pop(getattr(task, 'execution_id', None), None)
+            # Process next queued command if any
+            if hasattr(self, '_pending_queue') and self._pending_queue is not None:
+                if len(self.running_commands) < self.max_parallel_commands:
+                    try:
+                        next_cmd, next_override, next_triggered = self._pending_queue.get_nowait()
+                        asyncio.create_task(
+                            self.execute_command(next_cmd, next_override, next_triggered)
+                        )
+                    except asyncio.QueueEmpty:
+                        pass
+                    except Exception as e:
+                        self.logger.warning(f"Failed to start queued command: {e}")
     
     def _run_sync_command(self, command) -> bool:
         """Run a synchronous command (wrapper for thread pool)"""
@@ -541,6 +560,21 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to update execution record: {e}")
+    
+    def kill_execution(self, execution_id: int) -> bool:
+        """
+        Cancel a running command execution by cancelling its asyncio task.
+        Returns True if the task was found and cancelled, False otherwise.
+        Note: The underlying thread may continue until it checks for cancellation;
+        the DB is updated by the API before this is called.
+        """
+        self._ensure_initialized()
+        task = self._execution_id_to_task.get(execution_id)
+        if task and not task.done():
+            task.cancel()
+            self.logger.info(f"Cancelled execution {execution_id}")
+            return True
+        return False
     
     async def cleanup_stuck_executions(self, max_duration_hours: int = 2):
         """Clean up executions that have been running too long"""

@@ -133,10 +133,11 @@ export function CommandsPage() {
     }
   }
 
-  const handleExecute = async (commandName: string) => {
+  const handleExecute = async (command: CommandConfig) => {
     try {
-      await api.executeCommand(commandName, { triggered_by: 'manual' })
-      toast.success(`Command "${commandName}" started`)
+      const result = await api.executeCommand(command.command_name, { triggered_by: 'manual' })
+      const displayName = command.display_name || command.command_name
+      toast.success(result?.message || `Command "${displayName}" started`)
       loadCommands()
       loadExecutions()
     } catch (error) {
@@ -432,7 +433,7 @@ export function CommandsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleExecute(command.command_name)}>
+                      <DropdownMenuItem onClick={() => handleExecute(command)}>
                         <Play className="mr-2 h-4 w-4" />
                         Run Now
                       </DropdownMenuItem>
@@ -532,7 +533,7 @@ export function CommandsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleExecute(command.command_name)}>
+                          <DropdownMenuItem onClick={() => handleExecute(command)}>
                             <Play className="mr-2 h-4 w-4" />
                             Run Now
                           </DropdownMenuItem>

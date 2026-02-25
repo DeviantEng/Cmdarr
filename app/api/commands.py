@@ -30,11 +30,8 @@ def utc_datetime_serializer(dt: Optional[datetime]) -> Optional[str]:
 def _get_next_run_for_command(command: CommandConfig) -> Optional[datetime]:
     """Calculate next run time for command using cron (global or per-command override)."""
     from services.scheduler import calculate_next_run_cron
-    from zoneinfo import ZoneInfo
-    import os
-    from services.config_service import config_service
-    tz_str = config_service.get('SCHEDULER_TIMEZONE') or os.environ.get('TZ') or 'UTC'
-    tz = ZoneInfo(tz_str.strip() if tz_str and tz_str.strip() else 'UTC')
+    from utils.timezone import get_scheduler_timezone
+    tz = get_scheduler_timezone()
     return calculate_next_run_cron(command, tz)
 
 
@@ -223,8 +220,15 @@ async def execute_command(
         result = await command_executor.execute_command(command_name, None, request.triggered_by)
         
         if result['success']:
+            # Use display_name for user-facing message
+            display_name = command.display_name or command_name
+            msg = result['message']
+            if 'started successfully' in msg:
+                msg = f'Command "{display_name}" started'
+            elif 'queued' in msg:
+                msg = f'Command "{display_name}" queued (will run when a slot is available)'
             return {
-                "message": result['message'],
+                "message": msg,
                 "execution_id": result['execution_id']
             }
         else:

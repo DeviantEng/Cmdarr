@@ -5,9 +5,8 @@ Background scheduler service for automatic command execution (cron-based)
 
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Set, Optional, Any, List, Tuple
-from zoneinfo import ZoneInfo
 
 from croniter import croniter
 from database.database import get_database_manager
@@ -15,26 +14,16 @@ from database.config_models import CommandConfig
 from services.command_executor import command_executor
 from services.config_service import config_service
 from utils.logger import get_logger
+from utils.timezone import get_scheduler_timezone as _get_scheduler_timezone, get_utc_now
 
 
-def _get_scheduler_timezone() -> ZoneInfo:
-    """Get timezone for cron schedules. Uses SCHEDULER_TIMEZONE, then TZ env, else UTC."""
-    tz_str = config_service.get('SCHEDULER_TIMEZONE') or os.environ.get('TZ') or 'UTC'
-    if not tz_str or not tz_str.strip():
-        return ZoneInfo('UTC')
-    try:
-        return ZoneInfo(tz_str.strip())
-    except Exception:
-        return ZoneInfo('UTC')
-
-
-def _get_next_run_cron(cron_expr: str, tz: ZoneInfo) -> Optional[datetime]:
+def _get_next_run_cron(cron_expr: str, tz) -> Optional[datetime]:
     """Get next run time from cron expression. Returns timezone-aware datetime in UTC."""
     try:
         now = datetime.now(tz)
         itr = croniter(cron_expr, now)
         next_local = itr.get_next(datetime)
-        return next_local.astimezone(ZoneInfo('UTC'))
+        return next_local.astimezone(timezone.utc)
     except Exception:
         return None
 
@@ -47,7 +36,7 @@ def get_effective_cron(command: CommandConfig) -> Optional[str]:
     return default.strip() if default else '0 3 * * *'
 
 
-def calculate_next_run_cron(command: CommandConfig, tz: ZoneInfo) -> Optional[datetime]:
+def calculate_next_run_cron(command: CommandConfig, tz) -> Optional[datetime]:
     """Calculate next run time for command using cron. Returns UTC datetime."""
     cron_expr = get_effective_cron(command)
     if not cron_expr:
@@ -148,7 +137,7 @@ class CommandScheduler:
                 ).order_by(CommandConfig.id).all()
 
                 tz = _get_scheduler_timezone()
-                now_utc = datetime.now(ZoneInfo('UTC'))
+                now_utc = get_utc_now()
 
                 due_commands: List[Tuple[int, str]] = []  # (id, command_name)
 
@@ -176,11 +165,11 @@ class CommandScheduler:
                         if last_run is None:
                             needs_maintenance = True
                         else:
-                            last_run_utc = (
-                                last_run.astimezone(ZoneInfo('UTC'))
-                                if last_run.tzinfo
-                                else last_run.replace(tzinfo=ZoneInfo('UTC'))
-                            )
+                        last_run_utc = (
+                            last_run.astimezone(timezone.utc)
+                            if last_run.tzinfo
+                            else last_run.replace(tzinfo=timezone.utc)
+                        )
                             needs_maintenance = last_run_utc < cutoff
                         if needs_maintenance:
                             already_queued = any(name == self.MAINTENANCE_COMMAND for _, name in due_commands)
@@ -260,7 +249,7 @@ class CommandScheduler:
                         CommandConfig.command_name == command_name
                     ).first()
                     if command:
-                        command.last_run = datetime.now(ZoneInfo('UTC'))
+                        command.last_run = get_utc_now()
                         session.commit()
                         self.logger.info(f"Updated last_run for {command_name}")
                 finally:
@@ -310,7 +299,7 @@ class CommandScheduler:
                     self.logger.info(f"Command {command_name} enabled, cron={cron}")
                     tz = _get_scheduler_timezone()
                     next_run = calculate_next_run_cron(command, tz)
-                    now_utc = datetime.now(ZoneInfo('UTC'))
+                    now_utc = get_utc_now()
                     if next_run and now_utc >= next_run:
                         await self._queue_command_execution(command.id, command_name)
             finally:

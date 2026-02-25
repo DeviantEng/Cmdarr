@@ -25,6 +25,9 @@ pydantic>=2.0.0
 # Cron schedule parsing for scheduler
 croniter>=2.0.0
 
+# IANA timezone database (required for zoneinfo on minimal Linux/Docker; optional on macOS/Windows)
+tzdata>=2024.1
+
 # For enhanced logging and formatting
 # colorlog>=6.7.0
 
