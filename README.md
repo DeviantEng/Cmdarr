@@ -112,7 +112,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
 - **Advanced Filtering**: Filter commands by status (enabled/disabled) and type (discovery/playlist sync)
 - **Sortable Columns**: Sort by name, schedule, last run, or next run with visual indicators
-- **Real-time Updates**: Live status updates and command execution monitoring
+- **Execution Monitoring**: View command status and job history; refresh after manual run
 - **Manual Cache Refresh**: UI buttons for on-demand cache rebuilding
 - **Execution Tracking**: See whether commands were triggered manually or by scheduler
 - **Configuration Validation**: Dropdown support with current value display
@@ -251,7 +251,7 @@ LIBRARY_CACHE_MEMORY_LIMIT_MB=512
 LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true
 
-# Scheduler (cron-based; TZ also used for schedule interpretation)
+# Scheduler (cron-based; TZ env takes priority over SCHEDULER_TIMEZONE)
 DEFAULT_SCHEDULE_CRON="0 3 * * *"
 SCHEDULER_TIMEZONE=America/New_York
 
@@ -494,7 +494,7 @@ source .venv/bin/activate
 # On Windows:
 .venv\Scripts\activate
 
-# Install dependencies
+# Install dependencies (includes tzdata for timezone support on minimal Linux)
 pip install -r requirements.txt
 
 # Build the React frontend (required - app will not start without this)
@@ -521,7 +521,7 @@ For frontend development with hot reload, run `npm run dev` in `frontend/` and a
   - `/import_lists/metrics` - Metrics for import list files
 - **New Releases**: `/api/new-releases/` - Pending releases, dismiss, recheck, run-batch, scan-artist, lidarr-artists, sync, command-status, dismissed, restore
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
-- **Configuration API**: `/api/config/` - RESTful configuration management
+- **Configuration API**: `/api/config/` - RESTful configuration management (sensitive values obfuscated; use `?reveal=true` on details for verification)
 - **Commands API**: `/api/commands/` - Command management and execution
 
 ### Debug Mode

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, RotateCcw, Check, AlertCircle, Search } from 'lucide-react'
+import { Save, RotateCcw, Check, AlertCircle, Search, Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ConfigSetting } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -88,6 +88,48 @@ export function ConfigPage() {
       prev.map((s) => (s.key === key ? { ...s, value } : s))
     )
     setChangedSettings((prev) => new Set(prev).add(key))
+    if (revealedKeys.has(key)) {
+      setRevealedValues((prev) => ({ ...prev, [key]: value }))
+    }
+  }
+
+  const handleRevealToggle = async (key: string) => {
+    if (revealedKeys.has(key)) {
+      setRevealedKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+      setRevealedValues((prev) => {
+        const { [key]: _, ...rest } = prev
+        return rest
+      })
+      setSettings((prev) =>
+        prev.map((s) => (s.key === key ? { ...s, value: '***' } : s))
+      )
+      setChangedSettings((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    } else {
+      try {
+        const details = await api.getConfigDetails(key, { reveal: true })
+        const value = details.effective_value ?? ''
+        setRevealedKeys((prev) => new Set(prev).add(key))
+        setRevealedValues((prev) => ({ ...prev, [key]: String(value) }))
+        handleSettingChange(key, value)
+      } catch {
+        toast.error('Failed to load value')
+      }
+    }
+  }
+
+  const getSensitiveDisplayValue = (setting: ConfigSetting) => {
+    if (revealedKeys.has(setting.key)) {
+      return revealedValues[setting.key] ?? setting.value ?? ''
+    }
+    return '***'
   }
 
   const handleSaveAll = async () => {
@@ -210,13 +252,39 @@ export function ConfigPage() {
         )
       
       default:
+        if (setting.is_sensitive) {
+          const isRevealed = revealedKeys.has(setting.key)
+          return (
+            <div className="flex gap-2">
+              <Input
+                type={isRevealed ? 'text' : 'password'}
+                value={getSensitiveDisplayValue(setting)}
+                onChange={(e) => handleSettingChange(setting.key, e.target.value)}
+                placeholder={setting.default_value}
+                className="font-mono flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => handleRevealToggle(setting.key)}
+                title={isRevealed ? 'Hide' : 'Show key'}
+              >
+                {isRevealed ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          )
+        }
         return (
           <Input
-            type={setting.is_sensitive ? 'password' : 'text'}
+            type="text"
             value={setting.value || ''}
             onChange={(e) => handleSettingChange(setting.key, e.target.value)}
             placeholder={setting.default_value}
-            className={cn(setting.is_sensitive && 'font-mono')}
           />
         )
     }

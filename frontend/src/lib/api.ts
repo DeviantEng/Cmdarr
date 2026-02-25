@@ -178,8 +178,9 @@ class ApiClient {
     return response.value
   }
 
-  async getConfigDetails(key: string): Promise<ConfigSetting> {
-    return await this.request<ConfigSetting>(`/api/config/details/${key}`)
+  async getConfigDetails(key: string, options?: { reveal?: boolean }): Promise<ConfigSetting> {
+    const params = options?.reveal ? '?reveal=true' : ''
+    return await this.request<ConfigSetting>(`/api/config/details/${key}${params}`)
   }
 
   async updateConfigSetting(

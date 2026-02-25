@@ -162,8 +162,13 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
 
 
 @router.get("/details/{key}", response_model=ConfigSettingResponse)
-async def get_config_setting_details(key: str, db: Session = Depends(get_config_db)):
-    """Get detailed information about a configuration setting"""
+async def get_config_setting_details(
+    key: str,
+    reveal: bool = False,
+    db: Session = Depends(get_config_db)
+):
+    """Get detailed information about a configuration setting.
+    When reveal=True, returns the actual value for sensitive keys (for 'Show key' verification)."""
     try:
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
         if not setting:
@@ -179,7 +184,7 @@ async def get_config_setting_details(key: str, db: Session = Depends(get_config_
                 options = None
         
         effective_value = setting.get_effective_value()
-        if setting.is_sensitive and effective_value:
+        if setting.is_sensitive and effective_value and not reveal:
             effective_value = "***"
         
         return ConfigSettingResponse(
