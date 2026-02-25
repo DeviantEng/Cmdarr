@@ -138,6 +138,7 @@ export function CommandsPage() {
       await api.executeCommand(commandName, { triggered_by: 'manual' })
       toast.success(`Command "${commandName}" started`)
       loadCommands()
+      loadExecutions()
     } catch (error) {
       toast.error(`Failed to execute command`)
       console.error(error)
