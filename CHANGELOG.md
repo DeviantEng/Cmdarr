@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-02-26
+
+### 🆕 New Releases Discovery
+- **Deezer as Release Source**: New Releases Discovery can use Deezer (default) or Spotify; configurable in Commands → Edit → Release source
+- **Deezer Default**: No account configuration required—Deezer uses public API; ideal for users without Spotify Premium
+- **Spotify Optional**: Set credentials in Config → Music Sources to use Spotify; validation prevents saving Spotify source without creds
+- **Lidarr Links**: Uses Deezer artist links when available; falls back to search by name
+- **Harmony Support**: Deezer album URLs work with Harmony for MusicBrainz import
+
+### 🔧 Fixes & Improvements
+- **Access Log Suppression**: High-frequency polling endpoints (/health, /api/status/*, /api/commands/*, /static/*) suppressed from access logs to reduce console noise
+- **Error Messages**: API validation errors (e.g. missing Spotify creds) now shown in toast instead of generic "Failed to update"
+
 ## [0.3.3] - 2026-02-26
 
 ### 🔧 Fixes

@@ -9,7 +9,7 @@ A modular music automation platform that bridges services for your self-hosted m
 ### 🎵 **Automatic Music Discovery**
 - **Find Similar Artists**: Automatically discovers new artists similar to those in your Lidarr library using Last.fm
 - **Playlist-Based Discovery**: Discovers artists from synced playlists and adds them directly to Lidarr
-- **New Releases Discovery**: Find Spotify releases from your Lidarr artists that are missing from MusicBrainz—add them via Harmony with one click
+- **New Releases Discovery**: Find Deezer (or Spotify) releases from your Lidarr artists that are missing from MusicBrainz—add them via Harmony with one click
 - **Smart Filtering**: Automatically excludes artists you already have and those on your exclusion lists
 - **Quality Control**: Uses MusicBrainz fuzzy matching to ensure high-quality artist data
 
@@ -105,7 +105,7 @@ Access Cmdarr at `http://localhost:8080` for:
 - **⚙️ Configuration**: Web-based configuration interface with validation
 - **🎛️ Command Management**: Enable/disable commands, view execution status, trigger manual runs
 - **📈 System Status**: Detailed system information, health metrics, and cache status
-- **🆕 New Releases**: Discover Spotify releases missing from MusicBrainz; open Lidarr, MusicBrainz, or Harmony with one click
+- **🆕 New Releases**: Discover Deezer (or Spotify) releases missing from MusicBrainz; open Lidarr, MusicBrainz, or Harmony with one click
 
 ### Key Features
 - **Card/List View Toggle**: Switch between card view and sortable table view with localStorage persistence
@@ -144,17 +144,20 @@ Access Cmdarr at `http://localhost:8080` for:
 
 ### New Releases Discovery
 
-**What it does**: Scans your Lidarr artists for releases on Spotify that are missing from MusicBrainz  
+**What it does**: Scans your Lidarr artists for releases on Deezer (or Spotify) that are missing from MusicBrainz  
 **Access**: Web UI → New Releases (`/new-releases`)
 
 **Benefits**:
-- Uses Lidarr's Spotify links when available (avoids name collisions like Emmure vs emmurée)
+- **Deezer (default)**: No account required—uses public API; ideal without Spotify Premium
+- **Spotify (optional)**: Set credentials in Config; uses Lidarr Spotify links when available
+
+- Uses Lidarr artist links when available (avoids name collisions like Emmure vs emmurée)
 - 1 MusicBrainz API call per artist (release groups), no per-album lookups
 - Filters out live recordings, compilations, and guest appearances
 - One-click links to Lidarr, MusicBrainz artist page, or Harmony to add the album
 
-**Requirements**: Lidarr, Spotify credentials  
-**Configuration**: `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources → Spotify
+**Requirements**: Lidarr; either Deezer (default) or Spotify credentials in Config  
+**Configuration**: Release source in Commands → Edit; `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources
 
 ### Playlist Sync Commands
 
