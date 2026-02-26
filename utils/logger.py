@@ -70,7 +70,7 @@ class HTTPAccessFilter(logging.Filter):
         return True
 
 
-# High-frequency polling endpoints - downgrade to DEBUG to avoid flooding console
+# High-frequency polling endpoints - suppress from access logs entirely
 _UVICORN_QUIET_ENDPOINTS = (
     '/health',
     '/api/status/',      # status/raw, status/cache, status/executions/recent
@@ -80,16 +80,15 @@ _UVICORN_QUIET_ENDPOINTS = (
 
 
 class UvicornHealthCheckFilter(logging.Filter):
-    """Filter for Uvicorn access logs: downgrade high-frequency polls to DEBUG"""
+    """Filter for Uvicorn access logs: suppress high-frequency polls entirely"""
     
     def filter(self, record):
         if hasattr(record, 'getMessage'):
             message = record.getMessage()
-            # Only downgrade successful GETs (2xx)
+            # Suppress successful GETs (2xx) to quiet endpoints
             if ' 200 ' in message or ' 204 ' in message:
                 if any(endpoint in message for endpoint in _UVICORN_QUIET_ENDPOINTS):
-                    record.levelno = logging.DEBUG
-                    record.levelname = 'DEBUG'
+                    return False  # Don't log at all
         return True
 
 
