@@ -73,7 +73,8 @@ def init_default_commands():
             'command_type': 'discovery',
             'config_json': {
                 'artists_per_run': 5,
-                'album_types': 'album'
+                'album_types': 'album',
+                'new_releases_source': 'deezer'
             }
         }
     ]

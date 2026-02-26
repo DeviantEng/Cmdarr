@@ -18,6 +18,12 @@ _SPOTIFY_ARTIST_URL_RE = re.compile(
     re.IGNORECASE
 )
 
+# Regex to extract Deezer artist ID from URLs like https://www.deezer.com/artist/12345
+_DEEZER_ARTIST_URL_RE = re.compile(
+    r'https?://(?:www\.)?deezer\.com/(?:[a-z]{2}/)?artist/(\d+)',
+    re.IGNORECASE
+)
+
 
 def _extract_spotify_id_from_links(links: List[Dict[str, Any]]) -> Optional[str]:
     """
@@ -29,6 +35,21 @@ def _extract_spotify_id_from_links(links: List[Dict[str, Any]]) -> Optional[str]
         name = (link.get('name') or link.get('Name') or '').lower()
         if 'spotify' in url.lower() or name == 'spotify':
             m = _SPOTIFY_ARTIST_URL_RE.search(url)
+            if m:
+                return m.group(1)
+    return None
+
+
+def _extract_deezer_id_from_links(links: List[Dict[str, Any]]) -> Optional[str]:
+    """
+    Extract Deezer artist ID from Lidarr artist links.
+    Lidarr links are [{url, name}, ...] - we find the Deezer one by URL pattern.
+    """
+    for link in links or []:
+        url = link.get('url') or link.get('Url') or ''
+        name = (link.get('name') or link.get('Name') or '').lower()
+        if 'deezer' in url.lower() or name == 'deezer':
+            m = _DEEZER_ARTIST_URL_RE.search(url)
             if m:
                 return m.group(1)
     return None
@@ -155,8 +176,8 @@ class LidarrClient(BaseAPIClient):
         return False
     
     def _get_artists_cache_key(self) -> str:
-        """Generate cache key for Lidarr artists (v2 includes spotifyArtistId from links)"""
-        return "lidarr_artists_v2"
+        """Generate cache key for Lidarr artists (v3 includes spotifyArtistId and deezerArtistId from links)"""
+        return "lidarr_artists_v3"
 
     async def get_all_artists(self) -> List[Dict[str, Any]]:
         """Get all artists from Lidarr with their MBIDs (cached 7 days)"""
@@ -190,8 +211,9 @@ class LidarrClient(BaseAPIClient):
                     self.logger.warning(f"Artist with MBID '{mbid}' has no name")
                     continue
                 
-                # Extract Spotify artist ID from links if available (avoids name-search collisions)
+                # Extract Spotify and Deezer artist IDs from links if available (avoids name-search collisions)
                 spotify_artist_id = _extract_spotify_id_from_links(artist.get('links') or [])
+                deezer_artist_id = _extract_deezer_id_from_links(artist.get('links') or [])
 
                 artists.append({
                     'musicBrainzId': mbid,  # Rename to standard field name for consistency
@@ -201,6 +223,7 @@ class LidarrClient(BaseAPIClient):
                     'monitored': artist.get('monitored', False),
                     'monitorNewItems': artist.get('monitorNewItems', 'all'),
                     'spotifyArtistId': spotify_artist_id,  # From Lidarr links when available
+                    'deezerArtistId': deezer_artist_id,  # From Lidarr links when available
                 })
             
             self.logger.info(f"Retrieved {len(artists)} artists from Lidarr")

@@ -73,6 +73,7 @@ export function CommandsPage() {
     schedule_cron?: string
     artists_per_run?: number
     album_types?: string[]
+    new_releases_source?: 'spotify' | 'deezer'
     artists_to_query?: number
     similar_per_artist?: number
     artist_cooldown_days?: number
@@ -204,11 +205,13 @@ export function CommandsPage() {
     setEditingCommand(command)
     const cfg = command.config_json || {}
     const typesStr = (cfg.album_types as string) || 'album'
+    const src = (cfg.new_releases_source as string) || 'deezer'
     setEditForm({
       schedule_override: !!command.schedule_override,
       schedule_cron: command.schedule_cron || '0 3 * * *',
       artists_per_run: typeof cfg.artists_per_run === 'number' ? cfg.artists_per_run : 5,
       album_types: typesStr.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+      new_releases_source: src === 'spotify' ? 'spotify' : 'deezer',
       artists_to_query: typeof cfg.artists_to_query === 'number' ? cfg.artists_to_query : 3,
       similar_per_artist: typeof cfg.similar_per_artist === 'number' ? cfg.similar_per_artist : 1,
       artist_cooldown_days: typeof cfg.artist_cooldown_days === 'number' ? cfg.artist_cooldown_days : 30,
@@ -1138,6 +1141,7 @@ export function CommandsPage() {
                           ...(editingCommand.config_json || {}),
                           artists_per_run: editForm.artists_per_run,
                           album_types: (editForm.album_types ?? ['album']).join(','),
+                          new_releases_source: editForm.new_releases_source ?? 'deezer',
                         },
                       })
                     }

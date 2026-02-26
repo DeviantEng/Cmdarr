@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from .command_base import BaseCommand
 from .config_adapter import ConfigAdapter
+from clients.client_deezer import DeezerClient
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
@@ -122,9 +123,11 @@ class NewReleasesDiscoveryCommand(BaseCommand):
             else:
                 selected_types = self._get_album_types()
 
-            if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-                self.logger.error("Spotify credentials not configured")
-                return False
+            source_provider = self._get_new_releases_source()
+            if source_provider == 'spotify':
+                if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
+                    self.logger.error("Spotify credentials not configured (new_releases_source=spotify)")
+                    return False
             if not config.LIDARR_API_KEY or not config.LIDARR_URL:
                 self.logger.error("Lidarr not configured")
                 return False
@@ -136,18 +139,21 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 self.last_run_stats = {'artists_scanned': 0, 'new_releases_detected': 0}
                 return True
 
-            self.logger.info(f"Scanning {len(artists)} artists (types: {sorted(selected_types)})")
+            self.logger.info(f"Scanning {len(artists)} artists (types: {sorted(selected_types)}, source: {source_provider})")
 
             cache_ttl = getattr(config, 'NEW_RELEASES_CACHE_DAYS', 14)
             lidarr_base = (config.LIDARR_URL or "").rstrip("/")
             db = get_database_manager()
             session = db.get_config_session_context()
 
+            client_class = SpotifyClient if source_provider == 'spotify' else DeezerClient
+            artist_id_key = 'spotifyArtistId' if source_provider == 'spotify' else 'deezerArtistId'
+
             try:
                 inserted = 0
                 scanned = 0
                 async with LidarrClient(config) as lidarr_client:
-                    async with SpotifyClient(config) as spotify_client:
+                    async with client_class(config) as release_client:
                         async with _optional_musicbrainz(config) as musicbrainz_client:
                             for artist in artists:
                                 artist_name = artist.get("artistName", "")
@@ -159,18 +165,18 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 if not artist_name or not mbid:
                                     continue
 
-                                # Try Lidarr links first (Spotify, etc.) - validate with fuzzy match
+                                # Try Lidarr links first - validate with fuzzy match
                                 artist_id = None
-                                lidarr_spotify_id = artist.get("spotifyArtistId")
-                                if lidarr_spotify_id:
-                                    artist_info = await spotify_client.get_artist(lidarr_spotify_id)
+                                lidarr_artist_id = artist.get(artist_id_key)
+                                if lidarr_artist_id:
+                                    artist_info = await release_client.get_artist(lidarr_artist_id)
                                     if artist_info.get("success") and artist_info.get("name"):
-                                        spotify_name = artist_info.get("name", "")
-                                        if _artist_names_match(artist_name, spotify_name, min_similarity=0.9):
-                                            artist_id = lidarr_spotify_id
+                                        provider_name = artist_info.get("name", "")
+                                        if _artist_names_match(artist_name, provider_name, min_similarity=0.9):
+                                            artist_id = lidarr_artist_id
                                         else:
                                             self.logger.warning(
-                                                f"Lidarr link for '{artist_name}' points to '{spotify_name}' - falling back to search"
+                                                f"Lidarr link for '{artist_name}' points to '{provider_name}' - falling back to search"
                                             )
 
                                 # Fallback: search by name if no validated link
@@ -179,23 +185,23 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                     norm_name = normalize_text(artist_name)
                                     if len(norm_name) <= 4:
                                         self.logger.debug(
-                                            f"Skipping '{artist_name}': name too short for reliable search, add Spotify link in Lidarr"
+                                            f"Skipping '{artist_name}': name too short for reliable search, add {source_provider} link in Lidarr"
                                         )
                                         self._upsert_scan_log(session, mbid, had_pending=False)
                                         continue
-                                    search_result = await spotify_client.search_artists(artist_name, limit=5)
+                                    search_result = await release_client.search_artists(artist_name, limit=5)
                                     if not search_result.get("success") or not search_result.get("artists"):
-                                        self.logger.debug(f"No Spotify match for: {artist_name}")
+                                        self.logger.debug(f"No {source_provider} match for: {artist_name}")
                                         self._upsert_scan_log(session, mbid, had_pending=False)
                                         continue
                                     # Try each result - use first that passes fuzzy match (avoids wrong first hit)
                                     artist_id = None
-                                    for spotify_artist in search_result["artists"]:
-                                        sid = spotify_artist.get("id")
+                                    for hit in search_result["artists"]:
+                                        sid = hit.get("id")
                                         if not sid:
                                             continue
-                                        spotify_name = spotify_artist.get("name", "")
-                                        if _artist_names_match(artist_name, spotify_name, min_similarity=0.9):
+                                        hit_name = hit.get("name", "")
+                                        if _artist_names_match(artist_name, hit_name, min_similarity=0.9):
                                             artist_id = sid
                                             break
                                     if not artist_id:
@@ -206,7 +212,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                         self._upsert_scan_log(session, mbid, had_pending=False)
                                         continue
 
-                                albums_result = await spotify_client.get_artist_albums(
+                                albums_result = await release_client.get_artist_albums(
                                     artist_id,
                                     limit=50,
                                     include_groups="album,single,compilation,appears_on",
@@ -315,6 +321,12 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         finally:
             session.close()
         return {"album"}
+
+    def _get_new_releases_source(self) -> str:
+        """Get new releases source: 'spotify' or 'deezer' (default deezer)."""
+        cfg = getattr(self, 'config_json', None) or {}
+        src = (cfg.get('new_releases_source') or 'deezer').strip().lower()
+        return src if src in ('spotify', 'deezer') else 'deezer'
 
     async def _pick_artists_to_scan(self, n: int) -> List[Dict[str, Any]]:
         """Pick artists: never-scanned first, then by last_scanned_at ASC; if more than n, random sample."""

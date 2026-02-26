@@ -219,6 +219,114 @@ class DeezerClient(BaseAPIClient):
                 'error': f"Failed to fetch tracks: {str(e)}"
             }
     
+    async def get_artist(self, artist_id: str) -> Dict[str, Any]:
+        """
+        Get artist by Deezer ID (for name validation when using Lidarr's Deezer link).
+        Returns dict with id, name, or error. Matches Spotify client shape.
+        """
+        try:
+            result = await self._get(f"/artist/{artist_id}")
+            if not result or result.get('error'):
+                return {'success': False, 'error': result.get('error', {}).get('message', 'No response') if result else 'No response', 'name': None}
+            return {
+                'success': True,
+                'id': str(result.get('id', '')),
+                'name': result.get('name'),
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching artist {artist_id}: {e}")
+            return {'success': False, 'error': str(e), 'name': None}
+
+    async def search_artists(self, name: str, limit: int = 5) -> Dict[str, Any]:
+        """
+        Search for artists by name on Deezer.
+        Returns dict with success, artists list (id, name, link) matching Spotify shape.
+        """
+        try:
+            params = {'q': name, 'limit': min(limit, 25)}
+            result = await self._get("/search/artist", params=params)
+            if not result or result.get('error'):
+                return {'success': False, 'error': 'No response from Deezer', 'artists': []}
+            artists_data = result.get('data', [])
+            artists = []
+            for artist in artists_data[:limit]:
+                if artist and artist.get('name'):
+                    artists.append({
+                        'id': str(artist.get('id', '')),
+                        'name': artist.get('name'),
+                        'uri': artist.get('link', ''),
+                        'external_url': artist.get('link', ''),
+                    })
+            return {'success': True, 'artists': artists}
+        except Exception as e:
+            self.logger.error(f"Error searching for artist '{name}': {e}")
+            return {'success': False, 'error': str(e), 'artists': []}
+
+    def _get_artist_albums_cache_key(self, artist_id: str) -> str:
+        """Generate cache key for artist albums"""
+        return f"deezer_artist_albums:{artist_id}"
+
+    async def get_artist_albums(self, artist_id: str, limit: int = 50,
+                                include_groups: str = 'album,single,compilation,appears_on',
+                                fetch_all: bool = False) -> Dict[str, Any]:
+        """
+        Get albums for an artist from Deezer.
+        Returns same shape as Spotify: success, albums with id, name, release_date,
+        album_type, total_tracks, primary_artist_id, spotify_url (Deezer album URL).
+        """
+        try:
+            cache_key = self._get_artist_albums_cache_key(artist_id)
+            if self.cache_enabled and self.cache and fetch_all:
+                cached = self.cache.get(cache_key, 'deezer')
+                if cached is not None:
+                    self.logger.debug(f"Cache hit for Deezer albums: {artist_id}")
+                    return {'success': True, 'albums': cached}
+
+            all_albums = []
+            request_url = f"/artist/{artist_id}/albums"
+            request_params = {'limit': min(limit, 100), 'index': 0}
+
+            while True:
+                result = await self._get(request_url, params=request_params)
+                if not result or result.get('error'):
+                    break
+                items = result.get('data', [])
+                for item in items:
+                    if not item:
+                        continue
+                    artist_obj = item.get('artist', {})
+                    primary_artist_id = str(artist_obj.get('id', '')) if artist_obj else str(artist_id)
+                    record_type = (item.get('record_type') or 'album').lower()
+                    album_type = record_type if record_type in ('album', 'single', 'ep', 'compilation', 'appears_on') else 'album'
+                    deezer_url = item.get('link') or f"https://www.deezer.com/album/{item.get('id', '')}"
+                    all_albums.append({
+                        'id': str(item.get('id', '')),
+                        'name': item.get('title', ''),
+                        'release_date': item.get('release_date', ''),
+                        'release_date_precision': 'day' if item.get('release_date') and len(item.get('release_date', '')) >= 10 else 'year',
+                        'album_type': album_type,
+                        'total_tracks': item.get('nb_tracks', 0),
+                        'primary_artist_id': primary_artist_id,
+                        'external_url': deezer_url,
+                        'spotify_url': deezer_url,
+                    })
+                next_url = result.get('next')
+                if not fetch_all or not next_url or len(items) < request_params.get('limit', 100):
+                    break
+                request_url = next_url
+                request_params = {}
+                if len(all_albums) >= 500:
+                    break
+
+            if self.cache_enabled and self.cache and fetch_all:
+                ttl = getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
+                self.cache.set(cache_key, 'deezer', all_albums, ttl)
+
+            return {'success': True, 'albums': all_albums}
+        except Exception as e:
+            self.logger.error(f"Error getting albums for artist {artist_id}: {e}")
+            return {'success': False, 'error': str(e), 'albums': []}
+
     async def test_connection(self) -> bool:
         """Test connection to Deezer API"""
         try:

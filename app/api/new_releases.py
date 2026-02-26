@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from commands.config_adapter import ConfigAdapter
+from clients.client_deezer import DeezerClient
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
@@ -85,6 +86,24 @@ def _artist_names_match(name1: str, name2: str, min_similarity: float = 0.9) -> 
     return SequenceMatcher(None, n1, n2).ratio() >= min_similarity
 
 
+def _get_new_releases_source_from_db() -> str:
+    """Get new_releases_source from CommandConfig (default deezer)."""
+    from database.config_models import CommandConfig
+    from database.database import get_database_manager
+    db = get_database_manager()
+    session = db.get_config_session_context()
+    try:
+        row = session.query(CommandConfig).filter(
+            CommandConfig.command_name == "new_releases_discovery"
+        ).first()
+        if row and row.config_json:
+            src = (row.config_json.get("new_releases_source") or "deezer").strip().lower()
+            return src if src in ("spotify", "deezer") else "deezer"
+    finally:
+        session.close()
+    return "deezer"
+
+
 def _title_matches_mb(spotify_title: str, mb_titles: List[str], min_similarity: float = 0.7) -> bool:
     """Check if Spotify album title matches any MB release group (fuzzy)."""
     norm_spotify = normalize_text(spotify_title)
@@ -122,11 +141,13 @@ async def get_new_releases(
 
     config = ConfigAdapter()
 
-    if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-        raise HTTPException(
-            status_code=503,
-            detail="Spotify credentials not configured.",
-        )
+    source_provider = _get_new_releases_source_from_db()
+    if source_provider == 'spotify':
+        if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=503,
+                detail="Spotify credentials not configured (new_releases_source=spotify).",
+            )
     if not config.LIDARR_API_KEY or not config.LIDARR_URL:
         raise HTTPException(
             status_code=503,
@@ -153,13 +174,15 @@ async def get_new_releases(
             artists_to_scan = random.sample(artists, n)
 
         logger.info(
-            f"Scanning {len(artists_to_scan)} artists (types: {sorted(selected)})"
+            f"Scanning {len(artists_to_scan)} artists (types: {sorted(selected)}, source: {source_provider})"
         )
 
         musicbrainz_client = MusicBrainzClient(config) if config.MUSICBRAINZ_ENABLED else None
         cache_ttl = getattr(config, 'NEW_RELEASES_CACHE_DAYS', 14)
+        client_class = SpotifyClient if source_provider == 'spotify' else DeezerClient
+        artist_id_key = 'spotifyArtistId' if source_provider == 'spotify' else 'deezerArtistId'
 
-        async with SpotifyClient(config) as spotify_client:
+        async with client_class(config) as release_client:
             for artist in artists_to_scan:
                 artist_name = artist.get("artistName", "")
                 mbid = artist.get("musicBrainzId", "")
@@ -169,31 +192,31 @@ async def get_new_releases(
 
                 artists_checked += 1
 
-                # Prefer Lidarr's Spotify link when available (avoids name collisions like Emmure vs emmurée)
-                artist_id = artist.get("spotifyArtistId")
+                # Prefer Lidarr's link when available (avoids name collisions like Emmure vs emmurée)
+                artist_id = artist.get(artist_id_key)
                 if not artist_id:
-                    search_result = await spotify_client.search_artists(artist_name, limit=3)
+                    search_result = await release_client.search_artists(artist_name, limit=3)
                     if not search_result.get("success") or not search_result.get("artists"):
-                        logger.debug(f"No Spotify match for: {artist_name}")
+                        logger.debug(f"No {source_provider} match for: {artist_name}")
                         continue
-                    spotify_artist = search_result["artists"][0]
-                    artist_id = spotify_artist.get("id")
+                    hit = search_result["artists"][0]
+                    artist_id = hit.get("id")
                     if not artist_id:
                         continue
                     # Verify search result matches artist name (reject Emmure→emmurée type collisions)
-                    spotify_name = spotify_artist.get("name", "")
-                    if not _artist_names_match(artist_name, spotify_name, min_similarity=0.9):
+                    hit_name = hit.get("name", "")
+                    if not _artist_names_match(artist_name, hit_name, min_similarity=0.9):
                         logger.warning(
-                            f"Skipping '{artist_name}': Spotify search returned '{spotify_name}' "
-                            "(likely wrong artist). Add Spotify link in Lidarr for reliable matching."
+                            f"Skipping '{artist_name}': {source_provider} search returned '{hit_name}' "
+                            f"(likely wrong artist). Add {source_provider} link in Lidarr for reliable matching."
                         )
                         continue
                     logger.debug(
-                        f"Artist '{artist_name}' has no Spotify link in Lidarr; used search fallback"
+                        f"Artist '{artist_name}' has no {source_provider} link in Lidarr; used search fallback"
                     )
 
-                # 1. Get Spotify albums (cached)
-                albums_result = await spotify_client.get_artist_albums(
+                # 1. Get albums (cached)
+                albums_result = await release_client.get_artist_albums(
                     artist_id,
                     limit=50,
                     include_groups="album,single,compilation,appears_on",
