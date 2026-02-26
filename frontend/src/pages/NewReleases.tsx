@@ -78,7 +78,7 @@ export function NewReleasesPage() {
         setTotal((t) => Math.max(0, t - 1))
         toast.success('Found in MusicBrainz, removed')
       } else {
-        toast.info('Not found in MusicBrainz')
+        toast.info('Not found. New releases can take a few minutes to appear in MusicBrainz search—try again shortly.')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Recheck failed')
