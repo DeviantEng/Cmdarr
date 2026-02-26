@@ -491,6 +491,9 @@ export function CommandsPage() {
                     </Badge>
                   )}
                 </div>
+                <div className="text-xs text-muted-foreground">
+                  Schedule: <span className="font-mono">{command.schedule_override && command.schedule_cron ? command.schedule_cron : 'Default'}</span>
+                </div>
                 {command.last_run && (
                   <div className="text-xs text-muted-foreground">
                     Last run: {new Date(command.last_run).toLocaleString()}
@@ -517,6 +520,7 @@ export function CommandsPage() {
                   <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Type</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Schedule</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Last Run</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                 </tr>
@@ -543,6 +547,11 @@ export function CommandsPage() {
                           {command.command_type}
                         </Badge>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                      {command.schedule_override && command.schedule_cron
+                        ? command.schedule_cron
+                        : 'Default'}
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
                       {command.last_run ? new Date(command.last_run).toLocaleString() : 'Never'}
