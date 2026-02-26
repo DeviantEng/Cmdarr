@@ -79,8 +79,8 @@ class JellyfinClient(BaseAPIClient):
         return ':'.join(key_parts)
     
     def get_cache_ttl(self) -> int:
-        """Get cache TTL in days for Jellyfin"""
-        return self.config.get('CACHE_JELLYFIN_TTL_DAYS', 7)
+        """Get cache TTL in days for Jellyfin library cache"""
+        return self.config.get('LIBRARY_CACHE_JELLYFIN_TTL_DAYS', 30)
     
     def _load_cached_library(self) -> None:
         """Load cached library data if available"""

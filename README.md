@@ -65,7 +65,7 @@ services:
       - SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
       - JELLYFIN_USER_ID=your_jellyfin_user_id
       # Library cache optimization
-      - LIBRARY_CACHE_TTL_DAYS=30
+      - LIBRARY_CACHE_PLEX_TTL_DAYS=30
       - LIBRARY_CACHE_MEMORY_LIMIT_MB=512
       - LIBRARY_CACHE_PLEX_ENABLED=true
       - LIBRARY_CACHE_JELLYFIN_ENABLED=true
@@ -243,7 +243,7 @@ SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 
 # Library cache optimization
-LIBRARY_CACHE_TTL_DAYS=30
+LIBRARY_CACHE_PLEX_TTL_DAYS=30
 LIBRARY_CACHE_MEMORY_LIMIT_MB=512
 LIBRARY_CACHE_PLEX_ENABLED=true
 LIBRARY_CACHE_JELLYFIN_ENABLED=true

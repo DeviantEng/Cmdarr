@@ -82,18 +82,18 @@ def auto_enable_library_cache():
                 config_service.set('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
                 get_app_logger().info("Jellyfin library cache disabled (Jellyfin client not enabled)")
             
-            # Enable cache builder command if any cache is enabled
+            # Enable or disable cache builder command based on whether any cache target is enabled
             any_cache_enabled = (
                 config_service.get('LIBRARY_CACHE_PLEX_ENABLED', False) or
                 config_service.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
             )
             
+            from database.config_models import CommandConfig
+            cache_builder_cmd = session.query(CommandConfig).filter(
+                CommandConfig.command_name == 'library_cache_builder'
+            ).first()
+            
             if any_cache_enabled:
-                from database.config_models import CommandConfig
-                cache_builder_cmd = session.query(CommandConfig).filter(
-                    CommandConfig.command_name == 'library_cache_builder'
-                ).first()
-                
                 if cache_builder_cmd and not cache_builder_cmd.enabled:
                     cache_builder_cmd.enabled = True
                     session.commit()
@@ -101,6 +101,11 @@ def auto_enable_library_cache():
                     
                     # Trigger immediate cache build (non-blocking)
                     trigger_immediate_cache_build()
+            else:
+                if cache_builder_cmd and cache_builder_cmd.enabled:
+                    cache_builder_cmd.enabled = False
+                    session.commit()
+                    get_app_logger().info("Disabled library_cache_builder (no cache targets enabled)")
                     
         finally:
             session.close()

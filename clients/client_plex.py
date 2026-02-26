@@ -75,8 +75,8 @@ class PlexClient(BaseAPIClient):
                 return f"plex:{self.base_url}:library:default"
     
     def get_cache_ttl(self) -> int:
-        """Get cache TTL in days for library cache"""
-        return getattr(self.config, 'LIBRARY_CACHE_TTL_DAYS', 30)
+        """Get cache TTL in days for Plex library cache"""
+        return self.config.get('LIBRARY_CACHE_PLEX_TTL_DAYS', 30)
     
     def build_library_cache(self, library_key: str = None) -> Dict[str, Any]:
         """

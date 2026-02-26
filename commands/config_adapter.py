@@ -111,7 +111,6 @@ class ConfigAdapter:
         self.CACHE_FAILED_LOOKUP_TTL_DAYS = config_service.get('CACHE_FAILED_LOOKUP_TTL_DAYS', 1)
         
         # Library Cache Configuration
-        self.LIBRARY_CACHE_TTL_DAYS = config_service.get('LIBRARY_CACHE_TTL_DAYS', 30)
         self.LIBRARY_CACHE_MEMORY_LIMIT_MB = config_service.get('LIBRARY_CACHE_MEMORY_LIMIT_MB', 512)
     
     def get_config_summary(self) -> dict:
@@ -154,7 +153,6 @@ class ConfigAdapter:
             'cache_plex_ttl_days': self.CACHE_PLEX_TTL_DAYS,
             'cache_jellyfin_ttl_days': self.CACHE_JELLYFIN_TTL_DAYS,
             'cache_failed_lookup_ttl_days': self.CACHE_FAILED_LOOKUP_TTL_DAYS,
-            'library_cache_ttl_days': self.LIBRARY_CACHE_TTL_DAYS,
             'library_cache_memory_limit_mb': self.LIBRARY_CACHE_MEMORY_LIMIT_MB
         }
     

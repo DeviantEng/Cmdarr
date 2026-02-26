@@ -143,6 +143,25 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
             elif request.value in [False, 'false', '0']:
                 config_service.set(enabled_key, True)
                 get_config_logger().info(f"User enabled {target} library cache")
+            
+            # Sync library_cache_builder command with cache target state
+            any_cache_enabled = (
+                config_service.get('LIBRARY_CACHE_PLEX_ENABLED', False) or
+                config_service.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
+            )
+            from database.config_models import CommandConfig
+            cache_builder = db.query(CommandConfig).filter(
+                CommandConfig.command_name == 'library_cache_builder'
+            ).first()
+            if cache_builder:
+                if not any_cache_enabled and cache_builder.enabled:
+                    cache_builder.enabled = False
+                    db.commit()
+                    get_config_logger().info("Disabled library_cache_builder (all cache targets disabled)")
+                elif any_cache_enabled and not cache_builder.enabled:
+                    cache_builder.enabled = True
+                    db.commit()
+                    get_config_logger().info("Enabled library_cache_builder (cache target re-enabled)")
         
         # Update options if provided
         if request.options is not None:

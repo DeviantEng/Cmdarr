@@ -342,6 +342,13 @@ async def kill_execution(execution_id: int, db: Session = Depends(get_config_db)
         if execution.started_at:
             execution.duration = (execution.completed_at - execution.started_at).total_seconds()
         
+        # Update command's last_run so scheduler doesn't immediately re-queue (e.g. library cache rebuild)
+        command_config = db.query(CommandConfig).filter(
+            CommandConfig.command_name == execution.command_name
+        ).first()
+        if command_config:
+            command_config.last_run = datetime.utcnow()
+        
         db.commit()
         
         # Try to kill the actual process if it's running

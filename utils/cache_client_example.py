@@ -61,7 +61,7 @@ class ExampleMusicClient:
 if __name__ == "__main__":
     config = {
         'LIBRARY_CACHE_EXAMPLE_CLIENT_ENABLED': True,
-        'LIBRARY_CACHE_TTL_DAYS': 7
+        'LIBRARY_CACHE_PLEX_TTL_DAYS': 30
     }
     
     client = ExampleMusicClient(config)

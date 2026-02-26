@@ -275,6 +275,15 @@ class CommandCleanupService:
         except Exception:
             pass  # Default to enabled if config fails
 
+        # Exclude library_cache_builder: full rebuild uses significant memory and can cause OOM.
+        # If interrupted, retrying immediately may trigger another OOM loop. Let next scheduled run handle it.
+        if 'library_cache_builder' in command_names:
+            logger.info("Restart retry: excluding library_cache_builder (will run on next schedule)")
+        command_names = [c for c in command_names if c != 'library_cache_builder']
+        if not command_names:
+            logger.info("Restart retry: no commands to retry")
+            return
+
         logger.info(f"Restart retry: will retry {len(command_names)} command(s) in {delay_seconds}s: {command_names}")
         await asyncio.sleep(delay_seconds)
 

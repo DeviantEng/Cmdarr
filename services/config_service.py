@@ -111,7 +111,6 @@ class ConfigService:
             {'key': 'CACHE_FAILED_LOOKUP_TTL_DAYS', 'default_value': '1', 'data_type': 'int', 'category': 'cache', 'description': 'Cache TTL for failed API lookups (days)'},
             
             # Library Cache Configuration
-            {'key': 'LIBRARY_CACHE_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'cache', 'description': 'Library cache duration (days)'},
             {'key': 'LIBRARY_CACHE_MEMORY_LIMIT_MB', 'default_value': '512', 'data_type': 'int', 'category': 'cache', 'description': 'Maximum memory usage during playlist operations (MB)'},
             {'key': 'LIBRARY_CACHE_SCHEDULE_HOURS', 'default_value': '24', 'data_type': 'int', 'category': 'cache', 'description': 'Library cache building schedule (hours)'},
             
