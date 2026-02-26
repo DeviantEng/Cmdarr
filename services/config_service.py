@@ -117,11 +117,11 @@ class ConfigService:
             # Library Cache Target Configuration (default disabled)
             {'key': 'LIBRARY_CACHE_PLEX_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable library cache building for Plex (auto-managed)', 'is_hidden': True},
             {'key': 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Plex library cache TTL (days)'},
-            {'key': 'LIBRARY_CACHE_PLEX_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex music library name to use (e.g. Music). Empty = auto-select (prefers Music over Audiobooks)'},
+            {'key': 'PLEX_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex music library name to use (e.g. Music). Empty = auto-select (prefers Music over Audiobooks)'},
             {'key': 'LIBRARY_CACHE_PLEX_USER_DISABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Disable library caching (slower playlist sync)'},
             {'key': 'LIBRARY_CACHE_JELLYFIN_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Enable library cache building for Jellyfin (auto-managed)', 'is_hidden': True},
             {'key': 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'jellyfin', 'description': 'Jellyfin library cache TTL (days)'},
-            {'key': 'LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin music library name to use. Empty = use default'},
+            {'key': 'JELLYFIN_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin music library name to use. Empty = use default'},
             {'key': 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Disable library caching (slower playlist sync)'},
             
             # Playlist Sync Configuration
@@ -158,8 +158,22 @@ class ConfigService:
                 
                 session.commit()
                 self.logger.info(f"Initialized {len(defaults)} default configuration settings")
+                # Migrate renamed library keys before deprecation
+                for old_key, new_key in [('LIBRARY_CACHE_PLEX_LIBRARY_NAME', 'PLEX_LIBRARY_NAME'),
+                                         ('LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME', 'JELLYFIN_LIBRARY_NAME')]:
+                    old_row = session.query(ConfigSetting).filter(ConfigSetting.key == old_key).first()
+                    if old_row and old_row.value:
+                        new_row = session.query(ConfigSetting).filter(ConfigSetting.key == new_key).first()
+                        if new_row and not new_row.value:
+                            new_row.value = old_row.value
+                        elif not new_row:
+                            session.add(ConfigSetting(key=new_key, value=old_row.value, default_value='',
+                                                      data_type='string', category=old_row.category, description=old_row.description or '',
+                                                      is_sensitive=False, is_required=False))
+                        session.query(ConfigSetting).filter(ConfigSetting.key == old_key).delete()
                 # Remove deprecated settings
-                for deprecated_key in ('MUSICBRAINZ_USER_AGENT', 'MUSICBRAINZ_CONTACT', 'PLEX_LIBRARY_SEARCH_TIMEOUT'):
+                for deprecated_key in ('MUSICBRAINZ_USER_AGENT', 'MUSICBRAINZ_CONTACT', 'PLEX_LIBRARY_SEARCH_TIMEOUT',
+                                      'LIBRARY_CACHE_PLEX_LIBRARY_NAME', 'LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME'):
                     session.query(ConfigSetting).filter(ConfigSetting.key == deprecated_key).delete()
                 session.commit()
             finally:

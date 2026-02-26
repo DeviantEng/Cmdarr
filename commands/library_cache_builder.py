@@ -258,7 +258,7 @@ class LibraryCacheBuilderCommand(BaseCommand):
             incremental_start_time = time.time()
             
             if target == 'plex':
-                # Use resolved library (same as full build - respects LIBRARY_CACHE_PLEX_LIBRARY_NAME)
+                # Use resolved library (same as full build - respects PLEX_LIBRARY_NAME)
                 music_libraries = client.get_music_libraries()
                 chosen = client._resolve_music_library(music_libraries)
                 libraries = [chosen] if chosen else []

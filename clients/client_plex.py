@@ -932,13 +932,13 @@ class PlexClient(BaseAPIClient):
 
     def _resolve_music_library(self, music_libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Resolve which music library to use (single library only).
-        - If LIBRARY_CACHE_PLEX_LIBRARY_NAME set: use that by name (case-insensitive)
+        - If PLEX_LIBRARY_NAME set: use that by name (case-insensitive)
         - If blank and only 1 library: use it
         - If multiple: prefer one named 'Music' (case-insensitive)
         - Else: use first (lowest library key/id)"""
         if not music_libraries:
             return None
-        name_override = (self.config.get('LIBRARY_CACHE_PLEX_LIBRARY_NAME') or '').strip()
+        name_override = (self.config.get('PLEX_LIBRARY_NAME') or '').strip()
         if name_override:
             for lib in music_libraries:
                 if (lib.get('title') or '').strip().lower() == name_override.lower():
