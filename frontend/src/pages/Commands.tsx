@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'card' | 'list'
-type SortField = 'name' | 'last_run' | 'status'
+type SortField = 'name' | 'status' | 'type' | 'schedule' | 'last_run' | 'next_run'
 type SortDirection = 'asc' | 'desc'
 
 const BUILTIN_COMMANDS = ['discovery_lastfm', 'library_cache_builder', 'new_releases_discovery', 'playlist_sync_discovery_maintenance']
@@ -46,8 +46,26 @@ export function CommandsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [sortField] = useState<SortField>('name')
-  const [sortDirection] = useState<SortDirection>('asc')
+  const [sortField, setSortField] = useState<SortField>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const SortIcon = ({ column }: { column: SortField }) => {
+    if (sortField !== column) return <span className="inline-block w-4" />
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="ml-1 inline h-4 w-4" />
+    ) : (
+      <ChevronDown className="ml-1 inline h-4 w-4" />
+    )
+  }
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false)
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null)
   const [editForm, setEditForm] = useState<{
@@ -255,11 +273,23 @@ export function CommandsPage() {
         case 'name':
           comparison = a.display_name.localeCompare(b.display_name)
           break
+        case 'status':
+          comparison = Number(b.enabled) - Number(a.enabled)
+          break
+        case 'type':
+          comparison = (a.command_type || '').localeCompare(b.command_type || '')
+          break
+        case 'schedule': {
+          const sa = a.schedule_override && a.schedule_cron ? a.schedule_cron : 'Default'
+          const sb = b.schedule_override && b.schedule_cron ? b.schedule_cron : 'Default'
+          comparison = sa.localeCompare(sb)
+          break
+        }
         case 'last_run':
           comparison = (a.last_run || '').localeCompare(b.last_run || '')
           break
-        case 'status':
-          comparison = Number(b.enabled) - Number(a.enabled)
+        case 'next_run':
+          comparison = (a.next_run || '').localeCompare(b.next_run || '')
           break
       }
       return sortDirection === 'asc' ? comparison : -comparison
@@ -517,11 +547,36 @@ export function CommandsPage() {
             <table className="w-full">
               <thead className="border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Type</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Schedule</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Last Run</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('name')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Name <SortIcon column="name" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('status')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Status <SortIcon column="status" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('type')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Type <SortIcon column="type" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('schedule')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Schedule <SortIcon column="schedule" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('last_run')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Last Run <SortIcon column="last_run" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    <button onClick={() => handleSort('next_run')} className="flex items-center cursor-pointer hover:text-foreground">
+                      Next Run <SortIcon column="next_run" />
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
@@ -555,6 +610,9 @@ export function CommandsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
                       {command.last_run ? new Date(command.last_run).toLocaleString() : 'Never'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {command.next_run ? new Date(command.next_run).toLocaleString() : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <DropdownMenu>
