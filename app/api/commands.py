@@ -169,6 +169,17 @@ async def update_command(
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
+            # Validate Spotify credentials when switching NRD to Spotify source
+            if command_name == 'new_releases_discovery':
+                src = (request.config_json.get('new_releases_source') or 'deezer').strip().lower()
+                if src == 'spotify':
+                    from commands.config_adapter import ConfigAdapter
+                    config = ConfigAdapter()
+                    if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
+                        )
             command.config_json = request.config_json
         
         command.updated_at = datetime.utcnow()

@@ -391,7 +391,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         ).first() is not None
 
     def get_description(self) -> str:
-        return "Scan Lidarr artists for Spotify releases missing from MusicBrainz; insert into New Releases pending table."
+        return "Scan Lidarr artists for Deezer (or Spotify) releases missing from MusicBrainz; insert into New Releases pending table."
 
     def get_logger_name(self) -> str:
         return "cmdarr.command.new_releases_discovery"

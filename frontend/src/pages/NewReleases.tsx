@@ -192,7 +192,7 @@ export function NewReleasesPage() {
       <div>
         <h1 className="text-3xl font-bold">New Releases Discovery</h1>
         <p className="mt-2 text-muted-foreground">
-          Find releases on Spotify from your Lidarr artists that are missing from MusicBrainz.
+          Find releases on Deezer (or Spotify) from your Lidarr artists that are missing from MusicBrainz.
         </p>
       </div>
 
@@ -296,7 +296,7 @@ export function NewReleasesPage() {
             <div>
               <CardTitle>Pending Releases</CardTitle>
               <CardDescription>
-                {total} items. Use links to open Lidarr, MusicBrainz, Spotify, or Add to MB (Harmony). Actions: Clear (reappears), Recheck (verify MB), Ignore (never show).
+                {total} items. Use links to open Lidarr, MusicBrainz, release source (Deezer/Spotify), or Add to MB (Harmony). Actions: Clear (reappears), Recheck (verify MB), Ignore (never show).
               </CardDescription>
             </div>
             {pending.length > 0 && (
@@ -390,7 +390,7 @@ function PendingRow({
           {item.spotify_url && (
             <Button variant="outline" size="sm" asChild>
               <a href={item.spotify_url} target="_blank" rel="noopener noreferrer">
-                Spotify
+                {item.spotify_url.includes('deezer.com') ? 'Deezer' : 'Spotify'}
               </a>
             </Button>
           )}

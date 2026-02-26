@@ -67,7 +67,7 @@ def init_default_commands():
         {
             'command_name': 'new_releases_discovery',
             'display_name': 'New Releases Discovery',
-            'description': 'Scan Lidarr artists for Spotify releases missing from MusicBrainz',
+            'description': 'Scan Lidarr artists for Deezer (or Spotify) releases missing from MusicBrainz',
             'enabled': False,
             'timeout_minutes': 30,
             'command_type': 'discovery',

@@ -234,7 +234,7 @@ export function CommandsPage() {
       const updated = (await api.getCommands()).find((c) => c.command_name === editingCommand.command_name)
       if (updated) setEditingCommand(updated)
     } catch (error) {
-      toast.error('Failed to update command')
+      toast.error(error instanceof Error ? error.message : 'Failed to update command')
       console.error(error)
     }
   }
@@ -1076,6 +1076,26 @@ export function CommandsPage() {
                       />
                       <p className="text-xs text-muted-foreground">
                         Max artists to scan per batch (1–50)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-source">Release source</Label>
+                      <select
+                        id="edit-source"
+                        value={editForm.new_releases_source ?? 'deezer'}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            new_releases_source: e.target.value === 'spotify' ? 'spotify' : 'deezer',
+                          }))
+                        }
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      >
+                        <option value="deezer">Deezer (no account configuration required)</option>
+                        <option value="spotify">Spotify (set credentials in Config)</option>
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        Deezer uses public data; Spotify requires credentials in Config → Music Sources
                       </p>
                     </div>
                     <div className="space-y-2">
