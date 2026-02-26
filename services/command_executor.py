@@ -5,7 +5,6 @@ Handles running commands asynchronously and tracking their status
 """
 
 import asyncio
-import os
 import time
 import traceback
 from datetime import datetime
@@ -264,16 +263,20 @@ class CommandExecutor:
             
             # Execute command in thread pool (since commands are synchronous)
             loop = asyncio.get_event_loop()
-            success = await loop.run_in_executor(
+            run_result = await loop.run_in_executor(
                 self.executor, 
                 self._run_sync_command, 
                 command
             )
+            success = run_result[0] if isinstance(run_result, tuple) else run_result
+            cmd_obj = run_result[1] if isinstance(run_result, tuple) and len(run_result) > 1 else None
             
             duration = time.time() - start_time
             
-            # Generate output summary based on command type
-            output_summary = self._generate_output_summary(command_name, success, duration)
+            # Generate output summary from command result (no log parsing)
+            output_summary = self._generate_output_summary(
+                command_name, success, duration, command=cmd_obj
+            )
             
             # Update execution record
             await self._update_execution_record(
@@ -317,8 +320,8 @@ class CommandExecutor:
                     except Exception as e:
                         self.logger.warning(f"Failed to start queued command: {e}")
     
-    def _run_sync_command(self, command) -> bool:
-        """Run a synchronous command (wrapper for thread pool)"""
+    def _run_sync_command(self, command) -> tuple:
+        """Run a synchronous command (wrapper for thread pool). Returns (success, command)."""
         self._ensure_initialized()
         try:
             # Check if the command's execute method is async or sync
@@ -333,171 +336,127 @@ class CommandExecutor:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    return loop.run_until_complete(command.execute())
+                    success = loop.run_until_complete(command.execute())
+                    return (success, command)
                 finally:
                     loop.close()
             else:
                 # Command is synchronous, call directly
-                return command.execute()
+                success = command.execute()
+                return (success, command)
         except Exception as e:
             self.logger.error(f"Sync command execution failed: {e}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
+            return (False, None)
     
-    def _generate_output_summary(self, command_name: str, success: bool, duration: float) -> str:
-        """Generate a summary of command output based on command type and logs"""
+    def _generate_output_summary(self, command_name: str, success: bool, duration: float,
+                                 command: Any = None) -> str:
+        """Generate a summary from command result (no log parsing)"""
         if not success:
             return f"Command failed after {duration:.1f}s"
         
-        # Try to read the latest log entries to extract statistics
-        try:
-            log_file = "data/logs/cmdarr.log"
-            if os.path.exists(log_file):
-                with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-                    lines = f.readlines()
-                
-                # Get the last 100 lines to find recent command output
-                recent_lines = lines[-100:] if len(lines) > 100 else lines
-                
-                if command_name == 'discovery_lastfm':
-                    return self._extract_lastfm_summary(recent_lines, duration)
-                elif command_name.startswith('playlist_sync_'):
-                    return self._extract_playlist_sync_summary(recent_lines, duration)
-        except Exception as e:
-            self.logger.debug(f"Failed to extract command summary: {e}")
+        stats = getattr(command, 'last_run_stats', None) if command else None
         
-        # Fallback summary
+        if command_name == 'discovery_lastfm' and stats:
+            return self._build_lastfm_summary(stats, duration)
+        elif command_name == 'library_cache_builder' and stats:
+            return self._build_library_cache_summary(stats, duration)
+        elif command_name.startswith('playlist_sync_') and stats:
+            return self._build_playlist_sync_summary(stats, duration)
+        
         return f"Command completed successfully in {duration:.1f}s"
     
-    def _extract_listenbrainz_summary(self, log_lines: list, duration: float) -> str:
-        """Extract ListenBrainz discovery statistics from log lines"""
-        # Extract key statistics
-        stats = {}
-        for line in log_lines:
-            if "Total Candidates:" in line:
-                stats['total_candidates'] = line.split("Total Candidates:")[1].strip()
-            elif "Filtered - Already in Lidarr:" in line:
-                stats['already_in_lidarr'] = line.split("Filtered - Already in Lidarr:")[1].strip()
-            elif "Filtered - Import List Exclusions:" in line:
-                stats['filtered_exclusions'] = line.split("Filtered - Import List Exclusions:")[1].strip()
-            elif "Final Output Count:" in line:
-                stats['final_output'] = line.split("Final Output Count:")[1].strip()
+    def _build_lastfm_summary(self, stats: Dict[str, Any], duration: float) -> str:
+        """Build Last.fm discovery summary from command result"""
+        total = stats.get('total_candidates', 0)
+        already_in = stats.get('filtered_already_in_lidarr', 0)
+        excluded = stats.get('filtered_in_exclusions', 0)
+        output = stats.get('final_count', 0)
         
-        # Create concise summary
-        summary_parts = [f"ListenBrainz Discovery completed in {duration:.1f}s"]
-        
-        if stats:
-            total = stats.get('total_candidates', '0')
-            already_in = stats.get('already_in_lidarr', '0')
-            excluded = stats.get('filtered_exclusions', '0')
-            output = stats.get('final_output', '0')
-            
-            if output == '0':
-                # No new artists found - explain why
-                summary_parts.append(f"✅ {total} artists detected:")
-                summary_parts.append(f"   • {already_in} already in Lidarr")
-                summary_parts.append(f"   • {excluded} on exclusion list")
-                summary_parts.append("   • No new artists to add")
+        parts = [f"Last.fm Discovery completed in {duration:.1f}s"]
+        if total > 0:
+            if output == 0:
+                parts.append(f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, no new artists to add")
             else:
-                # New artists found
-                summary_parts.append(f"✅ {total} artists detected:")
-                summary_parts.append(f"   • {already_in} already in Lidarr")
-                summary_parts.append(f"   • {excluded} on exclusion list")
-                summary_parts.append(f"   • {output} new artists ready for import")
-        
-        return "\n".join(summary_parts)
+                parts.append(f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, {output:,} new artists ready for import")
+        return " • ".join(parts)
     
-    def _extract_lastfm_summary(self, log_lines: list, duration: float) -> str:
-        """Extract Last.fm discovery statistics from log lines"""
-        # Extract key statistics
-        stats = {}
-        for line in log_lines:
-            if "Total Candidates:" in line:
-                stats['total_candidates'] = line.split("Total Candidates:")[1].strip()
-            elif "Filtered - Already in Lidarr:" in line:
-                stats['already_in_lidarr'] = line.split("Filtered - Already in Lidarr:")[1].strip()
-            elif "Filtered - Import List Exclusions:" in line:
-                stats['filtered_exclusions'] = line.split("Filtered - Import List Exclusions:")[1].strip()
-            elif "Final Output Count:" in line:
-                stats['final_output'] = line.split("Final Output Count:")[1].strip()
+    def _build_library_cache_summary(self, stats: Dict[str, Any], duration: float) -> str:
+        """Build library cache summary from command result"""
+        results = stats.get('results', {})
+        successful = [t for t, r in results.items() if r.get('success', False)]
+        failed = [t for t, r in results.items() if not r.get('success', False)]
         
-        # Create concise summary
-        summary_parts = [f"Last.fm Discovery completed in {duration:.1f}s"]
-        
-        if stats:
-            total = stats.get('total_candidates', '0')
-            already_in = stats.get('already_in_lidarr', '0')
-            excluded = stats.get('filtered_exclusions', '0')
-            output = stats.get('final_output', '0')
-            
-            if output == '0':
-                # No new artists found - explain why
-                summary_parts.append(f"✅ {total} artists detected:")
-                summary_parts.append(f"   • {already_in} already in Lidarr")
-                summary_parts.append(f"   • {excluded} on exclusion list")
-                summary_parts.append("   • No new artists to add")
-            else:
-                # New artists found
-                summary_parts.append(f"✅ {total} artists detected:")
-                summary_parts.append(f"   • {already_in} already in Lidarr")
-                summary_parts.append(f"   • {excluded} on exclusion list")
-                summary_parts.append(f"   • {output} new artists ready for import")
-        
-        return "\n".join(summary_parts)
+        parts = [f"Library cache completed in {duration:.1f}s"]
+        if successful:
+            parts.append(f"Built: {', '.join(successful)}")
+        if failed:
+            parts.append(f"Failed: {', '.join(failed)}")
+        return " • ".join(parts)
     
-    def _extract_playlist_sync_summary(self, log_lines: list, duration: float) -> str:
-        """Extract playlist sync statistics from log lines"""
-        summary_parts = [f"Playlist Sync completed in {duration:.1f}s"]
+    def _build_playlist_sync_summary(self, stats: Dict[str, Any], duration: float) -> str:
+        """Build playlist sync summary from command result"""
+        parts = [f"Playlist Sync completed in {duration:.1f}s"]
         
-        # Look for individual playlist sync statistics
-        sync_stats_found = False
-        artist_discovery_found = False
+        # Standard playlist_sync: sync_stats with found_tracks, total_tracks
+        sync_stats = stats.get('sync_stats', {})
+        if sync_stats:
+            found = sync_stats.get('found_tracks', 0)
+            total = sync_stats.get('total_tracks', 0)
+            action = sync_stats.get('action', '')
+            if action == 'additive_sync':
+                added = sync_stats.get('added_tracks', 0)
+                if added > 0:
+                    parts.append(f"{added} tracks added to existing playlist")
+                elif total > 0:
+                    parts.append(f"{found}/{total} tracks in playlist (no new tracks)")
+            elif total > 0:
+                rate = (found / total * 100)
+                parts.append(f"{found}/{total} tracks matched ({rate:.1f}% success rate)")
+            if action and action not in ('synced', 'additive_sync'):
+                parts.append(f"Action: {action}")
+        else:
+            # ListenBrainz: aggregate from sync_results
+            found = stats.get('total_tracks_found', 0)
+            total = stats.get('total_tracks_attempted', 0)
+            sync_time = stats.get('total_sync_time', 0)
+            playlists = stats.get('successful_syncs', 0)
+            total_playlists = stats.get('total_playlists_configured', 0)
+            if total > 0:
+                rate = (found / total * 100)
+                parts.append(f"{found}/{total} tracks matched ({rate:.1f}% success rate)")
+            if total_playlists > 0:
+                parts.append(f"{playlists}/{total_playlists} playlists synced in {sync_time:.1f}s")
         
-        # Process lines in reverse order to get the most recent values
-        for line in reversed(log_lines):
-            line = line.strip()
-            
-            # Look for sync completion messages
-            if "Full sync completed:" in line and not sync_stats_found:
-                # Extract track statistics from log message
-                # Format: "Full sync completed: {action}, {found_tracks}/{total_tracks} tracks matched"
-                import re
-                match = re.search(r'(\d+)/(\d+) tracks matched', line)
-                if match:
-                    found_tracks = int(match.group(1))
-                    total_tracks = int(match.group(2))
-                    success_rate = (found_tracks / total_tracks * 100) if total_tracks > 0 else 0
-                    summary_parts.append(f"{found_tracks}/{total_tracks} tracks matched ({success_rate:.1f}% success rate)")
-                    sync_stats_found = True
-            
-            elif "Successfully added" in line and "tracks to playlist" in line and not sync_stats_found:
-                # Extract additive sync statistics
-                import re
-                match = re.search(r'Successfully added (\d+) tracks to playlist', line)
-                if match:
-                    added_tracks = int(match.group(1))
-                    summary_parts.append(f"{added_tracks} tracks added")
-                    sync_stats_found = True
-            
-            # Look for artist discovery statistics
-            elif "Artist discovery completed:" in line and not artist_discovery_found:
-                # Extract artist discovery stats
-                # Format: "Artist discovery completed: {added} added, {skipped} skipped, {failed} failed"
-                import re
-                match = re.search(r'(\d+) added, (\d+) skipped, (\d+) failed', line)
-                if match:
-                    added = int(match.group(1))
-                    skipped = int(match.group(2))
-                    failed = int(match.group(3))
-                    if added > 0:
-                        summary_parts.append(f"{added} artists added to Lidarr")
-                    if failed > 0:
-                        summary_parts.append(f"{failed} artists failed")
-                    artist_discovery_found = True
+        # Artist discovery
+        artist_disc = stats.get('artist_discovery', {})
+        if artist_disc:
+            added = artist_disc.get('artists_added', 0)
+            failed_count = artist_disc.get('artists_failed', 0)
+            if added > 0:
+                parts.append(f"{added} artists added to Lidarr")
+            if failed_count > 0:
+                parts.append(f"{failed_count} artists failed")
         
-        # Join all summary parts
-        return " • ".join(summary_parts)
+        result = " • ".join(parts)
+        
+        # Failed matches (from sync_stats or aggregated from sync_results)
+        unmatched = []
+        if sync_stats:
+            unmatched = sync_stats.get('unmatched_tracks', [])
+        elif 'sync_results' in stats:
+            for r in stats.get('sync_results', {}).values():
+                unmatched.extend(r.get('unmatched_tracks', []))
+        
+        if unmatched:
+            display_limit = 25
+            to_show = unmatched[:display_limit]
+            result += "\n\nFailed matches:\n" + "\n".join(f"• {t}" for t in to_show)
+            if len(unmatched) > display_limit:
+                result += f"\n... and {len(unmatched) - display_limit} more"
+        
+        return result
     
     async def _create_execution_record(self, command_name: str, triggered_by: str = 'manual') -> int:
         """Create a new command execution record in the database"""
