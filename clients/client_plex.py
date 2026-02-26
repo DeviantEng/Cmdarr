@@ -972,22 +972,20 @@ class PlexClient(BaseAPIClient):
 
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):
         """
-        Search for tracks using mediaQuery on /all (official API) instead of undocumented /search.
-        Uses type=10 (track) with title/grandparentTitle filters for targeted lookups.
+        Search for tracks using mediaQuery on /all.
+        Uses title filter only (Plex QueryParser rejects grandparentTitle); artist filtered client-side.
         """
-        # Build mediaQuery params: type=10 for tracks, = for contains
-        params = {"type": 10}
-        if artist_name and track_name:
-            params["grandparentTitle"] = artist_name
-            params["title"] = track_name
-        elif track_name:
-            params["title"] = track_name
-        elif artist_name:
-            params["grandparentTitle"] = artist_name
-        elif query:
-            params["title"] = query
-        else:
+        # Build params: type=10 for tracks. Use title only - grandparentTitle is rejected by Plex QueryParser.
+        # Artist matching is done client-side in _score_track_match.
+        search_term = track_name or artist_name or query
+        if not search_term or not str(search_term).strip():
             return []
+
+        params = {
+            "type": 10,
+            "title": search_term,
+            "X-Plex-Container-Size": 500,  # Required by Plex; limit results for search
+        }
 
         for attempt in range(2):
             try:
