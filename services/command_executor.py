@@ -364,6 +364,8 @@ class CommandExecutor:
             return self._build_library_cache_summary(stats, duration)
         elif command_name.startswith('playlist_sync_') and stats:
             return self._build_playlist_sync_summary(stats, duration)
+        elif command_name == 'new_releases_discovery' and stats:
+            return self._build_new_releases_summary(stats, duration)
         
         return f"Command completed successfully in {duration:.1f}s"
     
@@ -380,6 +382,19 @@ class CommandExecutor:
                 parts.append(f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, no new artists to add")
             else:
                 parts.append(f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, {output:,} new artists ready for import")
+        return " • ".join(parts)
+    
+    def _build_new_releases_summary(self, stats: Dict[str, Any], duration: float) -> str:
+        """Build New Releases Discovery summary from command result"""
+        scanned = stats.get('artists_scanned', 0)
+        detected = stats.get('new_releases_detected', 0)
+        parts = [f"New Releases Discovery completed in {duration:.1f}s"]
+        if scanned == 0:
+            parts.append("No artists to scan")
+        elif detected == 0:
+            parts.append(f"Scanned {scanned:,} artists, no new releases detected")
+        else:
+            parts.append(f"Scanned {scanned:,} artists, {detected:,} new release(s) detected")
         return " • ".join(parts)
     
     def _build_library_cache_summary(self, stats: Dict[str, Any], duration: float) -> str:

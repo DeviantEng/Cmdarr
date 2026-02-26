@@ -99,6 +99,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
     def __init__(self, config=None):
         super().__init__(config)
         self.config_adapter = ConfigAdapter()
+        self.last_run_stats: Dict[str, Any] = {}
 
     async def execute(self) -> bool:
         """
@@ -132,6 +133,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 artists = await self._pick_artists_to_scan(artists_per_run)
             if not artists:
                 self.logger.info("No artists to scan")
+                self.last_run_stats = {'artists_scanned': 0, 'new_releases_detected': 0}
                 return True
 
             self.logger.info(f"Scanning {len(artists)} artists (types: {sorted(selected_types)})")
@@ -273,6 +275,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 scanned += 1
 
                 session.commit()
+                self.last_run_stats = {'artists_scanned': scanned, 'new_releases_detected': inserted}
                 self.logger.info(f"Discovery complete: scanned {scanned} artists, inserted {inserted} pending releases")
                 return True
             finally:
