@@ -28,6 +28,17 @@ def _get_next_run_cron(cron_expr: str, tz) -> Optional[datetime]:
         return None
 
 
+def _get_last_scheduled_cron(cron_expr: str, tz) -> Optional[datetime]:
+    """Get the last (most recent past) scheduled time from cron. Returns timezone-aware datetime in UTC."""
+    try:
+        now = datetime.now(tz)
+        itr = croniter(cron_expr, now)
+        prev_local = itr.get_prev(datetime)
+        return prev_local.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
 def get_effective_cron(command: CommandConfig) -> Optional[str]:
     """Get cron expression for command: per-command override or global default."""
     if command.schedule_cron and command.schedule_cron.strip():
@@ -145,8 +156,20 @@ class CommandScheduler:
                     cron_expr = get_effective_cron(command)
                     if not cron_expr:
                         continue
-                    next_run = calculate_next_run_cron(command, tz)
-                    if next_run and now_utc >= next_run:
+                    # Use get_prev: "next" at 3:00:01 AM gives tomorrow, so we'd never be due.
+                    # Instead: last_scheduled = most recent cron time (e.g. 3 AM today).
+                    # Due when: now >= last_scheduled AND we haven't run since then.
+                    last_scheduled = _get_last_scheduled_cron(cron_expr, tz)
+                    if not last_scheduled:
+                        continue
+                    last_run_utc = None
+                    if command.last_run:
+                        last_run_utc = (
+                            command.last_run.astimezone(timezone.utc)
+                            if command.last_run.tzinfo
+                            else command.last_run.replace(tzinfo=timezone.utc)
+                        )
+                    if now_utc >= last_scheduled and (last_run_utc is None or last_run_utc < last_scheduled):
                         due_commands.append((command.id, command.command_name))
 
                 # If any playlist sync is due, ensure maintenance runs first if enabled and not run in 24h
@@ -298,9 +321,16 @@ class CommandScheduler:
                     cron = get_effective_cron(command)
                     self.logger.info(f"Command {command_name} enabled, cron={cron}")
                     tz = _get_scheduler_timezone()
-                    next_run = calculate_next_run_cron(command, tz)
                     now_utc = get_utc_now()
-                    if next_run and now_utc >= next_run:
+                    last_scheduled = _get_last_scheduled_cron(cron, tz) if cron else None
+                    last_run_utc = None
+                    if command.last_run:
+                        last_run_utc = (
+                            command.last_run.astimezone(timezone.utc)
+                            if command.last_run.tzinfo
+                            else command.last_run.replace(tzinfo=timezone.utc)
+                        )
+                    if last_scheduled and now_utc >= last_scheduled and (last_run_utc is None or last_run_utc < last_scheduled):
                         await self._queue_command_execution(command.id, command_name)
             finally:
                 session.close()

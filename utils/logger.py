@@ -91,6 +91,41 @@ class UvicornHealthCheckFilter(logging.Filter):
         return True
 
 
+class SafeTimedRotatingFileHandler(logging.handlers.TimedRotatingFileHandler):
+    """
+    TimedRotatingFileHandler that recovers from rotation failures.
+    When doRollover() fails (e.g. OSError at midnight), the handler can end up
+    with a closed stream - file stops writing while console continues.
+    This subclass catches emit errors and reopens the file.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._emit_failures = 0
+        self._max_emit_failures = 3
+
+    def emit(self, record):
+        try:
+            super().emit(record)
+            self._emit_failures = 0
+        except (OSError, IOError) as e:
+            self._emit_failures += 1
+            if self._emit_failures <= self._max_emit_failures:
+                try:
+                    if self.stream:
+                        self.stream.close()
+                        self.stream = None
+                    self.stream = self._open()
+                    super().emit(record)
+                    self._emit_failures = 0
+                except Exception:
+                    if self._emit_failures == 1:
+                        import sys
+                        sys.stderr.write(f"Cmdarr log file handler error (will retry): {e}\n")
+                    self.handleError(record)
+            else:
+                self.handleError(record)
+
+
 class CmdarrLogger:
     """Centralized logger setup for Cmdarr with rotation and retention"""
     
@@ -126,8 +161,9 @@ class CmdarrLogger:
         # Get the configured log level
         config_level = getattr(logging, config.LOG_LEVEL)
         
-        # Setup file handler with daily rotation
-        file_handler = logging.handlers.TimedRotatingFileHandler(
+        # Setup file handler with daily rotation (SafeTimedRotatingFileHandler
+        # recovers from rotation failures that can leave the handler broken)
+        file_handler = SafeTimedRotatingFileHandler(
             filename=config.LOG_FILE,
             when='midnight',
             interval=1,
