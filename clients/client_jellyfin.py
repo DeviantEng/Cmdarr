@@ -48,22 +48,28 @@ class JellyfinClient(BaseAPIClient):
         if config.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False):
             self._load_cached_library()
     
+    def get_resolved_library_key(self) -> Optional[str]:
+        """Return the resolved music library key for cache, playlist sync, and search. Single library only."""
+        music_libraries = self.get_music_libraries()
+        chosen = self._resolve_music_library(music_libraries)
+        return chosen['key'] if chosen else None
+
     def get_cache_key(self, library_key: str = None) -> str:
         """Generate cache key for library cache"""
-        # Include base URL to handle multiple Jellyfin instances
         if self.base_url is None:
-            self.logger.error(f"base_url is None in get_cache_key for library_key: {library_key}")
-            # Fallback to a default base URL
             base_url = "localhost_8096"
         else:
             base_url = self.base_url.replace('http://', '').replace('https://', '').replace('/', '_')
-        
-        self.logger.debug(f"get_cache_key - base_url: {base_url}, library_key: {library_key}")
-        
         if library_key:
             return f"jellyfin:{base_url}:library:{library_key}"
-        else:
-            return f"jellyfin:{base_url}:library:default"
+        try:
+            music_libraries = self.get_music_libraries()
+            chosen = self._resolve_music_library(music_libraries)
+            if chosen:
+                return f"jellyfin:{base_url}:library:{chosen['key']}"
+        except Exception:
+            pass
+        return f"jellyfin:{base_url}:library:default"
     
     def _get_cache_key(self, operation: str, *args) -> str:
         """Generate cache key for Jellyfin API operations"""
@@ -1338,6 +1344,63 @@ class JellyfinClient(BaseAPIClient):
     
     # ==== LIBRARY CACHE INTERFACE METHODS ====
     # Required by LibraryCacheManager for optimization
+
+    def get_music_libraries(self) -> List[Dict[str, Any]]:
+        """Get all music library views (CollectionType=music)."""
+        try:
+            if not self.user_id:
+                self.logger.warning("JELLYFIN_USER_ID not set, cannot list music libraries")
+                return []
+            response = self._get_sync(f"/Users/{self.user_id}/Views")
+            if not response or 'Items' not in response:
+                return []
+            music_libraries = []
+            for item in response.get('Items', []):
+                if (item.get('CollectionType') or '').lower() == 'music':
+                    music_libraries.append({
+                        'key': item.get('Id'),
+                        'title': item.get('Name'),
+                        'type': item.get('CollectionType', 'music'),
+                    })
+            self.logger.debug(f"Found {len(music_libraries)} music libraries")
+            return music_libraries
+        except Exception as e:
+            self.logger.error(f"Error getting music libraries: {e}")
+            return []
+
+    def _resolve_music_library(self, music_libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Resolve which music library to use (single library only).
+        - If LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME set: use that by name (case-insensitive)
+        - If blank and only 1 library: use it
+        - If multiple: prefer one named 'Music' (case-insensitive)
+        - Else: use first (lowest library key/id)"""
+        if not music_libraries:
+            return None
+        name_override = (self.config.get('LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME') or '').strip()
+        if name_override:
+            for lib in music_libraries:
+                if (lib.get('title') or '').strip().lower() == name_override.lower():
+                    return lib
+            self.logger.warning(f"Library '{name_override}' not found in {[l.get('title') for l in music_libraries]}, using first")
+            return self._first_by_lowest_key(music_libraries)
+        if len(music_libraries) == 1:
+            return music_libraries[0]
+        for lib in music_libraries:
+            if (lib.get('title') or '').strip().lower() == 'music':
+                return lib
+        return self._first_by_lowest_key(music_libraries)
+
+    def _first_by_lowest_key(self, libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Return library with lowest key (numeric when possible, else string)."""
+        if not libraries:
+            return None
+        def sort_key(lib):
+            k = lib.get('key') or ''
+            try:
+                return (0, int(k))
+            except (ValueError, TypeError):
+                return (1, str(k))
+        return min(libraries, key=sort_key)
     
     def build_library_cache(self, library_key: str = None) -> Dict[str, Any]:
         """
@@ -1353,17 +1416,27 @@ class JellyfinClient(BaseAPIClient):
         }
         """
         try:
+            # Resolve library (same logic as Plex - single library only)
+            if not library_key:
+                music_libraries = self.get_music_libraries()
+                chosen = self._resolve_music_library(music_libraries)
+                if chosen:
+                    library_key = chosen['key']
+                    self.logger.info(f"Using music library: {chosen['title']}")
+                else:
+                    self.logger.warning("No music libraries found for cache building")
+                    return {}
             self.logger.info(f"Building optimized library cache for Jellyfin library {library_key or 'default'}...")
             start_time = time.time()
             
-            # Get all music items from Jellyfin
             params = {
                 'IncludeItemTypes': 'Audio',
                 'Recursive': 'true',
                 'UserId': self.user_id,
                 'Limit': 1000  # Start with reasonable batch size
             }
-            
+            if library_key:
+                params['ParentId'] = library_key
             all_tracks = []
             start_index = 0
             

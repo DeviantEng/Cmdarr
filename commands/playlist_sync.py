@@ -133,11 +133,14 @@ class PlaylistSyncCommand(BaseCommand):
             playlist_title = f"[{config.get('source', 'Unknown').title()}] {playlist_name}"
             playlist_summary = f"Synced from {config.get('source', 'unknown')} playlist: {playlist_name}"
             
-            # Get library cache if available
+            # Get library cache if available (target resolved library for cache + playlist content)
             cached_data = None
+            library_key = None
+            if hasattr(self.target_client, 'get_resolved_library_key'):
+                library_key = self.target_client.get_resolved_library_key()
             if self.library_cache_manager:
                 cached_data = self.library_cache_manager.get_library_cache(
-                    self.target_name.lower()
+                    self.target_name.lower(), library_key
                 )
                 if cached_data:
                     track_count = cached_data.get('total_tracks', 0)
@@ -151,9 +154,9 @@ class PlaylistSyncCommand(BaseCommand):
             # Sync playlist based on mode
             sync_result = None
             if sync_mode == 'additive':
-                sync_result = await self._sync_additive(playlist_title, tracks, playlist_summary, cached_data)
+                sync_result = await self._sync_additive(playlist_title, tracks, playlist_summary, cached_data, library_key)
             else:  # full sync
-                sync_result = await self._sync_full(playlist_title, tracks, playlist_summary, cached_data)
+                sync_result = await self._sync_full(playlist_title, tracks, playlist_summary, cached_data, library_key)
             
             # Extract success and stats from sync result
             if isinstance(sync_result, dict):
@@ -437,17 +440,18 @@ class PlaylistSyncCommand(BaseCommand):
             raise
     
     async def _sync_full(self, playlist_title: str, tracks: List[Dict[str, Any]], 
-                        summary: str, cached_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+                        summary: str, cached_data: Optional[Dict[str, Any]], 
+                        library_key: Optional[str] = None) -> Dict[str, Any]:
         """Sync playlist using full sync mode (delete and recreate)"""
         try:
             self.logger.info(f"Performing full sync for playlist '{playlist_title}'")
             
-            # Use the target client's sync_playlist method
             result = self.target_client.sync_playlist(
                 title=playlist_title,
                 tracks=tracks,
                 summary=summary,
-                library_cache_manager=self.library_cache_manager
+                library_cache_manager=self.library_cache_manager,
+                library_key=library_key,
             )
             
             if result.get('success'):
@@ -472,7 +476,8 @@ class PlaylistSyncCommand(BaseCommand):
             }
     
     async def _sync_additive(self, playlist_title: str, tracks: List[Dict[str, Any]], 
-                           summary: str, cached_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+                           summary: str, cached_data: Optional[Dict[str, Any]], 
+                           library_key: Optional[str] = None) -> Dict[str, Any]:
         """Sync playlist using additive mode (only add new tracks)"""
         try:
             self.logger.info(f"Performing additive sync for playlist '{playlist_title}'")
@@ -483,7 +488,7 @@ class PlaylistSyncCommand(BaseCommand):
             if not existing_playlist:
                 # Playlist doesn't exist, create it with all tracks
                 self.logger.info(f"Playlist '{playlist_title}' doesn't exist, creating with all tracks")
-                return await self._sync_full(playlist_title, tracks, summary, cached_data)
+                return await self._sync_full(playlist_title, tracks, summary, cached_data, library_key)
             
             # Get existing tracks
             playlist_rating_key = existing_playlist.get('ratingKey') or existing_playlist.get('Id')

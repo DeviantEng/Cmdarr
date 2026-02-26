@@ -117,9 +117,11 @@ class ConfigService:
             # Library Cache Target Configuration (default disabled)
             {'key': 'LIBRARY_CACHE_PLEX_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'plex', 'description': 'Enable library cache building for Plex (auto-managed)', 'is_hidden': True},
             {'key': 'LIBRARY_CACHE_PLEX_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'plex', 'description': 'Plex library cache TTL (days)'},
+            {'key': 'LIBRARY_CACHE_PLEX_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'plex', 'description': 'Plex music library name to use (e.g. Music). Empty = auto-select (prefers Music over Audiobooks)'},
             {'key': 'LIBRARY_CACHE_PLEX_USER_DISABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'plex', 'description': 'Disable library caching (slower playlist sync)'},
             {'key': 'LIBRARY_CACHE_JELLYFIN_ENABLED', 'default_value': 'true', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Enable library cache building for Jellyfin (auto-managed)', 'is_hidden': True},
             {'key': 'LIBRARY_CACHE_JELLYFIN_TTL_DAYS', 'default_value': '30', 'data_type': 'int', 'category': 'jellyfin', 'description': 'Jellyfin library cache TTL (days)'},
+            {'key': 'LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME', 'default_value': '', 'data_type': 'string', 'category': 'jellyfin', 'description': 'Jellyfin music library name to use. Empty = use default'},
             {'key': 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED', 'default_value': 'false', 'data_type': 'bool', 'category': 'jellyfin', 'description': 'Disable library caching (slower playlist sync)'},
             
             # Playlist Sync Configuration

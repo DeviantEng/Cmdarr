@@ -266,11 +266,12 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             # Generate playlist description
             description = self._generate_playlist_description(playlist_data, playlist_key)
             
-            # Get library cache if available
+            # Get library cache if available (target resolved library for cache + playlist content)
             cached_data = None
+            library_key = self.target_client.get_resolved_library_key() if hasattr(self.target_client, 'get_resolved_library_key') else None
             if self.library_cache_manager:
                 cached_data = self.library_cache_manager.get_library_cache(
-                    self.target_name.lower()
+                    self.target_name.lower(), library_key
                 )
                 if cached_data:
                     track_count = cached_data.get('total_tracks', 0)
@@ -286,9 +287,9 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             
             sync_mode = self.config_json.get('sync_mode', 'full')
             if sync_mode == 'full':
-                result = await self._sync_full(target_title, tracks, description, cached_data)
+                result = await self._sync_full(target_title, tracks, description, cached_data, library_key)
             else:
-                result = await self._sync_additive(target_title, tracks, description, cached_data)
+                result = await self._sync_additive(target_title, tracks, description, cached_data, library_key)
             
             # Extract results
             success = result.get('success', False)
@@ -430,9 +431,8 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
         """Check if library cache is available and fresh, build if missing"""
         try:
             target_type = self.target_name.lower()
-            
-            # Get existing cache
-            library_cache = self.library_cache_manager.get_library_cache(target_type)
+            library_key = self.target_client.get_resolved_library_key() if hasattr(self.target_client, 'get_resolved_library_key') else None
+            library_cache = self.library_cache_manager.get_library_cache(target_type, library_key)
             
             if not library_cache:
                 self.logger.info(f"No library cache found for {target_type}, building cache...")

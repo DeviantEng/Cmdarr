@@ -58,21 +58,25 @@ class PlexClient(BaseAPIClient):
     # ==== LIBRARY CACHE INTERFACE METHODS ====
     # Required by LibraryCacheManager for optimization
     
+    def get_resolved_library_key(self) -> Optional[str]:
+        """Return the resolved music library key for cache, playlist sync, and search. Single library only."""
+        music_libraries = self.get_music_libraries()
+        chosen = self._resolve_music_library(music_libraries)
+        return chosen['key'] if chosen else None
+
     def get_cache_key(self, library_key: str = None) -> str:
         """Generate cache key for library cache"""
         if library_key:
             return f"plex:{self.base_url}:library:{library_key}"
         else:
-            # Default to first music library
             try:
                 music_libraries = self.get_music_libraries()
-                if music_libraries:
-                    default_library_key = music_libraries[0]['key']
-                    return f"plex:{self.base_url}:library:{default_library_key}"
-                else:
-                    return f"plex:{self.base_url}:library:default"
-            except:
-                return f"plex:{self.base_url}:library:default"
+                chosen = self._resolve_music_library(music_libraries)
+                if chosen:
+                    return f"plex:{self.base_url}:library:{chosen['key']}"
+            except Exception:
+                pass
+            return f"plex:{self.base_url}:library:default"
     
     def get_cache_ttl(self) -> int:
         """Get cache TTL in days for Plex library cache"""
@@ -95,11 +99,12 @@ class PlexClient(BaseAPIClient):
             # Get target library
             if not library_key:
                 music_libraries = self.get_music_libraries()
-                if not music_libraries:
+                chosen = self._resolve_music_library(music_libraries)
+                if not chosen:
                     self.logger.error("No music libraries found for cache building")
                     return {}
-                library_key = music_libraries[0]['key']
-                self.logger.info(f"Using default music library: {music_libraries[0]['title']}")
+                library_key = chosen['key']
+                self.logger.info(f"Using music library: {chosen['title']}")
             
             self.logger.info(f"Building optimized library cache for library {library_key}...")
             start_time = time.time()
@@ -540,9 +545,11 @@ class PlexClient(BaseAPIClient):
         Tries artist+track, track-only, artist-only, and partial track strategies.
         """
         music_libraries = self.get_music_libraries()
-        if not music_libraries:
+        chosen = self._resolve_music_library(music_libraries)
+        if not chosen:
             self.logger.warning("No music libraries found")
             return None
+        libraries_to_search = [chosen]
 
         # Search strategies as (artist, track) for targeted mediaQuery
         search_strategies = [
@@ -557,7 +564,7 @@ class PlexClient(BaseAPIClient):
         best_match = None
         best_score = 0
 
-        for library in music_libraries:
+        for library in libraries_to_search:
             library_key = library["key"]
 
             for artist_str, track_str in search_strategies:
@@ -922,6 +929,40 @@ class PlexClient(BaseAPIClient):
                 return element.text.strip()
 
         return result
+
+    def _resolve_music_library(self, music_libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Resolve which music library to use (single library only).
+        - If LIBRARY_CACHE_PLEX_LIBRARY_NAME set: use that by name (case-insensitive)
+        - If blank and only 1 library: use it
+        - If multiple: prefer one named 'Music' (case-insensitive)
+        - Else: use first (lowest library key/id)"""
+        if not music_libraries:
+            return None
+        name_override = (self.config.get('LIBRARY_CACHE_PLEX_LIBRARY_NAME') or '').strip()
+        if name_override:
+            for lib in music_libraries:
+                if (lib.get('title') or '').strip().lower() == name_override.lower():
+                    return lib
+            self.logger.warning(f"Library '{name_override}' not found in {[l.get('title') for l in music_libraries]}, using first")
+            return self._first_by_lowest_key(music_libraries)
+        if len(music_libraries) == 1:
+            return music_libraries[0]
+        for lib in music_libraries:
+            if (lib.get('title') or '').strip().lower() == 'music':
+                return lib
+        return self._first_by_lowest_key(music_libraries)
+
+    def _first_by_lowest_key(self, libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Return library with lowest key (numeric when possible)."""
+        if not libraries:
+            return None
+        def sort_key(lib):
+            k = lib.get('key') or ''
+            try:
+                return (0, int(k))
+            except (ValueError, TypeError):
+                return (1, str(k))
+        return min(libraries, key=sort_key)
 
     def get_music_libraries(self):
         """Get all music library sections - copied from proven working implementation"""

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixes
 - **Status Page**: Fast cache metadata query (no full JSON load); Plex/Jellyfin stats fetched in parallel—fixes ~5s hang when Jellyfin disabled
+- **Library Selection**: Config `LIBRARY_CACHE_PLEX_LIBRARY_NAME` / `LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME` to target a specific music library; auto-prefers "Music" over Audiobooks when multiple exist; used for cache, playlist sync, and track search
 
 ## [0.3.2] - 2026-02-23
 
