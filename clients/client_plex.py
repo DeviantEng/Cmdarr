@@ -1010,26 +1010,43 @@ class PlexClient(BaseAPIClient):
         return []
 
     def get_recently_added_tracks(self, library_key, days=1):
-        """Get tracks added in the last N days. Uses addedAt>>= per Plex mediaQuery (after)."""
+        """Get tracks added in the last N days. Uses addedAt>= per Plex mediaQuery (>= is standard operator)."""
         from datetime import datetime, timedelta
         
         # Calculate timestamp for N days ago
         cutoff_date = datetime.now() - timedelta(days=days)
         cutoff_timestamp = int(cutoff_date.timestamp())
         
-        params = {
-            "type": 10,  # Track type
-            "addedAt>>=": cutoff_timestamp  # Plex API date: >>= (after) returns media added on or after timestamp
-        }
+        all_tracks = []
+        container_start = 0
+        container_size = 500
 
         try:
             self.logger.debug(f"Getting tracks added in last {days} days (since {cutoff_date.isoformat()})")
-            results = self._get(f"/library/sections/{library_key}/all", params=params)
-            media_container = results.get("MediaContainer", {})
-            tracks = media_container.get("Metadata", [])
-            
-            self.logger.info(f"Found {len(tracks)} tracks added in last {days} days")
-            return tracks
+            while True:
+                params = {
+                    "type": 10,  # Track type
+                    "addedAt>=": cutoff_timestamp,  # Plex filter: >= returns media added on or after timestamp
+                    "X-Plex-Container-Start": container_start,
+                    "X-Plex-Container-Size": container_size,
+                }
+                results = self._get(f"/library/sections/{library_key}/all", params=params)
+                media_container = results.get("MediaContainer", {})
+                tracks = media_container.get("Metadata", [])
+
+                if not tracks:
+                    break
+
+                all_tracks.extend(tracks)
+
+                if len(tracks) < container_size:
+                    break
+
+                container_start += container_size
+                time.sleep(0.1)  # Throttle to avoid overwhelming Plex
+
+            self.logger.info(f"Found {len(all_tracks)} tracks added in last {days} days")
+            return all_tracks
         except Exception as e:
             self.logger.error(f"Error getting recently added tracks from library {library_key}: {e}")
             return []

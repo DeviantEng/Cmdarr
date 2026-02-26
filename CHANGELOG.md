@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Commands View**: Card/list view toggle persisted in localStorage
 
 ### 🎵 Plex & MusicBrainz
-- **Plex API**: Replaced undocumented `/search` with mediaQuery on `/all`; fixed `addedAt>>` to `addedAt>>=`; smaller batches (250)
+- **Plex API**: Replaced undocumented `/search` with mediaQuery on `/all`; use `addedAt>=` for date filter (Plex rejects `>>=`); smaller batches (250)
 - **MusicBrainz**: Rate limit 0.8 req/sec; hardcoded User-Agent; skip artist on 503 instead of adding to pending
 
 ### 🔧 Fixes & Improvements

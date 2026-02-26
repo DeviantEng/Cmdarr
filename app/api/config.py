@@ -162,6 +162,19 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
                     cache_builder.enabled = True
                     db.commit()
                     get_config_logger().info("Enabled library_cache_builder (cache target re-enabled)")
+                    # Trigger immediate cache build (same as startup)
+                    try:
+                        import asyncio
+                        from services.command_executor import command_executor
+                        asyncio.create_task(
+                            command_executor.execute_command(
+                                'library_cache_builder',
+                                triggered_by='config_re_enable'
+                            )
+                        )
+                        get_config_logger().info("Queued library_cache_builder for immediate execution")
+                    except Exception as e:
+                        get_config_logger().warning(f"Failed to trigger cache build: {e}")
         
         # Update options if provided
         if request.options is not None:
