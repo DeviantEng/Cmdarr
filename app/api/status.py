@@ -3,6 +3,7 @@
 Status API endpoints
 """
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
@@ -340,9 +341,8 @@ async def get_statistics(db: Session = Depends(get_config_db)):
 
 
 async def _get_cache_status_for_target(target: str, cache_manager, cache_stats):
-    """Helper function to get cache status for a specific target"""
-    library_cache = None
-    # Get per-client cache stats
+    """Helper function to get cache status for a specific target.
+    Uses lightweight metadata query (no full cache load) for fast status page."""
     client_stats = cache_manager.get_client_stats(target)
     
     cache_info = {
@@ -359,18 +359,15 @@ async def _get_cache_status_for_target(target: str, cache_manager, cache_stats):
     }
     
     try:
-        # Try to get cache data directly from database (doesn't require client registration)
-        library_cache = cache_manager.get_library_cache_direct(target)
-        
-        if library_cache:
+        meta = cache_manager.get_library_cache_metadata(target)
+        if meta:
             cache_info.update({
                 'status': 'Available',
-                'last_generated': library_cache.get('built_at'),
-                'size_mb': round(len(str(library_cache)) / 1024 / 1024, 2),
-                'object_count': library_cache.get('total_tracks', 0)
+                'last_generated': meta.get('built_at'),
+                'size_mb': round((meta.get('size_bytes') or 0) / 1024 / 1024, 2),
+                'object_count': meta.get('track_count', 0)
             })
         else:
-            # Check if client is registered for more detailed status
             if target not in cache_manager.registered_clients:
                 cache_info['status'] = 'Not built'
                 cache_info['message'] = f'{target} cache not found in database'
@@ -397,12 +394,13 @@ async def get_cache_status(target: str = None):
         # Get cache statistics
         cache_stats = cache_manager.get_cache_stats()
         
-        # If no target specified, return both Plex and Jellyfin cache info
+        # If no target specified, return both Plex and Jellyfin cache info (in parallel)
         if not target:
-            return {
-                'plex': await _get_cache_status_for_target('plex', cache_manager, cache_stats),
-                'jellyfin': await _get_cache_status_for_target('jellyfin', cache_manager, cache_stats)
-            }
+            plex_result, jellyfin_result = await asyncio.gather(
+                _get_cache_status_for_target('plex', cache_manager, cache_stats),
+                _get_cache_status_for_target('jellyfin', cache_manager, cache_stats)
+            )
+            return {'plex': plex_result, 'jellyfin': jellyfin_result}
         
         # Validate target
         if target.lower() not in ['plex', 'jellyfin']:

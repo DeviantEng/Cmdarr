@@ -161,6 +161,37 @@ class LibraryCacheManager:
         except Exception as e:
             self.logger.warning(f"Direct cache retrieval error for {client_type}: {e}")
             return None
+
+    def get_library_cache_metadata(self, client_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cache metadata without loading full cache_data (fast for status page).
+        Uses track_count column and json_extract for built_at to avoid loading large JSON.
+        """
+        try:
+            from sqlalchemy import text
+            with self.db_manager.get_cache_session_context() as session:
+                row = session.execute(
+                    text("""
+                        SELECT track_count, created_at,
+                               json_extract(cache_data, '$.built_at') as built_at,
+                               length(cache_data) as data_bytes
+                        FROM library_cache
+                        WHERE client_type = :client_type AND expires_at > datetime('now')
+                        ORDER BY created_at DESC LIMIT 1
+                    """),
+                    {"client_type": client_type}
+                ).fetchone()
+                if row:
+                    return {
+                        'track_count': row[0],
+                        'created_at': row[1],
+                        'built_at': float(row[2]) if row[2] else None,
+                        'size_bytes': row[3] or 0
+                    }
+                return None
+        except Exception as e:
+            self.logger.debug(f"Cache metadata query for {client_type}: {e}")
+            return None
     
     def _get_from_sqlite(self, cache_key: str, client_type: str, library_key: str) -> Optional[Dict[str, Any]]:
         """Retrieve cache data from SQLite if not expired"""
