@@ -137,30 +137,32 @@ class PlexClient(BaseAPIClient):
             return {}
     
     def _fetch_minimal_library_tracks(self, library_key: str) -> List[Dict[str, Any]]:
-        """Fetch all tracks from a library with minimal data. Smaller batches + includeFields for large libraries."""
+        """Fetch all tracks from a library with minimal data. Smaller batches for large libraries."""
         all_tracks = []
         container_start = 0
         container_size = 250  # Smaller batches to reduce per-request load on 500k+ libraries
         
-        # Request only fields we need to reduce payload and server processing
-        include_fields = "ratingKey,title,grandparentTitle,parentTitle,duration"
-        
+        # Avoid includeFields - Plex QueryParser rejects deprecated fields (sectionID, contentDirectoryID,
+        # pinnedContentDirectoryID) that can be triggered by field filtering in newer Plex versions.
         while True:
             try:
                 params = {
                     "type": 10,  # Track type
                     "X-Plex-Container-Start": container_start,
                     "X-Plex-Container-Size": container_size,
-                    "includeFields": include_fields,
                 }
                 
                 results = self._get(f"/library/sections/{library_key}/all", params=params)
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
-                
+
                 if not tracks:
                     break
-                
+
+                # Throttle requests to avoid overwhelming Plex (reduces inotify/QueryParser load)
+                if container_start > 0:
+                    time.sleep(0.1)
+
                 # Extract ONLY essential track data for minimal memory usage
                 for track in tracks:
                     # Store only what's absolutely needed for matching
