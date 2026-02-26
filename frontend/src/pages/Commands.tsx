@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'card' | 'list'
-type SortField = 'name' | 'status' | 'type' | 'schedule' | 'last_run' | 'next_run'
+type SortField = 'name' | 'status' | 'type' | 'schedule' | 'last_run'
 type SortDirection = 'asc' | 'desc'
 
 const BUILTIN_COMMANDS = ['discovery_lastfm', 'library_cache_builder', 'new_releases_discovery', 'playlist_sync_discovery_maintenance']
@@ -287,9 +287,6 @@ export function CommandsPage() {
         }
         case 'last_run':
           comparison = (a.last_run || '').localeCompare(b.last_run || '')
-          break
-        case 'next_run':
-          comparison = (a.next_run || '').localeCompare(b.next_run || '')
           break
       }
       return sortDirection === 'asc' ? comparison : -comparison
@@ -572,11 +569,6 @@ export function CommandsPage() {
                       Last Run <SortIcon column="last_run" />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button onClick={() => handleSort('next_run')} className="flex items-center cursor-pointer hover:text-foreground">
-                      Next Run <SortIcon column="next_run" />
-                    </button>
-                  </th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
@@ -610,9 +602,6 @@ export function CommandsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
                       {command.last_run ? new Date(command.last_run).toLocaleString() : 'Never'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {command.next_run ? new Date(command.next_run).toLocaleString() : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <DropdownMenu>
