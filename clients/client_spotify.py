@@ -263,6 +263,31 @@ class SpotifyClient(BaseAPIClient):
                 'error': f"Failed to fetch tracks: {str(e)}"
             }
     
+    async def get_album(self, album_id: str) -> Dict[str, Any]:
+        """Get album by ID. Returns artist_id, artist_name, title, album_url, etc."""
+        try:
+            result = await self._get(f'/albums/{album_id}')
+            if not result:
+                return {'success': False, 'error': 'No response'}
+            artists = result.get('artists', [])
+            artist_id = artists[0].get('id') if artists else ''
+            artist_name = artists[0].get('name', '') if artists else ''
+            album_url = result.get('external_urls', {}).get('spotify', '')
+            return {
+                'success': True,
+                'id': result.get('id', ''),
+                'title': result.get('name', ''),
+                'artist_id': artist_id,
+                'artist_name': artist_name,
+                'release_date': result.get('release_date', ''),
+                'record_type': (result.get('album_type') or 'album').lower(),
+                'nb_tracks': result.get('total_tracks', 0),
+                'album_url': album_url,
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching album {album_id}: {e}")
+            return {'success': False, 'error': str(e)}
+
     async def get_artist(self, artist_id: str) -> Dict[str, Any]:
         """
         Get artist by Spotify ID (for name validation when using Lidarr's Spotify link).

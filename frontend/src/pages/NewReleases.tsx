@@ -197,16 +197,16 @@ export function NewReleasesPage() {
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  const isSpotifyOrDeezerArtistUrl = (s: string): boolean => {
+  const isSpotifyOrDeezerUrl = (s: string): boolean => {
     const t = s.trim()
     if (!t) return false
     try {
       const u = new URL(t.startsWith('http') ? t : `https://${t}`)
       const host = u.hostname.replace(/^www\./, '')
-      const spotifyArtist = /^(\/intl-\w{2})?\/artist\/[\w-]+/
-      const deezerArtist = /^(\/\w{2})?\/artist\/\d+/
-      if ((host === 'open.spotify.com' || host === 'spotify.com') && spotifyArtist.test(u.pathname)) return true
-      if (host === 'deezer.com' && deezerArtist.test(u.pathname)) return true
+      const spotifyArtistOrAlbum = /^(\/intl-\w{2})?\/(artist|album)\/[\w-]+/
+      const deezerArtistOrAlbum = /^(\/\w{2})?\/(artist|album)\/\d+/
+      if ((host === 'open.spotify.com' || host === 'spotify.com') && spotifyArtistOrAlbum.test(u.pathname)) return true
+      if (host === 'deezer.com' && deezerArtistOrAlbum.test(u.pathname)) return true
     } catch {
       return false
     }
@@ -219,8 +219,8 @@ export function NewReleasesPage() {
       return
     }
     const url = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`
-    if (!isSpotifyOrDeezerArtistUrl(url)) {
-      toast.error('URL must be a Spotify or Deezer artist link (e.g. open.spotify.com/artist/... or deezer.com/artist/...)')
+    if (!isSpotifyOrDeezerUrl(url)) {
+      toast.error('URL must be a Spotify or Deezer artist or album link')
       return
     }
     setArtistScanning(true)
@@ -259,35 +259,56 @@ export function NewReleasesPage() {
         </p>
       </div>
 
-      {/* Scan artist by URL: Artist not in Lidarr? Compare all albums to MusicBrainz */}
+      {/* Scan by URL + Actions: shared release type filter */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
-            Scan Artist by URL
-          </CardTitle>
+          <CardTitle>Scan by URL & Actions</CardTitle>
           <CardDescription>
-            Artist not in Lidarr yet? Paste a Spotify or Deezer artist URL to fetch all albums, compare to MusicBrainz, and get a list of missing releases with Harmony links. Add each in Harmony, then add the artist to Lidarr after ~24h.
+            Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch / scan Lidarr artists. Release types apply to both.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Input
-              placeholder="https://open.spotify.com/artist/... or https://deezer.com/artist/..."
-              value={artistUrl}
-              onChange={(e) => setArtistUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleScanArtistUrl()}
-              className="flex-1 min-w-[280px]"
-            />
-            <Button onClick={handleScanArtistUrl} disabled={!artistUrl.trim() || artistScanning}>
-              {artistScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-              Scan for missing releases
-            </Button>
+        <CardContent className="space-y-6">
+          {/* Release types - shared by Scan by URL and Actions */}
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Release types (for Scan by URL and Scan artist):</span>
+            <div className="flex flex-wrap gap-4">
+              {(['album', 'ep', 'single', 'other'] as const).map((t) => (
+                <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={adHocAlbumTypes.has(t)}
+                    onChange={() => toggleAdHocAlbumType(t)}
+                    className="rounded border-input"
+                  />
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </label>
+              ))}
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Uses release types from Actions below (album, ep, single, other).
-          </p>
-          {artistScanResult && (
+
+          {/* Scan by URL */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" />
+              <span className="font-medium">Scan by URL</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                placeholder="https://open.spotify.com/artist/... or deezer.com/album/..."
+                value={artistUrl}
+                onChange={(e) => setArtistUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleScanArtistUrl()}
+                className="flex-1 min-w-[280px]"
+              />
+              <Button onClick={handleScanArtistUrl} disabled={!artistUrl.trim() || artistScanning}>
+                {artistScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                Scan
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Artist or album URL. Matches MB by streaming link, then by most recent release. Artist not in MB? Add to MB links still shown.
+            </p>
+            {artistScanResult && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -333,20 +354,12 @@ export function NewReleasesPage() {
               )}
             </div>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Actions: Run batch, Sync Lidarr, Search artist */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Actions</CardTitle>
-          <CardDescription>
-            Run the next batch of artists, or search and scan a single artist. Sync Lidarr artists first for autocomplete.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Button
+          {/* Actions: Run batch, Sync Lidarr, Search artist */}
+          <div className="space-y-3 pt-4 border-t">
+            <span className="font-medium">Actions</span>
+            <div className="flex flex-wrap gap-3">
+              <Button
               onClick={handleRunBatch}
               disabled={batchRunning || !commandEnabled}
               title={!commandEnabled ? 'Enable New Releases Discovery in Commands first' : undefined}
@@ -363,22 +376,7 @@ export function NewReleasesPage() {
               Sync Lidarr artists
             </Button>
           </div>
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-4">
-              <span className="text-sm font-medium">Release types:</span>
-              {(['album', 'ep', 'single', 'other'] as const).map((t) => (
-                <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={adHocAlbumTypes.has(t)}
-                    onChange={() => toggleAdHocAlbumType(t)}
-                    className="rounded border-input"
-                  />
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
               <div className="relative flex-1 min-w-[200px]">
                 <Input
                 placeholder="Search artist by name..."

@@ -194,7 +194,109 @@ class MusicBrainzClient(BaseAPIClient):
                     self.config.CACHE_MUSICBRAINZ_TTL_DAYS
                 )
             return None
-    
+
+    async def search_artist_candidates(
+        self, artist_name: str, limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for artists by name and return all candidates above similarity threshold.
+        """
+        search_name = self._clean_artist_name(artist_name)
+        params = {'query': f'artist:"{search_name}"', 'limit': '10'}
+        try:
+            response = await self._make_request('artist', params)
+            if not response or 'artists' not in response:
+                return []
+            artists = response['artists']
+            candidates = []
+            for artist in artists:
+                mb_name = artist.get('name', '')
+                similarity = self._calculate_similarity(artist_name, mb_name)
+                max_alias_similarity = 0
+                if 'aliases' in artist:
+                    for alias in artist['aliases']:
+                        alias_name = alias.get('name', '')
+                        alias_similarity = self._calculate_similarity(artist_name, alias_name)
+                        max_alias_similarity = max(max_alias_similarity, alias_similarity)
+                final_similarity = max(similarity, max_alias_similarity)
+                if final_similarity >= self.config.MUSICBRAINZ_MIN_SIMILARITY:
+                    candidates.append({
+                        'mbid': artist.get('id'),
+                        'name': mb_name,
+                        'similarity_score': final_similarity,
+                    })
+                    if len(candidates) >= limit:
+                        break
+            return candidates
+        except Exception as e:
+            self.logger.error(f"Error searching artist candidates '{artist_name}': {e}")
+            return []
+
+    def _extract_streaming_id_from_url(self, url_resource: str, provider: str) -> Optional[str]:
+        """Extract artist/album ID from MB URL relation. Returns None if no match."""
+        import re
+        if not url_resource:
+            return None
+        url_lower = url_resource.lower()
+        if provider == 'spotify' and ('spotify.com' in url_lower or 'open.spotify.com' in url_lower):
+            m = re.search(r'/artist/([a-zA-Z0-9]+)', url_resource)
+            if m:
+                return m.group(1)
+        if provider == 'deezer' and 'deezer.com' in url_lower:
+            m = re.search(r'/artist/(\d+)', url_resource)
+            if m:
+                return m.group(1)
+        return None
+
+    async def artist_has_streaming_link(
+        self, mbid: str, provider: str, artist_id: str
+    ) -> bool:
+        """Check if MB artist has a URL relation matching the given provider+artist_id."""
+        try:
+            response = await self._make_request(f'artist/{mbid}', {'inc': 'url-rels'})
+            if not response or 'relations' not in response:
+                return False
+            for rel in response.get('relations', []):
+                url_obj = rel.get('url', {})
+                resource = url_obj.get('resource', '')
+                extracted = self._extract_streaming_id_from_url(resource, provider)
+                if extracted and str(extracted) == str(artist_id):
+                    return True
+            return False
+        except Exception as e:
+            self.logger.debug(f"artist_has_streaming_link {mbid}: {e}")
+            return False
+
+    async def get_artist_most_recent_release_title(
+        self, mbid: str, prefer_album: bool = True
+    ) -> Optional[str]:
+        """
+        Get the title of the most recent album (or EP if no albums) for an artist.
+        Returns None if no albums or EPs.
+        """
+        try:
+            params = {'artist': mbid, 'limit': '100'}
+            response = await self._make_request('release-group', params)
+            if not response or 'release-groups' not in response:
+                return None
+            groups = response.get('release-groups', [])
+            # Filter by type: album first, then ep
+            albums = [g for g in groups if g.get('primary-type') == 'album']
+            eps = [g for g in groups if g.get('primary-type') == 'ep']
+            candidates = albums if (prefer_album and albums) else (eps if eps else albums)
+            if not candidates:
+                return None
+            # Sort by first-release-date desc
+            def parse_date(d):
+                if not d:
+                    return ''
+                return (d or '')[:10]
+            candidates.sort(key=lambda g: parse_date(g.get('first-release-date', '')), reverse=True)
+            return candidates[0].get('title')
+        except Exception as e:
+            self.logger.debug(f"get_artist_most_recent_release_title {mbid}: {e}")
+            return None
+
     def _get_release_groups_cache_key(self, artist_mbid: str) -> str:
         """Generate cache key for artist release groups"""
         return f"mb_release_groups:{artist_mbid}"
