@@ -354,6 +354,7 @@ export function NewReleasesPage() {
               )}
             </div>
           )}
+          </div>
 
           {/* Actions: Run batch, Sync Lidarr, Search artist */}
           <div className="space-y-3 pt-4 border-t">
