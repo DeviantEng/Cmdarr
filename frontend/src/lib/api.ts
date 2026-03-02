@@ -10,6 +10,7 @@ import type {
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
+  ScanArtistUrlResponse,
   ImportListMetrics,
   LibraryCacheStatus,
 } from './types'
@@ -342,6 +343,13 @@ class ApiClient {
 
   async syncLidarrArtists(): Promise<{ success: boolean; synced?: number; updated?: number }> {
     return this.request(`/api/new-releases/sync-lidarr-artists`, { method: 'POST' })
+  }
+
+  async scanArtistUrl(params: { url: string; album_types?: string[] }): Promise<ScanArtistUrlResponse> {
+    return this.request(`/api/new-releases/scan-artist-url`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
   }
 }
 

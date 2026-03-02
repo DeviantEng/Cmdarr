@@ -241,9 +241,10 @@ class DeezerClient(BaseAPIClient):
         """
         Search for artists by name on Deezer.
         Returns dict with success, artists list (id, name, link) matching Spotify shape.
+        Uses order=RATING_DESC to prioritize the most popular (likely correct) match.
         """
         try:
-            params = {'q': name, 'limit': min(limit, 25)}
+            params = {'q': name, 'limit': min(limit, 25), 'order': 'RATING_DESC'}
             result = await self._get("/search/artist", params=params)
             if not result or result.get('error'):
                 return {'success': False, 'error': 'No response from Deezer', 'artists': []}

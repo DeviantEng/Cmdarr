@@ -56,7 +56,10 @@ def _album_matches_filter(album_type: str, total_tracks: int, selected_types: Se
         return True
     if "album" in selected_types and album_type == "album" and total_tracks > 6:
         return True
-    if "ep" in selected_types and album_type == "album" and total_tracks <= 6:
+    # EP: Spotify uses album_type "album" + track count; Deezer uses album_type "ep"
+    if "ep" in selected_types and (
+        (album_type == "album" and total_tracks <= 6) or album_type == "ep"
+    ):
         return True
     if "single" in selected_types and album_type == "single":
         return True

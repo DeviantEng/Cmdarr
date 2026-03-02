@@ -162,6 +162,25 @@ export interface PendingReleasesResponse {
   items: NewReleasePendingItem[]
 }
 
+export interface ScanArtistUrlAlbum {
+  name: string
+  release_date: string
+  album_type: string
+  total_tracks?: number
+  album_url: string
+  harmony_url: string
+}
+
+export interface ScanArtistUrlResponse {
+  success: boolean
+  artist_name: string
+  artist_in_mb: boolean
+  musicbrainz_artist_url?: string | null
+  total_albums: number
+  missing_count: number
+  albums: ScanArtistUrlAlbum[]
+}
+
 export interface LidarrArtistSuggestion {
   artist_mbid: string
   artist_name: string
