@@ -1049,36 +1049,89 @@ class PlexClient(BaseAPIClient):
         return []
 
     def get_recently_added_tracks(self, library_key, days=1):
-        """Get tracks added in the last N days. Uses addedAt>= per Plex mediaQuery (>= is standard operator)."""
+        """
+        Get recently added tracks using Plex's dedicated recentlyAdded endpoint.
+        The addedAt>= filter is rejected by Plex QueryParser for music ("Invalid field
+        'addedAt>=' found"); sort=addedAt:desc on /all can also return the full library
+        when Plex ignores the sort. The recentlyAdded endpoint returns items most-recent
+        first without any filter params—we paginate and stop when we pass the cutoff.
+        """
         from datetime import datetime, timedelta
-        
-        # Calculate timestamp for N days ago
+
         cutoff_date = datetime.now() - timedelta(days=days)
-        cutoff_timestamp = int(cutoff_date.timestamp())
-        
+        cutoff_ts = int(cutoff_date.timestamp())
         all_tracks = []
         container_start = 0
         container_size = 500
 
         try:
-            self.logger.debug(f"Getting tracks added in last {days} days (since {cutoff_date.isoformat()})")
+            self.logger.debug(f"Getting tracks added since {cutoff_date.date()} via recentlyAdded endpoint")
             while True:
                 params = {
-                    "type": 10,  # Track type
-                    "addedAt>=": cutoff_timestamp,  # Plex filter: >= returns media added on or after timestamp
                     "X-Plex-Container-Start": container_start,
                     "X-Plex-Container-Size": container_size,
                 }
-                results = self._get(f"/library/sections/{library_key}/all", params=params)
+                # Use dedicated recentlyAdded endpoint—no filter params, avoids QueryParser rejection
+                results = self._get(f"/library/sections/{library_key}/recentlyAdded", params=params)
                 media_container = results.get("MediaContainer", {})
-                tracks = media_container.get("Metadata", [])
+                meta = media_container.get("Metadata", [])
+                direc = media_container.get("Directory", [])
+                if not isinstance(meta, list):
+                    meta = [meta] if meta else []
+                if not isinstance(direc, list):
+                    direc = [direc] if direc else []
+                items = meta + direc
 
-                if not tracks:
+                if not items:
                     break
 
-                all_tracks.extend(tracks)
+                for t in items:
+                    item_type = str(t.get("type", "")).lower()
+                    # Accept tracks (type 10 or "track"); expand albums to tracks
+                    if item_type in ("10", "track"):
+                        pass  # Already a track
+                    elif item_type in ("album", "9"):
+                        # Album: fetch its tracks and add those within cutoff
+                        album_key = t.get("ratingKey") or t.get("key")
+                        if album_key:
+                            try:
+                                album_resp = self._get(f"/library/metadata/{album_key}/children")
+                                album_container = album_resp.get("MediaContainer", {})
+                                for tr in album_container.get("Metadata", []):
+                                    a = tr.get("addedAt") or 0
+                                    try:
+                                        a = int(a) if a else 0
+                                    except (TypeError, ValueError):
+                                        a = 0
+                                    if a >= cutoff_ts:
+                                        all_tracks.append(tr)
+                            except Exception as e:
+                                self.logger.debug(f"Could not expand album {album_key}: {e}")
+                        # Check album's addedAt for cutoff—if album is old, we can stop
+                        added = t.get("addedAt") or 0
+                        try:
+                            added = int(added) if added else 0
+                        except (TypeError, ValueError):
+                            added = 0
+                        if added < cutoff_ts:
+                            self.logger.debug(f"Reached cutoff at {len(all_tracks)} tracks (album)")
+                            return all_tracks
+                        continue
+                    else:
+                        continue
+                    added = t.get("addedAt") or 0
+                    try:
+                        added = int(added) if added else 0
+                    except (TypeError, ValueError):
+                        added = 0
+                    if added >= cutoff_ts:
+                        all_tracks.append(t)
+                    else:
+                        # Past cutoff—recentlyAdded returns most-recent first
+                        self.logger.debug(f"Reached cutoff at {len(all_tracks)} tracks")
+                        return all_tracks
 
-                if len(tracks) < container_size:
+                if len(items) < container_size:
                     break
 
                 container_start += container_size

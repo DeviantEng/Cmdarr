@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔧 Fixes & Improvements
 - **Access Log Suppression**: High-frequency polling endpoints (/health, /api/status/*, /api/commands/*, /static/*) suppressed from access logs to reduce console noise
 - **Error Messages**: API validation errors (e.g. missing Spotify creds) now shown in toast instead of generic "Failed to update"
+- **Cache Builder (Plex)**: Use `/recentlyAdded` endpoint instead of `addedAt>=` filter—Plex QueryParser rejects that filter for music and returns the entire library; recentlyAdded returns items most-recent first with no filter params
 
 ## [0.3.3] - 2026-02-26
 
@@ -43,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Commands View**: Card/list view toggle persisted in localStorage
 
 ### 🎵 Plex & MusicBrainz
-- **Plex API**: Replaced undocumented `/search` with mediaQuery on `/all`; use `addedAt>=` for date filter (Plex rejects `>>=`); smaller batches (250)
+- **Plex API**: Replaced undocumented `/search` with mediaQuery on `/all`; smaller batches (250); cache builder uses `/recentlyAdded` (addedAt filter rejected for music)
 - **MusicBrainz**: Rate limit 0.8 req/sec; hardcoded User-Agent; skip artist on 503 instead of adding to pending
 
 ### 🔧 Fixes & Improvements

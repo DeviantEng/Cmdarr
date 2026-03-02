@@ -271,33 +271,52 @@ class LibraryCacheBuilderCommand(BaseCommand):
                     recent_tracks = client.get_recently_added_tracks(library_key, days=lookback_days)
                     
                     if recent_tracks:
+                        existing_tracks = existing_cache.get('tracks', [])
+                        existing_count = len(existing_tracks)
+                        
+                        # Safety: if Plex returns most of the library (filter likely failed), skip incremental
+                        # and keep existing cache—avoids daily full rebuilds when addedAt filter doesn't work
+                        if len(recent_tracks) > 0.2 * max(existing_count, 1):
+                            self.logger.warning(
+                                f"Incremental returned {len(recent_tracks):,} tracks ({100*len(recent_tracks)/max(existing_count,1):.0f}% of cache) - "
+                                "Plex addedAt filter may have failed, skipping incremental (keeping existing cache)"
+                            )
+                            cache_data = existing_cache.copy()
+                            cache_data['last_incremental_update'] = time.time()
+                            cache_data['new_tracks_added'] = 0
+                            return cache_data
+                        
                         self.logger.info(f"Found {len(recent_tracks)} tracks added in last {lookback_days:.1f} days in {library_name}")
                         
-                        # Build set of existing keys for O(1) lookup (avoids O(n*m) when many recent tracks)
-                        existing_tracks = existing_cache.get('tracks', [])
-                        existing_keys = {t.get('key') for t in existing_tracks if t.get('key')}
+                        # Build set of existing keys for O(1) lookup (handle both 'key' and 'ratingKey' formats)
+                        existing_keys = {
+                            t.get('key') or t.get('ratingKey')
+                            for t in existing_tracks
+                            if t.get('key') or t.get('ratingKey')
+                        }
                         
-                        # Process each track
-                        for track in recent_tracks:
-                            track_key = track.get('key') or track.get('ratingKey')
-                            if track_key:
-                                existing_track = None
-                                if track_key in existing_keys:
-                                    for existing in existing_tracks:
-                                        if existing.get('key') == track_key:
-                                            existing_track = existing
-                                            break
-                                
-                                if not existing_track:
-                                    # New track - add to cache
+                        # Normalize and process each track (cache format: key, title, artist, album, duration)
+                        for raw_track in recent_tracks:
+                            track = self._normalize_plex_track(raw_track)
+                            if not track:
+                                continue
+                            track_key = track.get('key')
+                            if not track_key:
+                                continue
+                            existing_track = None
+                            if track_key in existing_keys:
+                                for existing in existing_tracks:
+                                    if (existing.get('key') or existing.get('ratingKey')) == track_key:
+                                        existing_track = existing
+                                        break
+                            
+                            if not existing_track:
+                                new_tracks.append(track)
+                                total_tracks += 1
+                            else:
+                                if self._track_metadata_changed(track, existing_track):
                                     new_tracks.append(track)
-                                    total_tracks += 1
-                                else:
-                                    # Track exists but might have been updated
-                                    # Check if metadata changed
-                                    if self._track_metadata_changed(track, existing_track):
-                                        new_tracks.append(track)
-                                        self.logger.debug(f"Updated metadata for track: {track.get('title', 'Unknown')}")
+                                    self.logger.debug(f"Updated metadata for track: {track.get('title', 'Unknown')}")
                     else:
                         self.logger.debug(f"No new tracks found in {library_name}")
             
@@ -310,32 +329,38 @@ class LibraryCacheBuilderCommand(BaseCommand):
             
             # Update cache data
             if new_tracks:
-                # Add new tracks to existing cache
+                # Merge new tracks into existing (all in normalized cache format)
                 existing_tracks = existing_cache.get('tracks', [])
+                existing_key_to_idx = {
+                    (t.get('key') or t.get('ratingKey')): i
+                    for i, t in enumerate(existing_tracks)
+                    if t.get('key') or t.get('ratingKey')
+                }
                 for track in new_tracks:
-                    track_key = track.get('key') or track.get('ratingKey')
-                    if track_key:
-                        # Check if track already exists and update it, or add new
-                        found = False
-                        for i, existing in enumerate(existing_tracks):
-                            if existing.get('key') == track_key:
-                                existing_tracks[i] = track  # Update existing
-                                found = True
-                                break
-                        
-                        if not found:
-                            existing_tracks.append(track)  # Add new
+                    track_key = track.get('key')
+                    if not track_key:
+                        continue
+                    idx = existing_key_to_idx.get(track_key)
+                    if idx is not None:
+                        existing_tracks[idx] = track
+                    else:
+                        existing_tracks.append(track)
+                        existing_key_to_idx[track_key] = len(existing_tracks) - 1
                 
-                # Update cache data
                 cache_data = existing_cache.copy()
                 cache_data['tracks'] = existing_tracks
-                cache_data['total_tracks'] = total_tracks
+                cache_data['total_tracks'] = len(existing_tracks)
                 cache_data['new_tracks_added'] = len(new_tracks)
                 cache_data['built_at'] = time.time()
                 cache_data['last_incremental_update'] = time.time()
                 
+                # Rebuild indexes so new tracks are findable (required for playlist sync)
+                if target == 'plex' and hasattr(client, '_build_optimized_indexes'):
+                    client._build_optimized_indexes(cache_data)
+                
                 self.logger.info(f"Smart cache update complete: added {len(new_tracks)} new tracks in {incremental_time:.1f}s")
-                self.logger.info(f"Performance: {len(new_tracks)} tracks processed vs {total_tracks:,} total cached (efficiency: {len(new_tracks)/total_tracks*100:.2f}% new)")
+                total_cached = len(existing_tracks)
+                self.logger.info(f"Performance: {len(new_tracks)} tracks processed vs {total_cached:,} total cached (efficiency: {len(new_tracks)/max(total_cached,1)*100:.2f}% new)")
                 return cache_data
             else:
                 # No new tracks found - update timestamp but keep existing data
@@ -353,15 +378,29 @@ class LibraryCacheBuilderCommand(BaseCommand):
             self.logger.info(f"Falling back to full cache rebuild for {target}")
             return client.build_library_cache()
     
+    def _normalize_plex_track(self, raw_track: Dict) -> Optional[Dict]:
+        """Convert raw Plex API track to cache format (key, title, artist, album, duration)"""
+        key = raw_track.get('key') or raw_track.get('ratingKey')
+        if not key:
+            return None
+        title = (raw_track.get('title') or '').strip()
+        artist = (raw_track.get('grandparentTitle') or raw_track.get('artist') or '').strip()
+        album = (raw_track.get('parentTitle') or raw_track.get('album') or '').strip()[:50]
+        if not title or not artist:
+            return None
+        return {
+            'key': key,
+            'title': title.lower(),
+            'artist': artist.lower(),
+            'album': album.lower(),
+            'duration': raw_track.get('duration', 0)
+        }
+    
     def _track_metadata_changed(self, new_track: Dict, existing_track: Dict) -> bool:
-        """Check if track metadata has changed"""
-        # Compare key metadata fields
-        fields_to_check = ['title', 'grandparentTitle', 'parentTitle', 'addedAt', 'updatedAt']
-        
-        for field in fields_to_check:
+        """Check if track metadata has changed (both in normalized cache format)"""
+        for field in ['title', 'artist', 'album']:
             if new_track.get(field) != existing_track.get(field):
                 return True
-        
         return False
     
     def get_last_run_stats(self) -> Dict[str, Any]:
