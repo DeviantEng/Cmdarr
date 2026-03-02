@@ -65,7 +65,10 @@ def _album_matches_filter(
         return True
     if "album" in selected_types and album_type == "album" and total_tracks > 6:
         return True
-    if "ep" in selected_types and album_type == "album" and total_tracks <= 6:
+    # EP: Spotify uses album_type "album" + track count; Deezer uses album_type "ep"
+    if "ep" in selected_types and (
+        (album_type == "album" and total_tracks <= 6) or album_type == "ep"
+    ):
         return True
     if "single" in selected_types and album_type == "single":
         return True
@@ -582,6 +585,145 @@ async def lidarr_artists_autocomplete(
             }
             for r in rows
         ],
+    }
+
+
+def _parse_artist_url(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse Spotify or Deezer artist URL. Returns (provider, artist_id) or (None, None)."""
+    import re
+    url = (url or "").strip()
+    if not url:
+        return None, None
+    if not url.startswith("http"):
+        url = "https://" + url
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").replace("www.", "").lower()
+        path = (parsed.path or "").strip("/")
+        if host in ("open.spotify.com", "spotify.com"):
+            m = re.match(r"^(?:intl-\w{2}/)?artist/([a-zA-Z0-9]+)", path)
+            if m:
+                return "spotify", m.group(1)
+        if host == "deezer.com":
+            m = re.match(r"^(?:\w{2}/)?artist/(\d+)", path)
+            if m:
+                return "deezer", m.group(1)
+    except Exception:
+        pass
+    return None, None
+
+
+class ScanArtistUrlRequest(BaseModel):
+    url: str
+    album_types: Optional[List[str]] = None
+
+
+@router.post("/new-releases/scan-artist-url")
+async def scan_artist_url(body: ScanArtistUrlRequest):
+    """
+    Scan an artist by Spotify or Deezer artist URL. Fetches all albums, compares to
+    MusicBrainz, and returns a list of releases missing from MB with Harmony links.
+    Artist need not be in Lidarr.
+    """
+    logger = get_logger("cmdarr.api.new_releases")
+    config = ConfigAdapter()
+
+    provider, artist_id = _parse_artist_url(body.url)
+    if not provider or not artist_id:
+        raise HTTPException(
+            status_code=400,
+            detail="URL must be a Spotify or Deezer artist link (e.g. open.spotify.com/artist/... or deezer.com/artist/...)",
+        )
+
+    if provider == "spotify":
+        if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=503,
+                detail="Spotify credentials not configured. Use Deezer artist URL or add Spotify credentials in Config.",
+            )
+    if not config.MUSICBRAINZ_ENABLED:
+        raise HTTPException(status_code=503, detail="MusicBrainz not configured")
+
+    raw = body.album_types
+    if raw is None:
+        raw = ["album", "ep", "single"]
+    elif isinstance(raw, str):
+        raw = [t.strip() for t in raw.split(",") if t.strip()]
+    selected = {t.lower() for t in raw if t} & ALBUM_TYPES
+    if not selected:
+        selected = {"album", "ep", "single"}
+
+    client_class = SpotifyClient if provider == "spotify" else DeezerClient
+    cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
+
+    try:
+        async with client_class(config) as release_client:
+            artist_info = await release_client.get_artist(artist_id)
+            if not artist_info.get("success") or not artist_info.get("name"):
+                raise HTTPException(status_code=404, detail="Artist not found")
+
+            artist_name = artist_info.get("name", "Unknown")
+
+            albums_result = await release_client.get_artist_albums(
+                artist_id,
+                limit=50,
+                include_groups="album,single,compilation,appears_on",
+                fetch_all=True,
+            )
+            if not albums_result.get("success"):
+                raise HTTPException(status_code=500, detail="Failed to fetch albums")
+
+            albums = albums_result.get("albums", [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Scan artist URL failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    mb_titles: List[str] = []
+    mb_artist_mbid: Optional[str] = None
+    async with MusicBrainzClient(config) as mb_client:
+        mb_artist = await mb_client.fuzzy_search_artist(artist_name)
+        if mb_artist and mb_artist.get("mbid"):
+            mb_artist_mbid = mb_artist["mbid"]
+            mb_titles = await mb_client.get_artist_release_groups(
+                mb_artist_mbid, cache_ttl_days=cache_ttl
+            ) or []
+
+    missing = []
+    for album in albums:
+        if str(album.get("primary_artist_id", "")) != str(artist_id):
+            continue
+        album_type = album.get("album_type", "")
+        total_tracks = album.get("total_tracks", 0)
+        if not _album_matches_filter(album_type, total_tracks, selected):
+            continue
+        if _is_live_release(album.get("name", "")):
+            continue
+        album_url = album.get("spotify_url") or album.get("external_url", "")
+        if not album_url:
+            continue
+        if _title_matches_mb(album.get("name", ""), mb_titles):
+            continue
+        harmony_url = f"{HARMONY_BASE_URL}?url={quote(album_url, safe='')}"
+        missing.append({
+            "name": album.get("name", "Unknown"),
+            "release_date": album.get("release_date", ""),
+            "album_type": album_type,
+            "total_tracks": total_tracks,
+            "album_url": album_url,
+            "harmony_url": harmony_url,
+        })
+
+    return {
+        "success": True,
+        "artist_name": artist_name,
+        "artist_in_mb": mb_artist_mbid is not None,
+        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}" if mb_artist_mbid else None,
+        "total_albums": len(albums),
+        "missing_count": len(missing),
+        "albums": missing,
     }
 
 
