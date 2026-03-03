@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-02-23
+
+### 🎵 Daylist – Time-of-Day Playlist Generator
+- **New Command**: Daylist builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history (inspired by Meloday)
+- **Configurable Periods**: Dawn, Early Morning, Morning, Afternoon, Evening, Night, Late Night with custom start/end hours
+- **Account Resolution**: Automatically maps Plex.tv account IDs to server account IDs (owner uses id=1; shared users use Plex.tv ID)
+- **Primary/Advanced UI**: Settings split into essential (account, schedule, exclude, lookback, max tracks) and collapsible advanced (sonic params, timezone, time periods)
+- **Input Improvements**: Clamp on blur (not onChange) so typing values like 45 works; wider ranges (exclude 1–30, lookback 7–365, max tracks 10–200)
+- **Sliders**: Historical ratio and Sonically similar distance use visible track sliders (works in light/dark mode)
+- **Cover & Description**: Fixed asset path for cover generation; description set via PUT after playlist creation (Plex create API ignores summary)
+- **Edit Dialog**: Scrollable body with fixed Save/Cancel footer when Advanced settings expanded
+
+### 🔧 Fixes & Improvements
+- **Import List Reset**: Reset button for Last.fm and Playlist Sync import lists
+- **Scan by URL**: Artist/album URL support, MusicBrainz link matching, shared UI; JSX build error fix
+- **Access Log Filter**: Use `record.args` for uvicorn path/status filtering
+- **Cache Builder**: Use Plex `/recentlyAdded` endpoint; remove `addedAt` filter (rejected for music)
+- **Security**: URL hostname parsing instead of substring for release link label (XSS mitigation)
+- **Ruff**: Python linting and formatting via Ruff
+
 ## [0.3.4] - 2026-02-26
 
 ### 🆕 New Releases Discovery
