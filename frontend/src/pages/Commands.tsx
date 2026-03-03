@@ -914,16 +914,18 @@ export function CommandsPage() {
 
       {/* Edit Command Dialog */}
       <Dialog open={!!editingCommand} onOpenChange={(open) => !open && setEditingCommand(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
             <DialogTitle>Edit Command: {editingCommand?.display_name}</DialogTitle>
             <DialogDescription>
               Configure command settings and schedule
             </DialogDescription>
           </DialogHeader>
           {editingCommand && (
-            <div className="space-y-4 py-4">
-              <div className="grid gap-4">
+            <>
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6">
+                <div className="space-y-4 py-4">
+                  <div className="grid gap-4">
                 {/* Display Name */}
                 <div className="space-y-2">
                   <Label>Display Name</Label>
@@ -1110,7 +1112,7 @@ export function CommandsPage() {
                               onChange={(e) =>
                                 setEditForm((f) => ({ ...f, historical_ratio: parseFloat(e.target.value) }))
                               }
-                              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
+                              className="slider-range"
                             />
                             <p className="text-xs text-muted-foreground">Share of tracks from history. Min: 0.1, max: 0.8.</p>
                           </div>
@@ -1163,7 +1165,7 @@ export function CommandsPage() {
                               onChange={(e) =>
                                 setEditForm((f) => ({ ...f, sonic_similarity_distance: parseFloat(e.target.value) }))
                               }
-                              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
+                              className="slider-range"
                             />
                             <p className="text-xs text-muted-foreground">0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.</p>
                           </div>
@@ -1487,9 +1489,11 @@ export function CommandsPage() {
                     </Badge>
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex-shrink-0 flex justify-end gap-2 px-6 py-4 border-t bg-background">
                 <Button variant="outline" onClick={() => setEditingCommand(null)}>
                   Close
                 </Button>
@@ -1594,7 +1598,7 @@ export function CommandsPage() {
                   {editingCommand.enabled ? 'Disable' : 'Enable'}
                 </Button>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

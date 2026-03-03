@@ -42,8 +42,8 @@ PERIOD_PHRASES = {
     "Late Night": "late at night",
 }
 
-# Path to bundled assets (from Meloday)
-_DAYLIST_ASSETS = Path(__file__).resolve().parent / "assets"
+# Path to bundled assets (from Meloday). daylist.py lives in commands/; assets are in commands/daylist/assets
+_DAYLIST_ASSETS = Path(__file__).resolve().parent / "daylist" / "assets"
 _MOODMAP_PATH = _DAYLIST_ASSETS / "moodmap.json"
 _COVERS_DIR = _DAYLIST_ASSETS / "covers" / "flat"
 _FONT_PATH = _DAYLIST_ASSETS / "fonts" / "Circular" / "Circular-Bold.ttf"
@@ -373,7 +373,7 @@ class DaylistCommand(BaseCommand):
                 return None
             cover_path = _COVERS_DIR / cover_file
             if not cover_path.exists():
-                self.logger.debug(f"Cover not found: {cover_path}")
+                self.logger.warning(f"Cover not found: {cover_path} (assets path: {_COVERS_DIR})")
                 return None
 
             image = Image.open(cover_path).convert("RGBA")
@@ -448,7 +448,7 @@ class DaylistCommand(BaseCommand):
             combined.convert("RGB").save(buf, format="JPEG", quality=90)
             return buf.getvalue()
         except Exception as e:
-            self.logger.warning(f"Cover generation failed: {e}")
+            self.logger.warning(f"Cover generation failed: {e}", exc_info=True)
             return None
 
     async def execute(self) -> bool:

@@ -1603,11 +1603,30 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error finding playlist by prefix: {e}")
             return None
 
+    def update_playlist_metadata(
+        self, playlist_rating_key: str | int, summary: str | None = None, title: str | None = None
+    ) -> bool:
+        """Update playlist metadata (summary, title) via PUT. Plex create API often ignores summary."""
+        try:
+            params = {}
+            if summary is not None:
+                params["summary"] = summary
+            if title is not None:
+                params["title"] = title
+            if not params:
+                return True
+            self._put(f"/playlists/{playlist_rating_key}", params=params)
+            self.logger.debug(f"Updated playlist {playlist_rating_key} metadata")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to update playlist metadata: {e}")
+            return False
+
     def create_playlist(self, title, track_rating_keys, summary=""):
         """
         Create a new playlist with the given tracks.
         Uses hybrid approach - create with 1 track, then add the rest.
-        COPIED EXACTLY from proven working implementation.
+        Plex create API may ignore summary; we set it via PUT after creation.
         """
         try:
             if not track_rating_keys:
@@ -1626,9 +1645,6 @@ class PlexClient(BaseAPIClient):
 
             params = {"X-Plex-Token": self.token, "title": title, "type": "audio", "uri": uri}
 
-            if summary:
-                params["summary"] = summary
-
             self.logger.debug("Creating playlist with first track...")
             headers = {"Accept": "application/json"}
             response = requests.post(
@@ -1642,34 +1658,32 @@ class PlexClient(BaseAPIClient):
             self.logger.info("Created playlist with 1 track")
 
             # Step 2: Add remaining tracks if there are any
+            time.sleep(2)  # Give Plex time to create the playlist
+            created_playlist = self.find_playlist_by_name(title)
+
+            if not created_playlist:
+                self.logger.error("Could not find created playlist")
+                return False
+
+            playlist_rating_key = created_playlist["ratingKey"]
+
             if len(track_rating_keys) > 1:
                 remaining_tracks = track_rating_keys[1:]
                 self.logger.info(f"Adding {len(remaining_tracks)} remaining tracks...")
+                add_success = self.add_tracks_to_playlist(playlist_rating_key, remaining_tracks)
+                if not add_success:
+                    self.logger.warning(
+                        f"Playlist created with 1 track, but failed to add {len(remaining_tracks)} remaining tracks"
+                    )
 
-                # Find the created playlist to get its ratingKey
-                time.sleep(2)  # Give Plex time to create the playlist
+            # Step 3: Set summary via PUT (Plex create API often ignores it)
+            if summary:
+                self.update_playlist_metadata(playlist_rating_key, summary=summary)
 
-                created_playlist = self.find_playlist_by_name(title)
-                if created_playlist:
-                    playlist_rating_key = created_playlist["ratingKey"]
-                    add_success = self.add_tracks_to_playlist(playlist_rating_key, remaining_tracks)
-
-                    if add_success:
-                        self.logger.info(
-                            f"Successfully created playlist '{title}' with {len(track_rating_keys)} tracks total"
-                        )
-                        return True
-                    else:
-                        self.logger.warning(
-                            f"Playlist created with 1 track, but failed to add {len(remaining_tracks)} remaining tracks"
-                        )
-                        return True  # Partial success is still success
-                else:
-                    self.logger.error("Could not find created playlist to add remaining tracks")
-                    return False
-            else:
-                self.logger.info(f"Successfully created playlist '{title}' with 1 track")
-                return True
+            self.logger.info(
+                f"Successfully created playlist '{title}' with {len(track_rating_keys)} tracks total"
+            )
+            return True
 
         except Exception as e:
             self.logger.error(f"Error creating playlist '{title}': {e}")

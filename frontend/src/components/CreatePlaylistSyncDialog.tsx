@@ -579,7 +579,7 @@ export function CreatePlaylistSyncDialog({
                           onChange={(e) =>
                             setDaylistForm((prev) => ({ ...prev, historical_ratio: parseFloat(e.target.value) }))
                           }
-                          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
+                          className="slider-range"
                         />
                         <p className="text-xs text-muted-foreground">Share of tracks from history. Min: 0.1, max: 0.8.</p>
                       </div>
@@ -632,7 +632,7 @@ export function CreatePlaylistSyncDialog({
                           onChange={(e) =>
                             setDaylistForm((prev) => ({ ...prev, sonic_similarity_distance: parseFloat(e.target.value) }))
                           }
-                          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
+                          className="slider-range"
                         />
                         <p className="text-xs text-muted-foreground">0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.</p>
                       </div>
