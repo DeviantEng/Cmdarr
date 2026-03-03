@@ -90,11 +90,17 @@ class UvicornHealthCheckFilter(logging.Filter):
         try:
             args = getattr(record, "args", ())
             if isinstance(args, (list, tuple)) and len(args) >= 5:
-                full_path = args[2]  # e.g. /health, /api/status/raw
+                full_path = str(args[2] or "")  # e.g. /health, /api/status/raw
                 status_code = int(args[4]) if args[4] else 0
-                if status_code in (200, 204) and any(
-                    ep in str(full_path) for ep in _UVICORN_QUIET_ENDPOINTS
-                ):
+                if status_code not in (200, 204):
+                    return True
+                # Downgrade routine requests to DEBUG (root, assets, health, status, etc.)
+                is_quiet = (
+                    full_path == "/"
+                    or full_path.startswith("/assets/")
+                    or any(ep in full_path for ep in _UVICORN_QUIET_ENDPOINTS)
+                )
+                if is_quiet:
                     record.levelno = logging.DEBUG
                     record.levelname = "DEBUG"
         except (IndexError, TypeError, ValueError):

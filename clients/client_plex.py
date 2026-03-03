@@ -921,10 +921,11 @@ class PlexClient(BaseAPIClient):
             "Accept": "application/json",
             "Content-Type": "image/jpeg",
         }
-        # Try playlist-specific path first; some Plex setups use this for playlists
+        # plexapi uses /library/metadata/{id}/posters (plural) for upload
         endpoints = [
-            f"/playlists/{playlist_rating_key}/poster",
+            f"/library/metadata/{playlist_rating_key}/posters",
             f"/library/metadata/{playlist_rating_key}/poster",
+            f"/playlists/{playlist_rating_key}/poster",
         ]
         for path in endpoints:
             try:
@@ -940,14 +941,15 @@ class PlexClient(BaseAPIClient):
                 self.logger.debug(f"Poster uploaded for playlist {playlist_rating_key} via {path}")
                 return True
             except requests.exceptions.RequestException as e:
-                if getattr(e, "response", None) and getattr(e.response, "status_code", None) == 404:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 404 or (status is None and "404" in str(e)):
                     self.logger.debug(f"Poster endpoint {path} returned 404, trying next")
                     continue
                 self.logger.error(f"Failed to upload playlist poster: {e}")
                 return False
-        self.logger.error(
-            f"Failed to upload playlist poster: both endpoints returned 404 "
-            f"(playlist {playlist_rating_key}). Managed users cannot set playlist posters."
+        self.logger.warning(
+            f"Playlist poster upload returned 404 (playlist {playlist_rating_key}). "
+            "Plex may restrict this to admin accounts."
         )
         return False
 

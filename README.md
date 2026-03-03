@@ -74,7 +74,7 @@ cd cmdarr
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 cd frontend && npm install && npm run build && cd ..
 
 export LIDARR_URL=http://localhost:8686

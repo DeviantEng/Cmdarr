@@ -157,7 +157,7 @@ class DaylistCommand(BaseCommand):
         # When manually requested: run if playlist doesn't exist (user may have deleted it)
         if triggered_by in ("manual", "api"):
             try:
-                existing = self.plex_client.find_playlist_by_prefix("[Cmdarr] Daylist")
+                existing = self.plex_client.find_playlist_by_prefix("Cmdarr's Daylist")
                 if not existing:
                     return False, ""  # Playlist missing, always run
             except Exception as e:
@@ -367,8 +367,10 @@ class DaylistCommand(BaseCommand):
                             descriptor = random.choice(variants)
                         break
 
-        title = f"[Cmdarr] Daylist for {most_common_mood} {descriptor} {most_common_genre} {day_name} {period}"
-        title = title.replace("  ", " ").strip()
+        playlist_title = "Cmdarr's Daylist"
+        cover_text = f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
+            "  ", " "
+        ).strip()
 
         max_styles = 6
         highlight_styles = sorted_genres[:3] + sorted_moods[:3]
@@ -396,11 +398,14 @@ class DaylistCommand(BaseCommand):
             else:
                 desc += f"Here's some {', '.join(highlight_styles[:-1])}, and {highlight_styles[-1]} tracks as well."
         desc += " Built from your Plex listening history and Sonic Analysis. Inspired by Meloday."
-        return title, desc
+        return playlist_title, desc, cover_text
 
-    def _generate_cover_image(self, period: str, title: str) -> bytes | None:
+    def _generate_cover_image(self, period: str, cover_text: str) -> bytes | None:
         """Generate cover image with text overlay (Meloday-style). Returns JPEG bytes or None on failure."""
         try:
+            import logging
+
+            logging.getLogger("PIL").setLevel(logging.WARNING)
             from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
             cover_file = PERIOD_COVERS.get(period)
@@ -412,12 +417,7 @@ class DaylistCommand(BaseCommand):
                 return None
 
             image = Image.open(cover_path).convert("RGBA")
-            # Strip "[Cmdarr] Daylist for " prefix for display (shorter text on cover)
-            display_text = title
-            for prefix in ("[Cmdarr] Daylist for ", "[Cmdarr] Daylist "):
-                if display_text.startswith(prefix):
-                    display_text = display_text[len(prefix) :].strip()
-                    break
+            display_text = (cover_text or period).strip()
 
             shadow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
             text_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
@@ -431,19 +431,25 @@ class DaylistCommand(BaseCommand):
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             ]
+            font_size = 112
             font_main = ImageFont.load_default()
             for fp in font_paths:
                 try:
                     if fp and Path(fp).exists():
-                        font_main = ImageFont.truetype(fp, 56)
+                        font_main = ImageFont.truetype(fp, font_size)
                         break
                 except OSError:
                     continue
+            else:
+                self.logger.warning(
+                    "No truetype font found, using default (fixed size). "
+                    "Cover text may appear small."
+                )
 
-            text_box_width = 550
+            text_box_width = 600
             text_box_right = image.width - 80
             text_box_left = text_box_right - text_box_width
-            y = 80
+            y = 60
             shadow_offset = 2
             shadow_blur = 30
 
@@ -476,7 +482,7 @@ class DaylistCommand(BaseCommand):
                     fill=(0, 0, 0, 120),
                 )
                 text_draw.text((x, y), line, font=font_main, fill=(255, 255, 255, 255))
-                y += bbox[3] - bbox[1] + 8
+                y += bbox[3] - bbox[1] + 12
 
             shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
             combined = Image.alpha_composite(image, shadow_layer)
@@ -667,7 +673,7 @@ class DaylistCommand(BaseCommand):
                 return True
 
             # Generate mood-based title and description (Meloday-style, uses moodmap.json)
-            playlist_title, description = self._generate_playlist_title_and_description(
+            playlist_title, description, cover_text = self._generate_playlist_title_and_description(
                 current_period, ordered
             )
 
@@ -677,7 +683,7 @@ class DaylistCommand(BaseCommand):
                 playlist_title,
                 rating_keys,
                 description,
-                match_prefix="[Cmdarr] Daylist",
+                match_prefix="Cmdarr's Daylist",
             )
 
             if not success:
@@ -685,9 +691,9 @@ class DaylistCommand(BaseCommand):
                 return False
 
             # Upload dynamic cover (Meloday-style: period-specific image with title overlay)
-            playlist = self.plex_client.find_playlist_by_prefix("[Cmdarr] Daylist")
+            playlist = self.plex_client.find_playlist_by_prefix("Cmdarr's Daylist")
             if playlist:
-                cover_bytes = self._generate_cover_image(current_period, playlist_title)
+                cover_bytes = self._generate_cover_image(current_period, cover_text)
                 if cover_bytes:
                     if self.plex_client.upload_playlist_poster(playlist["ratingKey"], cover_bytes):
                         self.logger.info("Daylist cover uploaded")

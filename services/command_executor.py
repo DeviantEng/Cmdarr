@@ -302,6 +302,8 @@ class CommandExecutor:
                 else:
                     command.config_json = {}
                 command.config_json["command_name"] = command_name
+                if config_override:
+                    command.config_json.update(config_override)
                 self.logger.info(
                     f"Set config_json for {command_name}: {list(command.config_json.keys())}"
                 )
