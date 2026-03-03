@@ -41,7 +41,13 @@ def _get_last_scheduled_cron(cron_expr: str, tz) -> datetime | None:
 
 
 def get_effective_cron(command: CommandConfig) -> str | None:
-    """Get cron expression for command: per-command override or global default."""
+    """Get cron expression for command: per-command override or global default.
+    Daylist commands never use global default; always hourly with configurable minute."""
+    if command.command_name and command.command_name.startswith("daylist_"):
+        config_json = command.config_json or {}
+        minute = int(config_json.get("schedule_minute", 0))
+        minute = max(0, min(59, minute))
+        return f"{minute} * * * *"
     if command.schedule_cron and command.schedule_cron.strip():
         return command.schedule_cron.strip()
     default = config_service.get("DEFAULT_SCHEDULE_CRON") or "0 3 * * *"

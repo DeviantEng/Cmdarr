@@ -909,6 +909,33 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"POST request failed for {path}: {e}")
             raise
 
+    def upload_playlist_poster(self, playlist_rating_key: str | int, image_bytes: bytes) -> bool:
+        """
+        Upload poster image for a playlist via Plex HTTP API.
+        POST /library/metadata/{ids}/poster with image binary in body (no url param).
+        Playlists created by the user can have their poster updated (admin exception).
+        """
+        try:
+            url = f"{self.base_url}/library/metadata/{playlist_rating_key}/poster"
+            params = {"X-Plex-Token": self.token}
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "image/jpeg",
+            }
+            r = requests.post(
+                url,
+                params=params,
+                data=image_bytes,
+                headers=headers,
+                timeout=self.config.PLEX_TIMEOUT,
+            )
+            r.raise_for_status()
+            self.logger.debug(f"Poster uploaded for playlist {playlist_rating_key}")
+            return True
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Failed to upload playlist poster: {e}")
+            return False
+
     def _put(self, path, params=None, data=None):
         """PUT request to Plex API - copied from proven working implementation"""
         if params is None:
@@ -1116,6 +1143,79 @@ class PlexClient(BaseAPIClient):
 
         except Exception as e:
             self.logger.error(f"Error getting music libraries: {e}")
+            return []
+
+    def get_accounts(self) -> list[dict[str, Any]]:
+        """Get Plex Home managed accounts for daylist user selection.
+        Returns list of {id, name} for dropdown. Used by daylist command creation."""
+        try:
+            results = self._get("/accounts")
+            media_container = results.get("MediaContainer", {})
+            accounts_raw = media_container.get("Account", media_container.get("Metadata", []))
+            if not isinstance(accounts_raw, list):
+                accounts_raw = [accounts_raw] if accounts_raw else []
+            accounts = []
+            for acc in accounts_raw:
+                acc_id = acc.get("id")
+                acc_name = (acc.get("name") or "").strip()
+                if acc_id is not None:
+                    accounts.append({"id": str(acc_id), "name": acc_name or f"Account {acc_id}"})
+            return accounts
+        except Exception as e:
+            self.logger.error(f"Error getting Plex accounts: {e}")
+            return []
+
+    def get_play_history(
+        self,
+        library_key: str,
+        account_id: str | int,
+        mindate=None,
+        maxresults: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get play history for a library and account. Used by daylist.
+        Params: library_key, account_id (required), mindate (datetime), maxresults.
+        Returns list of history items with ratingKey, viewedAt, key, etc."""
+        try:
+            params = {
+                "librarySectionID": library_key,
+                "accountID": str(account_id),
+            }
+            if mindate:
+                ts = int(mindate.timestamp())
+                params["viewedAt>="] = ts
+            if maxresults is not None:
+                params["X-Plex-Container-Size"] = maxresults
+            results = self._get("/status/sessions/history/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            metadata = media_container.get("Metadata", [])
+            if not isinstance(metadata, list):
+                metadata = [metadata] if metadata else []
+            return metadata
+        except Exception as e:
+            self.logger.error(f"Error getting play history: {e}")
+            return []
+
+    def get_sonically_similar(
+        self,
+        track_rating_key: str | int,
+        limit: int = 50,
+        max_distance: float = 0.25,
+    ) -> list[dict[str, Any]]:
+        """Get sonically similar tracks for a given track. Used by daylist.
+        Returns list of track metadata dicts with ratingKey, distance, etc."""
+        try:
+            params = {"limit": limit, "maxDistance": max_distance}
+            results = self._get(
+                f"/library/metadata/{track_rating_key}/nearest",
+                params=params,
+            )
+            media_container = results.get("MediaContainer", {})
+            metadata = media_container.get("Metadata", [])
+            if not isinstance(metadata, list):
+                metadata = [metadata] if metadata else []
+            return metadata
+        except Exception as e:
+            self.logger.error(f"Error getting sonically similar for {track_rating_key}: {e}")
             return []
 
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):
@@ -1442,10 +1542,26 @@ class PlexClient(BaseAPIClient):
             for playlist in playlists:
                 if playlist.get("title", "").lower() == playlist_name.lower():
                     return playlist
+            return None
+        except Exception as e:
+            self.logger.error(f"Error finding playlist by name: {e}")
+            return None
+
+    def find_playlist_by_prefix(self, prefix: str):
+        """Find a playlist whose title starts with prefix. Returns first match or None."""
+        try:
+            results = self._get("/playlists")
+            media_container = results.get("MediaContainer", {})
+            playlists = media_container.get("Metadata", [])
+
+            prefix_lower = prefix.lower()
+            for playlist in playlists:
+                if playlist.get("title", "").lower().startswith(prefix_lower):
+                    return playlist
 
             return None
         except Exception as e:
-            self.logger.error(f"Error finding playlist '{playlist_name}': {e}")
+            self.logger.error(f"Error finding playlist by prefix: {e}")
             return None
 
     def create_playlist(self, title, track_rating_keys, summary=""):
@@ -1586,14 +1702,18 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error deleting playlist: {e}")
             return False
 
-    def create_or_update_playlist(self, title, track_rating_keys, summary=""):
+    def create_or_update_playlist(
+        self, title, track_rating_keys, summary="", match_prefix: str | None = None
+    ):
         """
-        Create a new playlist or update an existing one with the same name.
-        Enhanced with playlist validation to avoid unnecessary recreation.
+        Create a new playlist or update an existing one.
+        If match_prefix is set (e.g. '[Cmdarr] Daylist'), find existing by prefix instead of exact title.
         """
         try:
-            # Check if playlist already exists
-            existing_playlist = self.find_playlist_by_name(title)
+            if match_prefix:
+                existing_playlist = self.find_playlist_by_prefix(match_prefix)
+            else:
+                existing_playlist = self.find_playlist_by_name(title)
 
             if existing_playlist:
                 self.logger.info(f"Found existing playlist '{title}', validating content...")

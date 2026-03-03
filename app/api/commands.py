@@ -651,6 +651,93 @@ async def validate_playlist_url(url: str):
         return {"valid": False, "error": "Failed to validate URL"}
 
 
+@router.get("/plex-accounts")
+async def get_plex_accounts():
+    """Get Plex Home managed accounts for daylist user selection dropdown."""
+    try:
+        from commands.config_adapter import Config
+        from clients.client_plex import PlexClient
+
+        config = Config()
+        if not config.get("PLEX_CLIENT_ENABLED", False):
+            raise HTTPException(status_code=400, detail="Plex client is not enabled")
+        plex = PlexClient(config)
+        accounts = plex.get_accounts()
+        return {"accounts": accounts}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to get Plex accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/daylist/create")
+async def create_daylist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new daylist command (single instance)."""
+    try:
+        from database.config_models import CommandConfig
+
+        # Check if daylist already exists
+        existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Daylist command already exists. Only one daylist is supported.",
+            )
+
+        plex_account_id = request.get("plex_history_account_id")
+        if not plex_account_id:
+            raise HTTPException(status_code=400, detail="plex_history_account_id is required")
+
+        schedule_minute = int(request.get("schedule_minute", 0))
+        schedule_minute = max(0, min(59, schedule_minute))
+
+        config_json = {
+            "plex_history_account_id": str(plex_account_id),
+            "schedule_minute": schedule_minute,
+            "exclude_played_days": int(request.get("exclude_played_days", 4)),
+            "history_lookback_days": int(request.get("history_lookback_days", 30)),
+            "max_tracks": int(request.get("max_tracks", 50)),
+            "sonic_similar_limit": int(request.get("sonic_similar_limit", 8)),
+            "sonic_similarity_limit": int(request.get("sonic_similarity_limit", 50)),
+            "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 1.0)),
+            "historical_ratio": float(request.get("historical_ratio", 0.3)),
+            "time_periods": request.get("time_periods"),  # Optional custom periods
+            "timezone": (request.get("timezone") or "").strip() or None,
+        }
+
+        cmd = CommandConfig(
+            command_name="daylist_00001",
+            display_name="Daylist",
+            description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
+            enabled=bool(request.get("enabled", True)),
+            schedule_cron=None,  # Daylist uses config_json schedule_minute
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        # Reload dynamic commands
+        command_executor._load_dynamic_daylist_commands()
+
+        return {"message": "Daylist command created successfully", "command_name": "daylist_00001"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create daylist: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/daylist/exists")
+async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if a daylist command already exists (for New Command UI grey-out)."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+    return {"exists": existing is not None}
+
+
 @router.post("/playlist-sync/create")
 async def create_playlist_sync(request: dict, db: Annotated[Session, Depends(get_config_db)]):
     """Create a new playlist sync command"""

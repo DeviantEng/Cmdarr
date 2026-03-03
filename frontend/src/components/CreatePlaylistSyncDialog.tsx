@@ -11,11 +11,27 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun } from 'lucide-react'
 import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
-type PlaylistType = 'listenbrainz' | 'other'
+type PlaylistType = 'listenbrainz' | 'other' | 'daylist'
+
+const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
+  Dawn: { start: 3, end: 5 },
+  'Early Morning': { start: 6, end: 8 },
+  Morning: { start: 9, end: 11 },
+  Afternoon: { start: 12, end: 15 },
+  Evening: { start: 16, end: 18 },
+  Night: { start: 19, end: 21 },
+  'Late Night': { start: 22, end: 2 },
+}
+
+function hoursFromRange(start: number, end: number): number[] {
+  if (end >= start) return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+  return [...Array.from({ length: 24 - start }, (_, i) => start + i), ...Array.from({ length: end + 1 }, (_, i) => i)]
+}
 
 interface CreatePlaylistSyncDialogProps {
   open: boolean
@@ -61,11 +77,37 @@ export function CreatePlaylistSyncDialog({
     metadata: null,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [daylistExists, setDaylistExists] = useState(false)
+  const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([])
+  const [daylistForm, setDaylistForm] = useState({
+    plex_history_account_id: '',
+    schedule_minute: 0,
+    enabled: true,
+    exclude_played_days: 4,
+    history_lookback_days: 30,
+    max_tracks: 50,
+    sonic_similar_limit: 8,
+    sonic_similarity_limit: 50,
+    sonic_similarity_distance: 1.0,
+    historical_ratio: 0.3,
+    timezone: '',
+    time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS } as Record<string, { start: number; end: number }>,
+  })
+
+  // Fetch daylist exists and plex accounts when dialog opens
+  useEffect(() => {
+    if (!open) return
+    api.request<{ exists: boolean }>('/api/commands/daylist/exists').then((r) => setDaylistExists(r.exists))
+    api.request<{ accounts: { id: string; name: string }[] }>('/api/commands/plex-accounts')
+      .then((r) => setPlexAccounts(r.accounts || []))
+      .catch(() => setPlexAccounts([]))
+  }, [open])
 
   // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
       setStep('type')
+      setPlaylistType('other')
       setFormData({
         playlist_url: '',
         playlist_types: [],
@@ -77,6 +119,20 @@ export function CreatePlaylistSyncDialog({
         daily_jams_keep: 3,
         cleanup_enabled: true,
         enable_artist_discovery: false,
+      })
+      setDaylistForm({
+        plex_history_account_id: '',
+        schedule_minute: 0,
+        enabled: true,
+        exclude_played_days: 4,
+        history_lookback_days: 30,
+        max_tracks: 50,
+        sonic_similar_limit: 8,
+        sonic_similarity_limit: 50,
+        sonic_similarity_distance: 1.0,
+        historical_ratio: 0.3,
+        timezone: '',
+        time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
       })
       setValidation({
         isValidating: false,
@@ -135,6 +191,7 @@ export function CreatePlaylistSyncDialog({
   }
 
   const handleSelectType = (type: PlaylistType) => {
+    if (type === 'daylist' && daylistExists) return
     setPlaylistType(type)
     setStep('form')
     if (type === 'listenbrainz') {
@@ -157,9 +214,11 @@ export function CreatePlaylistSyncDialog({
   const canSubmit = () => {
     if (playlistType === 'listenbrainz') {
       return formData.playlist_types.length > 0
-    } else {
-      return validation.isValid
     }
+    if (playlistType === 'daylist') {
+      return !!daylistForm.plex_history_account_id
+    }
+    return validation.isValid
   }
 
   const handleSubmit = async () => {
@@ -171,24 +230,50 @@ export function CreatePlaylistSyncDialog({
     setIsSubmitting(true)
 
     try {
-      const payload = {
-        ...formData,
-        playlist_type: playlistType,
-      }
-
-      const response = await api.request<{ message: string }>(
-        '/api/commands/playlist-sync/create',
-        {
-          method: 'POST',
-          body: JSON.stringify(payload),
+      if (playlistType === 'daylist') {
+        const time_periods: Record<string, number[]> = {}
+        for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
+          time_periods[period] = hoursFromRange(start, end)
         }
-      )
-
-      toast.success(response.message || 'Playlist sync command created successfully')
+        const response = await api.request<{ message: string }>(
+          '/api/commands/daylist/create',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              plex_history_account_id: daylistForm.plex_history_account_id,
+              schedule_minute: daylistForm.schedule_minute,
+              enabled: daylistForm.enabled,
+              exclude_played_days: daylistForm.exclude_played_days,
+              history_lookback_days: daylistForm.history_lookback_days,
+              max_tracks: daylistForm.max_tracks,
+              sonic_similar_limit: daylistForm.sonic_similar_limit,
+              sonic_similarity_limit: daylistForm.sonic_similarity_limit,
+              sonic_similarity_distance: daylistForm.sonic_similarity_distance,
+              historical_ratio: daylistForm.historical_ratio,
+              timezone: daylistForm.timezone || undefined,
+              time_periods,
+            }),
+          }
+        )
+        toast.success(response.message || 'Daylist command created successfully')
+      } else {
+        const payload = {
+          ...formData,
+          playlist_type: playlistType,
+        }
+        const response = await api.request<{ message: string }>(
+          '/api/commands/playlist-sync/create',
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          }
+        )
+        toast.success(response.message || 'Playlist sync command created successfully')
+      }
       onSuccess()
       onOpenChange(false)
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create playlist sync command')
+      toast.error(error.message || 'Failed to create command')
     } finally {
       setIsSubmitting(false)
     }
@@ -199,12 +284,18 @@ export function CreatePlaylistSyncDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {step === 'type' ? 'Create Playlist Sync' : `Configure ${playlistType === 'listenbrainz' ? 'ListenBrainz' : 'External'} Playlist`}
+            {step === 'type'
+              ? 'Create New Command'
+              : playlistType === 'daylist'
+                ? 'Configure Daylist'
+                : `Configure ${playlistType === 'listenbrainz' ? 'ListenBrainz' : 'External'} Playlist`}
           </DialogTitle>
           <DialogDescription>
             {step === 'type'
-              ? 'Choose the type of playlist sync to create'
-              : 'Configure your playlist sync settings'}
+              ? 'Choose the type of command to create'
+              : playlistType === 'daylist'
+                ? 'Configure your daylist settings'
+                : 'Configure your playlist sync settings'}
           </DialogDescription>
         </DialogHeader>
 
@@ -238,6 +329,29 @@ export function CreatePlaylistSyncDialog({
                 <h3 className="font-semibold">External Playlist</h3>
                 <p className="text-sm text-muted-foreground">
                   Sync public playlists from Spotify, Deezer, or other sources
+                </p>
+              </div>
+            </button>
+
+            {/* Daylist Option */}
+            <button
+              onClick={() => handleSelectType('daylist')}
+              disabled={daylistExists}
+              className={cn(
+                'flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors',
+                daylistExists
+                  ? 'cursor-not-allowed opacity-50'
+                  : 'hover:border-primary hover:bg-accent'
+              )}
+              title={daylistExists ? 'Daylist command already exists' : undefined}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900">
+                <Sun className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold">Daylist</h3>
+                <p className="text-sm text-muted-foreground">
+                  Time-of-day playlists from Plex listening history and Sonic Analysis. Plex only. Inspired by Meloday.
                 </p>
               </div>
             </button>
@@ -337,6 +451,245 @@ export function CreatePlaylistSyncDialog({
                   <span className="text-sm">Enable playlist cleanup (delete old playlists)</span>
                 </label>
               </>
+            ) : playlistType === 'daylist' ? (
+              <>
+                {/* Plex Account */}
+                <div className="space-y-2">
+                  <Label>Plex Account (play history source)</Label>
+                  <Select
+                    value={daylistForm.plex_history_account_id}
+                    onValueChange={(v) =>
+                      setDaylistForm((prev) => ({ ...prev, plex_history_account_id: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Plex account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {plexAccounts.map((acc) => (
+                        <SelectItem key={acc.id} value={acc.id}>
+                          {acc.name || `Account ${acc.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Plex Home managed users. Daylist uses this account&apos;s play history.
+                  </p>
+                </div>
+
+                {/* Minute of hour */}
+                <div className="space-y-2">
+                  <Label>Run at minute of hour</Label>
+                  <Select
+                    value={String(daylistForm.schedule_minute)}
+                    onValueChange={(v) =>
+                      setDaylistForm((prev) => ({ ...prev, schedule_minute: parseInt(v, 10) }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 15, 30, 45].map((m) => (
+                        <SelectItem key={m} value={String(m)}>
+                          :{m.toString().padStart(2, '0')} (e.g. 1:00, 1:15, 1:30, 1:45)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Daylist runs hourly. Runs only when the day period changes (Dawn, Morning, etc.).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Exclude played (days)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={14}
+                      value={daylistForm.exclude_played_days}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          exclude_played_days: Math.max(1, Math.min(14, parseInt(e.target.value, 10) || 4)),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Skip tracks played in last N days</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>History lookback (days)</Label>
+                    <Input
+                      type="number"
+                      min={7}
+                      max={90}
+                      value={daylistForm.history_lookback_days}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          history_lookback_days: Math.max(7, Math.min(90, parseInt(e.target.value, 10) || 30)),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Days of play history to analyze</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max tracks</Label>
+                    <Input
+                      type="number"
+                      min={20}
+                      max={100}
+                      value={daylistForm.max_tracks}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          max_tracks: Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 50)),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sonically similar limit</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={daylistForm.sonic_similar_limit}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          sonic_similar_limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 8)),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Max similar tracks per seed</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sonically similar playlist limit</Label>
+                    <Input
+                      type="number"
+                      min={10}
+                      max={100}
+                      value={daylistForm.sonic_similarity_limit}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          sonic_similarity_limit: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sonically similar distance</Label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      max={2}
+                      step={0.1}
+                      value={daylistForm.sonic_similarity_distance}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          sonic_similarity_distance: Math.max(0.1, Math.min(2, parseFloat(e.target.value) || 1.0)),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Historical ratio</Label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      max={0.8}
+                      step={0.1}
+                      value={daylistForm.historical_ratio}
+                      onChange={(e) =>
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          historical_ratio: Math.max(0.1, Math.min(0.8, parseFloat(e.target.value) || 0.3)),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Share of tracks from history (0.1–0.8)</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Timezone (optional)</Label>
+                  <Input
+                    placeholder="e.g. America/New_York"
+                    value={daylistForm.timezone}
+                    onChange={(e) =>
+                      setDaylistForm((prev) => ({ ...prev, timezone: e.target.value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">Leave empty to use scheduler timezone</p>
+                </div>
+
+                <div className="space-y-2 rounded-lg border p-4">
+                  <Label>Time periods (Start–End hour, 0–23)</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2).
+                  </p>
+                  <div className="grid gap-2">
+                    {Object.entries(daylistForm.time_periods).map(([period, { start, end }]) => (
+                      <div key={period} className="flex items-center gap-3">
+                        <span className="w-28 text-sm">{period}</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={23}
+                          className="w-16"
+                          value={start}
+                          onChange={(e) => {
+                            const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                            setDaylistForm((prev) => ({
+                              ...prev,
+                              time_periods: {
+                                ...prev.time_periods,
+                                [period]: { ...prev.time_periods[period], start: v },
+                              },
+                            }))
+                          }}
+                        />
+                        <span className="text-muted-foreground">–</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={23}
+                          className="w-16"
+                          value={end}
+                          onChange={(e) => {
+                            const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                            setDaylistForm((prev) => ({
+                              ...prev,
+                              time_periods: {
+                                ...prev.time_periods,
+                                [period]: { ...prev.time_periods[period], end: v },
+                              },
+                            }))
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={daylistForm.enabled}
+                    onChange={(e) =>
+                      setDaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+              </>
             ) : (
               <>
                 {/* Playlist URL */}
@@ -399,7 +752,9 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings */}
+            {/* Common Settings (hidden for daylist - has its own form) */}
+            {playlistType !== 'daylist' && (
+            <>
             <div className="space-y-2">
               <Label>Target</Label>
               <Select
@@ -469,6 +824,8 @@ export function CreatePlaylistSyncDialog({
               />
               <span className="text-sm">Enable artist discovery for this playlist</span>
             </label>
+            </>
+            )}
           </div>
         )}
 
@@ -488,6 +845,8 @@ export function CreatePlaylistSyncDialog({
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating...
                 </>
+              ) : playlistType === 'daylist' ? (
+                'Create Daylist'
               ) : (
                 'Create Playlist Sync'
               )}

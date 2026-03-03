@@ -60,6 +60,8 @@ class CommandExecutor:
 
             # Load dynamic playlist sync commands from database
             self._load_dynamic_playlist_sync_commands()
+            # Load dynamic daylist commands from database
+            self._load_dynamic_daylist_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -127,6 +129,17 @@ class CommandExecutor:
                 "error": f"Command {command_name} not found in database (may have been deleted)",
                 "execution_id": None,
             }
+
+        # Daylist: pre-check skip (period unchanged) - do not create execution record when skipping
+        if command_name.startswith("daylist_"):
+            skip, reason = await self._daylist_should_skip(command_name)
+            if skip:
+                self.logger.info(f"Daylist {command_name} skipped (no execution record): {reason}")
+                return {
+                    "success": True,
+                    "execution_id": None,
+                    "message": f"Skipped: {reason}",
+                }
 
         # Create execution record
         self.logger.info(
@@ -282,12 +295,13 @@ class CommandExecutor:
 
                 # Pass command-specific configuration to the command
                 if command_config and command_config.config_json:
-                    command.config_json = command_config.config_json
-                    self.logger.info(
-                        f"Set config_json for {command_name}: {command_config.config_json}"
-                    )
+                    command.config_json = dict(command_config.config_json)
                 else:
-                    self.logger.info(f"No config_json for {command_name}")
+                    command.config_json = {}
+                command.config_json["command_name"] = command_name
+                self.logger.info(
+                    f"Set config_json for {command_name}: {list(command.config_json.keys())}"
+                )
 
             finally:
                 session.close()
@@ -394,8 +408,18 @@ class CommandExecutor:
             return self._build_playlist_sync_summary(stats, duration)
         elif command_name == "new_releases_discovery" and stats:
             return self._build_new_releases_summary(stats, duration)
+        elif command_name.startswith("daylist_") and stats:
+            return self._build_daylist_summary(stats, duration)
 
         return f"Command completed successfully in {duration:.1f}s"
+
+    def _build_daylist_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build daylist summary from command result"""
+        if stats.get("skipped"):
+            return f"Skipped: {stats.get('reason', 'period unchanged')}"
+        period = stats.get("period", "")
+        count = stats.get("track_count", 0)
+        return f"Daylist updated: {period}, {count} tracks ({duration:.1f}s)"
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
@@ -655,6 +679,63 @@ class CommandExecutor:
 
         except Exception as e:
             self.logger.error(f"Failed to load dynamic playlist sync commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    async def _daylist_should_skip(self, command_name: str) -> tuple[bool, str]:
+        """Check if daylist should skip (period unchanged). Returns (skip, reason)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor, self._daylist_should_skip_sync, command_name
+        )
+
+    def _daylist_should_skip_sync(self, command_name: str) -> tuple[bool, str]:
+        """Check if daylist should skip (period unchanged). Returns (skip, reason)."""
+        try:
+            from commands.daylist import DaylistCommand
+
+            manager = get_database_manager()
+            session = manager.get_config_session_sync()
+            try:
+                command_config = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == command_name)
+                    .first()
+                )
+                if not command_config or not command_config.config_json:
+                    return False, ""
+                config = self.config
+                command = DaylistCommand(config)
+                command.config_json = dict(command_config.config_json)
+                return command._should_skip()
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.warning(f"Daylist skip check failed: {e}")
+            return False, "skip check failed"
+
+    def _load_dynamic_daylist_commands(self):
+        """Load dynamic daylist commands from database"""
+        try:
+            from commands.daylist import DaylistCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                daylist_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("daylist_%"))
+                    .all()
+                )
+                for command_config in daylist_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = DaylistCommand
+                    self.logger.debug(f"Loaded dynamic daylist command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic daylist commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")
