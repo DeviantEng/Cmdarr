@@ -174,15 +174,20 @@ class VersionMigrationRunner:
 
 def create_version_migration_runner() -> VersionMigrationRunner:
     """Create a migration runner with version-based migrations"""
-    runner = VersionMigrationRunner()
+    from database.database import _get_data_dir
+
+    config_db_path = str(Path(_get_data_dir()) / "cmdarr_config.db")
+    runner = VersionMigrationRunner(config_db_path=config_db_path)
 
     # Migration for v0.1.5: Database split
     def migrate_database_split(cursor):
         """Migrate from single database to split databases"""
         get_migrations_logger().info("Running database split migration...")
 
+        from database.database import _get_data_dir
+
         # Check if we're running on the old single database
-        old_db_path = "data/cmdarr.db"
+        old_db_path = str(Path(_get_data_dir()) / "cmdarr.db")
         if not Path(old_db_path).exists():
             get_migrations_logger().info("Old database not found, skipping split migration")
             return

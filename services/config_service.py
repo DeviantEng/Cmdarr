@@ -666,7 +666,7 @@ class ConfigService:
             manager = get_database_manager()
             session = manager.get_session_sync()
             try:
-                settings = session.query(ConfigSetting).filter(not ConfigSetting.is_hidden).all()
+                settings = session.query(ConfigSetting).filter(ConfigSetting.is_hidden == False).all()
                 result = {}
                 for setting in settings:
                     value = setting.get_effective_value()
@@ -692,7 +692,7 @@ class ConfigService:
             try:
                 settings = (
                     session.query(ConfigSetting)
-                    .filter(ConfigSetting.category == category, not ConfigSetting.is_hidden)
+                    .filter(ConfigSetting.category == category, ConfigSetting.is_hidden == False)
                     .all()
                 )
                 result = {}

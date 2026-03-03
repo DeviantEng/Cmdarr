@@ -986,216 +986,236 @@ export function CommandsPage() {
                 {/* Daylist - editable fields */}
                 {editingCommand.command_name.startsWith('daylist_') && (
                   <>
-                    <div className="space-y-2">
-                      <Label>Plex Account (play history source)</Label>
-                      <Select
-                        value={editForm.plex_history_account_id ?? ''}
-                        onValueChange={(v) =>
-                          setEditForm((f) => ({ ...f, plex_history_account_id: v }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Plex account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {plexAccounts.map((acc) => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                              {acc.name || `Account ${acc.id}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Plex Home managed users. Daylist uses this account&apos;s play history.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Run at minute of hour</Label>
-                      <Select
-                        value={String(editForm.schedule_minute ?? 0)}
-                        onValueChange={(v) =>
-                          setEditForm((f) => ({ ...f, schedule_minute: parseInt(v, 10) }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[0, 15, 30, 45].map((m) => (
-                            <SelectItem key={m} value={String(m)}>
-                              :{m.toString().padStart(2, '0')} (e.g. 1:00, 1:15, 1:30, 1:45)
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Daylist runs hourly. Runs only when the day period changes (Dawn, Morning, etc.).
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Primary settings */}
+                    <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Exclude played (days)</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={14}
-                          value={editForm.exclude_played_days ?? 4}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              exclude_played_days: Math.max(1, Math.min(14, parseInt(e.target.value, 10) || 4)),
-                            }))
+                        <Label>Plex Account (play history source)</Label>
+                        <Select
+                          value={editForm.plex_history_account_id ?? ''}
+                          onValueChange={(v) =>
+                            setEditForm((f) => ({ ...f, plex_history_account_id: v }))
                           }
-                        />
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Plex account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {plexAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.name || `Account ${acc.id}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Plex Home users only. Daylist uses this account&apos;s play history.
+                        </p>
                       </div>
                       <div className="space-y-2">
-                        <Label>History lookback (days)</Label>
+                        <Label>Run at minute of hour (0–59)</Label>
                         <Input
                           type="number"
-                          min={7}
-                          max={90}
-                          value={editForm.history_lookback_days ?? 30}
+                          min={0}
+                          max={59}
+                          value={editForm.schedule_minute ?? 0}
                           onChange={(e) =>
                             setEditForm((f) => ({
                               ...f,
-                              history_lookback_days: Math.max(7, Math.min(90, parseInt(e.target.value, 10) || 30)),
+                              schedule_minute: Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)),
                             }))
                           }
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.).
+                        </p>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Max tracks</Label>
-                        <Input
-                          type="number"
-                          min={20}
-                          max={100}
-                          value={editForm.max_tracks ?? 50}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              max_tracks: Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Historical ratio</Label>
-                        <Input
-                          type="number"
-                          min={0.1}
-                          max={0.8}
-                          step={0.1}
-                          value={editForm.historical_ratio ?? 0.3}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              historical_ratio: Math.max(0.1, Math.min(0.8, parseFloat(e.target.value) || 0.3)),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sonically similar limit</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={editForm.sonic_similar_limit ?? 8}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              sonic_similar_limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 8)),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sonically similar playlist limit</Label>
-                        <Input
-                          type="number"
-                          min={10}
-                          max={100}
-                          value={editForm.sonic_similarity_limit ?? 50}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              sonic_similarity_limit: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sonically similar distance</Label>
-                        <Input
-                          type="number"
-                          min={0.1}
-                          max={2}
-                          step={0.1}
-                          value={editForm.sonic_similarity_distance ?? 1.0}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              sonic_similarity_distance: Math.max(0.1, Math.min(2, parseFloat(e.target.value) || 1.0)),
-                            }))
-                          }
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Exclude played (days)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={14}
+                            value={editForm.exclude_played_days ?? 4}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                exclude_played_days: Math.max(1, Math.min(14, parseInt(e.target.value, 10) || 4)),
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Skip tracks played in last N days</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>History lookback (days)</Label>
+                          <Input
+                            type="number"
+                            min={7}
+                            max={90}
+                            value={editForm.history_lookback_days ?? 30}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                history_lookback_days: Math.max(7, Math.min(90, parseInt(e.target.value, 10) || 30)),
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Days of play history to analyze</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max tracks</Label>
+                          <Input
+                            type="number"
+                            min={20}
+                            max={100}
+                            value={editForm.max_tracks ?? 50}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                max_tracks: Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 50)),
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Target playlist size (20–100)</p>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Timezone (optional)</Label>
-                      <Input
-                        placeholder="e.g. America/New_York"
-                        value={editForm.timezone ?? ''}
-                        onChange={(e) =>
-                          setEditForm((f) => ({ ...f, timezone: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 rounded-lg border p-4">
-                      <Label>Time periods (Start–End hour, 0–23)</Label>
-                      <div className="grid gap-2">
-                        {Object.entries(editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS).map(([period, { start, end }]) => (
-                          <div key={period} className="flex items-center gap-3">
-                            <span className="w-28 text-sm">{period}</span>
+
+                    {/* Advanced settings (collapsible) */}
+                    <details className="rounded-lg border p-4">
+                      <summary className="cursor-pointer font-medium text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        Advanced settings
+                      </summary>
+                      <div className="mt-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Historical ratio</Label>
                             <Input
                               type="number"
-                              min={0}
-                              max={23}
-                              className="w-16"
-                              value={start}
-                              onChange={(e) => {
-                                const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                              min={0.1}
+                              max={0.8}
+                              step={0.1}
+                              value={editForm.historical_ratio ?? 0.3}
+                              onChange={(e) =>
                                 setEditForm((f) => ({
                                   ...f,
-                                  time_periods: {
-                                    ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                    [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: v },
-                                  },
+                                  historical_ratio: Math.max(0.1, Math.min(0.8, parseFloat(e.target.value) || 0.3)),
                                 }))
-                              }}
+                              }
                             />
-                            <span className="text-muted-foreground">–</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={23}
-                              className="w-16"
-                              value={end}
-                              onChange={(e) => {
-                                const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
-                                setEditForm((f) => ({
-                                  ...f,
-                                  time_periods: {
-                                    ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                    [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: v },
-                                  },
-                                }))
-                              }}
-                            />
+                            <p className="text-xs text-muted-foreground">Share of tracks from history (0.1–0.8)</p>
                           </div>
-                        ))}
+                          <div className="space-y-2">
+                            <Label>Sonically similar limit</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={20}
+                              value={editForm.sonic_similar_limit ?? 8}
+                              onChange={(e) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similar_limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 8)),
+                                }))
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">Max similar tracks per seed</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonically similar playlist limit</Label>
+                            <Input
+                              type="number"
+                              min={10}
+                              max={100}
+                              value={editForm.sonic_similarity_limit ?? 50}
+                              onChange={(e) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similarity_limit: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)),
+                                }))
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonically similar distance</Label>
+                            <Input
+                              type="number"
+                              min={0.1}
+                              max={2}
+                              step={0.1}
+                              value={editForm.sonic_similarity_distance ?? 1.0}
+                              onChange={(e) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similarity_distance: Math.max(0.1, Math.min(2, parseFloat(e.target.value) || 1.0)),
+                                }))
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">Max distance for sonic similarity (lower = more similar)</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Timezone (optional)</Label>
+                          <Input
+                            placeholder="e.g. America/New_York"
+                            value={editForm.timezone ?? ''}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, timezone: e.target.value }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Leave empty to use scheduler timezone</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Time periods (Start–End hour, 0–23)</Label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2).
+                          </p>
+                          <div className="grid gap-2">
+                            {Object.entries(editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS).map(([period, { start, end }]) => (
+                              <div key={period} className="flex items-center gap-3">
+                                <span className="w-28 text-sm">{period}</span>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={23}
+                                  className="w-16"
+                                  value={start}
+                                  onChange={(e) => {
+                                    const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      time_periods: {
+                                        ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: v },
+                                      },
+                                    }))
+                                  }}
+                                />
+                                <span className="text-muted-foreground">–</span>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={23}
+                                  className="w-16"
+                                  value={end}
+                                  onChange={(e) => {
+                                    const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      time_periods: {
+                                        ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: v },
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    </details>
                   </>
                 )}
 

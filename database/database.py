@@ -5,6 +5,7 @@ Database connection and session management for split databases
 
 import os
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,12 +15,19 @@ from .cache_models import CacheBase
 from .config_models import ConfigBase
 
 
+def _get_data_dir() -> str:
+    """Return data directory path. Uses project root (where database.py lives), not cwd.
+    Ensures same database is used regardless of where the process was started from."""
+    project_root = Path(__file__).resolve().parent.parent
+    return str(project_root / "data")
+
+
 class DatabaseManager:
     """Database connection and session management for split databases"""
 
     def __init__(self, config_url: str = None, cache_url: str = None):
-        # Set up data directory
-        data_dir = os.path.join(os.getcwd(), "data")
+        # Set up data directory (project root, not cwd - prevents lost config when run from subdirs)
+        data_dir = _get_data_dir()
         os.makedirs(data_dir, exist_ok=True)
 
         # Default database URLs

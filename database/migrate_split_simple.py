@@ -128,8 +128,10 @@ def main():
     """Main migration function"""
     get_migration_logger().info("Starting simplified database split migration...")
 
-    # Get data directory
-    data_dir = Path("data")
+    from database.database import _get_data_dir
+
+    # Get data directory (project root, not cwd)
+    data_dir = Path(_get_data_dir())
     data_dir.mkdir(exist_ok=True)
 
     old_db_path = data_dir / "cmdarr.db"

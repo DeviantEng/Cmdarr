@@ -69,8 +69,13 @@ async def test_connectivity():
         spotify_result = await _test_spotify()
         results.append(spotify_result)
 
-        # Calculate overall success
-        overall_success = all(result.success for result in results)
+        # Calculate overall success: only actual connection attempts count.
+        # Disabled / not-configured services are neutral (don't fail the overall test).
+        attempted = [
+            r for r in results
+            if r.message not in ("Disabled", "Not configured")
+        ]
+        overall_success = all(r.success for r in attempted) if attempted else True
 
         # Sort results alphabetically by service name
         results.sort(key=lambda x: x.service)

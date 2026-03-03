@@ -130,6 +130,126 @@ async def get_all_commands(db: Annotated[Session, Depends(get_config_db)]):
         raise HTTPException(status_code=500, detail="Failed to retrieve commands")
 
 
+@router.get("/plex-accounts")
+async def get_plex_accounts():
+    """Get Plex Home managed accounts for daylist user selection dropdown.
+    Returns empty list when Plex client is not enabled (allows UI to render)."""
+    try:
+        from commands.config_adapter import Config
+        from clients.client_plex import PlexClient
+
+        config = Config()
+        if not config.get("PLEX_CLIENT_ENABLED", False):
+            return {"accounts": []}
+        plex = PlexClient(config)
+        accounts = plex.get_accounts()
+        return {"accounts": accounts}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to get Plex accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/daylist/exists")
+async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if a daylist command already exists (for New Command UI grey-out)."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+    return {"exists": existing is not None}
+
+
+@router.get("/status/scheduler")
+async def get_scheduler_status():
+    """Get scheduler status and information"""
+    try:
+        from services.scheduler import scheduler
+
+        queue_status = scheduler.get_queue_status()
+
+        return {
+            "running": scheduler.running,
+            "scheduled_commands": list(scheduler.get_scheduled_commands()),
+            "check_interval_seconds": scheduler.check_interval,
+            "queue_size": queue_status["queue_size"],
+            "currently_running": queue_status["currently_running"],
+        }
+    except Exception as e:
+        get_commands_logger().error(f"Failed to get scheduler status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get scheduler status")
+
+
+@router.get("/playlist-sync/validate-url")
+async def validate_playlist_url(url: str):
+    """Validate playlist URL and fetch metadata"""
+    try:
+        from clients.client_deezer import DeezerClient
+        from clients.client_spotify import SpotifyClient
+        from commands.config_adapter import Config
+        from utils.playlist_parser import parse_playlist_url
+
+        parsed = parse_playlist_url(url)
+
+        if not parsed["valid"]:
+            return {
+                "valid": False,
+                "error": parsed["error"],
+                "supported_sources": ["spotify", "deezer"],
+                "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
+            }
+
+        source = parsed["source"]
+        config = Config()
+
+        if source == "spotify":
+            spotify_client = SpotifyClient(config)
+            try:
+                metadata = await spotify_client.get_playlist_info(url)
+
+                if metadata.get("success"):
+                    return {
+                        "valid": True,
+                        "source": source,
+                        "playlist_id": parsed["playlist_id"],
+                        "metadata": {
+                            "name": metadata["name"],
+                            "description": metadata["description"],
+                            "track_count": metadata["track_count"],
+                            "owner": metadata["owner"],
+                        },
+                    }
+                else:
+                    return {"valid": False, "error": "Failed to fetch playlist metadata"}
+            finally:
+                await spotify_client.close()
+        elif source == "deezer":
+            deezer_client = DeezerClient(config)
+            try:
+                metadata = await deezer_client.get_playlist_info(url)
+
+                if metadata.get("success"):
+                    return {
+                        "valid": True,
+                        "source": source,
+                        "playlist_id": parsed["playlist_id"],
+                        "metadata": {
+                            "name": metadata["name"],
+                            "description": metadata["description"],
+                            "track_count": metadata["track_count"],
+                            "owner": metadata["owner"],
+                        },
+                    }
+                else:
+                    return {"valid": False, "error": "Failed to fetch playlist metadata"}
+            finally:
+                await deezer_client.close()
+        else:
+            return {"valid": False, "error": f"Source {source} not yet supported"}
+
+    except Exception as e:
+        get_commands_logger().error(f"Failed to validate playlist URL: {e}")
+        return {"valid": False, "error": "Failed to validate URL"}
+
+
 @router.get("/{command_name}", response_model=CommandConfigResponse)
 async def get_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
     """Get a specific command configuration"""
@@ -503,26 +623,6 @@ async def cleanup_executions(
         raise HTTPException(status_code=500, detail="Failed to cleanup executions")
 
 
-@router.get("/status/scheduler")
-async def get_scheduler_status():
-    """Get scheduler status and information"""
-    try:
-        from services.scheduler import scheduler
-
-        queue_status = scheduler.get_queue_status()
-
-        return {
-            "running": scheduler.running,
-            "scheduled_commands": list(scheduler.get_scheduled_commands()),
-            "check_interval_seconds": scheduler.check_interval,
-            "queue_size": queue_status["queue_size"],
-            "currently_running": queue_status["currently_running"],
-        }
-    except Exception as e:
-        get_commands_logger().error(f"Failed to get scheduler status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get scheduler status")
-
-
 @router.post("/library_cache_builder/refresh")
 async def execute_cache_builder(request: Request):
     """Execute library cache builder command manually"""
@@ -572,103 +672,6 @@ async def execute_cache_builder(request: Request):
             "error": "Cache operation failed",
             "message": "Failed to execute cache builder",
         }
-
-
-# Playlist Sync Endpoints
-
-
-@router.get("/playlist-sync/validate-url")
-async def validate_playlist_url(url: str):
-    """Validate playlist URL and fetch metadata"""
-    try:
-        from clients.client_deezer import DeezerClient
-        from clients.client_spotify import SpotifyClient
-        from commands.config_adapter import Config
-        from utils.playlist_parser import parse_playlist_url
-
-        # Parse URL
-        parsed = parse_playlist_url(url)
-
-        if not parsed["valid"]:
-            return {
-                "valid": False,
-                "error": parsed["error"],
-                "supported_sources": ["spotify", "deezer"],
-                "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
-            }
-
-        # Fetch metadata from source
-        source = parsed["source"]
-        config = Config()
-
-        if source == "spotify":
-            spotify_client = SpotifyClient(config)
-            try:
-                metadata = await spotify_client.get_playlist_info(url)
-
-                if metadata.get("success"):
-                    return {
-                        "valid": True,
-                        "source": source,
-                        "playlist_id": parsed["playlist_id"],
-                        "metadata": {
-                            "name": metadata["name"],
-                            "description": metadata["description"],
-                            "track_count": metadata["track_count"],
-                            "owner": metadata["owner"],
-                        },
-                    }
-                else:
-                    return {"valid": False, "error": "Failed to fetch playlist metadata"}
-            finally:
-                await spotify_client.close()
-        elif source == "deezer":
-            deezer_client = DeezerClient(config)
-            try:
-                metadata = await deezer_client.get_playlist_info(url)
-
-                if metadata.get("success"):
-                    return {
-                        "valid": True,
-                        "source": source,
-                        "playlist_id": parsed["playlist_id"],
-                        "metadata": {
-                            "name": metadata["name"],
-                            "description": metadata["description"],
-                            "track_count": metadata["track_count"],
-                            "owner": metadata["owner"],
-                        },
-                    }
-                else:
-                    return {"valid": False, "error": "Failed to fetch playlist metadata"}
-            finally:
-                await deezer_client.close()
-        else:
-            return {"valid": False, "error": f"Source {source} not yet supported"}
-
-    except Exception as e:
-        get_commands_logger().error(f"Failed to validate playlist URL: {e}")
-        return {"valid": False, "error": "Failed to validate URL"}
-
-
-@router.get("/plex-accounts")
-async def get_plex_accounts():
-    """Get Plex Home managed accounts for daylist user selection dropdown."""
-    try:
-        from commands.config_adapter import Config
-        from clients.client_plex import PlexClient
-
-        config = Config()
-        if not config.get("PLEX_CLIENT_ENABLED", False):
-            raise HTTPException(status_code=400, detail="Plex client is not enabled")
-        plex = PlexClient(config)
-        accounts = plex.get_accounts()
-        return {"accounts": accounts}
-    except HTTPException:
-        raise
-    except Exception as e:
-        get_commands_logger().error(f"Failed to get Plex accounts: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/daylist/create")
@@ -729,13 +732,6 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         get_commands_logger().error(f"Failed to create daylist: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/daylist/exists")
-async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
-    """Check if a daylist command already exists (for New Command UI grey-out)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
-    return {"exists": existing is not None}
 
 
 @router.post("/playlist-sync/create")

@@ -1146,24 +1146,56 @@ class PlexClient(BaseAPIClient):
             return []
 
     def get_accounts(self) -> list[dict[str, Any]]:
-        """Get Plex Home managed accounts for daylist user selection.
-        Returns list of {id, name} for dropdown. Used by daylist command creation."""
+        """Get Plex Home users only (excludes friends/shared library users).
+        Uses Plex.tv API /home/users. Returns list of {id, name} for dropdown."""
         try:
-            results = self._get("/accounts")
-            media_container = results.get("MediaContainer", {})
-            accounts_raw = media_container.get("Account", media_container.get("Metadata", []))
-            if not isinstance(accounts_raw, list):
-                accounts_raw = [accounts_raw] if accounts_raw else []
+            url = "https://plex.tv/api/v2/home/users"
+            params = {
+                "X-Plex-Token": self.token,
+                "X-Plex-Client-Identifier": "cmdarr-daylist",
+            }
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
             accounts = []
-            for acc in accounts_raw:
-                acc_id = acc.get("id")
-                acc_name = (acc.get("name") or "").strip()
-                if acc_id is not None:
-                    accounts.append({"id": str(acc_id), "name": acc_name or f"Account {acc_id}"})
+            for user in root.findall(".//user"):
+                acc_id = user.get("id")
+                if acc_id is None:
+                    continue
+                name = (user.get("title") or user.get("username") or user.get("friendlyName") or "").strip()
+                accounts.append({"id": str(acc_id), "name": name or f"Account {acc_id}"})
             return accounts
         except Exception as e:
-            self.logger.error(f"Error getting Plex accounts: {e}")
+            self.logger.error(f"Error getting Plex home users: {e}")
             return []
+
+    def resolve_account_id_for_history(self, plex_tv_account_id: str | int) -> str | None:
+        """Resolve Plex.tv account ID to server account ID for session history.
+        Server owner uses id=1; shared users use their Plex.tv ID. Returns the ID
+        to pass to get_play_history, or None on failure."""
+        try:
+            plex_tv_id = str(plex_tv_account_id)
+            # Get server accounts (id + name) - session history uses these IDs
+            results = self._get("/accounts")
+            mc = results.get("MediaContainer", {})
+            raw = mc.get("Account", [])
+            server_accounts = raw if isinstance(raw, list) else ([raw] if raw else [])
+            # Build id->name and name->id maps
+            by_id = {str(a.get("id")): (a.get("name") or "").strip() for a in server_accounts if a.get("id") is not None}
+            by_name = {v.lower(): k for k, v in by_id.items() if v}
+            # If plex_tv_id exists in server accounts, use it (shared users)
+            if plex_tv_id in by_id:
+                return plex_tv_id
+            # Server owner: Plex.tv ID != server id (owner uses 1). Match by name.
+            home_users = self.get_accounts()
+            home_by_id = {a["id"]: a["name"] for a in home_users}
+            owner_name = (home_by_id.get(plex_tv_id) or "").strip().lower()
+            if owner_name and owner_name in by_name:
+                return by_name[owner_name]
+            return None
+        except Exception as e:
+            self.logger.error(f"Error resolving account ID for history: {e}")
+            return None
 
     def get_play_history(
         self,
@@ -1174,11 +1206,18 @@ class PlexClient(BaseAPIClient):
     ) -> list[dict[str, Any]]:
         """Get play history for a library and account. Used by daylist.
         Params: library_key, account_id (required), mindate (datetime), maxresults.
+        Resolves Plex.tv account ID to server account ID (owner uses 1).
         Returns list of history items with ratingKey, viewedAt, key, etc."""
         try:
+            resolved = self.resolve_account_id_for_history(account_id)
+            if resolved is None:
+                self.logger.warning(
+                    f"Could not resolve account_id {account_id} to server account; trying as-is"
+                )
+                resolved = str(account_id)
             params = {
                 "librarySectionID": library_key,
-                "accountID": str(account_id),
+                "accountID": resolved,
             }
             if mindate:
                 ts = int(mindate.timestamp())

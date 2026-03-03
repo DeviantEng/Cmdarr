@@ -71,6 +71,88 @@ async def get_config_by_category(category: str):
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 
+@router.get("/details/{key}", response_model=ConfigSettingResponse)
+async def get_config_setting_details(
+    key: str, reveal: bool = False, db: Session = Depends(get_config_db)
+):
+    """Get detailed information about a configuration setting.
+    When reveal=True, returns the actual value for sensitive keys (for 'Show key' verification)."""
+    try:
+        setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
+        if not setting:
+            raise HTTPException(status_code=404, detail="Configuration setting not found")
+
+        options = None
+        if setting.options:
+            try:
+                import json
+
+                options = json.loads(setting.options)
+            except (json.JSONDecodeError, TypeError):
+                options = None
+
+        effective_value = setting.get_effective_value()
+        if setting.is_sensitive and effective_value and not reveal:
+            effective_value = "***"
+
+        return ConfigSettingResponse(
+            key=setting.key,
+            value=setting.value,
+            default_value=setting.default_value,
+            data_type=setting.data_type,
+            category=setting.category,
+            description=setting.description,
+            is_sensitive=setting.is_sensitive,
+            is_required=setting.is_required,
+            effective_value=effective_value,
+            options=options,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_config_logger().error(f"Failed to get configuration details for {key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve configuration details")
+
+
+@router.get("/categories/", response_model=list[str])
+async def get_config_categories(db: Annotated[Session, Depends(get_config_db)]):
+    """Get all configuration categories"""
+    try:
+        categories = db.query(ConfigSetting.category).distinct().all()
+        return [category[0] for category in categories]
+    except Exception as e:
+        get_config_logger().error(f"Failed to get configuration categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve configuration categories")
+
+
+@router.post("/validate/")
+async def validate_configuration():
+    """Validate all required configuration settings"""
+    try:
+        missing = config_service.validate_required_settings()
+        return {
+            "valid": len(missing) == 0,
+            "missing_settings": missing,
+            "message": "Configuration is valid"
+            if len(missing) == 0
+            else f"Missing {len(missing)} required settings",
+        }
+    except Exception as e:
+        get_config_logger().error(f"Failed to validate configuration: {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate configuration")
+
+
+@router.post("/refresh/")
+async def refresh_configuration():
+    """Refresh configuration cache"""
+    try:
+        config_service.refresh_cache()
+        return {"message": "Configuration cache refreshed successfully"}
+    except Exception as e:
+        get_config_logger().error(f"Failed to refresh configuration: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refresh configuration")
+
+
 @router.get("/{key}")
 async def get_config_setting(key: str, db: Annotated[Session, Depends(get_config_db)]):
     """Get a specific configuration setting (sensitive values obfuscated)"""
@@ -211,86 +293,3 @@ async def update_config_setting(
     except Exception as e:
         get_config_logger().error(f"Failed to update configuration {key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update configuration")
-
-
-@router.get("/details/{key}", response_model=ConfigSettingResponse)
-async def get_config_setting_details(
-    key: str, reveal: bool = False, db: Session = Depends(get_config_db)
-):
-    """Get detailed information about a configuration setting.
-    When reveal=True, returns the actual value for sensitive keys (for 'Show key' verification)."""
-    try:
-        setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
-        if not setting:
-            raise HTTPException(status_code=404, detail="Configuration setting not found")
-
-        # Parse options JSON string if present
-        options = None
-        if setting.options:
-            try:
-                import json
-
-                options = json.loads(setting.options)
-            except (json.JSONDecodeError, TypeError):
-                options = None
-
-        effective_value = setting.get_effective_value()
-        if setting.is_sensitive and effective_value and not reveal:
-            effective_value = "***"
-
-        return ConfigSettingResponse(
-            key=setting.key,
-            value=setting.value,
-            default_value=setting.default_value,
-            data_type=setting.data_type,
-            category=setting.category,
-            description=setting.description,
-            is_sensitive=setting.is_sensitive,
-            is_required=setting.is_required,
-            effective_value=effective_value,
-            options=options,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        get_config_logger().error(f"Failed to get configuration details for {key}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve configuration details")
-
-
-@router.get("/categories/", response_model=list[str])
-async def get_config_categories(db: Annotated[Session, Depends(get_config_db)]):
-    """Get all configuration categories"""
-    try:
-        categories = db.query(ConfigSetting.category).distinct().all()
-        return [category[0] for category in categories]
-    except Exception as e:
-        get_config_logger().error(f"Failed to get configuration categories: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve configuration categories")
-
-
-@router.post("/validate/")
-async def validate_configuration():
-    """Validate all required configuration settings"""
-    try:
-        missing = config_service.validate_required_settings()
-        return {
-            "valid": len(missing) == 0,
-            "missing_settings": missing,
-            "message": "Configuration is valid"
-            if len(missing) == 0
-            else f"Missing {len(missing)} required settings",
-        }
-    except Exception as e:
-        get_config_logger().error(f"Failed to validate configuration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to validate configuration")
-
-
-@router.post("/refresh/")
-async def refresh_configuration():
-    """Refresh configuration cache"""
-    try:
-        config_service.refresh_cache()
-        return {"message": "Configuration cache refreshed successfully"}
-    except Exception as e:
-        get_config_logger().error(f"Failed to refresh configuration cache: {e}")
-        raise HTTPException(status_code=500, detail="Failed to refresh configuration cache")

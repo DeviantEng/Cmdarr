@@ -129,7 +129,7 @@ class DaylistCommand(BaseCommand):
         """Get timezone for period determination."""
         from zoneinfo import ZoneInfo
 
-        tz_str = (self.config_json or {}).get("timezone", "").strip()
+        tz_str = ((self.config_json or {}).get("timezone") or "").strip()
         if not tz_str:
             from utils.timezone import get_scheduler_timezone
 
@@ -278,13 +278,16 @@ class DaylistCommand(BaseCommand):
             current = next_track
         return sorted_list
 
-    def _parse_viewed_at(self, item: dict) -> datetime | None:
-        """Parse viewedAt from history item (unix timestamp)."""
+    def _parse_viewed_at(self, item: dict, tz=None) -> datetime | None:
+        """Parse viewedAt from history item (unix timestamp).
+        If tz is provided, returns timezone-aware datetime for comparison with exclude_start."""
         v = item.get("viewedAt")
         if v is None:
             return None
         try:
             ts = int(v)
+            if tz:
+                return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
         except (ValueError, TypeError):
             return None
@@ -490,7 +493,8 @@ class DaylistCommand(BaseCommand):
             time_periods = self._get_time_periods()
             period_hours = set(time_periods.get(current_period, [0, 1, 2]))
 
-            now = datetime.now(self._get_timezone())
+            tz = self._get_timezone()
+            now = datetime.now(tz)
             history_start = now - timedelta(days=lookback_days)
             exclude_start = now - timedelta(days=exclude_days)
 
@@ -502,17 +506,27 @@ class DaylistCommand(BaseCommand):
                 maxresults=2000,
             )
 
-            # Filter: same period hours, not in exclude window, type=track
+            # Filter: type=track, not in exclude window. Use ALL recent history - period is for
+            # title/cover/ordering only; restricting to period hours would exclude most plays.
             history_items = []
             excluded_keys = set()
             for h in history_raw:
                 if str(h.get("type", "")) != "track":
                     continue
-                viewed = self._parse_viewed_at(h)
+                viewed = self._parse_viewed_at(h, tz)
                 if viewed and viewed >= exclude_start:
                     excluded_keys.add(str(h.get("ratingKey")))
-                if viewed and viewed.hour in period_hours and str(h.get("ratingKey")) not in excluded_keys:
+                if viewed and str(h.get("ratingKey")) not in excluded_keys:
                     history_items.append(h)
+
+            self.logger.info(
+                f"History: {len(history_raw)} raw, {len(history_items)} tracks (excluded {len(excluded_keys)} recent)"
+            )
+            if not history_items:
+                self.logger.warning(
+                    "No play history in lookback window. Check plex_history_account_id and that "
+                    "tracks (not albums/videos) were played in the music library."
+                )
 
             # Balance popular/rare
             track_counts = Counter((h.get("ratingKey") for h in history_items))
@@ -573,11 +587,11 @@ class DaylistCommand(BaseCommand):
 
             # Sort: first=earliest played, last=most recent, middle=sonic chain
             def viewed_key(t):
-                v = self._parse_viewed_at(t)
+                v = self._parse_viewed_at(t, tz)
                 return v if v else datetime.max
 
             by_viewed = sorted(
-                [t for t in final_tracks if self._parse_viewed_at(t) and self._parse_viewed_at(t).hour in period_hours],
+                [t for t in final_tracks if self._parse_viewed_at(t, tz) and self._parse_viewed_at(t, tz).hour in period_hours],
                 key=viewed_key,
             )
             first_track = by_viewed[0] if by_viewed else (final_tracks[0] if final_tracks else None)

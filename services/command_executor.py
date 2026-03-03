@@ -173,7 +173,7 @@ class CommandExecutor:
                     session.query(CommandExecution)
                     .filter(
                         CommandExecution.command_name == command_name,
-                        CommandExecution.is_running,
+                        CommandExecution.status == "running",
                     )
                     .first()
                 )
@@ -217,7 +217,7 @@ class CommandExecutor:
                 stuck_executions = (
                     session.query(CommandExecution)
                     .filter(
-                        CommandExecution.is_running,
+                        CommandExecution.status == "running",
                         CommandExecution.started_at < cutoff_time,
                     )
                     .all()
@@ -718,6 +718,7 @@ class CommandExecutor:
     def _load_dynamic_daylist_commands(self):
         """Load dynamic daylist commands from database"""
         try:
+            self._ensure_initialized()
             from commands.daylist import DaylistCommand
 
             db_manager = get_database_manager()
