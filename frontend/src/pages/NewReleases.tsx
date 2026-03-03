@@ -7,6 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 
+/** Returns display label for release URL based on hostname (avoids substring matching). */
+function getReleaseUrlLabel(url: string): string {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    if (host === 'deezer.com' || host === 'www.deezer.com') return 'Deezer'
+    if (host === 'open.spotify.com' || host === 'spotify.com' || host === 'www.spotify.com') return 'Spotify'
+  } catch {
+    /* invalid URL */
+  }
+  return 'Release'
+}
+
 export function NewReleasesPage() {
   const [loading, setLoading] = useState(false)
   const [pending, setPending] = useState<NewReleasePendingItem[]>([])
@@ -529,7 +542,7 @@ function PendingRow({
           {item.spotify_url && (
             <Button variant="outline" size="sm" asChild>
               <a href={item.spotify_url} target="_blank" rel="noopener noreferrer">
-                {item.spotify_url.includes('deezer.com') ? 'Deezer' : 'Spotify'}
+                {getReleaseUrlLabel(item.spotify_url)}
               </a>
             </Button>
           )}
