@@ -793,7 +793,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             raise
         except Exception as e:
             logger.exception(f"Scan album URL failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Scan album URL failed")
 
     # --- Artist URL: full scan ---
     cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
@@ -816,7 +816,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         raise
     except Exception as e:
         logger.exception(f"Scan artist URL failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Scan artist URL failed")
 
     mb_artist_mbid: str | None = None
     best_missing: list[dict] = []

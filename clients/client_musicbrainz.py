@@ -255,20 +255,24 @@ class MusicBrainzClient(BaseAPIClient):
     def _extract_streaming_id_from_url(self, url_resource: str, provider: str) -> str | None:
         """Extract artist/album ID from MB URL relation. Returns None if no match."""
         import re
+        from urllib.parse import urlparse
 
         if not url_resource:
             return None
-        url_lower = url_resource.lower()
-        if provider == "spotify" and (
-            "spotify.com" in url_lower or "open.spotify.com" in url_lower
-        ):
-            m = re.search(r"/artist/([a-zA-Z0-9]+)", url_resource)
-            if m:
-                return m.group(1)
-        if provider == "deezer" and "deezer.com" in url_lower:
-            m = re.search(r"/artist/(\d+)", url_resource)
-            if m:
-                return m.group(1)
+        try:
+            parsed = urlparse(url_resource)
+            host = (parsed.netloc or "").replace("www.", "").lower()
+            path = (parsed.path or "").strip("/")
+            if provider == "spotify" and host in ("open.spotify.com", "spotify.com"):
+                m = re.search(r"artist/([a-zA-Z0-9]+)", path)
+                if m:
+                    return m.group(1)
+            if provider == "deezer" and host == "deezer.com":
+                m = re.search(r"artist/(\d+)", path)
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
         return None
 
     async def get_artist_streaming_id(self, mbid: str, provider: str) -> str | None:
@@ -466,7 +470,15 @@ class MusicBrainzClient(BaseAPIClient):
         Check if a release already exists in MusicBrainz by its Spotify URL.
         Returns True if the release is linked in MusicBrainz, False otherwise.
         """
-        if not spotify_url or "open.spotify.com/album/" not in spotify_url:
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(spotify_url or "")
+            host = (parsed.netloc or "").replace("www.", "").lower()
+            path = parsed.path or ""
+            if host != "open.spotify.com" or "/album/" not in path:
+                return False
+        except Exception:
             return False
 
         cache_key = self._get_spotify_url_cache_key(spotify_url)
