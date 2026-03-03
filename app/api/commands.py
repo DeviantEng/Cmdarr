@@ -135,8 +135,8 @@ async def get_plex_accounts():
     """Get Plex Home managed accounts for daylist user selection dropdown.
     Returns empty list when Plex client is not enabled (allows UI to render)."""
     try:
-        from commands.config_adapter import Config
         from clients.client_plex import PlexClient
+        from commands.config_adapter import Config
 
         config = Config()
         if not config.get("PLEX_CLIENT_ENABLED", False):
@@ -681,7 +681,9 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         from database.config_models import CommandConfig
 
         # Check if daylist already exists
-        existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+        )
         if existing:
             raise HTTPException(
                 status_code=400,

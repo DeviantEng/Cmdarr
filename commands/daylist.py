@@ -66,7 +66,7 @@ def _load_moodmap() -> dict[str, list[str]]:
         if _MOODMAP_PATH.exists():
             import json
 
-            with open(_MOODMAP_PATH, "r", encoding="utf-8") as f:
+            with open(_MOODMAP_PATH, encoding="utf-8") as f:
                 return json.load(f)
     except Exception:
         pass
@@ -163,14 +163,41 @@ class DaylistCommand(BaseCommand):
     def _clean_title(self, title: str) -> str:
         """Normalize title for deduplication (strip remix, live, feat., etc.)."""
         version_keywords = [
-            "extended", "deluxe", "remaster", "remastered", "live", "acoustic", "edit",
-            "version", "anniversary", "special edition", "radio edit", "album version",
-            "original mix", "remix", "mix", "dub", "instrumental", "karaoke", "cover",
-            "rework", "re-edit", "bootleg", "vip", "session", "alternate", "take",
+            "extended",
+            "deluxe",
+            "remaster",
+            "remastered",
+            "live",
+            "acoustic",
+            "edit",
+            "version",
+            "anniversary",
+            "special edition",
+            "radio edit",
+            "album version",
+            "original mix",
+            "remix",
+            "mix",
+            "dub",
+            "instrumental",
+            "karaoke",
+            "cover",
+            "rework",
+            "re-edit",
+            "bootleg",
+            "vip",
+            "session",
+            "alternate",
+            "take",
         ]
         featuring_patterns = [
-            r"\(feat\.?.*?\)", r"\[feat\.?.*?\]", r"\(ft\.?.*?\)", r"\[ft\.?.*?\]",
-            r"\bfeat\.?\s+\w+", r"\bfeaturing\s+\w+", r"\bft\.?\s+\w+",
+            r"\(feat\.?.*?\)",
+            r"\[feat\.?.*?\]",
+            r"\(ft\.?.*?\)",
+            r"\[ft\.?.*?\]",
+            r"\bfeat\.?\s+\w+",
+            r"\bfeaturing\s+\w+",
+            r"\bft\.?\s+\w+",
         ]
         t = (title or "").lower().strip()
         for p in featuring_patterns:
@@ -335,7 +362,9 @@ class DaylistCommand(BaseCommand):
 
         max_styles = 6
         highlight_styles = sorted_genres[:3] + sorted_moods[:3]
-        highlight_styles = [s for s in highlight_styles if s not in {most_common_genre, most_common_mood}]
+        highlight_styles = [
+            s for s in highlight_styles if s not in {most_common_genre, most_common_mood}
+        ]
         highlight_styles = list(dict.fromkeys(highlight_styles))[:max_styles]
         while len(highlight_styles) < max_styles:
             for s in sorted_genres + sorted_moods:
@@ -348,13 +377,9 @@ class DaylistCommand(BaseCommand):
             break
 
         if second_common_mood:
-            desc = (
-                f"You listened to {most_common_mood} and {most_common_genre} tracks on {day_name} {period_phrase}. "
-            )
+            desc = f"You listened to {most_common_mood} and {most_common_genre} tracks on {day_name} {period_phrase}. "
         else:
-            desc = (
-                f"You listened to {most_common_genre} and {most_common_mood} tracks on {day_name} {period_phrase}. "
-            )
+            desc = f"You listened to {most_common_genre} and {most_common_mood} tracks on {day_name} {period_phrase}. "
         if highlight_styles:
             if len(highlight_styles) == 1:
                 desc += f"Here's some {highlight_styles[0]} tracks as well."
@@ -366,7 +391,7 @@ class DaylistCommand(BaseCommand):
     def _generate_cover_image(self, period: str, title: str) -> bytes | None:
         """Generate cover image with text overlay (Meloday-style). Returns JPEG bytes or None on failure."""
         try:
-            from PIL import Image, ImageDraw, ImageFont, ImageFilter
+            from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
             cover_file = PERIOD_COVERS.get(period)
             if not cover_file:
@@ -402,7 +427,7 @@ class DaylistCommand(BaseCommand):
                     if fp and Path(fp).exists():
                         font_main = ImageFont.truetype(fp, 56)
                         break
-                except (OSError, IOError):
+                except OSError:
                     continue
 
             text_box_width = 550
@@ -434,7 +459,12 @@ class DaylistCommand(BaseCommand):
                 bbox = text_draw.textbbox((0, 0), line, font=font_main)
                 lw = bbox[2] - bbox[0]
                 x = text_box_left + (text_box_width - lw) // 2
-                shadow_draw.text((x + shadow_offset, y + shadow_offset), line, font=font_main, fill=(0, 0, 0, 120))
+                shadow_draw.text(
+                    (x + shadow_offset, y + shadow_offset),
+                    line,
+                    font=font_main,
+                    fill=(0, 0, 0, 120),
+                )
                 text_draw.text((x, y), line, font=font_main, fill=(255, 255, 255, 255))
                 y += bbox[3] - bbox[1] + 8
 
@@ -529,7 +559,7 @@ class DaylistCommand(BaseCommand):
                 )
 
             # Balance popular/rare
-            track_counts = Counter((h.get("ratingKey") for h in history_items))
+            track_counts = Counter(h.get("ratingKey") for h in history_items)
             sorted_hist = sorted(
                 history_items,
                 key=lambda t: track_counts.get(t.get("ratingKey"), 0),
@@ -539,10 +569,9 @@ class DaylistCommand(BaseCommand):
             popular = sorted_hist[:split_idx]
             rare = sorted_hist[split_idx:]
             guaranteed_count = int(max_tracks * historical_ratio)
-            historical = (
-                random.sample(rare, min(len(rare), int(max_tracks * 0.75)))
-                + random.sample(popular, min(len(popular), int(max_tracks * 0.25)))
-            )
+            historical = random.sample(
+                rare, min(len(rare), int(max_tracks * 0.75))
+            ) + random.sample(popular, min(len(popular), int(max_tracks * 0.25)))
             historical = random.sample(historical, min(guaranteed_count, len(historical)))
 
             # Fetch sonically similar
@@ -572,10 +601,14 @@ class DaylistCommand(BaseCommand):
                 more_sim = []
                 for t in final_tracks[:10]:
                     sims = self.plex_client.get_sonically_similar(
-                        str(t.get("ratingKey")), limit=sonic_limit, max_distance=sonic_similarity_distance
+                        str(t.get("ratingKey")),
+                        limit=sonic_limit,
+                        max_distance=sonic_similarity_distance,
                     )
                     more_sim.extend(sims)
-                candidates = [t for t in (more_hist + more_sim) if str(t.get("ratingKey")) not in final_rks]
+                candidates = [
+                    t for t in (more_hist + more_sim) if str(t.get("ratingKey")) not in final_rks
+                ]
                 added = self._process_tracks(candidates, max_tracks - len(final_tracks))
                 for t in added[: max_tracks - len(final_tracks)]:
                     final_tracks.append(t)
@@ -591,11 +624,20 @@ class DaylistCommand(BaseCommand):
                 return v if v else datetime.max
 
             by_viewed = sorted(
-                [t for t in final_tracks if self._parse_viewed_at(t, tz) and self._parse_viewed_at(t, tz).hour in period_hours],
+                [
+                    t
+                    for t in final_tracks
+                    if self._parse_viewed_at(t, tz)
+                    and self._parse_viewed_at(t, tz).hour in period_hours
+                ],
                 key=viewed_key,
             )
             first_track = by_viewed[0] if by_viewed else (final_tracks[0] if final_tracks else None)
-            last_track = by_viewed[-1] if len(by_viewed) > 1 else (final_tracks[-1] if final_tracks else None)
+            last_track = (
+                by_viewed[-1]
+                if len(by_viewed) > 1
+                else (final_tracks[-1] if final_tracks else None)
+            )
             middle = [t for t in final_tracks if t != first_track and t != last_track]
 
             if middle:

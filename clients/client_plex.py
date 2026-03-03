@@ -1162,7 +1162,9 @@ class PlexClient(BaseAPIClient):
                 acc_id = user.get("id")
                 if acc_id is None:
                     continue
-                name = (user.get("title") or user.get("username") or user.get("friendlyName") or "").strip()
+                name = (
+                    user.get("title") or user.get("username") or user.get("friendlyName") or ""
+                ).strip()
                 accounts.append({"id": str(acc_id), "name": name or f"Account {acc_id}"})
             return accounts
         except Exception as e:
@@ -1181,7 +1183,11 @@ class PlexClient(BaseAPIClient):
             raw = mc.get("Account", [])
             server_accounts = raw if isinstance(raw, list) else ([raw] if raw else [])
             # Build id->name and name->id maps
-            by_id = {str(a.get("id")): (a.get("name") or "").strip() for a in server_accounts if a.get("id") is not None}
+            by_id = {
+                str(a.get("id")): (a.get("name") or "").strip()
+                for a in server_accounts
+                if a.get("id") is not None
+            }
             by_name = {v.lower(): k for k, v in by_id.items() if v}
             # If plex_tv_id exists in server accounts, use it (shared users)
             if plex_tv_id in by_id:
