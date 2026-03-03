@@ -244,6 +244,10 @@ class ApiClient {
     return await this.request<ImportListMetrics>('/import_lists/metrics')
   }
 
+  async resetImportList(listId: 'lastfm' | 'playlistsync'): Promise<{ success: boolean }> {
+    return this.request(`/import_lists/discovery_${listId}/reset`, { method: 'POST' })
+  }
+
   async getNewReleases(params?: {
     artist_limit?: number
     album_types?: string[]

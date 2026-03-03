@@ -141,6 +141,46 @@ async def serve_discovery_lastfm():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/discovery_lastfm/reset")
+async def reset_discovery_lastfm():
+    """Clear Last.fm import list (overwrite with empty array)."""
+    try:
+        from services.config_service import config_service
+        from utils.logger import get_logger
+        logger = get_logger('cmdarr.api.import_lists')
+
+        file_path = config_service.get('OUTPUT_FILE', 'data/import_lists/discovery_lastfm.json')
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump([], f)
+
+        logger.info(f"Reset Last.fm import list: {file_path}")
+        return {"success": True, "entry_count": 0}
+    except Exception as e:
+        logger.error(f"Failed to reset Last.fm import list: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/discovery_playlistsync/reset")
+async def reset_discovery_playlistsync():
+    """Clear Playlist Sync import list (overwrite with empty array)."""
+    try:
+        from utils.logger import get_logger
+        logger = get_logger('cmdarr.api.import_lists')
+
+        file_path = "data/import_lists/discovery_playlistsync.json"
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump([], f)
+
+        logger.info(f"Reset Playlist Sync import list: {file_path}")
+        return {"success": True, "entry_count": 0}
+    except Exception as e:
+        logger.error(f"Failed to reset Playlist Sync import list: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/discovery_playlistsync")
 async def serve_discovery_playlistsync():
     """Serve the playlist sync discovery import list"""
