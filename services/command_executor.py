@@ -132,7 +132,7 @@ class CommandExecutor:
 
         # Daylist: pre-check skip (period unchanged) - do not create execution record when skipping
         if command_name.startswith("daylist_"):
-            skip, reason = await self._daylist_should_skip(command_name)
+            skip, reason = await self._daylist_should_skip(command_name, triggered_by)
             if skip:
                 self.logger.info(f"Daylist {command_name} skipped (no execution record): {reason}")
                 return {
@@ -148,9 +148,12 @@ class CommandExecutor:
         execution_id = await self._create_execution_record(command_name, triggered_by)
         self.logger.info(f"Created execution record with ID: {execution_id}")
 
+        # Pass triggered_by to command (e.g. daylist uses it for skip logic)
+        run_override = {**(config_override or {}), "triggered_by": triggered_by}
+
         # Start command execution in background
         task = asyncio.create_task(
-            self._run_command_async(command_name, execution_id, config_override)
+            self._run_command_async(command_name, execution_id, run_override)
         )
         # Add execution_id to task for kill functionality
         task.execution_id = execution_id
@@ -683,14 +686,18 @@ class CommandExecutor:
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")
 
-    async def _daylist_should_skip(self, command_name: str) -> tuple[bool, str]:
+    async def _daylist_should_skip(
+        self, command_name: str, triggered_by: str = "scheduler"
+    ) -> tuple[bool, str]:
         """Check if daylist should skip (period unchanged). Returns (skip, reason)."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            self.executor, self._daylist_should_skip_sync, command_name
+            self.executor, self._daylist_should_skip_sync, command_name, triggered_by
         )
 
-    def _daylist_should_skip_sync(self, command_name: str) -> tuple[bool, str]:
+    def _daylist_should_skip_sync(
+        self, command_name: str, triggered_by: str = "scheduler"
+    ) -> tuple[bool, str]:
         """Check if daylist should skip (period unchanged). Returns (skip, reason)."""
         try:
             from commands.daylist import DaylistCommand
@@ -708,7 +715,7 @@ class CommandExecutor:
                 config = self.config
                 command = DaylistCommand(config)
                 command.config_json = dict(command_config.config_json)
-                return command._should_skip()
+                return command._should_skip(triggered_by=triggered_by)
             finally:
                 session.close()
         except Exception as e:

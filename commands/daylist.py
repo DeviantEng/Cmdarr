@@ -152,8 +152,18 @@ class DaylistCommand(BaseCommand):
                 return period
         return "Late Night"
 
-    def _should_skip(self) -> tuple[bool, str]:
+    def _should_skip(self, triggered_by: str = "scheduler") -> tuple[bool, str]:
         """Check if we should skip (period unchanged). Returns (skip, reason)."""
+        # When manually requested: run if playlist doesn't exist (user may have deleted it)
+        if triggered_by in ("manual", "api"):
+            try:
+                existing = self.plex_client.find_playlist_by_prefix("[Cmdarr] Daylist")
+                if not existing:
+                    return False, ""  # Playlist missing, always run
+            except Exception as e:
+                self.logger.debug(f"Playlist existence check failed: {e}")
+                return False, ""  # On error, run to be safe
+
         current = self._get_current_period()
         last = (self.config_json or {}).get("last_daylist_period")
         if last and last == current:
@@ -501,8 +511,9 @@ class DaylistCommand(BaseCommand):
             library_key = chosen["key"]
             self.logger.info(f"Using library: {chosen.get('title', library_key)}")
 
-            # Period check - skip if unchanged
-            skip, reason = self._should_skip()
+            # Period check - skip if unchanged (manual/api: also run when playlist missing)
+            triggered_by = (config or {}).get("triggered_by", "scheduler")
+            skip, reason = self._should_skip(triggered_by=triggered_by)
             if skip:
                 self.logger.info(f"Skipping: {reason}")
                 self.last_run_stats = {"skipped": True, "reason": reason}

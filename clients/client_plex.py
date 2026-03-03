@@ -912,29 +912,44 @@ class PlexClient(BaseAPIClient):
     def upload_playlist_poster(self, playlist_rating_key: str | int, image_bytes: bytes) -> bool:
         """
         Upload poster image for a playlist via Plex HTTP API.
-        POST /library/metadata/{ids}/poster with image binary in body (no url param).
+        Tries /playlists/{id}/poster first (playlist-specific), then /library/metadata/{id}/poster.
         Playlists created by the user can have their poster updated (admin exception).
+        Managed users may get 404 (Plex limitation).
         """
-        try:
-            url = f"{self.base_url}/library/metadata/{playlist_rating_key}/poster"
-            params = {"X-Plex-Token": self.token}
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "image/jpeg",
-            }
-            r = requests.post(
-                url,
-                params=params,
-                data=image_bytes,
-                headers=headers,
-                timeout=self.config.PLEX_TIMEOUT,
-            )
-            r.raise_for_status()
-            self.logger.debug(f"Poster uploaded for playlist {playlist_rating_key}")
-            return True
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Failed to upload playlist poster: {e}")
-            return False
+        params = {"X-Plex-Token": self.token}
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "image/jpeg",
+        }
+        # Try playlist-specific path first; some Plex setups use this for playlists
+        endpoints = [
+            f"/playlists/{playlist_rating_key}/poster",
+            f"/library/metadata/{playlist_rating_key}/poster",
+        ]
+        for path in endpoints:
+            try:
+                url = f"{self.base_url.rstrip('/')}{path}"
+                r = requests.post(
+                    url,
+                    params=params,
+                    data=image_bytes,
+                    headers=headers,
+                    timeout=self.config.PLEX_TIMEOUT,
+                )
+                r.raise_for_status()
+                self.logger.debug(f"Poster uploaded for playlist {playlist_rating_key} via {path}")
+                return True
+            except requests.exceptions.RequestException as e:
+                if getattr(e, "response", None) and getattr(e.response, "status_code", None) == 404:
+                    self.logger.debug(f"Poster endpoint {path} returned 404, trying next")
+                    continue
+                self.logger.error(f"Failed to upload playlist poster: {e}")
+                return False
+        self.logger.error(
+            f"Failed to upload playlist poster: both endpoints returned 404 "
+            f"(playlist {playlist_rating_key}). Managed users cannot set playlist posters."
+        )
+        return False
 
     def _put(self, path, params=None, data=None):
         """PUT request to Plex API - copied from proven working implementation"""
