@@ -482,8 +482,8 @@ class DaylistCommand(BaseCommand):
             self.logger.info(f"Current period: {current_period}")
 
             # Config
-            exclude_days = int(config.get("exclude_played_days", 4))
-            lookback_days = int(config.get("history_lookback_days", 30))
+            exclude_days = int(config.get("exclude_played_days", 3))
+            lookback_days = int(config.get("history_lookback_days", 45))
             max_tracks = int(config.get("max_tracks", 50))
             sonic_limit = int(config.get("sonic_similar_limit", 8))
             sonic_similarity_limit = int(config.get("sonic_similarity_limit", 50))

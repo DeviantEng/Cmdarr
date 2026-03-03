@@ -267,8 +267,8 @@ export function CommandsPage() {
       enable_artist_discovery: !!cfg.enable_artist_discovery,
       schedule_minute: typeof cfg.schedule_minute === 'number' ? cfg.schedule_minute : 0,
       plex_history_account_id: (cfg.plex_history_account_id ?? '') as string,
-      exclude_played_days: typeof cfg.exclude_played_days === 'number' ? cfg.exclude_played_days : 4,
-      history_lookback_days: typeof cfg.history_lookback_days === 'number' ? cfg.history_lookback_days : 30,
+      exclude_played_days: typeof cfg.exclude_played_days === 'number' ? cfg.exclude_played_days : 3,
+      history_lookback_days: typeof cfg.history_lookback_days === 'number' ? cfg.history_lookback_days : 45,
       max_tracks: typeof cfg.max_tracks === 'number' ? cfg.max_tracks : 50,
       sonic_similar_limit: typeof cfg.sonic_similar_limit === 'number' ? cfg.sonic_similar_limit : 8,
       sonic_similarity_limit: typeof cfg.sonic_similarity_limit === 'number' ? cfg.sonic_similarity_limit : 50,
@@ -1018,15 +1018,17 @@ export function CommandsPage() {
                           min={0}
                           max={59}
                           value={editForm.schedule_minute ?? 0}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              schedule_minute: Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)),
-                            }))
-                          }
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            setEditForm((f) => ({ ...f, schedule_minute: isNaN(v) ? 0 : v }))
+                          }}
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            if (!isNaN(v)) setEditForm((f) => ({ ...f, schedule_minute: Math.max(0, Math.min(59, v)) }))
+                          }}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.).
+                          Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.). Min: 0, max: 59.
                         </p>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -1035,48 +1037,57 @@ export function CommandsPage() {
                           <Input
                             type="number"
                             min={1}
-                            max={14}
-                            value={editForm.exclude_played_days ?? 4}
-                            onChange={(e) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                exclude_played_days: Math.max(1, Math.min(14, parseInt(e.target.value, 10) || 4)),
-                              }))
-                            }
+                            max={30}
+                            value={editForm.exclude_played_days ?? 3}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, exclude_played_days: isNaN(v) ? 3 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, exclude_played_days: Math.max(1, Math.min(30, v)) }))
+                              else setEditForm((f) => ({ ...f, exclude_played_days: 3 }))
+                            }}
                           />
-                          <p className="text-xs text-muted-foreground">Skip tracks played in last N days</p>
+                          <p className="text-xs text-muted-foreground">Skip tracks played in last N days. Min: 1, max: 30.</p>
                         </div>
                         <div className="space-y-2">
                           <Label>History lookback (days)</Label>
                           <Input
                             type="number"
                             min={7}
-                            max={90}
-                            value={editForm.history_lookback_days ?? 30}
-                            onChange={(e) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                history_lookback_days: Math.max(7, Math.min(90, parseInt(e.target.value, 10) || 30)),
-                              }))
-                            }
+                            max={365}
+                            value={editForm.history_lookback_days ?? 45}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, history_lookback_days: isNaN(v) ? 45 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, history_lookback_days: Math.max(7, Math.min(365, v)) }))
+                              else setEditForm((f) => ({ ...f, history_lookback_days: 45 }))
+                            }}
                           />
-                          <p className="text-xs text-muted-foreground">Days of play history to analyze</p>
+                          <p className="text-xs text-muted-foreground">Days of play history to analyze. Min: 7, max: 365.</p>
                         </div>
                         <div className="space-y-2">
                           <Label>Max tracks</Label>
                           <Input
                             type="number"
-                            min={20}
-                            max={100}
+                            min={10}
+                            max={200}
                             value={editForm.max_tracks ?? 50}
-                            onChange={(e) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                max_tracks: Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                              }))
-                            }
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, max_tracks: isNaN(v) ? 50 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, max_tracks: Math.max(10, Math.min(200, v)) }))
+                              else setEditForm((f) => ({ ...f, max_tracks: 50 }))
+                            }}
                           />
-                          <p className="text-xs text-muted-foreground">Target playlist size (20–100)</p>
+                          <p className="text-xs text-muted-foreground">Target playlist size. Min: 10, max: 200.</p>
                         </div>
                       </div>
                     </div>
@@ -1089,70 +1100,72 @@ export function CommandsPage() {
                       <div className="mt-4 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>Historical ratio</Label>
-                            <Input
-                              type="number"
+                            <Label>Historical ratio: {editForm.historical_ratio ?? 0.3}</Label>
+                            <input
+                              type="range"
                               min={0.1}
                               max={0.8}
                               step={0.1}
                               value={editForm.historical_ratio ?? 0.3}
                               onChange={(e) =>
-                                setEditForm((f) => ({
-                                  ...f,
-                                  historical_ratio: Math.max(0.1, Math.min(0.8, parseFloat(e.target.value) || 0.3)),
-                                }))
+                                setEditForm((f) => ({ ...f, historical_ratio: parseFloat(e.target.value) }))
                               }
+                              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
                             />
-                            <p className="text-xs text-muted-foreground">Share of tracks from history (0.1–0.8)</p>
+                            <p className="text-xs text-muted-foreground">Share of tracks from history. Min: 0.1, max: 0.8.</p>
                           </div>
                           <div className="space-y-2">
                             <Label>Sonically similar limit</Label>
                             <Input
                               type="number"
                               min={1}
-                              max={20}
+                              max={30}
                               value={editForm.sonic_similar_limit ?? 8}
-                              onChange={(e) =>
-                                setEditForm((f) => ({
-                                  ...f,
-                                  sonic_similar_limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 8)),
-                                }))
-                              }
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                setEditForm((f) => ({ ...f, sonic_similar_limit: isNaN(v) ? 8 : v }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) setEditForm((f) => ({ ...f, sonic_similar_limit: Math.max(1, Math.min(30, v)) }))
+                                else setEditForm((f) => ({ ...f, sonic_similar_limit: 8 }))
+                              }}
                             />
-                            <p className="text-xs text-muted-foreground">Max similar tracks per seed</p>
+                            <p className="text-xs text-muted-foreground">Max similar tracks per seed. Min: 1, max: 30.</p>
                           </div>
                           <div className="space-y-2">
                             <Label>Sonically similar playlist limit</Label>
                             <Input
                               type="number"
                               min={10}
-                              max={100}
+                              max={200}
                               value={editForm.sonic_similarity_limit ?? 50}
-                              onChange={(e) =>
-                                setEditForm((f) => ({
-                                  ...f,
-                                  sonic_similarity_limit: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                                }))
-                              }
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                setEditForm((f) => ({ ...f, sonic_similarity_limit: isNaN(v) ? 50 : v }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) setEditForm((f) => ({ ...f, sonic_similarity_limit: Math.max(10, Math.min(200, v)) }))
+                                else setEditForm((f) => ({ ...f, sonic_similarity_limit: 50 }))
+                              }}
                             />
-                            <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request</p>
+                            <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.</p>
                           </div>
                           <div className="space-y-2">
-                            <Label>Sonically similar distance</Label>
-                            <Input
-                              type="number"
+                            <Label>Sonically similar distance: {editForm.sonic_similarity_distance ?? 1.0}</Label>
+                            <input
+                              type="range"
                               min={0.1}
                               max={2}
                               step={0.1}
                               value={editForm.sonic_similarity_distance ?? 1.0}
                               onChange={(e) =>
-                                setEditForm((f) => ({
-                                  ...f,
-                                  sonic_similarity_distance: Math.max(0.1, Math.min(2, parseFloat(e.target.value) || 1.0)),
-                                }))
+                                setEditForm((f) => ({ ...f, sonic_similarity_distance: parseFloat(e.target.value) }))
                               }
+                              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
                             />
-                            <p className="text-xs text-muted-foreground">Max distance for sonic similarity (lower = more similar)</p>
+                            <p className="text-xs text-muted-foreground">0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.</p>
                           </div>
                         </div>
                         <div className="space-y-2">
@@ -1169,7 +1182,7 @@ export function CommandsPage() {
                         <div className="space-y-2">
                           <Label>Time periods (Start–End hour, 0–23)</Label>
                           <p className="text-xs text-muted-foreground mb-2">
-                            When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2).
+                            When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2). Hours 0–23.
                           </p>
                           <div className="grid gap-2">
                             {Object.entries(editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS).map(([period, { start, end }]) => (
@@ -1182,14 +1195,27 @@ export function CommandsPage() {
                                   className="w-16"
                                   value={start}
                                   onChange={(e) => {
-                                    const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                    const v = parseInt(e.target.value, 10)
                                     setEditForm((f) => ({
                                       ...f,
                                       time_periods: {
                                         ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: v },
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: isNaN(v) ? 0 : v },
                                       },
                                     }))
+                                  }}
+                                  onBlur={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    if (!isNaN(v)) {
+                                      const clamped = Math.max(0, Math.min(23, v))
+                                      setEditForm((f) => ({
+                                        ...f,
+                                        time_periods: {
+                                          ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                          [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: clamped },
+                                        },
+                                      }))
+                                    }
                                   }}
                                 />
                                 <span className="text-muted-foreground">–</span>
@@ -1200,14 +1226,27 @@ export function CommandsPage() {
                                   className="w-16"
                                   value={end}
                                   onChange={(e) => {
-                                    const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                    const v = parseInt(e.target.value, 10)
                                     setEditForm((f) => ({
                                       ...f,
                                       time_periods: {
                                         ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: v },
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: isNaN(v) ? 0 : v },
                                       },
                                     }))
+                                  }}
+                                  onBlur={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    if (!isNaN(v)) {
+                                      const clamped = Math.max(0, Math.min(23, v))
+                                      setEditForm((f) => ({
+                                        ...f,
+                                        time_periods: {
+                                          ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                          [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: clamped },
+                                        },
+                                      }))
+                                    }
                                   }}
                                 />
                               </div>
@@ -1520,8 +1559,8 @@ export function CommandsPage() {
                           ...(editingCommand.config_json || {}),
                           schedule_minute: editForm.schedule_minute ?? 0,
                           plex_history_account_id: editForm.plex_history_account_id ?? '',
-                          exclude_played_days: editForm.exclude_played_days ?? 4,
-                          history_lookback_days: editForm.history_lookback_days ?? 30,
+                          exclude_played_days: editForm.exclude_played_days ?? 3,
+                          history_lookback_days: editForm.history_lookback_days ?? 45,
                           max_tracks: editForm.max_tracks ?? 50,
                           sonic_similar_limit: editForm.sonic_similar_limit ?? 8,
                           sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,

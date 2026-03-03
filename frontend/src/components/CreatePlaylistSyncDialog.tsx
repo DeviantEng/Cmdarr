@@ -83,8 +83,8 @@ export function CreatePlaylistSyncDialog({
     plex_history_account_id: '',
     schedule_minute: 0,
     enabled: true,
-    exclude_played_days: 4,
-    history_lookback_days: 30,
+    exclude_played_days: 3,
+    history_lookback_days: 45,
     max_tracks: 50,
     sonic_similar_limit: 8,
     sonic_similarity_limit: 50,
@@ -124,8 +124,8 @@ export function CreatePlaylistSyncDialog({
         plex_history_account_id: '',
         schedule_minute: 0,
         enabled: true,
-        exclude_played_days: 4,
-        history_lookback_days: 30,
+        exclude_played_days: 3,
+        history_lookback_days: 45,
         max_tracks: 50,
         sonic_similar_limit: 8,
         sonic_similarity_limit: 50,
@@ -486,15 +486,17 @@ export function CreatePlaylistSyncDialog({
                       min={0}
                       max={59}
                       value={daylistForm.schedule_minute}
-                      onChange={(e) =>
-                        setDaylistForm((prev) => ({
-                          ...prev,
-                          schedule_minute: Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)),
-                        }))
-                      }
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10)
+                        setDaylistForm((prev) => ({ ...prev, schedule_minute: isNaN(v) ? 0 : v }))
+                      }}
+                      onBlur={(e) => {
+                        const v = parseInt(e.target.value, 10)
+                        if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, schedule_minute: Math.max(0, Math.min(59, v)) }))
+                      }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.).
+                      Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.). Min: 0, max: 59.
                     </p>
                   </div>
 
@@ -504,48 +506,57 @@ export function CreatePlaylistSyncDialog({
                       <Input
                         type="number"
                         min={1}
-                        max={14}
+                        max={30}
                         value={daylistForm.exclude_played_days}
-                        onChange={(e) =>
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            exclude_played_days: Math.max(1, Math.min(14, parseInt(e.target.value, 10) || 4)),
-                          }))
-                        }
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setDaylistForm((prev) => ({ ...prev, exclude_played_days: isNaN(v) ? 3 : v }))
+                        }}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, exclude_played_days: Math.max(1, Math.min(30, v)) }))
+                          else setDaylistForm((prev) => ({ ...prev, exclude_played_days: 3 }))
+                        }}
                       />
-                      <p className="text-xs text-muted-foreground">Skip tracks played in last N days</p>
+                      <p className="text-xs text-muted-foreground">Skip tracks played in last N days. Min: 1, max: 30.</p>
                     </div>
                     <div className="space-y-2">
                       <Label>History lookback (days)</Label>
                       <Input
                         type="number"
                         min={7}
-                        max={90}
+                        max={365}
                         value={daylistForm.history_lookback_days}
-                        onChange={(e) =>
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            history_lookback_days: Math.max(7, Math.min(90, parseInt(e.target.value, 10) || 30)),
-                          }))
-                        }
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setDaylistForm((prev) => ({ ...prev, history_lookback_days: isNaN(v) ? 45 : v }))
+                        }}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, history_lookback_days: Math.max(7, Math.min(365, v)) }))
+                          else setDaylistForm((prev) => ({ ...prev, history_lookback_days: 45 }))
+                        }}
                       />
-                      <p className="text-xs text-muted-foreground">Days of play history to analyze</p>
+                      <p className="text-xs text-muted-foreground">Days of play history to analyze. Min: 7, max: 365.</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Max tracks</Label>
                       <Input
                         type="number"
-                        min={20}
-                        max={100}
+                        min={10}
+                        max={200}
                         value={daylistForm.max_tracks}
-                        onChange={(e) =>
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            max_tracks: Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                          }))
-                        }
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setDaylistForm((prev) => ({ ...prev, max_tracks: isNaN(v) ? 50 : v }))
+                        }}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, max_tracks: Math.max(10, Math.min(200, v)) }))
+                          else setDaylistForm((prev) => ({ ...prev, max_tracks: 50 }))
+                        }}
                       />
-                      <p className="text-xs text-muted-foreground">Target playlist size (20–100)</p>
+                      <p className="text-xs text-muted-foreground">Target playlist size. Min: 10, max: 200.</p>
                     </div>
                   </div>
                 </div>
@@ -558,70 +569,72 @@ export function CreatePlaylistSyncDialog({
                   <div className="mt-4 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Historical ratio</Label>
-                        <Input
-                          type="number"
+                        <Label>Historical ratio: {daylistForm.historical_ratio}</Label>
+                        <input
+                          type="range"
                           min={0.1}
                           max={0.8}
                           step={0.1}
                           value={daylistForm.historical_ratio}
                           onChange={(e) =>
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              historical_ratio: Math.max(0.1, Math.min(0.8, parseFloat(e.target.value) || 0.3)),
-                            }))
+                            setDaylistForm((prev) => ({ ...prev, historical_ratio: parseFloat(e.target.value) }))
                           }
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
                         />
-                        <p className="text-xs text-muted-foreground">Share of tracks from history (0.1–0.8)</p>
+                        <p className="text-xs text-muted-foreground">Share of tracks from history. Min: 0.1, max: 0.8.</p>
                       </div>
                       <div className="space-y-2">
                         <Label>Sonically similar limit</Label>
                         <Input
                           type="number"
                           min={1}
-                          max={20}
+                          max={30}
                           value={daylistForm.sonic_similar_limit}
-                          onChange={(e) =>
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              sonic_similar_limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 8)),
-                            }))
-                          }
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: isNaN(v) ? 8 : v }))
+                          }}
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: Math.max(1, Math.min(30, v)) }))
+                            else setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: 8 }))
+                          }}
                         />
-                        <p className="text-xs text-muted-foreground">Max similar tracks per seed</p>
+                        <p className="text-xs text-muted-foreground">Max similar tracks per seed. Min: 1, max: 30.</p>
                       </div>
                       <div className="space-y-2">
                         <Label>Sonically similar playlist limit</Label>
                         <Input
                           type="number"
                           min={10}
-                          max={100}
+                          max={200}
                           value={daylistForm.sonic_similarity_limit}
-                          onChange={(e) =>
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              sonic_similarity_limit: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)),
-                            }))
-                          }
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            setDaylistForm((prev) => ({ ...prev, sonic_similarity_limit: isNaN(v) ? 50 : v }))
+                          }}
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, sonic_similarity_limit: Math.max(10, Math.min(200, v)) }))
+                            else setDaylistForm((prev) => ({ ...prev, sonic_similarity_limit: 50 }))
+                          }}
                         />
-                        <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request</p>
+                        <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.</p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Sonically similar distance</Label>
-                        <Input
-                          type="number"
+                        <Label>Sonically similar distance: {daylistForm.sonic_similarity_distance}</Label>
+                        <input
+                          type="range"
                           min={0.1}
                           max={2}
                           step={0.1}
                           value={daylistForm.sonic_similarity_distance}
                           onChange={(e) =>
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              sonic_similarity_distance: Math.max(0.1, Math.min(2, parseFloat(e.target.value) || 1.0)),
-                            }))
+                            setDaylistForm((prev) => ({ ...prev, sonic_similarity_distance: parseFloat(e.target.value) }))
                           }
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
                         />
-                        <p className="text-xs text-muted-foreground">Max distance for sonic similarity (lower = more similar)</p>
+                        <p className="text-xs text-muted-foreground">0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.</p>
                       </div>
                     </div>
 
@@ -640,7 +653,7 @@ export function CreatePlaylistSyncDialog({
                     <div className="space-y-2">
                       <Label>Time periods (Start–End hour, 0–23)</Label>
                       <p className="text-xs text-muted-foreground mb-2">
-                        When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2).
+                        When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2). Hours 0–23.
                       </p>
                       <div className="grid gap-2">
                         {Object.entries(daylistForm.time_periods).map(([period, { start, end }]) => (
@@ -653,14 +666,27 @@ export function CreatePlaylistSyncDialog({
                               className="w-16"
                               value={start}
                               onChange={(e) => {
-                                const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                const v = parseInt(e.target.value, 10)
                                 setDaylistForm((prev) => ({
                                   ...prev,
                                   time_periods: {
                                     ...prev.time_periods,
-                                    [period]: { ...prev.time_periods[period], start: v },
+                                    [period]: { ...prev.time_periods[period], start: isNaN(v) ? 0 : v },
                                   },
                                 }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) {
+                                  const clamped = Math.max(0, Math.min(23, v))
+                                  setDaylistForm((prev) => ({
+                                    ...prev,
+                                    time_periods: {
+                                      ...prev.time_periods,
+                                      [period]: { ...prev.time_periods[period], start: clamped },
+                                    },
+                                  }))
+                                }
                               }}
                             />
                             <span className="text-muted-foreground">–</span>
@@ -671,14 +697,27 @@ export function CreatePlaylistSyncDialog({
                               className="w-16"
                               value={end}
                               onChange={(e) => {
-                                const v = Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0))
+                                const v = parseInt(e.target.value, 10)
                                 setDaylistForm((prev) => ({
                                   ...prev,
                                   time_periods: {
                                     ...prev.time_periods,
-                                    [period]: { ...prev.time_periods[period], end: v },
+                                    [period]: { ...prev.time_periods[period], end: isNaN(v) ? 0 : v },
                                   },
                                 }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) {
+                                  const clamped = Math.max(0, Math.min(23, v))
+                                  setDaylistForm((prev) => ({
+                                    ...prev,
+                                    time_periods: {
+                                      ...prev.time_periods,
+                                      [period]: { ...prev.time_periods[period], end: clamped },
+                                    },
+                                  }))
+                                }
                               }}
                             />
                           </div>

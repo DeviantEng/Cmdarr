@@ -698,8 +698,8 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         config_json = {
             "plex_history_account_id": str(plex_account_id),
             "schedule_minute": schedule_minute,
-            "exclude_played_days": int(request.get("exclude_played_days", 4)),
-            "history_lookback_days": int(request.get("history_lookback_days", 30)),
+            "exclude_played_days": int(request.get("exclude_played_days", 3)),
+            "history_lookback_days": int(request.get("history_lookback_days", 45)),
             "max_tracks": int(request.get("max_tracks", 50)),
             "sonic_similar_limit": int(request.get("sonic_similar_limit", 8)),
             "sonic_similarity_limit": int(request.get("sonic_similarity_limit", 50)),
