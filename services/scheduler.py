@@ -4,50 +4,51 @@ Background scheduler service for automatic command execution (cron-based)
 """
 
 import asyncio
-import os
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Set, Optional, Any, List, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from croniter import croniter
-from database.database import get_database_manager
+
 from database.config_models import CommandConfig
+from database.database import get_database_manager
 from services.command_executor import command_executor
 from services.config_service import config_service
 from utils.logger import get_logger
-from utils.timezone import get_scheduler_timezone as _get_scheduler_timezone, get_utc_now
+from utils.timezone import get_scheduler_timezone as _get_scheduler_timezone
+from utils.timezone import get_utc_now
 
 
-def _get_next_run_cron(cron_expr: str, tz) -> Optional[datetime]:
+def _get_next_run_cron(cron_expr: str, tz) -> datetime | None:
     """Get next run time from cron expression. Returns timezone-aware datetime in UTC."""
     try:
         now = datetime.now(tz)
         itr = croniter(cron_expr, now)
         next_local = itr.get_next(datetime)
-        return next_local.astimezone(timezone.utc)
+        return next_local.astimezone(UTC)
     except Exception:
         return None
 
 
-def _get_last_scheduled_cron(cron_expr: str, tz) -> Optional[datetime]:
+def _get_last_scheduled_cron(cron_expr: str, tz) -> datetime | None:
     """Get the last (most recent past) scheduled time from cron. Returns timezone-aware datetime in UTC."""
     try:
         now = datetime.now(tz)
         itr = croniter(cron_expr, now)
         prev_local = itr.get_prev(datetime)
-        return prev_local.astimezone(timezone.utc)
+        return prev_local.astimezone(UTC)
     except Exception:
         return None
 
 
-def get_effective_cron(command: CommandConfig) -> Optional[str]:
+def get_effective_cron(command: CommandConfig) -> str | None:
     """Get cron expression for command: per-command override or global default."""
     if command.schedule_cron and command.schedule_cron.strip():
         return command.schedule_cron.strip()
-    default = config_service.get('DEFAULT_SCHEDULE_CRON') or '0 3 * * *'
-    return default.strip() if default else '0 3 * * *'
+    default = config_service.get("DEFAULT_SCHEDULE_CRON") or "0 3 * * *"
+    return default.strip() if default else "0 3 * * *"
 
 
-def calculate_next_run_cron(command: CommandConfig, tz) -> Optional[datetime]:
+def calculate_next_run_cron(command: CommandConfig, tz) -> datetime | None:
     """Calculate next run time for command using cron. Returns UTC datetime."""
     cron_expr = get_effective_cron(command)
     if not cron_expr:
@@ -59,19 +60,19 @@ class CommandScheduler:
     """Background scheduler for automatic command execution (cron-based)"""
 
     def __init__(self):
-        self.logger = get_logger('cmdarr.scheduler')
+        self.logger = get_logger("cmdarr.scheduler")
         self.running = False
-        self.scheduled_tasks: Dict[str, asyncio.Task] = {}
+        self.scheduled_tasks: dict[str, asyncio.Task] = {}
         self.check_interval = 60  # Check every 60 seconds
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
         # Command queue: items are (command_id, command_name) for ordering by id
-        self.command_queue: Optional[asyncio.Queue] = None
-        self.queue_processor_tasks: List[asyncio.Task] = []
-        self.currently_running: Set[str] = set()
+        self.command_queue: asyncio.Queue | None = None
+        self.queue_processor_tasks: list[asyncio.Task] = []
+        self.currently_running: set[str] = set()
 
     def _get_max_concurrent(self) -> int:
-        return max(1, config_service.get_int('MAX_PARALLEL_COMMANDS', 1))
+        return max(1, config_service.get_int("MAX_PARALLEL_COMMANDS", 1))
 
     async def start(self):
         """Start the background scheduler"""
@@ -88,8 +89,7 @@ class CommandScheduler:
 
         max_concurrent = self._get_max_concurrent()
         self.queue_processor_tasks = [
-            asyncio.create_task(self._process_command_queue())
-            for _ in range(max_concurrent)
+            asyncio.create_task(self._process_command_queue()) for _ in range(max_concurrent)
         ]
         self.logger.info(f"Started {max_concurrent} queue worker(s)")
 
@@ -134,7 +134,7 @@ class CommandScheduler:
                 self.logger.error(f"Scheduler loop error: {e}")
                 await asyncio.sleep(self.check_interval)
 
-    MAINTENANCE_COMMAND = 'playlist_sync_discovery_maintenance'
+    MAINTENANCE_COMMAND = "playlist_sync_discovery_maintenance"
     MAINTENANCE_PREREQ_HOURS = 24  # Run maintenance before playlist sync if not run in last 24h
 
     async def _check_and_execute_commands(self):
@@ -143,14 +143,17 @@ class CommandScheduler:
             manager = get_database_manager()
             session = manager.get_config_session_sync()
             try:
-                enabled_commands = session.query(CommandConfig).filter(
-                    CommandConfig.enabled == True
-                ).order_by(CommandConfig.id).all()
+                enabled_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.enabled)
+                    .order_by(CommandConfig.id)
+                    .all()
+                )
 
                 tz = _get_scheduler_timezone()
                 now_utc = get_utc_now()
 
-                due_commands: List[Tuple[int, str]] = []  # (id, command_name)
+                due_commands: list[tuple[int, str]] = []  # (id, command_name)
 
                 for command in enabled_commands:
                     cron_expr = get_effective_cron(command)
@@ -165,22 +168,24 @@ class CommandScheduler:
                     last_run_utc = None
                     if command.last_run:
                         last_run_utc = (
-                            command.last_run.astimezone(timezone.utc)
+                            command.last_run.astimezone(UTC)
                             if command.last_run.tzinfo
-                            else command.last_run.replace(tzinfo=timezone.utc)
+                            else command.last_run.replace(tzinfo=UTC)
                         )
-                    if now_utc >= last_scheduled and (last_run_utc is None or last_run_utc < last_scheduled):
+                    if now_utc >= last_scheduled and (
+                        last_run_utc is None or last_run_utc < last_scheduled
+                    ):
                         due_commands.append((command.id, command.command_name))
 
                 # If any playlist sync is due, ensure maintenance runs first if enabled and not run in 24h
                 has_playlist_sync_due = any(
-                    name.startswith('playlist_sync_') and name != self.MAINTENANCE_COMMAND
+                    name.startswith("playlist_sync_") and name != self.MAINTENANCE_COMMAND
                     for _, name in due_commands
                 )
                 if has_playlist_sync_due:
                     maintenance = next(
                         (c for c in enabled_commands if c.command_name == self.MAINTENANCE_COMMAND),
-                        None
+                        None,
                     )
                     if maintenance:
                         last_run = maintenance.last_run
@@ -189,13 +194,15 @@ class CommandScheduler:
                             needs_maintenance = True
                         else:
                             last_run_utc = (
-                                last_run.astimezone(timezone.utc)
+                                last_run.astimezone(UTC)
                                 if last_run.tzinfo
-                                else last_run.replace(tzinfo=timezone.utc)
+                                else last_run.replace(tzinfo=UTC)
                             )
                             needs_maintenance = last_run_utc < cutoff
                         if needs_maintenance:
-                            already_queued = any(name == self.MAINTENANCE_COMMAND for _, name in due_commands)
+                            already_queued = any(
+                                name == self.MAINTENANCE_COMMAND for _, name in due_commands
+                            )
                             if not already_queued:
                                 due_commands.insert(0, (maintenance.id, maintenance.command_name))
                                 self.logger.info(
@@ -241,10 +248,12 @@ class CommandScheduler:
                 self.currently_running.add(command_name)
                 try:
                     task = asyncio.create_task(
-                        command_executor.execute_command(command_name, triggered_by='scheduler')
+                        command_executor.execute_command(command_name, triggered_by="scheduler")
                     )
                     self.scheduled_tasks[command_name] = task
-                    task.add_done_callback(lambda t, cn=command_name: self._handle_command_completion(cn, t))
+                    task.add_done_callback(
+                        lambda t, cn=command_name: self._handle_command_completion(cn, t)
+                    )
                     await task
                 finally:
                     self.currently_running.discard(command_name)
@@ -268,9 +277,11 @@ class CommandScheduler:
                 manager = get_database_manager()
                 session = manager.get_config_session_sync()
                 try:
-                    command = session.query(CommandConfig).filter(
-                        CommandConfig.command_name == command_name
-                    ).first()
+                    command = (
+                        session.query(CommandConfig)
+                        .filter(CommandConfig.command_name == command_name)
+                        .first()
+                    )
                     if command:
                         command.last_run = get_utc_now()
                         session.commit()
@@ -292,11 +303,9 @@ class CommandScheduler:
             manager = get_database_manager()
             session = manager.get_config_session_sync()
             try:
-                enabled = session.query(CommandConfig).filter(
-                    CommandConfig.enabled == True
-                ).all()
+                enabled = session.query(CommandConfig).filter(CommandConfig.enabled).all()
                 tz = _get_scheduler_timezone()
-                default_cron = config_service.get('DEFAULT_SCHEDULE_CRON') or '0 3 * * *'
+                default_cron = config_service.get("DEFAULT_SCHEDULE_CRON") or "0 3 * * *"
                 self.logger.info(f"Scheduler timezone: {tz}, default cron: {default_cron}")
                 for cmd in enabled:
                     cron = get_effective_cron(cmd)
@@ -313,9 +322,11 @@ class CommandScheduler:
             manager = get_database_manager()
             session = manager.get_config_session_sync()
             try:
-                command = session.query(CommandConfig).filter(
-                    CommandConfig.command_name == command_name
-                ).first()
+                command = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == command_name)
+                    .first()
+                )
 
                 if command and command.enabled:
                     cron = get_effective_cron(command)
@@ -326,11 +337,15 @@ class CommandScheduler:
                     last_run_utc = None
                     if command.last_run:
                         last_run_utc = (
-                            command.last_run.astimezone(timezone.utc)
+                            command.last_run.astimezone(UTC)
                             if command.last_run.tzinfo
-                            else command.last_run.replace(tzinfo=timezone.utc)
+                            else command.last_run.replace(tzinfo=UTC)
                         )
-                    if last_scheduled and now_utc >= last_scheduled and (last_run_utc is None or last_run_utc < last_scheduled):
+                    if (
+                        last_scheduled
+                        and now_utc >= last_scheduled
+                        and (last_run_utc is None or last_run_utc < last_scheduled)
+                    ):
                         await self._queue_command_execution(command.id, command_name)
             finally:
                 session.close()
@@ -354,7 +369,7 @@ class CommandScheduler:
         """Update scheduling when schedule_cron changes."""
         await self.enable_command(command_name)
 
-    def get_scheduled_commands(self) -> Set[str]:
+    def get_scheduled_commands(self) -> set[str]:
         """Get list of commands currently queued or running."""
         return set(self.scheduled_tasks.keys()) | self.currently_running
 
@@ -362,12 +377,12 @@ class CommandScheduler:
         """Check if a command is queued or running."""
         return command_name in self.scheduled_tasks or command_name in self.currently_running
 
-    def get_queue_status(self) -> Dict[str, Any]:
+    def get_queue_status(self) -> dict[str, Any]:
         """Get current queue status."""
         return {
-            'queue_size': self.command_queue.qsize() if self.command_queue else 0,
-            'currently_running': list(self.currently_running),
-            'scheduled_commands': list(self.scheduled_tasks.keys()),
+            "queue_size": self.command_queue.qsize() if self.command_queue else 0,
+            "currently_running": list(self.currently_running),
+            "scheduled_commands": list(self.scheduled_tasks.keys()),
         }
 
 

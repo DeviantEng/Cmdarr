@@ -6,63 +6,64 @@ Enhanced with dramatic performance improvements via library caching
 OPTIMIZED: Reduced memory usage by storing only essential track data
 """
 
-import requests
 import time
-import logging
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Any, Optional, Tuple
-from urllib.parse import quote_plus
+from typing import Any
+
+import requests
+
 from cache_manager import get_cache_manager
-from .client_base import BaseAPIClient
 from utils.cache_client import create_cache_client
+
+from .client_base import BaseAPIClient
 
 
 class PlexClient(BaseAPIClient):
     """Client for Plex Media Server operations with optimized library cache"""
-    
+
     def __init__(self, config):
         # Plex uses synchronous requests, so we'll override the async behavior
         super().__init__(
             config=config,
-            client_name='plex',
+            client_name="plex",
             base_url=config.PLEX_URL.rstrip("/"),
             rate_limit=1.0,  # Conservative rate limiting
-            headers={}
+            headers={},
         )
-        
+
         self.token = config.PLEX_TOKEN
-        
+
         # Initialize cache - enable based on library cache setting
-        self.cache_enabled = config.get('LIBRARY_CACHE_PLEX_ENABLED', False)
+        self.cache_enabled = config.get("LIBRARY_CACHE_PLEX_ENABLED", False)
         self.cache = get_cache_manager() if self.cache_enabled else None
-        
+
         # Initialize centralized cache client
-        self.cache_client = create_cache_client('plex', config)
-        
+        self.cache_client = create_cache_client("plex", config)
+
         # Register with library cache manager for per-client stats if library cache is enabled
-        if config.get('LIBRARY_CACHE_PLEX_ENABLED', False):
+        if config.get("LIBRARY_CACHE_PLEX_ENABLED", False):
             self._register_with_cache_manager()
-    
+
     def _register_with_cache_manager(self) -> None:
         """Register this client with the library cache manager for per-client stats"""
         self.cache_client.register_with_cache_manager(self)
-    
+
     def _record_cache_hit(self) -> None:
         """Record a library cache hit"""
         self.cache_client.record_cache_hit()
-    
+
     def _record_cache_miss(self) -> None:
         """Record a library cache miss"""
         self.cache_client.record_cache_miss()
-    
+
     # ==== LIBRARY CACHE INTERFACE METHODS ====
     # Required by LibraryCacheManager for optimization
-    
-    def get_resolved_library_key(self) -> Optional[str]:
+
+    def get_resolved_library_key(self) -> str | None:
         """Return the resolved music library key for cache, playlist sync, and search. Single library only."""
         music_libraries = self.get_music_libraries()
         chosen = self._resolve_music_library(music_libraries)
-        return chosen['key'] if chosen else None
+        return chosen["key"] if chosen else None
 
     def get_cache_key(self, library_key: str = None) -> str:
         """Generate cache key for library cache"""
@@ -77,15 +78,15 @@ class PlexClient(BaseAPIClient):
             except Exception:
                 pass
             return f"plex:{self.base_url}:library:default"
-    
+
     def get_cache_ttl(self) -> int:
         """Get cache TTL in days for Plex library cache"""
-        return self.config.get('LIBRARY_CACHE_PLEX_TTL_DAYS', 30)
-    
-    def build_library_cache(self, library_key: str = None) -> Dict[str, Any]:
+        return self.config.get("LIBRARY_CACHE_PLEX_TTL_DAYS", 30)
+
+    def build_library_cache(self, library_key: str = None) -> dict[str, Any]:
         """
         Build optimized library cache with minimal memory footprint
-        
+
         Returns cache data with structure:
         {
             "library_key": "2",
@@ -103,19 +104,19 @@ class PlexClient(BaseAPIClient):
                 if not chosen:
                     self.logger.error("No music libraries found for cache building")
                     return {}
-                library_key = chosen['key']
+                library_key = chosen["key"]
                 self.logger.info(f"Using music library: {chosen['title']}")
-            
+
             self.logger.info(f"Building optimized library cache for library {library_key}...")
             start_time = time.time()
-            
+
             # Fetch all tracks from library with minimal data
             all_tracks = self._fetch_minimal_library_tracks(library_key)
-            
+
             if not all_tracks:
                 self.logger.warning(f"No tracks found in library {library_key}")
                 return {}
-            
+
             # Build optimized cache structure
             cache_data = {
                 "library_key": library_key,
@@ -123,30 +124,32 @@ class PlexClient(BaseAPIClient):
                 "tracks": all_tracks,
                 "artist_index": {},
                 "track_index": {},
-                "built_at": time.time()
+                "built_at": time.time(),
             }
-            
+
             # Create optimized search indexes (direct mappings)
             self._build_optimized_indexes(cache_data)
-            
+
             build_time = time.time() - start_time
-            
+
             # Estimate memory usage
             estimated_mb = self._estimate_cache_memory(cache_data)
-            self.logger.info(f"Built optimized library cache: {len(all_tracks):,} tracks in {build_time:.1f}s (~{estimated_mb}MB)")
-            
+            self.logger.info(
+                f"Built optimized library cache: {len(all_tracks):,} tracks in {build_time:.1f}s (~{estimated_mb}MB)"
+            )
+
             return cache_data
-            
+
         except Exception as e:
             self.logger.error(f"Failed to build library cache: {e}")
             return {}
-    
-    def _fetch_minimal_library_tracks(self, library_key: str) -> List[Dict[str, Any]]:
+
+    def _fetch_minimal_library_tracks(self, library_key: str) -> list[dict[str, Any]]:
         """Fetch all tracks from a library with minimal data. Smaller batches for large libraries."""
         all_tracks = []
         container_start = 0
         container_size = 250  # Smaller batches to reduce per-request load on 500k+ libraries
-        
+
         # Avoid includeFields - Plex QueryParser rejects deprecated fields (sectionID, contentDirectoryID,
         # pinnedContentDirectoryID) that can be triggered by field filtering in newer Plex versions.
         while True:
@@ -156,7 +159,7 @@ class PlexClient(BaseAPIClient):
                     "X-Plex-Container-Start": container_start,
                     "X-Plex-Container-Size": container_size,
                 }
-                
+
                 results = self._get(f"/library/sections/{library_key}/all", params=params)
                 media_container = results.get("MediaContainer", {})
                 tracks = media_container.get("Metadata", [])
@@ -175,177 +178,207 @@ class PlexClient(BaseAPIClient):
                         "key": track.get("ratingKey"),  # Shorter field name
                         "title": (track.get("title", "") or "").lower().strip(),
                         "artist": (track.get("grandparentTitle", "") or "").lower().strip(),
-                        "album": (track.get("parentTitle", "") or "").lower().strip()[:50],  # Truncate long album names
-                        "duration": track.get("duration", 0)
+                        "album": (track.get("parentTitle", "") or "")
+                        .lower()
+                        .strip()[:50],  # Truncate long album names
+                        "duration": track.get("duration", 0),
                     }
-                    
+
                     # Skip tracks with missing essential data
                     if track_data["key"] and track_data["title"] and track_data["artist"]:
                         all_tracks.append(track_data)
-                
+
                 # Progress logging every 25k tracks
                 if len(all_tracks) % 25000 == 0 and len(all_tracks) > 0:
                     self.logger.debug(f"Fetched {len(all_tracks):,} tracks so far...")
-                
+
                 # Check if we got less than requested (end of results)
                 if len(tracks) < container_size:
                     break
-                
+
                 container_start += container_size
-                
+
             except Exception as e:
                 self.logger.error(f"Error fetching tracks at position {container_start}: {e}")
                 break
-        
+
         self.logger.info(f"Fetched {len(all_tracks):,} valid tracks from library")
         return all_tracks
-    
-    def _build_optimized_indexes(self, cache_data: Dict[str, Any]) -> None:
+
+    def _build_optimized_indexes(self, cache_data: dict[str, Any]) -> None:
         """Build optimized search indexes for ultra-fast lookups"""
         tracks = cache_data["tracks"]
         artist_index = {}
         track_index = {}
-        
+
         for track in tracks:
             rating_key = track["key"]
             artist = track["artist"]
             title = track["title"]
-            
+
             # Normalize punctuation for consistent matching
             from utils.text_normalizer import normalize_text
+
             normalized_artist = normalize_text(artist) if artist else ""
             normalized_title = normalize_text(title) if title else ""
-            
+
             # Direct artist mapping for fastest lookup
             if normalized_artist:
                 if normalized_artist not in artist_index:
                     artist_index[normalized_artist] = []
                 artist_index[normalized_artist].append(rating_key)
-            
+
             # Direct track title mapping
             if normalized_title:
                 if normalized_title not in track_index:
                     track_index[normalized_title] = []
                 track_index[normalized_title].append(rating_key)
-        
+
         cache_data["artist_index"] = artist_index
         cache_data["track_index"] = track_index
-        
-        self.logger.debug(f"Built optimized indexes: {len(artist_index):,} artists, {len(track_index):,} track titles")
-    
-    def _estimate_cache_memory(self, cache_data: Dict[str, Any]) -> float:
+
+        self.logger.debug(
+            f"Built optimized indexes: {len(artist_index):,} artists, {len(track_index):,} track titles"
+        )
+
+    def _estimate_cache_memory(self, cache_data: dict[str, Any]) -> float:
         """Estimate memory usage of optimized cache in MB"""
         try:
             # More accurate estimation for optimized structure
             track_count = len(cache_data.get("tracks", []))
-            
+
             # Optimized track: ~60 bytes average (key=8, title=20, artist=15, album=15, duration=2)
             tracks_mb = (track_count * 60) / (1024 * 1024)
-            
+
             # Indexes: roughly 40% overhead for artist/track mappings
             indexes_mb = tracks_mb * 0.4
-            
+
             # Metadata and structure overhead
             overhead_mb = 2.0
-            
+
             total_mb = tracks_mb + indexes_mb + overhead_mb
             return round(total_mb, 1)
-            
-        except:
+
+        except Exception:
             # Fallback estimation
             track_count = len(cache_data.get("tracks", []))
             estimated_mb = (track_count * 80) / (1024 * 1024)  # Conservative estimate
             return round(estimated_mb, 1)
-    
-    def process_cached_library(self, cached_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def process_cached_library(self, cached_data: dict[str, Any]) -> dict[str, Any]:
         """Process cached library data for use (no transformation needed for Plex)"""
         return cached_data
-    
-    def search_cached_library(self, track_name: str, artist_name: str, cached_data: Dict[str, Any], album_name: str = "") -> Optional[str]:
+
+    def search_cached_library(
+        self, track_name: str, artist_name: str, cached_data: dict[str, Any], album_name: str = ""
+    ) -> str | None:
         """
         Ultra-fast search in optimized cached library data
-        
+
         Returns:
             Track ratingKey if found, None otherwise
         """
         if not cached_data or "tracks" not in cached_data:
-            self.logger.debug(f"🔍 CACHED SEARCH: No cached data available")
+            self.logger.debug("🔍 CACHED SEARCH: No cached data available")
             return None
-        
+
         tracks = cached_data["tracks"]
         artist_index = cached_data.get("artist_index", {})
         track_index = cached_data.get("track_index", {})
-        
+
         # Log original search terms
-        self.logger.debug(f"🔍 CACHED SEARCH: Searching for '{track_name}' by '{artist_name}' from album '{album_name}'")
-        
+        self.logger.debug(
+            f"🔍 CACHED SEARCH: Searching for '{track_name}' by '{artist_name}' from album '{album_name}'"
+        )
+
         track_lower = track_name.lower().strip()
         artist_lower = artist_name.lower().strip()
         album_lower = album_name.lower().strip() if album_name else ""
-        
+
         # Normalize punctuation for consistent matching
         from utils.text_normalizer import normalize_text
+
         original_track = track_lower
         original_artist = artist_lower
         original_album = album_lower
-        
+
         track_lower = normalize_text(track_lower)
         artist_lower = normalize_text(artist_lower)
         album_lower = normalize_text(album_lower)
-        
+
         # Log normalization results
-        if original_track != track_lower or original_artist != artist_lower or original_album != album_lower:
+        if (
+            original_track != track_lower
+            or original_artist != artist_lower
+            or original_album != album_lower
+        ):
             self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_track}' -> '{track_lower}'")
-            self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_artist}' -> '{artist_lower}'")
+            self.logger.debug(
+                f"🔍 CACHED SEARCH: Normalized '{original_artist}' -> '{artist_lower}'"
+            )
             self.logger.debug(f"🔍 CACHED SEARCH: Normalized '{original_album}' -> '{album_lower}'")
-        
+
         # Strategy 1: Direct index lookups (fastest)
         candidate_keys = set()
-        
+
         # Get candidates by artist (direct lookup)
         if artist_lower in artist_index:
             artist_candidates = set(artist_index[artist_lower])
             candidate_keys.update(artist_candidates)
-            self.logger.debug(f"🔍 CACHED SEARCH: Artist '{artist_lower}' found {len(artist_candidates)} candidates: {sorted(list(artist_candidates))[:10]}")
+            self.logger.debug(
+                f"🔍 CACHED SEARCH: Artist '{artist_lower}' found {len(artist_candidates)} candidates: {sorted(artist_candidates)[:10]}"
+            )
         else:
-            self.logger.debug(f"🔍 CACHED SEARCH: Artist '{artist_lower}' NOT found in artist index")
-        
+            self.logger.debug(
+                f"🔍 CACHED SEARCH: Artist '{artist_lower}' NOT found in artist index"
+            )
+
         # Get candidates by track title (direct lookup)
         if track_lower in track_index:
             track_candidates = set(track_index[track_lower])
-            self.logger.debug(f"🔍 CACHED SEARCH: Track '{track_lower}' found {len(track_candidates)} candidates: {sorted(list(track_candidates))}")
-            
+            self.logger.debug(
+                f"🔍 CACHED SEARCH: Track '{track_lower}' found {len(track_candidates)} candidates: {sorted(track_candidates)}"
+            )
+
             # If we have both artist and track matches, use intersection for best results
             if candidate_keys:
                 intersection_before = len(candidate_keys)
                 candidate_keys = candidate_keys.intersection(track_candidates)
-                self.logger.debug(f"🔍 CACHED SEARCH: Intersection: {intersection_before} artist × {len(track_candidates)} track = {len(candidate_keys)} final candidates: {sorted(list(candidate_keys))}")
+                self.logger.debug(
+                    f"🔍 CACHED SEARCH: Intersection: {intersection_before} artist × {len(track_candidates)} track = {len(candidate_keys)} final candidates: {sorted(candidate_keys)}"
+                )
             else:
                 candidate_keys = track_candidates
-                self.logger.debug(f"🔍 CACHED SEARCH: Using track-only candidates: {len(candidate_keys)} keys")
+                self.logger.debug(
+                    f"🔍 CACHED SEARCH: Using track-only candidates: {len(candidate_keys)} keys"
+                )
         else:
             self.logger.debug(f"Track '{track_lower}' NOT found in track index")
-        
+
         # Strategy 2: If direct lookup found candidates, score them
         if candidate_keys:
             self.logger.debug(f"🔍 CACHED SEARCH: Scoring {len(candidate_keys)} candidates")
             best_match = None
             best_score = 0
             scored_tracks = []
-            
+
             for track in tracks:
                 if track["key"] in candidate_keys:
                     total_score, artist_score = self._score_track_match_optimized(
-                        track, track_lower, artist_lower, album_lower,
-                        original_track=track_name, original_artist=artist_name
+                        track,
+                        track_lower,
+                        artist_lower,
+                        album_lower,
+                        original_track=track_name,
+                        original_artist=artist_name,
                     )
                     track_info = {
-                        'key': track["key"],
-                        'artist': track['artist'],
-                        'title': track['title'],
-                        'album': track.get('album', 'NO_ALBUM'),
-                        'score': total_score,
-                        'artist_score': artist_score
+                        "key": track["key"],
+                        "artist": track["artist"],
+                        "title": track["title"],
+                        "album": track.get("album", "NO_ALBUM"),
+                        "score": total_score,
+                        "artist_score": artist_score,
                     }
                     scored_tracks.append(track_info)
 
@@ -355,17 +388,25 @@ class PlexClient(BaseAPIClient):
                         best_match = track["key"]
 
             # Log all scored tracks sorted by score
-            scored_tracks.sort(key=lambda x: x['score'], reverse=True)
+            scored_tracks.sort(key=lambda x: x["score"], reverse=True)
             self.logger.debug(f"🔍 CACHED SEARCH: Scored {len(scored_tracks)} tracks:")
             for i, track_info in enumerate(scored_tracks[:5]):  # Show top 5
-                self.logger.debug(f"🔍 CACHED SEARCH:   #{i+1}: '{track_info['artist']}' - '{track_info['title']}' - '{track_info['album']}' - Score: {track_info['score']} (artist={track_info['artist_score']})")
+                self.logger.debug(
+                    f"🔍 CACHED SEARCH:   #{i + 1}: '{track_info['artist']}' - '{track_info['title']}' - '{track_info['album']}' - Score: {track_info['score']} (artist={track_info['artist_score']})"
+                )
 
-            if best_match and best_score >= 100:  # Require high confidence for direct matches (artist already enforced above)
-                self.logger.debug(f"🔍 CACHED SEARCH: ✅ Best match: '{best_match}' with score {best_score}")
+            if (
+                best_match and best_score >= 100
+            ):  # Require high confidence for direct matches (artist already enforced above)
+                self.logger.debug(
+                    f"🔍 CACHED SEARCH: ✅ Best match: '{best_match}' with score {best_score}"
+                )
                 return best_match
             else:
-                self.logger.debug(f"🔍 CACHED SEARCH: ❌ No high-confidence match (best score: {best_score}, threshold: 100)")
-        
+                self.logger.debug(
+                    f"🔍 CACHED SEARCH: ❌ No high-confidence match (best score: {best_score}, threshold: 100)"
+                )
+
         # Strategy 3: Fuzzy matching fallback (only if no direct matches)
         if not candidate_keys:
             best_match = None
@@ -377,8 +418,12 @@ class PlexClient(BaseAPIClient):
 
             for track in track_sample:
                 total_score, artist_score = self._score_track_match_optimized(
-                    track, track_lower, artist_lower, album_lower,
-                    original_track=track_name, original_artist=artist_name
+                    track,
+                    track_lower,
+                    artist_lower,
+                    album_lower,
+                    original_track=track_name,
+                    original_artist=artist_name,
                 )
                 # Require artist match to avoid cross-artist false matches
                 if total_score > best_score and artist_score >= 50:
@@ -387,11 +432,18 @@ class PlexClient(BaseAPIClient):
 
             if best_match and best_score >= 120:  # Higher threshold for fuzzy matches
                 return best_match
-        
+
         return None
-    
-    def _score_track_match_optimized(self, track: Dict[str, Any], target_track: str, target_artist: str, target_album: str = "",
-                                     original_track: str = "", original_artist: str = "") -> tuple:
+
+    def _score_track_match_optimized(
+        self,
+        track: dict[str, Any],
+        target_track: str,
+        target_artist: str,
+        target_album: str = "",
+        original_track: str = "",
+        original_artist: str = "",
+    ) -> tuple:
         """
         Optimized track matching score using minimal track data.
         Artist match is required - never match same title by different artist (e.g. Antidote/Braeker vs Antidote/Greywind).
@@ -410,6 +462,7 @@ class PlexClient(BaseAPIClient):
 
         # Normalize punctuation for consistent matching
         from utils.text_normalizer import normalize_text
+
         plex_track = normalize_text(plex_track)
         plex_artist = normalize_text(plex_artist)
         plex_album = normalize_text(plex_album)
@@ -435,12 +488,15 @@ class PlexClient(BaseAPIClient):
             else:
                 score += 100  # Exact match
                 score_breakdown.append("track_exact:100")
-        elif (len(target_track) >= min_partial_len and len(plex_track) >= min_partial_len and
-              (target_track in plex_track or plex_track in target_track)):
-            score += 70   # Partial match
+        elif (
+            len(target_track) >= min_partial_len
+            and len(plex_track) >= min_partial_len
+            and (target_track in plex_track or plex_track in target_track)
+        ):
+            score += 70  # Partial match
             score_breakdown.append("track_partial:70")
         elif self._fuzzy_match(plex_track, target_track):
-            score += 50   # Fuzzy match
+            score += 50  # Fuzzy match
             score_breakdown.append("track_fuzzy:50")
 
         # Score artist name match (REQUIRED - no cross-artist matches)
@@ -455,31 +511,43 @@ class PlexClient(BaseAPIClient):
                 artist_score = 100  # Exact match
                 score += artist_score
                 score_breakdown.append("artist_exact:100")
-        elif (len(target_artist) >= min_partial_len and len(plex_artist) >= min_partial_len and
-              (target_artist in plex_artist or plex_artist in target_artist)):
-            artist_score = 70   # Partial match
+        elif (
+            len(target_artist) >= min_partial_len
+            and len(plex_artist) >= min_partial_len
+            and (target_artist in plex_artist or plex_artist in target_artist)
+        ):
+            artist_score = 70  # Partial match
             score += artist_score
             score_breakdown.append("artist_partial:70")
         elif self._fuzzy_match(plex_artist, target_artist):
-            artist_score = 50   # Fuzzy match
+            artist_score = 50  # Fuzzy match
             score += artist_score
             score_breakdown.append("artist_fuzzy:50")
-        
+
         # Score album match (bonus scoring)
         if target_album and plex_album:
             if plex_album == target_album:
                 score += 50  # Exact match
                 score_breakdown.append("album_exact:50")
-                self.logger.debug(f"Cached album exact match: '{plex_album}' == '{target_album}' (+50)")
-            elif (len(target_album) >= min_partial_len and len(plex_album) >= min_partial_len and
-                  (target_album in plex_album or plex_album in target_album)):
-                score += 30   # Partial match
+                self.logger.debug(
+                    f"Cached album exact match: '{plex_album}' == '{target_album}' (+50)"
+                )
+            elif (
+                len(target_album) >= min_partial_len
+                and len(plex_album) >= min_partial_len
+                and (target_album in plex_album or plex_album in target_album)
+            ):
+                score += 30  # Partial match
                 score_breakdown.append("album_partial:30")
-                self.logger.debug(f"Cached album partial match: '{plex_album}' <-> '{target_album}' (+30)")
+                self.logger.debug(
+                    f"Cached album partial match: '{plex_album}' <-> '{target_album}' (+30)"
+                )
             elif self._fuzzy_match(plex_album, target_album):
-                score += 20   # Fuzzy match
+                score += 20  # Fuzzy match
                 score_breakdown.append("album_fuzzy:20")
-                self.logger.debug(f"Cached album fuzzy match: '{plex_album}' ~ '{target_album}' (+20)")
+                self.logger.debug(
+                    f"Cached album fuzzy match: '{plex_album}' ~ '{target_album}' (+20)"
+                )
             else:
                 self.logger.debug(f"Cached album no match: '{plex_album}' vs '{target_album}' (0)")
         else:
@@ -487,18 +555,22 @@ class PlexClient(BaseAPIClient):
                 self.logger.debug(f"Cached album missing from track: '{target_album}'")
             else:
                 self.logger.debug("No album info provided for cached matching")
-        
+
         # Log detailed scoring breakdown
         self.logger.debug(f"🎯 SCORE BREAKDOWN: '{plex_artist}' - '{plex_track}' - '{plex_album}'")
-        self.logger.debug(f"🎯 SCORE BREAKDOWN:   Target: '{target_artist}' - '{target_track}' - '{target_album}'")
-        self.logger.debug(f"🎯 SCORE BREAKDOWN:   Breakdown: {' + '.join(score_breakdown)} = {score} (artist={artist_score})")
+        self.logger.debug(
+            f"🎯 SCORE BREAKDOWN:   Target: '{target_artist}' - '{target_track}' - '{target_album}'"
+        )
+        self.logger.debug(
+            f"🎯 SCORE BREAKDOWN:   Breakdown: {' + '.join(score_breakdown)} = {score} (artist={artist_score})"
+        )
 
         return (score, artist_score)
-    
+
     def verify_track_exists(self, rating_key: str) -> bool:
         """
         Verify that a track still exists in Plex (for cache validation)
-        
+
         Returns:
             True if track exists, False otherwise
         """
@@ -509,26 +581,30 @@ class PlexClient(BaseAPIClient):
             return len(metadata) > 0
         except Exception:
             return False
-    
+
     # ==== ENHANCED SEARCH METHODS ====
-    
-    def search_for_track(self, track_name, artist_name, mbids=None, cached_data=None, album_name=None):
+
+    def search_for_track(
+        self, track_name, artist_name, mbids=None, cached_data=None, album_name=None
+    ):
         """
         Search for a track by name and artist with cache-first approach
         Enhanced with optimized library cache for dramatic performance improvements
         """
         # Check if library cache is enabled for this client
-        library_cache_enabled = self.config.get('LIBRARY_CACHE_PLEX_ENABLED', False)
-        
+        library_cache_enabled = self.config.get("LIBRARY_CACHE_PLEX_ENABLED", False)
+
         # Try cached search first if available and library cache is enabled
         if cached_data and library_cache_enabled:
-            cached_result = self.search_cached_library(track_name, artist_name, cached_data, album_name or "")
+            cached_result = self.search_cached_library(
+                track_name, artist_name, cached_data, album_name or ""
+            )
             if cached_result:
                 self.logger.debug(f"Cache hit: {artist_name} - {track_name}")
                 # Record cache hit
                 self._record_cache_hit()
                 return cached_result
-        
+
         # Fallback to live API search (original implementation)
         if library_cache_enabled:
             self.logger.debug(f"Cache miss, using live API search: {artist_name} - {track_name}")
@@ -536,9 +612,9 @@ class PlexClient(BaseAPIClient):
             self._record_cache_miss()
         else:
             self.logger.debug(f"Using live API search: {artist_name} - {track_name}")
-        
+
         return self._search_for_track_live(track_name, artist_name, mbids, album_name)
-    
+
     def _search_for_track_live(self, track_name, artist_name, mbids=None, album_name=None):
         """
         Live API search using mediaQuery on /all (fallback when cache unavailable).
@@ -553,11 +629,11 @@ class PlexClient(BaseAPIClient):
 
         # Search strategies as (artist, track) for targeted mediaQuery
         search_strategies = [
-            (artist_name, track_name),           # Artist + Track (primary)
-            (None, track_name),                  # Track only
-            (artist_name, None),                 # Artist only
-            (None, " ".join(track_name.split()[:3]) if track_name else None),   # First 3 words
-            (None, " ".join(track_name.split()[:2]) if track_name else None),   # First 2 words
+            (artist_name, track_name),  # Artist + Track (primary)
+            (None, track_name),  # Track only
+            (artist_name, None),  # Artist only
+            (None, " ".join(track_name.split()[:3]) if track_name else None),  # First 3 words
+            (None, " ".join(track_name.split()[:2]) if track_name else None),  # First 2 words
             (None, " ".join(track_name.split()[-3:]) if track_name else None),  # Last 3 words
         ]
 
@@ -591,17 +667,19 @@ class PlexClient(BaseAPIClient):
             return best_match["ratingKey"]
 
         return None
-    
-    def sync_playlist(self, title: str, tracks: List[Dict[str, Any]], summary: str = "", **kwargs) -> Dict[str, Any]:
+
+    def sync_playlist(
+        self, title: str, tracks: list[dict[str, Any]], summary: str = "", **kwargs
+    ) -> dict[str, Any]:
         """
         Sync a playlist to Plex with optimized library cache
-        
+
         Args:
             title: Playlist title
             tracks: List of track dictionaries with 'artist', 'album', 'track' keys
             summary: Playlist description
             **kwargs: Additional parameters (library_key, update_existing, library_cache_manager)
-            
+
         Returns:
             Dict with keys: success, action, total_tracks, found_tracks, message
         """
@@ -609,37 +687,41 @@ class PlexClient(BaseAPIClient):
             self.logger.info(f"Syncing playlist '{title}' with {len(tracks)} tracks")
 
             # Extract kwargs
-            library_key = kwargs.get('library_key')
-            update_existing = kwargs.get('update_existing', True)
-            library_cache_manager = kwargs.get('library_cache_manager')
+            library_key = kwargs.get("library_key")
+            kwargs.get("update_existing", True)
+            library_cache_manager = kwargs.get("library_cache_manager")
 
             # Get optimized library cache if available
             cached_data = None
-            if hasattr(self, '_cached_library') and self._cached_library:
+            if hasattr(self, "_cached_library") and self._cached_library:
                 # Use cached library passed from playlist sync command
                 cached_data = self._cached_library
-                track_count = cached_data.get('total_tracks', 0)
+                track_count = cached_data.get("total_tracks", 0)
                 self.logger.info(f"Using cached library with {track_count:,} tracks")
             elif library_cache_manager:
-                cached_data = library_cache_manager.get_library_cache('plex', library_key)
+                cached_data = library_cache_manager.get_library_cache("plex", library_key)
                 if cached_data:
-                    track_count = cached_data.get('total_tracks', 0)
+                    track_count = cached_data.get("total_tracks", 0)
                     self.logger.info(f"Using optimized library cache with {track_count:,} tracks")
                 else:
-                    self.logger.warning("Library cache not available, falling back to live API searches")
+                    self.logger.warning(
+                        "Library cache not available, falling back to live API searches"
+                    )
             else:
                 self.logger.warning("No library cache available, falling back to live API searches")
-            
-            self.logger.debug(f"Cache status: cached_data={cached_data is not None}, library_cache_manager={library_cache_manager is not None}")
+
+            self.logger.debug(
+                f"Cache status: cached_data={cached_data is not None}, library_cache_manager={library_cache_manager is not None}"
+            )
 
             # Find tracks with progress tracking
             found_track_keys = []
             failed_matches = []
             processed = 0
 
-            for i, track in enumerate(tracks):
-                artist = track.get('artist', '')
-                track_name = track.get('track', '')
+            for _i, track in enumerate(tracks):
+                artist = track.get("artist", "")
+                track_name = track.get("track", "")
 
                 if not artist or not track_name:
                     continue
@@ -648,9 +730,13 @@ class PlexClient(BaseAPIClient):
                 progress = f"[{processed}/{len(tracks)}]"
 
                 # Search using cache-optimized method
-                album = track.get('album', '')
-                self.logger.debug(f"Searching for track: '{artist}' - '{track_name}' - Album: '{album}' - Cache: {cached_data is not None}")
-                rating_key = self.search_for_track(track_name, artist, cached_data=cached_data, album_name=album)
+                album = track.get("album", "")
+                self.logger.debug(
+                    f"Searching for track: '{artist}' - '{track_name}' - Album: '{album}' - Cache: {cached_data is not None}"
+                )
+                rating_key = self.search_for_track(
+                    track_name, artist, cached_data=cached_data, album_name=album
+                )
 
                 if rating_key:
                     found_track_keys.append(rating_key)
@@ -668,77 +754,88 @@ class PlexClient(BaseAPIClient):
             if library_cache_manager and cached_data and tracks_found < tracks_total * 0.6:
                 self.logger.info("Low match rate detected, verifying cache freshness...")
                 sample_keys = found_track_keys[:5] if found_track_keys else []
-                library_cache_manager.verify_and_refresh_cache('plex', library_key, sample_keys)
+                library_cache_manager.verify_and_refresh_cache("plex", library_key, sample_keys)
 
             # Handle empty playlist case
             if not found_track_keys:
                 self.logger.warning(f"No tracks found in Plex library for playlist '{title}'")
-                
-                cleanup_empty = getattr(self.config, 'PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP', True)
-                
+
+                cleanup_empty = getattr(
+                    self.config, "PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP", True
+                )
+
                 if cleanup_empty:
-                    self.logger.info(f"Empty playlist cleanup enabled - will not create empty playlist '{title}'")
+                    self.logger.info(
+                        f"Empty playlist cleanup enabled - will not create empty playlist '{title}'"
+                    )
                     return {
-                        'success': True,
-                        'action': 'skipped_empty',
-                        'total_tracks': tracks_total,
-                        'found_tracks': 0,
-                        'message': f"Skipped creating empty playlist '{title}'"
+                        "success": True,
+                        "action": "skipped_empty",
+                        "total_tracks": tracks_total,
+                        "found_tracks": 0,
+                        "message": f"Skipped creating empty playlist '{title}'",
                     }
                 else:
-                    self.logger.info(f"Empty playlist cleanup disabled - skipping creation of empty playlist '{title}'")
+                    self.logger.info(
+                        f"Empty playlist cleanup disabled - skipping creation of empty playlist '{title}'"
+                    )
                     return {
-                        'success': True,
-                        'action': 'skipped_empty',
-                        'total_tracks': tracks_total,
-                        'found_tracks': 0,
-                        'message': f"Skipped creating empty playlist '{title}'"
+                        "success": True,
+                        "action": "skipped_empty",
+                        "total_tracks": tracks_total,
+                        "found_tracks": 0,
+                        "message": f"Skipped creating empty playlist '{title}'",
                     }
 
             # Create/update playlist using proven method
             success = self.create_or_update_playlist(title, found_track_keys, summary)
-            
+
             if success:
                 match_rate = (tracks_found / tracks_total * 100) if tracks_total > 0 else 0
-                self.logger.info(f"Successfully synced playlist '{title}': {tracks_found}/{tracks_total} tracks ({match_rate:.1f}% success rate)")
+                self.logger.info(
+                    f"Successfully synced playlist '{title}': {tracks_found}/{tracks_total} tracks ({match_rate:.1f}% success rate)"
+                )
                 return {
-                    'success': True,
-                    'action': 'synced',
-                    'total_tracks': tracks_total,
-                    'found_tracks': tracks_found,
-                    'unmatched_tracks': failed_matches,
-                    'message': f"Successfully synced playlist '{title}' with {tracks_found} tracks"
+                    "success": True,
+                    "action": "synced",
+                    "total_tracks": tracks_total,
+                    "found_tracks": tracks_found,
+                    "unmatched_tracks": failed_matches,
+                    "message": f"Successfully synced playlist '{title}' with {tracks_found} tracks",
                 }
             else:
                 self.logger.error(f"Failed to sync playlist '{title}'")
                 return {
-                    'success': False,
-                    'action': 'failed',
-                    'total_tracks': tracks_total,
-                    'found_tracks': tracks_found,
-                    'unmatched_tracks': failed_matches,
-                    'message': f"Failed to sync playlist '{title}'"
+                    "success": False,
+                    "action": "failed",
+                    "total_tracks": tracks_total,
+                    "found_tracks": tracks_found,
+                    "unmatched_tracks": failed_matches,
+                    "message": f"Failed to sync playlist '{title}'",
                 }
 
         except Exception as e:
             self.logger.error(f"Error syncing playlist '{title}': {e}")
             return {
-                'success': False,
-                'action': 'error',
-                'total_tracks': len(tracks),
-                'found_tracks': 0,
-                'unmatched_tracks': [f"{track.get('artist', 'Unknown')} - {track.get('track', 'Unknown')}" for track in tracks],
-                'message': f"Error syncing playlist '{title}': {str(e)}"
+                "success": False,
+                "action": "error",
+                "total_tracks": len(tracks),
+                "found_tracks": 0,
+                "unmatched_tracks": [
+                    f"{track.get('artist', 'Unknown')} - {track.get('track', 'Unknown')}"
+                    for track in tracks
+                ],
+                "message": f"Error syncing playlist '{title}': {str(e)}",
             }
-    
+
     # ==== ORIGINAL PLEX API METHODS ====
     # Keeping all existing proven functionality
-    
+
     def _get_cache_key(self, operation: str, *args) -> str:
         """Generate cache key for Plex requests"""
         key_parts = [operation] + [str(arg) for arg in args]
         return ":".join(key_parts)
-    
+
     def _get(self, path, params=None):
         """GET request to Plex API."""
         if params is None:
@@ -754,8 +851,8 @@ class PlexClient(BaseAPIClient):
             r.raise_for_status()
 
             # Handle both XML and JSON responses
-            content_type = r.headers.get('content-type', '').lower()
-            if 'xml' in content_type:
+            content_type = r.headers.get("content-type", "").lower()
+            if "xml" in content_type:
                 return self._parse_xml_response(r.text)
             elif r.text.strip():
                 try:
@@ -766,7 +863,7 @@ class PlexClient(BaseAPIClient):
             else:
                 self.logger.warning(f"Empty response from {path}")
                 return {}
-                
+
         except requests.exceptions.RequestException as e:
             # Log request details on timeout to help diagnose problematic queries
             if isinstance(e, requests.exceptions.Timeout):
@@ -787,14 +884,16 @@ class PlexClient(BaseAPIClient):
         headers = {
             "Accept": "application/json",
         }
-        
+
         try:
-            r = requests.post(url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+            r = requests.post(
+                url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT
+            )
             r.raise_for_status()
 
             # Handle both XML and JSON responses
-            content_type = r.headers.get('content-type', '').lower()
-            if 'xml' in content_type:
+            content_type = r.headers.get("content-type", "").lower()
+            if "xml" in content_type:
                 return self._parse_xml_response(r.text)
             elif r.text.strip():
                 try:
@@ -805,7 +904,7 @@ class PlexClient(BaseAPIClient):
             else:
                 self.logger.warning(f"Empty response from {path}")
                 return {}
-                
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"POST request failed for {path}: {e}")
             raise
@@ -819,14 +918,16 @@ class PlexClient(BaseAPIClient):
         headers = {
             "Accept": "application/json",
         }
-        
+
         try:
-            r = requests.put(url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+            r = requests.put(
+                url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT
+            )
             r.raise_for_status()
 
             # Handle both XML and JSON responses
-            content_type = r.headers.get('content-type', '').lower()
-            if 'xml' in content_type:
+            content_type = r.headers.get("content-type", "").lower()
+            if "xml" in content_type:
                 return self._parse_xml_response(r.text)
             elif r.text.strip():
                 try:
@@ -835,7 +936,7 @@ class PlexClient(BaseAPIClient):
                     return {}
             else:
                 return {}
-                
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"PUT request failed for {path}: {e}")
             raise
@@ -849,12 +950,14 @@ class PlexClient(BaseAPIClient):
         headers = {
             "Accept": "application/json",
         }
-        
+
         try:
-            r = requests.delete(url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+            r = requests.delete(
+                url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT
+            )
             r.raise_for_status()
             return {} if not r.content else {}
-            
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"DELETE request failed for {path}: {e}")
             raise
@@ -930,7 +1033,9 @@ class PlexClient(BaseAPIClient):
 
         return result
 
-    def _resolve_music_library(self, music_libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _resolve_music_library(
+        self, music_libraries: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
         """Resolve which music library to use (single library only).
         - If PLEX_LIBRARY_NAME set: use that by name (case-insensitive)
         - If blank and only 1 library: use it
@@ -938,30 +1043,34 @@ class PlexClient(BaseAPIClient):
         - Else: use first (lowest library key/id)"""
         if not music_libraries:
             return None
-        name_override = (self.config.get('PLEX_LIBRARY_NAME') or '').strip()
+        name_override = (self.config.get("PLEX_LIBRARY_NAME") or "").strip()
         if name_override:
             for lib in music_libraries:
-                if (lib.get('title') or '').strip().lower() == name_override.lower():
+                if (lib.get("title") or "").strip().lower() == name_override.lower():
                     return lib
-            self.logger.warning(f"Library '{name_override}' not found in {[l.get('title') for l in music_libraries]}, using first")
+            self.logger.warning(
+                f"Library '{name_override}' not found in {[item.get('title') for item in music_libraries]}, using first"
+            )
             return self._first_by_lowest_key(music_libraries)
         if len(music_libraries) == 1:
             return music_libraries[0]
         for lib in music_libraries:
-            if (lib.get('title') or '').strip().lower() == 'music':
+            if (lib.get("title") or "").strip().lower() == "music":
                 return lib
         return self._first_by_lowest_key(music_libraries)
 
-    def _first_by_lowest_key(self, libraries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _first_by_lowest_key(self, libraries: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Return library with lowest key (numeric when possible)."""
         if not libraries:
             return None
+
         def sort_key(lib):
-            k = lib.get('key') or ''
+            k = lib.get("key") or ""
             try:
                 return (0, int(k))
             except (ValueError, TypeError):
                 return (1, str(k))
+
         return min(libraries, key=sort_key)
 
     def get_music_libraries(self):
@@ -970,11 +1079,11 @@ class PlexClient(BaseAPIClient):
             # Check cache first
             cache_key = self._get_cache_key("music_libraries")
             if self.cache_enabled and self.cache:
-                cached_result = self.cache.get(cache_key, 'plex')
+                cached_result = self.cache.get(cache_key, "plex")
                 if cached_result is not None:
                     self.logger.debug("Cache hit for music libraries")
                     return cached_result
-            
+
             results = self._get("/library/sections")
             media_container = results.get("MediaContainer", {})
 
@@ -994,15 +1103,13 @@ class PlexClient(BaseAPIClient):
                 # Check for music/audio library types
                 # 'artist' type indicates a music library in Plex
                 if section_type in ("artist", "music", "audio"):
-                    music_sections.append({
-                        "key": section_key,
-                        "title": section_title,
-                        "type": section_type
-                    })
+                    music_sections.append(
+                        {"key": section_key, "title": section_title, "type": section_type}
+                    )
 
             # Cache the result
             if self.cache_enabled and self.cache:
-                self.cache.set(cache_key, 'plex', music_sections, self.config.CACHE_PLEX_TTL_DAYS)
+                self.cache.set(cache_key, "plex", music_sections, self.config.CACHE_PLEX_TTL_DAYS)
 
             self.logger.debug(f"Found {len(music_sections)} music libraries")
             return music_sections
@@ -1035,7 +1142,11 @@ class PlexClient(BaseAPIClient):
                 tracks = media_container.get("Metadata", [])
                 return tracks
             except requests.exceptions.Timeout as e:
-                search_desc = f"artist={artist_name!r} track={track_name!r}" if (artist_name or track_name) else f"query={query!r}"
+                search_desc = (
+                    f"artist={artist_name!r} track={track_name!r}"
+                    if (artist_name or track_name)
+                    else f"query={query!r}"
+                )
                 self.logger.warning(
                     f"Plex API timeout library={library_key} {search_desc}: {e}. "
                     f"Attempt {attempt + 1}/2."
@@ -1065,7 +1176,9 @@ class PlexClient(BaseAPIClient):
         container_size = 500
 
         try:
-            self.logger.debug(f"Getting tracks added since {cutoff_date.date()} via recentlyAdded endpoint")
+            self.logger.debug(
+                f"Getting tracks added since {cutoff_date.date()} via recentlyAdded endpoint"
+            )
             while True:
                 params = {
                     "X-Plex-Container-Start": container_start,
@@ -1140,10 +1253,14 @@ class PlexClient(BaseAPIClient):
             self.logger.info(f"Found {len(all_tracks)} tracks added in last {days} days")
             return all_tracks
         except Exception as e:
-            self.logger.error(f"Error getting recently added tracks from library {library_key}: {e}")
+            self.logger.error(
+                f"Error getting recently added tracks from library {library_key}: {e}"
+            )
             return []
 
-    def _score_track_match(self, track, target_track_name, target_artist_name, mbids=None, target_album_name=None):
+    def _score_track_match(
+        self, track, target_track_name, target_artist_name, mbids=None, target_album_name=None
+    ):
         """
         Score how well a Plex track matches our target track.
         Artist match is required - never match same title by different artist.
@@ -1155,10 +1272,11 @@ class PlexClient(BaseAPIClient):
         # Get track info from Plex metadata
         plex_track_title = track.get("title", "").lower()
         plex_artist_name = track.get("grandparentTitle", "").lower()  # Artist is grandparent
-        plex_album_name = track.get("parentTitle", "").lower()        # Album is parent
+        plex_album_name = track.get("parentTitle", "").lower()  # Album is parent
 
         # Normalize punctuation for consistent matching
         from utils.text_normalizer import normalize_text
+
         plex_track_title = normalize_text(plex_track_title)
         plex_artist_name = normalize_text(plex_artist_name)
         plex_album_name = normalize_text(plex_album_name)
@@ -1186,11 +1304,14 @@ class PlexClient(BaseAPIClient):
                 # else: no match - different symbol-only titles
             else:
                 score += 100  # Exact match
-        elif (len(target_track_lower) >= min_partial_len and len(plex_track_title) >= min_partial_len and
-              (target_track_lower in plex_track_title or plex_track_title in target_track_lower)):
-            score += 70   # Partial match
+        elif (
+            len(target_track_lower) >= min_partial_len
+            and len(plex_track_title) >= min_partial_len
+            and (target_track_lower in plex_track_title or plex_track_title in target_track_lower)
+        ):
+            score += 70  # Partial match
         elif self._fuzzy_match(plex_track_title, target_track_lower):
-            score += 50   # Fuzzy match
+            score += 50  # Fuzzy match
 
         # Score artist name match (REQUIRED - no cross-artist matches)
         if plex_artist_name == target_artist_lower:
@@ -1202,28 +1323,42 @@ class PlexClient(BaseAPIClient):
             else:
                 artist_score = 100  # Exact match
                 score += artist_score
-        elif (len(target_artist_lower) >= min_partial_len and len(plex_artist_name) >= min_partial_len and
-              (target_artist_lower in plex_artist_name or plex_artist_name in target_artist_lower)):
-            artist_score = 70   # Partial match
+        elif (
+            len(target_artist_lower) >= min_partial_len
+            and len(plex_artist_name) >= min_partial_len
+            and (target_artist_lower in plex_artist_name or plex_artist_name in target_artist_lower)
+        ):
+            artist_score = 70  # Partial match
             score += artist_score
         elif self._fuzzy_match(plex_artist_name, target_artist_lower):
-            artist_score = 50   # Fuzzy match
+            artist_score = 50  # Fuzzy match
             score += artist_score
 
         # Score album match (bonus scoring)
         if target_album_lower and plex_album_name:
             if plex_album_name == target_album_lower:
                 score += 50  # Exact match
-                self.logger.debug(f"Album exact match: '{plex_album_name}' == '{target_album_lower}' (+50)")
-            elif (len(target_album_lower) >= min_partial_len and len(plex_album_name) >= min_partial_len and
-                  (target_album_lower in plex_album_name or plex_album_name in target_album_lower)):
-                score += 30   # Partial match
-                self.logger.debug(f"Album partial match: '{plex_album_name}' <-> '{target_album_lower}' (+30)")
+                self.logger.debug(
+                    f"Album exact match: '{plex_album_name}' == '{target_album_lower}' (+50)"
+                )
+            elif (
+                len(target_album_lower) >= min_partial_len
+                and len(plex_album_name) >= min_partial_len
+                and (target_album_lower in plex_album_name or plex_album_name in target_album_lower)
+            ):
+                score += 30  # Partial match
+                self.logger.debug(
+                    f"Album partial match: '{plex_album_name}' <-> '{target_album_lower}' (+30)"
+                )
             elif self._fuzzy_match(plex_album_name, target_album_lower):
-                score += 20   # Fuzzy match
-                self.logger.debug(f"Album fuzzy match: '{plex_album_name}' ~ '{target_album_lower}' (+20)")
+                score += 20  # Fuzzy match
+                self.logger.debug(
+                    f"Album fuzzy match: '{plex_album_name}' ~ '{target_album_lower}' (+20)"
+                )
             else:
-                self.logger.debug(f"Album no match: '{plex_album_name}' vs '{target_album_lower}' (0)")
+                self.logger.debug(
+                    f"Album no match: '{plex_album_name}' vs '{target_album_lower}' (0)"
+                )
         else:
             if target_album_lower:
                 self.logger.debug(f"Album missing from Plex track: '{target_album_lower}'")
@@ -1238,7 +1373,9 @@ class PlexClient(BaseAPIClient):
                     score += 50  # MusicBrainz ID bonus
                     break
 
-        self.logger.debug(f"Track match score: {score}/250 (artist={artist_score}) - '{plex_artist_name}' - '{plex_track_title}' - '{plex_album_name}'")
+        self.logger.debug(
+            f"Track match score: {score}/250 (artist={artist_score}) - '{plex_artist_name}' - '{plex_track_title}' - '{plex_album_name}'"
+        )
         return (score, artist_score)
 
     def _fuzzy_match(self, str1, str2, threshold=0.8):
@@ -1251,18 +1388,39 @@ class PlexClient(BaseAPIClient):
             return False
 
         # Remove common words that might cause false matches
-        common_words = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'about', 'into', 'over', 'after']
+        common_words = [
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "up",
+            "about",
+            "into",
+            "over",
+            "after",
+        ]
 
         def clean_string(s):
             words = s.split()
-            return ' '.join([w for w in words if w not in common_words])
+            return " ".join([w for w in words if w not in common_words])
 
         clean_str1 = clean_string(str1)
         clean_str2 = clean_string(str2)
 
         # Character overlap ratio
-        set1 = set(clean_str1.replace(' ', ''))
-        set2 = set(clean_str2.replace(' ', ''))
+        set1 = set(clean_str1.replace(" ", ""))
+        set2 = set(clean_str2.replace(" ", ""))
 
         if not set1 or not set2:
             return False
@@ -1301,28 +1459,32 @@ class PlexClient(BaseAPIClient):
                 self.logger.warning("No tracks provided for playlist creation")
                 return False
 
-            self.logger.info(f"Creating playlist '{title}' using hybrid method (1 track + add remaining)...")
+            self.logger.info(
+                f"Creating playlist '{title}' using hybrid method (1 track + add remaining)..."
+            )
 
             # Step 1: Create playlist with first track only
             first_track = track_rating_keys[0]
-            uri = f"library://{self.base_url.split('://')[1]}/item/library%2Fmetadata%2F{first_track}"
+            uri = (
+                f"library://{self.base_url.split('://')[1]}/item/library%2Fmetadata%2F{first_track}"
+            )
 
-            params = {
-                "X-Plex-Token": self.token,
-                "title": title,
-                "type": "audio",
-                "uri": uri
-            }
+            params = {"X-Plex-Token": self.token, "title": title, "type": "audio", "uri": uri}
 
             if summary:
                 params["summary"] = summary
 
-            self.logger.debug(f"Creating playlist with first track...")
+            self.logger.debug("Creating playlist with first track...")
             headers = {"Accept": "application/json"}
-            response = requests.post(f"{self.base_url}/playlists", params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+            response = requests.post(
+                f"{self.base_url}/playlists",
+                params=params,
+                headers=headers,
+                timeout=self.config.PLEX_TIMEOUT,
+            )
             response.raise_for_status()
 
-            self.logger.info(f"Created playlist with 1 track")
+            self.logger.info("Created playlist with 1 track")
 
             # Step 2: Add remaining tracks if there are any
             if len(track_rating_keys) > 1:
@@ -1338,13 +1500,17 @@ class PlexClient(BaseAPIClient):
                     add_success = self.add_tracks_to_playlist(playlist_rating_key, remaining_tracks)
 
                     if add_success:
-                        self.logger.info(f"Successfully created playlist '{title}' with {len(track_rating_keys)} tracks total")
+                        self.logger.info(
+                            f"Successfully created playlist '{title}' with {len(track_rating_keys)} tracks total"
+                        )
                         return True
                     else:
-                        self.logger.warning(f"Playlist created with 1 track, but failed to add {len(remaining_tracks)} remaining tracks")
+                        self.logger.warning(
+                            f"Playlist created with 1 track, but failed to add {len(remaining_tracks)} remaining tracks"
+                        )
                         return True  # Partial success is still success
                 else:
-                    self.logger.error(f"Could not find created playlist to add remaining tracks")
+                    self.logger.error("Could not find created playlist to add remaining tracks")
                     return False
             else:
                 self.logger.info(f"Successfully created playlist '{title}' with 1 track")
@@ -1372,15 +1538,16 @@ class PlexClient(BaseAPIClient):
             for i, key in enumerate(track_rating_keys, 1):
                 try:
                     # Add each track individually
-                    uri = f"library://{self.base_url.split('://')[1]}/item/library%2Fmetadata%2F{key}"
-                    params = {
-                        "X-Plex-Token": self.token,
-                        "uri": uri
-                    }
+                    uri = (
+                        f"library://{self.base_url.split('://')[1]}/item/library%2Fmetadata%2F{key}"
+                    )
+                    params = {"X-Plex-Token": self.token, "uri": uri}
 
                     add_url = f"{self.base_url}/playlists/{playlist_rating_key}/items"
                     headers = {"Accept": "application/json"}
-                    response = requests.put(add_url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT)
+                    response = requests.put(
+                        add_url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT
+                    )
                     response.raise_for_status()
 
                     total_added += 1
@@ -1397,10 +1564,12 @@ class PlexClient(BaseAPIClient):
                     continue
 
             if total_added > 0:
-                self.logger.info(f"Successfully added {total_added}/{len(track_rating_keys)} tracks to playlist")
+                self.logger.info(
+                    f"Successfully added {total_added}/{len(track_rating_keys)} tracks to playlist"
+                )
                 return True
             else:
-                self.logger.error(f"Failed to add any tracks to playlist")
+                self.logger.error("Failed to add any tracks to playlist")
                 return False
 
         except Exception as e:
@@ -1411,7 +1580,7 @@ class PlexClient(BaseAPIClient):
         """Delete a playlist. COPIED EXACTLY from proven working implementation."""
         try:
             self._delete(f"/playlists/{playlist_rating_key}")
-            self.logger.info(f"Deleted playlist")
+            self.logger.info("Deleted playlist")
             return True
         except Exception as e:
             self.logger.error(f"Error deleting playlist: {e}")
@@ -1428,18 +1597,22 @@ class PlexClient(BaseAPIClient):
 
             if existing_playlist:
                 self.logger.info(f"Found existing playlist '{title}', validating content...")
-                
+
                 # Get existing playlist track rating keys
-                existing_track_keys = self.get_playlist_track_rating_keys(existing_playlist["ratingKey"])
-                
+                existing_track_keys = self.get_playlist_track_rating_keys(
+                    existing_playlist["ratingKey"]
+                )
+
                 # Compare with new tracks
                 if self._compare_playlist_tracks(existing_track_keys, track_rating_keys):
-                    self.logger.info(f"Playlist '{title}' already exists with identical content, skipping recreation")
+                    self.logger.info(
+                        f"Playlist '{title}' already exists with identical content, skipping recreation"
+                    )
                     return True
                 else:
                     self.logger.info(f"Playlist '{title}' content differs, updating playlist")
                     if not self.delete_playlist(existing_playlist["ratingKey"]):
-                        self.logger.error(f"Failed to delete existing playlist")
+                        self.logger.error("Failed to delete existing playlist")
                         return False
 
                     # Wait a moment for deletion to complete
@@ -1481,14 +1654,16 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error getting playlist track count: {e}")
             return 0
 
-    def _compare_playlist_tracks(self, existing_track_keys: List[str], new_track_keys: List[str]) -> bool:
+    def _compare_playlist_tracks(
+        self, existing_track_keys: list[str], new_track_keys: list[str]
+    ) -> bool:
         """
         Compare existing playlist tracks with new tracks to determine if they're identical.
-        
+
         Args:
             existing_track_keys: List of rating keys from existing playlist
             new_track_keys: List of rating keys for new playlist
-            
+
         Returns:
             True if playlists are identical, False otherwise
         """
@@ -1496,14 +1671,14 @@ class PlexClient(BaseAPIClient):
             # Quick length check first
             if len(existing_track_keys) != len(new_track_keys):
                 return False
-            
+
             # Convert to sets for comparison (order doesn't matter)
             existing_set = set(existing_track_keys)
             new_set = set(new_track_keys)
-            
+
             # Check if sets are identical
             return existing_set == new_set
-            
+
         except Exception as e:
             self.logger.error(f"Error comparing playlist tracks: {e}")
             return False
@@ -1522,21 +1697,25 @@ class PlexClient(BaseAPIClient):
             # Test playlist access
             playlists_result = self._get("/playlists")
             media_container = playlists_result.get("MediaContainer", {})
-            playlists = media_container.get("Metadata", [])
+            media_container.get("Metadata", [])
 
             if result:
                 # Get server info
-                media_container = result.get('MediaContainer', {})
-                server_name = media_container.get('friendlyName', 'Unknown')
-                server_version = media_container.get('version', 'Unknown')
-                
-                self.logger.info(f"Connected to Plex server '{server_name}' (version {server_version})")
-                
+                media_container = result.get("MediaContainer", {})
+                server_name = media_container.get("friendlyName", "Unknown")
+                server_version = media_container.get("version", "Unknown")
+
+                self.logger.info(
+                    f"Connected to Plex server '{server_name}' (version {server_version})"
+                )
+
                 if libraries:
-                    self.logger.info(f"Found {len(libraries)} music libraries: {[lib['title'] for lib in libraries]}")
+                    self.logger.info(
+                        f"Found {len(libraries)} music libraries: {[lib['title'] for lib in libraries]}"
+                    )
                 else:
                     self.logger.warning("No music libraries found - playlist sync may not work")
-                
+
                 return True
             else:
                 self.logger.error("Plex API test failed - no valid response")
@@ -1546,17 +1725,19 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Failed to connect to Plex: {e}")
             return False
 
-    async def get_api_stats(self) -> Dict[str, Any]:
+    async def get_api_stats(self) -> dict[str, Any]:
         """Get basic API usage statistics"""
         stats = await super().get_api_stats()
-        stats.update({
-            'server_url': self.config.PLEX_URL,
-            'timeout': self.config.PLEX_TIMEOUT,
-            'ignore_tls': self.config.PLEX_IGNORE_TLS,
-        })
+        stats.update(
+            {
+                "server_url": self.config.PLEX_URL,
+                "timeout": self.config.PLEX_TIMEOUT,
+                "ignore_tls": self.config.PLEX_IGNORE_TLS,
+            }
+        )
         return stats
-    
-    def validate_playlist_exists(self, title: str) -> Dict[str, Any]:
+
+    def validate_playlist_exists(self, title: str) -> dict[str, Any]:
         """
         Validate if a playlist exists and return detailed information about it.
         Returns dict with 'exists', 'count', 'playlists', 'total_tracks', 'track_inventory'
@@ -1564,66 +1745,68 @@ class PlexClient(BaseAPIClient):
         try:
             # Find all playlists with the given name
             existing_playlists = self.find_all_playlists_by_name(title)
-            
+
             if not existing_playlists:
                 return {
-                    'exists': False,
-                    'count': 0,
-                    'playlists': [],
-                    'total_tracks': 0,
-                    'track_inventory': set()
+                    "exists": False,
+                    "count": 0,
+                    "playlists": [],
+                    "total_tracks": 0,
+                    "track_inventory": set(),
                 }
-            
+
             # Get detailed information about each playlist
             playlist_details = []
             total_tracks = 0
             all_track_keys = set()
-            
+
             for playlist in existing_playlists:
-                playlist_rating_key = playlist.get('ratingKey', '')
+                playlist_rating_key = playlist.get("ratingKey", "")
                 tracks = self.get_playlist_tracks(playlist_rating_key)
-                track_keys = [track.get('ratingKey') for track in tracks if track.get('ratingKey')]
-                
-                playlist_details.append({
-                    'id': playlist_rating_key,
-                    'name': playlist.get('title', ''),
-                    'track_count': len(tracks),
-                    'track_keys': track_keys
-                })
-                
+                track_keys = [track.get("ratingKey") for track in tracks if track.get("ratingKey")]
+
+                playlist_details.append(
+                    {
+                        "id": playlist_rating_key,
+                        "name": playlist.get("title", ""),
+                        "track_count": len(tracks),
+                        "track_keys": track_keys,
+                    }
+                )
+
                 total_tracks += len(tracks)
                 all_track_keys.update(track_keys)
-            
+
             return {
-                'exists': True,
-                'count': len(existing_playlists),
-                'playlists': playlist_details,
-                'total_tracks': total_tracks,
-                'track_inventory': all_track_keys
+                "exists": True,
+                "count": len(existing_playlists),
+                "playlists": playlist_details,
+                "total_tracks": total_tracks,
+                "track_inventory": all_track_keys,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error validating playlist '{title}': {e}")
             return {
-                'exists': False,
-                'count': 0,
-                'playlists': [],
-                'total_tracks': 0,
-                'track_inventory': set()
+                "exists": False,
+                "count": 0,
+                "playlists": [],
+                "total_tracks": 0,
+                "track_inventory": set(),
             }
-    
-    def find_all_playlists_by_name(self, playlist_name: str) -> List[Dict[str, Any]]:
+
+    def find_all_playlists_by_name(self, playlist_name: str) -> list[dict[str, Any]]:
         """Find all playlists with the given name (case-insensitive)"""
         try:
             results = self._get("/playlists")
             media_container = results.get("MediaContainer", {})
             playlists = media_container.get("Metadata", [])
-            
+
             matching_playlists = []
             for playlist in playlists:
                 if playlist.get("title", "").lower() == playlist_name.lower():
                     matching_playlists.append(playlist)
-            
+
             return matching_playlists
         except Exception as e:
             self.logger.error(f"Error finding playlists by name '{playlist_name}': {e}")

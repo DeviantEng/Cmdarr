@@ -7,20 +7,7 @@ For new code, import directly from config_models.py or cache_models.py.
 """
 
 # Import all models from separate files for backward compatibility
-from .config_models import (
-    ConfigBase,
-    ConfigSetting,
-    CommandConfig, 
-    CommandExecution,
-    SystemStatus
-)
-
-from .cache_models import (
-    CacheBase,
-    CacheEntry,
-    FailedLookup,
-    LibraryCache
-)
+from .config_models import ConfigBase
 
 # Maintain backward compatibility with single Base
 Base = ConfigBase

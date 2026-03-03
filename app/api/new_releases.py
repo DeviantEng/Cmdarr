@@ -12,20 +12,20 @@ New: DB-backed pending table, dismiss, recheck, run-batch, scan-artist.
 """
 
 import random
-from datetime import datetime, timezone
-from typing import List, Optional, Set
+from datetime import UTC, datetime
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from commands.config_adapter import ConfigAdapter
 from clients.client_deezer import DeezerClient
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
-from database.config_models import NewReleasePending, DismissedArtistAlbum
+from commands.config_adapter import ConfigAdapter
+from database.config_models import DismissedArtistAlbum, NewReleasePending
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
 from utils.text_normalizer import normalize_text
@@ -37,10 +37,20 @@ ALBUM_TYPES = frozenset({"album", "ep", "single", "other"})
 
 
 # Substrings that indicate a live recording (checked in normalized album title)
-_LIVE_INDICATORS = frozenset({
-    "live", "concert", "unplugged", "recorded live", "recorded at",
-    "live at", "live from", "live in", "live session", "live album",
-})
+_LIVE_INDICATORS = frozenset(
+    {
+        "live",
+        "concert",
+        "unplugged",
+        "recorded live",
+        "recorded at",
+        "live at",
+        "live from",
+        "live in",
+        "live session",
+        "live album",
+    }
+)
 
 
 def _is_live_release(title: str) -> bool:
@@ -58,7 +68,7 @@ def _is_live_release(title: str) -> bool:
 def _album_matches_filter(
     album_type: str,
     total_tracks: int,
-    selected_types: Set[str],
+    selected_types: set[str],
 ) -> bool:
     """Check if album matches selected type filter."""
     if not selected_types:
@@ -80,6 +90,7 @@ def _album_matches_filter(
 def _artist_names_match(name1: str, name2: str, min_similarity: float = 0.9) -> bool:
     """Check if two artist names refer to the same artist (avoids Emmure vs emmurée collisions)."""
     from difflib import SequenceMatcher
+
     n1 = normalize_text(name1)
     n2 = normalize_text(name2)
     if not n1 or not n2:
@@ -92,13 +103,15 @@ def _artist_names_match(name1: str, name2: str, min_similarity: float = 0.9) -> 
 def _get_new_releases_source_from_db() -> str:
     """Get new_releases_source from CommandConfig (default deezer)."""
     from database.config_models import CommandConfig
-    from database.database import get_database_manager
+
     db = get_database_manager()
     session = db.get_config_session_context()
     try:
-        row = session.query(CommandConfig).filter(
-            CommandConfig.command_name == "new_releases_discovery"
-        ).first()
+        row = (
+            session.query(CommandConfig)
+            .filter(CommandConfig.command_name == "new_releases_discovery")
+            .first()
+        )
         if row and row.config_json:
             src = (row.config_json.get("new_releases_source") or "deezer").strip().lower()
             return src if src in ("spotify", "deezer") else "deezer"
@@ -107,7 +120,9 @@ def _get_new_releases_source_from_db() -> str:
     return "deezer"
 
 
-def _title_matches_mb(spotify_title: str, mb_titles: List[str], min_similarity: float = 0.7) -> bool:
+def _title_matches_mb(
+    spotify_title: str, mb_titles: list[str], min_similarity: float = 0.7
+) -> bool:
     """Check if Spotify album title matches any MB release group (fuzzy)."""
     norm_spotify = normalize_text(spotify_title)
     if not norm_spotify:
@@ -123,6 +138,7 @@ def _title_matches_mb(spotify_title: str, mb_titles: List[str], min_similarity: 
             return True
         # Similarity (catches "Deconstructed" vs "Deconstructed (Live)")
         from difflib import SequenceMatcher
+
         if SequenceMatcher(None, norm_spotify, norm_mb).ratio() >= min_similarity:
             return True
     return False
@@ -130,11 +146,12 @@ def _title_matches_mb(spotify_title: str, mb_titles: List[str], min_similarity: 
 
 @router.get("/new-releases")
 async def get_new_releases(
-    artist_limit: int = Query(10, ge=1, le=500, description="Max Lidarr artists to scan"),
-    album_types: Optional[str] = Query(
-        "album",
-        description="Comma-separated: album, ep, single, other (default: album)",
-    ),
+    artist_limit: Annotated[
+        int, Query(ge=1, le=500, description="Max Lidarr artists to scan")
+    ] = 10,
+    album_types: Annotated[
+        str | None, Query(description="Comma-separated: album, ep, single, other (default: album)")
+    ] = "album",
 ):
     """
     Scan Lidarr artists for releases on Spotify that are missing from MusicBrainz.
@@ -145,7 +162,7 @@ async def get_new_releases(
     config = ConfigAdapter()
 
     source_provider = _get_new_releases_source_from_db()
-    if source_provider == 'spotify':
+    if source_provider == "spotify":
         if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
             raise HTTPException(
                 status_code=503,
@@ -162,7 +179,7 @@ async def get_new_releases(
     if not selected:
         selected = {"album"}
 
-    results: List[dict] = []
+    results: list[dict] = []
     artists_checked = 0
     artists_with_releases = 0
     skipped_in_mb = 0
@@ -181,9 +198,9 @@ async def get_new_releases(
         )
 
         musicbrainz_client = MusicBrainzClient(config) if config.MUSICBRAINZ_ENABLED else None
-        cache_ttl = getattr(config, 'NEW_RELEASES_CACHE_DAYS', 14)
-        client_class = SpotifyClient if source_provider == 'spotify' else DeezerClient
-        artist_id_key = 'spotifyArtistId' if source_provider == 'spotify' else 'deezerArtistId'
+        cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
+        client_class = SpotifyClient if source_provider == "spotify" else DeezerClient
+        artist_id_key = "spotifyArtistId" if source_provider == "spotify" else "deezerArtistId"
 
         async with client_class(config) as release_client:
             for artist in artists_to_scan:
@@ -197,6 +214,17 @@ async def get_new_releases(
 
                 # Prefer Lidarr's link when available (avoids name collisions like Emmure vs emmurée)
                 artist_id = artist.get(artist_id_key)
+                if not artist_id and musicbrainz_client and mbid:
+                    # Fallback: MusicBrainz URL relations (Lidarr may not have Deezer/Spotify link)
+                    mb_artist_id = await musicbrainz_client.get_artist_streaming_id(
+                        mbid, source_provider
+                    )
+                    if mb_artist_id:
+                        artist_id = mb_artist_id
+                        logger.debug(
+                            f"Artist '{artist_name}' has no {source_provider} link in Lidarr; "
+                            f"used MusicBrainz URL relation"
+                        )
                 if not artist_id:
                     search_result = await release_client.search_artists(artist_name, limit=3)
                     if not search_result.get("success") or not search_result.get("artists"):
@@ -236,7 +264,9 @@ async def get_new_releases(
                     )
                     if mb_titles is None:
                         # API error (e.g. rate limit) - skip artist, don't add to pending
-                        logger.warning(f"Skipping {artist_name}: MusicBrainz fetch failed (rate limit?)")
+                        logger.warning(
+                            f"Skipping {artist_name}: MusicBrainz fetch failed (rate limit?)"
+                        )
                         continue
 
                 new_albums = []
@@ -266,27 +296,33 @@ async def get_new_releases(
                         continue
 
                     harmony_url = f"{HARMONY_BASE_URL}?url={quote(spotify_url, safe='')}"
-                    new_albums.append({
-                        "name": album.get("name", "Unknown"),
-                        "release_date": album.get("release_date", ""),
-                        "album_type": album_type,
-                        "total_tracks": total_tracks,
-                        "spotify_url": spotify_url,
-                        "harmony_url": harmony_url,
-                    })
+                    new_albums.append(
+                        {
+                            "name": album.get("name", "Unknown"),
+                            "release_date": album.get("release_date", ""),
+                            "album_type": album_type,
+                            "total_tracks": total_tracks,
+                            "spotify_url": spotify_url,
+                            "harmony_url": harmony_url,
+                        }
+                    )
 
                 if new_albums:
                     artists_with_releases += 1
                     lidarr_id = artist.get("id")
                     lidarr_base = (config.LIDARR_URL or "").rstrip("/")
-                    lidarr_artist_url = f"{lidarr_base}/artist/{lidarr_id}" if lidarr_base and lidarr_id else None
-                    results.append({
-                        "artist_name": artist_name,
-                        "lidarr_mbid": mbid,
-                        "spotify_artist_id": artist_id,
-                        "lidarr_artist_url": lidarr_artist_url,
-                        "albums": new_albums,
-                    })
+                    lidarr_artist_url = (
+                        f"{lidarr_base}/artist/{lidarr_id}" if lidarr_base and lidarr_id else None
+                    )
+                    results.append(
+                        {
+                            "artist_name": artist_name,
+                            "lidarr_mbid": mbid,
+                            "spotify_artist_id": artist_id,
+                            "lidarr_artist_url": lidarr_artist_url,
+                            "albums": new_albums,
+                        }
+                    )
 
         return {
             "success": True,
@@ -309,6 +345,7 @@ async def get_new_releases(
 
 # --- DB-backed endpoints ---
 
+
 def _pending_to_dict(r: NewReleasePending) -> dict:
     """Convert NewReleasePending to API response dict."""
     return {
@@ -324,7 +361,9 @@ def _pending_to_dict(r: NewReleasePending) -> dict:
         "harmony_url": r.harmony_url,
         "lidarr_artist_id": r.lidarr_artist_id,
         "lidarr_artist_url": r.lidarr_artist_url,
-        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{r.artist_mbid}" if r.artist_mbid else None,
+        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{r.artist_mbid}"
+        if r.artist_mbid
+        else None,
         "added_at": r.added_at.isoformat() if r.added_at else None,
         "source": r.source,
         "status": r.status,
@@ -333,13 +372,15 @@ def _pending_to_dict(r: NewReleasePending) -> dict:
 
 @router.get("/new-releases/pending")
 async def get_pending_releases(
-    status: Optional[str] = Query("pending", description="Filter: pending, recheck_requested, resolved, dismissed"),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    status: Annotated[
+        str | None, Query(description="Filter: pending, recheck_requested, resolved, dismissed")
+    ] = "pending",
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_config_db),
 ):
     """List pending new releases from DB (paginated)."""
-    logger = get_logger("cmdarr.api.new_releases")
+    get_logger("cmdarr.api.new_releases")
     q = db.query(NewReleasePending).filter(NewReleasePending.status == status)
     total = q.count()
     rows = q.order_by(NewReleasePending.added_at.desc()).offset(offset).limit(limit).all()
@@ -353,9 +394,9 @@ async def get_pending_releases(
 
 
 @router.post("/new-releases/clear/{item_id}")
-async def clear_release(item_id: int, db: Session = Depends(get_config_db)):
+async def clear_release(item_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Clear a pending release from the list. Will reappear on next scan if still not in MusicBrainz."""
-    logger = get_logger("cmdarr.api.new_releases")
+    get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -365,55 +406,62 @@ async def clear_release(item_id: int, db: Session = Depends(get_config_db)):
 
 
 @router.post("/new-releases/clear-all")
-async def clear_all_pending(db: Session = Depends(get_config_db)):
+async def clear_all_pending(db: Annotated[Session, Depends(get_config_db)]):
     """Clear all pending releases. They will reappear on next scan if still not in MusicBrainz."""
-    logger = get_logger("cmdarr.api.new_releases")
+    get_logger("cmdarr.api.new_releases")
     deleted = db.query(NewReleasePending).filter(NewReleasePending.status == "pending").delete()
     db.commit()
     return {"success": True, "message": f"Cleared {deleted} items", "cleared": deleted}
 
 
 @router.post("/new-releases/ignore/{item_id}")
-async def ignore_release(item_id: int, db: Session = Depends(get_config_db)):
+async def ignore_release(item_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Ignore a pending release - add to dismissed table. Won't reappear on next scan."""
-    logger = get_logger("cmdarr.api.new_releases")
+    get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
     release_date = (row.release_date or "").strip() or None
-    existing = db.query(DismissedArtistAlbum).filter(
-        DismissedArtistAlbum.artist_mbid == row.artist_mbid,
-        DismissedArtistAlbum.album_title == row.album_title,
-        DismissedArtistAlbum.release_date == release_date,
-    ).first()
+    existing = (
+        db.query(DismissedArtistAlbum)
+        .filter(
+            DismissedArtistAlbum.artist_mbid == row.artist_mbid,
+            DismissedArtistAlbum.album_title == row.album_title,
+            DismissedArtistAlbum.release_date == release_date,
+        )
+        .first()
+    )
     if not existing:
-        db.add(DismissedArtistAlbum(
-            artist_mbid=row.artist_mbid,
-            artist_name=row.artist_name,
-            album_title=row.album_title,
-            release_date=release_date,
-        ))
+        db.add(
+            DismissedArtistAlbum(
+                artist_mbid=row.artist_mbid,
+                artist_name=row.artist_name,
+                album_title=row.album_title,
+                release_date=release_date,
+            )
+        )
     row.status = "dismissed"
-    row.resolved_at = datetime.now(timezone.utc)
+    row.resolved_at = datetime.now(UTC)
     row.resolved_reason = "manual_ignore"
     db.commit()
     return {"success": True, "message": "Ignored"}
 
 
 @router.post("/new-releases/dismiss/{item_id}")
-async def dismiss_release(item_id: int, db: Session = Depends(get_config_db)):
+async def dismiss_release(item_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Legacy: same as ignore. Prefer /clear or /ignore."""
     return await ignore_release(item_id, db)
 
 
 @router.get("/new-releases/dismissed")
 async def get_dismissed_releases(
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_config_db),
 ):
     """List dismissed artist+album combinations (can be restored)."""
     from database.config_models import DismissedArtistAlbum
+
     q = db.query(DismissedArtistAlbum).order_by(DismissedArtistAlbum.dismissed_at.desc())
     total = q.count()
     rows = q.offset(offset).limit(limit).all()
@@ -437,9 +485,10 @@ async def get_dismissed_releases(
 
 
 @router.post("/new-releases/restore/{dismissed_id}")
-async def restore_dismissed(dismissed_id: int, db: Session = Depends(get_config_db)):
+async def restore_dismissed(dismissed_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Restore a dismissed item - removes from dismissed table so it can reappear on next scan."""
     from database.config_models import DismissedArtistAlbum
+
     row = db.query(DismissedArtistAlbum).filter(DismissedArtistAlbum.id == dismissed_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Dismissed item not found")
@@ -449,9 +498,9 @@ async def restore_dismissed(dismissed_id: int, db: Session = Depends(get_config_
 
 
 @router.post("/new-releases/recheck/{item_id}")
-async def recheck_release(item_id: int, db: Session = Depends(get_config_db)):
+async def recheck_release(item_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Verify in MusicBrainz; if album found, remove from pending."""
-    logger = get_logger("cmdarr.api.new_releases")
+    get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -470,12 +519,15 @@ async def recheck_release(item_id: int, db: Session = Depends(get_config_db)):
 
 
 @router.get("/new-releases/command-status")
-async def get_new_releases_command_status(db: Session = Depends(get_config_db)):
+async def get_new_releases_command_status(db: Annotated[Session, Depends(get_config_db)]):
     """Get new_releases_discovery command status (enabled, config) for UI."""
     from database.config_models import CommandConfig
-    row = db.query(CommandConfig).filter(
-        CommandConfig.command_name == "new_releases_discovery"
-    ).first()
+
+    row = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name == "new_releases_discovery")
+        .first()
+    )
     if not row:
         return {"enabled": False, "config_json": None}
     return {
@@ -486,14 +538,16 @@ async def get_new_releases_command_status(db: Session = Depends(get_config_db)):
 
 
 @router.post("/new-releases/run-batch")
-async def run_batch(db: Session = Depends(get_config_db)):
+async def run_batch(db: Annotated[Session, Depends(get_config_db)]):
     """Trigger the next batch scan (same logic as scheduled command)."""
     from database.config_models import CommandConfig
     from services.command_executor import command_executor
 
-    cmd = db.query(CommandConfig).filter(
-        CommandConfig.command_name == "new_releases_discovery"
-    ).first()
+    cmd = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name == "new_releases_discovery")
+        .first()
+    )
     if not cmd:
         raise HTTPException(status_code=400, detail="New Releases Discovery command not found")
     if not cmd.enabled:
@@ -508,16 +562,16 @@ async def run_batch(db: Session = Depends(get_config_db)):
 
 
 class ScanArtistRequest(BaseModel):
-    artist_mbid: Optional[str] = None
-    artist_name: Optional[str] = None
-    album_types: Optional[List[str]] = None
+    artist_mbid: str | None = None
+    artist_name: str | None = None
+    album_types: list[str] | None = None
 
 
 @router.post("/new-releases/scan-artist")
 async def scan_artist(body: ScanArtistRequest):
     """Manually scan a single artist. Provide artist_mbid (preferred) or artist_name."""
-    from services.command_executor import command_executor
     from clients.client_lidarr import LidarrClient
+    from services.command_executor import command_executor
 
     config = ConfigAdapter()
     if not config.LIDARR_API_KEY or not config.LIDARR_URL:
@@ -531,9 +585,13 @@ async def scan_artist(body: ScanArtistRequest):
         artist = next((a for a in artists if a.get("musicBrainzId") == body.artist_mbid), None)
     elif body.artist_name:
         name_lower = (body.artist_name or "").strip().lower()
-        artist = next((a for a in artists if (a.get("artistName") or "").lower() == name_lower), None)
+        artist = next(
+            (a for a in artists if (a.get("artistName") or "").lower() == name_lower), None
+        )
         if not artist:
-            artist = next((a for a in artists if name_lower in (a.get("artistName") or "").lower()), None)
+            artist = next(
+                (a for a in artists if name_lower in (a.get("artistName") or "").lower()), None
+            )
 
     if not artist:
         raise HTTPException(status_code=404, detail="Artist not found in Lidarr")
@@ -551,13 +609,17 @@ async def scan_artist(body: ScanArtistRequest):
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail="Scan failed")
-    return {"success": True, "execution_id": result.get("execution_id"), "artist_name": artist.get("artistName")}
+    return {
+        "success": True,
+        "execution_id": result.get("execution_id"),
+        "artist_name": artist.get("artistName"),
+    }
 
 
 @router.get("/new-releases/lidarr-artists")
 async def lidarr_artists_autocomplete(
-    q: str = Query("", min_length=1),
-    limit: int = Query(20, ge=1, le=50),
+    q: Annotated[str, Query(min_length=1)] = "",
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
     db: Session = Depends(get_config_db),
 ):
     """Autocomplete for Lidarr artists (from synced lidarr_artist table)."""
@@ -588,7 +650,7 @@ async def lidarr_artists_autocomplete(
     }
 
 
-def _parse_scan_url(url: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _parse_scan_url(url: str) -> tuple[str | None, str | None, str | None]:
     """
     Parse Spotify or Deezer artist or album URL.
     Returns (provider, artist_id, album_id).
@@ -596,6 +658,7 @@ def _parse_scan_url(url: str) -> tuple[Optional[str], Optional[str], Optional[st
     - Album URL: (provider, None, album_id) - caller fetches album to get artist
     """
     import re
+
     url = (url or "").strip()
     if not url:
         return None, None, None
@@ -603,6 +666,7 @@ def _parse_scan_url(url: str) -> tuple[Optional[str], Optional[str], Optional[st
         url = "https://" + url
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         host = (parsed.netloc or "").replace("www.", "").lower()
         path = (parsed.path or "").strip("/")
@@ -627,12 +691,10 @@ def _parse_scan_url(url: str) -> tuple[Optional[str], Optional[str], Optional[st
 
 class ScanArtistUrlRequest(BaseModel):
     url: str
-    album_types: Optional[List[str]] = None
+    album_types: list[str] | None = None
 
 
-def _build_missing_album(
-    album: dict, artist_id: str, selected: Set[str]
-) -> Optional[dict]:
+def _build_missing_album(album: dict, artist_id: str, selected: set[str]) -> dict | None:
     """Build missing album dict if album passes filters."""
     if str(album.get("primary_artist_id", "")) != str(artist_id):
         return None
@@ -703,7 +765,11 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             artist_name = album_info.get("artist_name", "Unknown")
             album_url = album_info.get("album_url", "")
             if not album_url:
-                album_url = f"https://open.spotify.com/album/{album_id}" if provider == "spotify" else f"https://www.deezer.com/album/{album_id}"
+                album_url = (
+                    f"https://open.spotify.com/album/{album_id}"
+                    if provider == "spotify"
+                    else f"https://www.deezer.com/album/{album_id}"
+                )
             harmony_url = f"{HARMONY_BASE_URL}?url={quote(album_url, safe='')}"
             return {
                 "success": True,
@@ -712,14 +778,16 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 "musicbrainz_artist_url": None,
                 "total_albums": 1,
                 "missing_count": 1,
-                "albums": [{
-                    "name": album_info.get("title", "Unknown"),
-                    "release_date": album_info.get("release_date", ""),
-                    "album_type": album_info.get("record_type", "album"),
-                    "total_tracks": album_info.get("nb_tracks", 0),
-                    "album_url": album_url,
-                    "harmony_url": harmony_url,
-                }],
+                "albums": [
+                    {
+                        "name": album_info.get("title", "Unknown"),
+                        "release_date": album_info.get("release_date", ""),
+                        "album_type": album_info.get("record_type", "album"),
+                        "total_tracks": album_info.get("nb_tracks", 0),
+                        "album_url": album_url,
+                        "harmony_url": harmony_url,
+                    }
+                ],
             }
         except HTTPException:
             raise
@@ -736,7 +804,8 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 raise HTTPException(status_code=404, detail="Artist not found")
             artist_name = artist_info.get("name", "Unknown")
             albums_result = await release_client.get_artist_albums(
-                artist_id, limit=50,
+                artist_id,
+                limit=50,
                 include_groups="album,single,compilation,appears_on",
                 fetch_all=True,
             )
@@ -749,8 +818,8 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         logger.exception(f"Scan artist URL failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    mb_artist_mbid: Optional[str] = None
-    best_missing: List[dict] = []
+    mb_artist_mbid: str | None = None
+    best_missing: list[dict] = []
 
     async with MusicBrainzClient(config) as mb_client:
         candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
@@ -762,7 +831,9 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 continue
             if await mb_client.artist_has_streaming_link(mbid, provider, artist_id):
                 mb_artist_mbid = mbid
-                titles = await mb_client.get_artist_release_groups(mbid, cache_ttl_days=cache_ttl) or []
+                titles = (
+                    await mb_client.get_artist_release_groups(mbid, cache_ttl_days=cache_ttl) or []
+                )
                 for album in albums:
                     item = _build_missing_album(album, artist_id, selected)
                     if item and not _title_matches_mb(album.get("name", ""), titles):
@@ -775,14 +846,23 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 mbid = cand.get("mbid")
                 if not mbid:
                     continue
-                recent_title = await mb_client.get_artist_most_recent_release_title(mbid, prefer_album=True)
+                recent_title = await mb_client.get_artist_most_recent_release_title(
+                    mbid, prefer_album=True
+                )
                 if not recent_title:
-                    recent_title = await mb_client.get_artist_most_recent_release_title(mbid, prefer_album=False)
+                    recent_title = await mb_client.get_artist_most_recent_release_title(
+                        mbid, prefer_album=False
+                    )
                 if recent_title:
                     for album in albums:
                         if _title_matches_mb(album.get("name", ""), [recent_title]):
                             mb_artist_mbid = mbid
-                            titles = await mb_client.get_artist_release_groups(mbid, cache_ttl_days=cache_ttl) or []
+                            titles = (
+                                await mb_client.get_artist_release_groups(
+                                    mbid, cache_ttl_days=cache_ttl
+                                )
+                                or []
+                            )
                             for a in albums:
                                 item = _build_missing_album(a, artist_id, selected)
                                 if item and not _title_matches_mb(a.get("name", ""), titles):
@@ -802,7 +882,9 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         "success": True,
         "artist_name": artist_name,
         "artist_in_mb": mb_artist_mbid is not None,
-        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}" if mb_artist_mbid else None,
+        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}"
+        if mb_artist_mbid
+        else None,
         "total_albums": len(albums),
         "missing_count": len(best_missing),
         "albums": best_missing,
@@ -810,7 +892,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
 
 
 @router.post("/new-releases/sync-lidarr-artists")
-async def sync_lidarr_artists(db: Session = Depends(get_config_db)):
+async def sync_lidarr_artists(db: Annotated[Session, Depends(get_config_db)]):
     """Sync Lidarr artists into lidarr_artist table for autocomplete."""
     from database.config_models import LidarrArtist
 
@@ -821,7 +903,7 @@ async def sync_lidarr_artists(db: Session = Depends(get_config_db)):
     async with LidarrClient(config) as lidarr_client:
         artists = await lidarr_client.get_all_artists()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = 0
     for a in artists:
         mbid = a.get("musicBrainzId")
@@ -835,12 +917,14 @@ async def sync_lidarr_artists(db: Session = Depends(get_config_db)):
             existing.last_synced_at = now
             updated += 1
         else:
-            db.add(LidarrArtist(
-                artist_mbid=mbid,
-                artist_name=a.get("artistName", ""),
-                lidarr_id=a.get("id"),
-                spotify_artist_id=a.get("spotifyArtistId"),
-                last_synced_at=now,
-            ))
+            db.add(
+                LidarrArtist(
+                    artist_mbid=mbid,
+                    artist_name=a.get("artistName", ""),
+                    lidarr_id=a.get("id"),
+                    spotify_artist_id=a.get("spotifyArtistId"),
+                    last_synced_at=now,
+                )
+            )
     db.commit()
     return {"success": True, "synced": len(artists), "updated": updated}

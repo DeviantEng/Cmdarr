@@ -3,31 +3,36 @@
 Configuration API endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from typing import Annotated, Any
 
-from database.database import get_config_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from database.config_models import ConfigSetting
+from database.database import get_config_db
 from services.config_service import config_service
 from utils.logger import get_logger
 
 router = APIRouter()
+
+
 # Lazy-load logger to avoid initialization issues
 def get_config_logger():
-    return get_logger('cmdarr.api.config')
+    return get_logger("cmdarr.api.config")
 
 
 class ConfigUpdateRequest(BaseModel):
     """Request model for updating configuration"""
+
     value: Any
     data_type: str = None
-    options: Optional[List[str]] = None
+    options: list[str] | None = None
 
 
 class ConfigSettingResponse(BaseModel):
     """Response model for configuration setting"""
+
     key: str
     value: Any
     default_value: str
@@ -37,10 +42,10 @@ class ConfigSettingResponse(BaseModel):
     is_sensitive: bool
     is_required: bool
     effective_value: Any  # The actual value being used (env > db > default)
-    options: Optional[List[str]] = None  # For dropdown data types
+    options: list[str] | None = None  # For dropdown data types
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=dict[str, Any])
 async def get_all_config():
     """Get all configuration settings (sensitive values obfuscated)"""
     try:
@@ -52,7 +57,7 @@ async def get_all_config():
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 
-@router.get("/category/{category}", response_model=Dict[str, Any])
+@router.get("/category/{category}", response_model=dict[str, Any])
 async def get_config_by_category(category: str):
     """Get configuration settings by category (sensitive values obfuscated)"""
     try:
@@ -67,17 +72,17 @@ async def get_config_by_category(category: str):
 
 
 @router.get("/{key}")
-async def get_config_setting(key: str, db: Session = Depends(get_config_db)):
+async def get_config_setting(key: str, db: Annotated[Session, Depends(get_config_db)]):
     """Get a specific configuration setting (sensitive values obfuscated)"""
     try:
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
         if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
-        
+
         value = config_service.get(key)
         if value is not None and setting.is_sensitive:
             value = "***"
-        
+
         return {"key": key, "value": value}
     except HTTPException:
         raise
@@ -87,104 +92,119 @@ async def get_config_setting(key: str, db: Session = Depends(get_config_db)):
 
 
 @router.put("/{key}")
-async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Session = Depends(get_config_db)):
+async def update_config_setting(
+    key: str, request: ConfigUpdateRequest, db: Annotated[Session, Depends(get_config_db)]
+):
     """Update a configuration setting"""
     try:
         # Check if setting exists
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
         if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
-        
+
         # For sensitive settings, "***" means "leave unchanged" (user didn't reveal the value)
         if setting.is_sensitive and request.value in ("***", ""):
             return {"key": key, "value": "***", "message": "Sensitive value unchanged"}
-        
+
         # Update setting
         success = config_service.set(key, request.value, request.data_type)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update configuration")
-        
+
         # Special handling for LOG_LEVEL changes
-        if key == 'LOG_LEVEL':
+        if key == "LOG_LEVEL":
             try:
                 from utils.logger import CmdarrLogger
+
                 # Mark as reconfiguring to allow setup_logging to run again
                 CmdarrLogger._reconfiguring = True
-                
+
                 # Create a config object with the current values
                 class ConfigWrapper:
                     def __init__(self, config_service):
-                        self.LOG_LEVEL = config_service.get('LOG_LEVEL', 'INFO')
-                        self.LOG_FILE = config_service.get('LOG_FILE', 'data/logs/cmdarr.log')
-                        self.LOG_RETENTION_DAYS = config_service.get('LOG_RETENTION_DAYS', 7)
-                
+                        self.LOG_LEVEL = config_service.get("LOG_LEVEL", "INFO")
+                        self.LOG_FILE = config_service.get("LOG_FILE", "data/logs/cmdarr.log")
+                        self.LOG_RETENTION_DAYS = config_service.get("LOG_RETENTION_DAYS", 7)
+
                 config_wrapper = ConfigWrapper(config_service)
                 CmdarrLogger.setup_logging(config_wrapper)
-                
+
                 # Clear the reconfiguring flag
-                delattr(CmdarrLogger, '_reconfiguring')
-                get_config_logger().info(f"Logging configuration reloaded with level: {request.value}")
+                delattr(CmdarrLogger, "_reconfiguring")
+                get_config_logger().info(
+                    f"Logging configuration reloaded with level: {request.value}"
+                )
             except Exception as e:
                 get_config_logger().warning(f"Failed to reload logging configuration: {e}")
                 # Clear the reconfiguring flag even if there was an error
-                if hasattr(CmdarrLogger, '_reconfiguring'):
-                    delattr(CmdarrLogger, '_reconfiguring')
-        
+                if hasattr(CmdarrLogger, "_reconfiguring"):
+                    delattr(CmdarrLogger, "_reconfiguring")
+
         # Special handling for cache user disabled settings - manage the hidden enabled setting
-        if key in ['LIBRARY_CACHE_PLEX_USER_DISABLED', 'LIBRARY_CACHE_JELLYFIN_USER_DISABLED']:
-            target = 'PLEX' if 'PLEX' in key else 'JELLYFIN'
-            enabled_key = f'LIBRARY_CACHE_{target}_ENABLED'
-            
+        if key in ["LIBRARY_CACHE_PLEX_USER_DISABLED", "LIBRARY_CACHE_JELLYFIN_USER_DISABLED"]:
+            target = "PLEX" if "PLEX" in key else "JELLYFIN"
+            enabled_key = f"LIBRARY_CACHE_{target}_ENABLED"
+
             # If user is disabling cache, set enabled to false
-            if request.value in [True, 'true', '1']:
+            if request.value in [True, "true", "1"]:
                 config_service.set(enabled_key, False)
                 get_config_logger().info(f"User disabled {target} library cache")
             # If user is enabling cache, set enabled to true
-            elif request.value in [False, 'false', '0']:
+            elif request.value in [False, "false", "0"]:
                 config_service.set(enabled_key, True)
                 get_config_logger().info(f"User enabled {target} library cache")
-            
+
             # Sync library_cache_builder command with cache target state
-            any_cache_enabled = (
-                config_service.get('LIBRARY_CACHE_PLEX_ENABLED', False) or
-                config_service.get('LIBRARY_CACHE_JELLYFIN_ENABLED', False)
-            )
+            any_cache_enabled = config_service.get(
+                "LIBRARY_CACHE_PLEX_ENABLED", False
+            ) or config_service.get("LIBRARY_CACHE_JELLYFIN_ENABLED", False)
             from database.config_models import CommandConfig
-            cache_builder = db.query(CommandConfig).filter(
-                CommandConfig.command_name == 'library_cache_builder'
-            ).first()
+
+            cache_builder = (
+                db.query(CommandConfig)
+                .filter(CommandConfig.command_name == "library_cache_builder")
+                .first()
+            )
             if cache_builder:
                 if not any_cache_enabled and cache_builder.enabled:
                     cache_builder.enabled = False
                     db.commit()
-                    get_config_logger().info("Disabled library_cache_builder (all cache targets disabled)")
+                    get_config_logger().info(
+                        "Disabled library_cache_builder (all cache targets disabled)"
+                    )
                 elif any_cache_enabled and not cache_builder.enabled:
                     cache_builder.enabled = True
                     db.commit()
-                    get_config_logger().info("Enabled library_cache_builder (cache target re-enabled)")
+                    get_config_logger().info(
+                        "Enabled library_cache_builder (cache target re-enabled)"
+                    )
                     # Trigger immediate cache build (same as startup)
                     try:
                         import asyncio
+
                         from services.command_executor import command_executor
+
                         asyncio.create_task(
                             command_executor.execute_command(
-                                'library_cache_builder',
-                                triggered_by='config_re_enable'
+                                "library_cache_builder", triggered_by="config_re_enable"
                             )
                         )
-                        get_config_logger().info("Queued library_cache_builder for immediate execution")
+                        get_config_logger().info(
+                            "Queued library_cache_builder for immediate execution"
+                        )
                     except Exception as e:
                         get_config_logger().warning(f"Failed to trigger cache build: {e}")
-        
+
         # Update options if provided
         if request.options is not None:
             import json
+
             setting.options = json.dumps(request.options)
             db.commit()
-        
+
         # Get updated value
         updated_value = config_service.get(key)
-        
+
         return {"key": key, "value": updated_value, "message": "Configuration updated successfully"}
     except HTTPException:
         raise
@@ -195,9 +215,7 @@ async def update_config_setting(key: str, request: ConfigUpdateRequest, db: Sess
 
 @router.get("/details/{key}", response_model=ConfigSettingResponse)
 async def get_config_setting_details(
-    key: str,
-    reveal: bool = False,
-    db: Session = Depends(get_config_db)
+    key: str, reveal: bool = False, db: Session = Depends(get_config_db)
 ):
     """Get detailed information about a configuration setting.
     When reveal=True, returns the actual value for sensitive keys (for 'Show key' verification)."""
@@ -205,20 +223,21 @@ async def get_config_setting_details(
         setting = db.query(ConfigSetting).filter(ConfigSetting.key == key).first()
         if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
-        
+
         # Parse options JSON string if present
         options = None
         if setting.options:
             try:
                 import json
+
                 options = json.loads(setting.options)
             except (json.JSONDecodeError, TypeError):
                 options = None
-        
+
         effective_value = setting.get_effective_value()
         if setting.is_sensitive and effective_value and not reveal:
             effective_value = "***"
-        
+
         return ConfigSettingResponse(
             key=setting.key,
             value=setting.value,
@@ -229,7 +248,7 @@ async def get_config_setting_details(
             is_sensitive=setting.is_sensitive,
             is_required=setting.is_required,
             effective_value=effective_value,
-            options=options
+            options=options,
         )
     except HTTPException:
         raise
@@ -238,8 +257,8 @@ async def get_config_setting_details(
         raise HTTPException(status_code=500, detail="Failed to retrieve configuration details")
 
 
-@router.get("/categories/", response_model=List[str])
-async def get_config_categories(db: Session = Depends(get_config_db)):
+@router.get("/categories/", response_model=list[str])
+async def get_config_categories(db: Annotated[Session, Depends(get_config_db)]):
     """Get all configuration categories"""
     try:
         categories = db.query(ConfigSetting.category).distinct().all()
@@ -257,7 +276,9 @@ async def validate_configuration():
         return {
             "valid": len(missing) == 0,
             "missing_settings": missing,
-            "message": "Configuration is valid" if len(missing) == 0 else f"Missing {len(missing)} required settings"
+            "message": "Configuration is valid"
+            if len(missing) == 0
+            else f"Missing {len(missing)} required settings",
         }
     except Exception as e:
         get_config_logger().error(f"Failed to validate configuration: {e}")
