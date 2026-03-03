@@ -10,6 +10,7 @@ import type {
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
+  ScanArtistUrlResponse,
   ImportListMetrics,
   LibraryCacheStatus,
 } from './types'
@@ -243,6 +244,10 @@ class ApiClient {
     return await this.request<ImportListMetrics>('/import_lists/metrics')
   }
 
+  async resetImportList(listId: 'lastfm' | 'playlistsync'): Promise<{ success: boolean }> {
+    return this.request(`/import_lists/discovery_${listId}/reset`, { method: 'POST' })
+  }
+
   async getNewReleases(params?: {
     artist_limit?: number
     album_types?: string[]
@@ -342,6 +347,13 @@ class ApiClient {
 
   async syncLidarrArtists(): Promise<{ success: boolean; synced?: number; updated?: number }> {
     return this.request(`/api/new-releases/sync-lidarr-artists`, { method: 'POST' })
+  }
+
+  async scanArtistUrl(params: { url: string; album_types?: string[] }): Promise<ScanArtistUrlResponse> {
+    return this.request(`/api/new-releases/scan-artist-url`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
   }
 }
 

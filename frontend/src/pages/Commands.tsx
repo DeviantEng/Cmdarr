@@ -28,6 +28,29 @@ const BUILTIN_COMMANDS = ['discovery_lastfm', 'library_cache_builder', 'new_rele
 
 const VIEW_MODE_KEY = 'cmdarr_commands_view_mode'
 
+const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
+  Dawn: { start: 3, end: 5 },
+  'Early Morning': { start: 6, end: 8 },
+  Morning: { start: 9, end: 11 },
+  Afternoon: { start: 12, end: 15 },
+  Evening: { start: 16, end: 18 },
+  Night: { start: 19, end: 21 },
+  'Late Night': { start: 22, end: 2 },
+}
+
+function hoursFromRange(start: number, end: number): number[] {
+  if (end >= start) return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+  return [...Array.from({ length: 24 - start }, (_, i) => start + i), ...Array.from({ length: end + 1 }, (_, i) => i)]
+}
+
+function hoursToRange(hours: number[]): { start: number; end: number } {
+  if (hours.length === 0) return { start: 0, end: 0 }
+  const low = hours.filter((h) => h < 12)
+  const high = hours.filter((h) => h >= 12)
+  if (low.length > 0 && high.length > 0) return { start: Math.min(...high), end: Math.max(...low) }
+  return { start: Math.min(...hours), end: Math.max(...hours) }
+}
+
 function getStoredViewMode(): ViewMode {
   try {
     const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -80,7 +103,19 @@ export function CommandsPage() {
     limit?: number
     min_match_score?: number
     enable_artist_discovery?: boolean
+    schedule_minute?: number
+    plex_history_account_id?: string
+    exclude_played_days?: number
+    history_lookback_days?: number
+    max_tracks?: number
+    sonic_similar_limit?: number
+    sonic_similarity_limit?: number
+    sonic_similarity_distance?: number
+    historical_ratio?: number
+    timezone?: string
+    time_periods?: Record<string, { start: number; end: number }>
   }>({})
+  const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([])
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([])
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null)
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null)
@@ -206,6 +241,18 @@ export function CommandsPage() {
     const cfg = command.config_json || {}
     const typesStr = (cfg.album_types as string) || 'album'
     const src = (cfg.new_releases_source as string) || 'deezer'
+    const isDaylist = command.command_name.startsWith('daylist_')
+
+    const timePeriods: Record<string, { start: number; end: number }> = { ...DEFAULT_DAYLIST_TIME_PERIODS }
+    const storedPeriods = cfg.time_periods as Record<string, number[]> | undefined
+    if (storedPeriods && typeof storedPeriods === 'object') {
+      for (const [period, hours] of Object.entries(storedPeriods)) {
+        if (Array.isArray(hours) && hours.length > 0) {
+          timePeriods[period] = hoursToRange(hours)
+        }
+      }
+    }
+
     setEditForm({
       schedule_override: !!command.schedule_override,
       schedule_cron: command.schedule_cron || '0 3 * * *',
@@ -218,7 +265,25 @@ export function CommandsPage() {
       limit: typeof cfg.limit === 'number' ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === 'number' ? cfg.min_match_score : 0.9,
       enable_artist_discovery: !!cfg.enable_artist_discovery,
+      schedule_minute: typeof cfg.schedule_minute === 'number' ? cfg.schedule_minute : 0,
+      plex_history_account_id: (cfg.plex_history_account_id ?? '') as string,
+      exclude_played_days: typeof cfg.exclude_played_days === 'number' ? cfg.exclude_played_days : 3,
+      history_lookback_days: typeof cfg.history_lookback_days === 'number' ? cfg.history_lookback_days : 45,
+      max_tracks: typeof cfg.max_tracks === 'number' ? cfg.max_tracks : 50,
+      sonic_similar_limit: typeof cfg.sonic_similar_limit === 'number' ? cfg.sonic_similar_limit : 8,
+      sonic_similarity_limit: typeof cfg.sonic_similarity_limit === 'number' ? cfg.sonic_similarity_limit : 50,
+      sonic_similarity_distance: typeof cfg.sonic_similarity_distance === 'number' ? cfg.sonic_similarity_distance : 1.0,
+      historical_ratio: typeof cfg.historical_ratio === 'number' ? cfg.historical_ratio : 0.3,
+      timezone: (cfg.timezone as string) || '',
+      time_periods: timePeriods,
     })
+    if (isDaylist) {
+      api.request<{ accounts: { id: string; name: string }[] }>('/api/commands/plex-accounts')
+        .then((r) => setPlexAccounts(r.accounts || []))
+        .catch(() => setPlexAccounts([]))
+    } else {
+      setPlexAccounts([])
+    }
   }
 
   const handleSaveCommand = async (updates: {
@@ -849,16 +914,18 @@ export function CommandsPage() {
 
       {/* Edit Command Dialog */}
       <Dialog open={!!editingCommand} onOpenChange={(open) => !open && setEditingCommand(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
             <DialogTitle>Edit Command: {editingCommand?.display_name}</DialogTitle>
             <DialogDescription>
               Configure command settings and schedule
             </DialogDescription>
           </DialogHeader>
           {editingCommand && (
-            <div className="space-y-4 py-4">
-              <div className="grid gap-4">
+            <>
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6">
+                <div className="space-y-4 py-4">
+                  <div className="grid gap-4">
                 {/* Display Name */}
                 <div className="space-y-2">
                   <Label>Display Name</Label>
@@ -916,6 +983,281 @@ export function CommandsPage() {
                       className="rounded border-input"
                     />
                   </div>
+                )}
+
+                {/* Daylist - editable fields */}
+                {editingCommand.command_name.startsWith('daylist_') && (
+                  <>
+                    {/* Primary settings */}
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Plex Account (play history source)</Label>
+                        <Select
+                          value={editForm.plex_history_account_id ?? ''}
+                          onValueChange={(v) =>
+                            setEditForm((f) => ({ ...f, plex_history_account_id: v }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Plex account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {plexAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.name || `Account ${acc.id}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Plex Home users only. Daylist uses this account&apos;s play history.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Run at minute of hour (0–59)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={editForm.schedule_minute ?? 0}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            setEditForm((f) => ({ ...f, schedule_minute: isNaN(v) ? 0 : v }))
+                          }}
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            if (!isNaN(v)) setEditForm((f) => ({ ...f, schedule_minute: Math.max(0, Math.min(59, v)) }))
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.). Min: 0, max: 59.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Exclude played (days)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={30}
+                            value={editForm.exclude_played_days ?? 3}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, exclude_played_days: isNaN(v) ? 3 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, exclude_played_days: Math.max(1, Math.min(30, v)) }))
+                              else setEditForm((f) => ({ ...f, exclude_played_days: 3 }))
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">Skip tracks played in last N days. Min: 1, max: 30.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>History lookback (days)</Label>
+                          <Input
+                            type="number"
+                            min={7}
+                            max={365}
+                            value={editForm.history_lookback_days ?? 45}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, history_lookback_days: isNaN(v) ? 45 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, history_lookback_days: Math.max(7, Math.min(365, v)) }))
+                              else setEditForm((f) => ({ ...f, history_lookback_days: 45 }))
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">Days of play history to analyze. Min: 7, max: 365.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max tracks</Label>
+                          <Input
+                            type="number"
+                            min={10}
+                            max={200}
+                            value={editForm.max_tracks ?? 50}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              setEditForm((f) => ({ ...f, max_tracks: isNaN(v) ? 50 : v }))
+                            }}
+                            onBlur={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              if (!isNaN(v)) setEditForm((f) => ({ ...f, max_tracks: Math.max(10, Math.min(200, v)) }))
+                              else setEditForm((f) => ({ ...f, max_tracks: 50 }))
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">Target playlist size. Min: 10, max: 200.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Advanced settings (collapsible) */}
+                    <details className="rounded-lg border p-4">
+                      <summary className="cursor-pointer font-medium text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        Advanced settings
+                      </summary>
+                      <div className="mt-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Historical ratio: {editForm.historical_ratio ?? 0.3}</Label>
+                            <input
+                              type="range"
+                              min={0.1}
+                              max={0.8}
+                              step={0.1}
+                              value={editForm.historical_ratio ?? 0.3}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, historical_ratio: parseFloat(e.target.value) }))
+                              }
+                              className="slider-range"
+                            />
+                            <p className="text-xs text-muted-foreground">Share of tracks from history. Min: 0.1, max: 0.8.</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonically similar limit</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={30}
+                              value={editForm.sonic_similar_limit ?? 8}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                setEditForm((f) => ({ ...f, sonic_similar_limit: isNaN(v) ? 8 : v }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) setEditForm((f) => ({ ...f, sonic_similar_limit: Math.max(1, Math.min(30, v)) }))
+                                else setEditForm((f) => ({ ...f, sonic_similar_limit: 8 }))
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">Max similar tracks per seed. Min: 1, max: 30.</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonically similar playlist limit</Label>
+                            <Input
+                              type="number"
+                              min={10}
+                              max={200}
+                              value={editForm.sonic_similarity_limit ?? 50}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                setEditForm((f) => ({ ...f, sonic_similarity_limit: isNaN(v) ? 50 : v }))
+                              }}
+                              onBlur={(e) => {
+                                const v = parseInt(e.target.value, 10)
+                                if (!isNaN(v)) setEditForm((f) => ({ ...f, sonic_similarity_limit: Math.max(10, Math.min(200, v)) }))
+                                else setEditForm((f) => ({ ...f, sonic_similarity_limit: 50 }))
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonically similar distance: {editForm.sonic_similarity_distance ?? 1.0}</Label>
+                            <input
+                              type="range"
+                              min={0.1}
+                              max={2}
+                              step={0.1}
+                              value={editForm.sonic_similarity_distance ?? 1.0}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, sonic_similarity_distance: parseFloat(e.target.value) }))
+                              }
+                              className="slider-range"
+                            />
+                            <p className="text-xs text-muted-foreground">0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Timezone (optional)</Label>
+                          <Input
+                            placeholder="e.g. America/New_York"
+                            value={editForm.timezone ?? ''}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, timezone: e.target.value }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Leave empty to use scheduler timezone</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Time periods (Start–End hour, 0–23)</Label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2). Hours 0–23.
+                          </p>
+                          <div className="grid gap-2">
+                            {Object.entries(editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS).map(([period, { start, end }]) => (
+                              <div key={period} className="flex items-center gap-3">
+                                <span className="w-28 text-sm">{period}</span>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={23}
+                                  className="w-16"
+                                  value={start}
+                                  onChange={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      time_periods: {
+                                        ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: isNaN(v) ? 0 : v },
+                                      },
+                                    }))
+                                  }}
+                                  onBlur={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    if (!isNaN(v)) {
+                                      const clamped = Math.max(0, Math.min(23, v))
+                                      setEditForm((f) => ({
+                                        ...f,
+                                        time_periods: {
+                                          ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                          [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), start: clamped },
+                                        },
+                                      }))
+                                    }
+                                  }}
+                                />
+                                <span className="text-muted-foreground">–</span>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={23}
+                                  className="w-16"
+                                  value={end}
+                                  onChange={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      time_periods: {
+                                        ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                        [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: isNaN(v) ? 0 : v },
+                                      },
+                                    }))
+                                  }}
+                                  onBlur={(e) => {
+                                    const v = parseInt(e.target.value, 10)
+                                    if (!isNaN(v)) {
+                                      const clamped = Math.max(0, Math.min(23, v))
+                                      setEditForm((f) => ({
+                                        ...f,
+                                        time_periods: {
+                                          ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
+                                          [period]: { ...(f.time_periods?.[period] ?? { start: 0, end: 0 }), end: clamped },
+                                        },
+                                      }))
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </>
                 )}
 
                 {/* Last.fm Discovery - editable fields */}
@@ -1020,7 +1362,8 @@ export function CommandsPage() {
                   </>
                 )}
 
-                {/* Schedule - all commands (override default cron) */}
+                {/* Schedule - all commands except daylist (override default cron) */}
+                {!editingCommand.command_name.startsWith('daylist_') && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <input
@@ -1055,6 +1398,7 @@ export function CommandsPage() {
                     </p>
                   )}
                 </div>
+                )}
 
                 {/* New Releases Discovery - editable fields */}
                 {editingCommand.command_name === 'new_releases_discovery' && (
@@ -1145,9 +1489,11 @@ export function CommandsPage() {
                     </Badge>
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex-shrink-0 flex justify-end gap-2 px-6 py-4 border-t bg-background">
                 <Button variant="outline" onClick={() => setEditingCommand(null)}>
                   Close
                 </Button>
@@ -1205,9 +1551,38 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith('daylist_') && (
+                  <Button
+                    onClick={() => {
+                      const time_periods: Record<string, number[]> = {}
+                      for (const [period, { start, end }] of Object.entries(editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS)) {
+                        time_periods[period] = hoursFromRange(start, end)
+                      }
+                      handleSaveCommand({
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          schedule_minute: editForm.schedule_minute ?? 0,
+                          plex_history_account_id: editForm.plex_history_account_id ?? '',
+                          exclude_played_days: editForm.exclude_played_days ?? 3,
+                          history_lookback_days: editForm.history_lookback_days ?? 45,
+                          max_tracks: editForm.max_tracks ?? 50,
+                          sonic_similar_limit: editForm.sonic_similar_limit ?? 8,
+                          sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
+                          sonic_similarity_distance: editForm.sonic_similarity_distance ?? 1.0,
+                          historical_ratio: editForm.historical_ratio ?? 0.3,
+                          timezone: editForm.timezone || undefined,
+                          time_periods,
+                        },
+                      })
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {(editingCommand.command_name !== 'new_releases_discovery' &&
                   editingCommand.command_name !== 'discovery_lastfm' &&
-                  !editingCommand.command_name.startsWith('playlist_sync_')) && (
+                  !editingCommand.command_name.startsWith('playlist_sync_') &&
+                  !editingCommand.command_name.startsWith('daylist_')) && (
                   <Button
                     onClick={() =>
                       handleSaveCommand({
@@ -1223,7 +1598,7 @@ export function CommandsPage() {
                   {editingCommand.enabled ? 'Disable' : 'Enable'}
                 </Button>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

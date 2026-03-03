@@ -196,8 +196,39 @@ export function ConfigPage() {
     return true
   })
 
+  // Display order for Media Servers: all Plex together, then all Jellyfin
+  const MEDIA_SERVER_ORDER: Record<string, number> = {
+    PLEX_CLIENT_ENABLED: 0,
+    PLEX_URL: 1,
+    PLEX_TOKEN: 2,
+    PLEX_TIMEOUT: 3,
+    PLEX_IGNORE_TLS: 4,
+    PLEX_LIBRARY_NAME: 5,
+    LIBRARY_CACHE_PLEX_ENABLED: 6,
+    LIBRARY_CACHE_PLEX_TTL_DAYS: 7,
+    LIBRARY_CACHE_PLEX_USER_DISABLED: 8,
+    JELLYFIN_CLIENT_ENABLED: 10,
+    JELLYFIN_URL: 11,
+    JELLYFIN_TOKEN: 12,
+    JELLYFIN_USER_ID: 13,
+    JELLYFIN_TIMEOUT: 14,
+    JELLYFIN_IGNORE_TLS: 15,
+    JELLYFIN_LIBRARY_NAME: 16,
+    LIBRARY_CACHE_JELLYFIN_ENABLED: 17,
+    LIBRARY_CACHE_JELLYFIN_TTL_DAYS: 18,
+    LIBRARY_CACHE_JELLYFIN_USER_DISABLED: 19,
+  }
+
   const getSettingsByCategory = (categories: string[]) => {
-    return filteredSettings.filter((s) => categories.includes(s.category))
+    const list = filteredSettings.filter((s) => categories.includes(s.category))
+    if (categories.includes('plex') && categories.includes('jellyfin')) {
+      return [...list].sort((a, b) => {
+        const orderA = MEDIA_SERVER_ORDER[a.key] ?? 999
+        const orderB = MEDIA_SERVER_ORDER[b.key] ?? 999
+        return orderA - orderB
+      })
+    }
+    return list
   }
 
   const renderSettingInput = (setting: ConfigSetting) => {

@@ -4,271 +4,299 @@ Deezer API Client
 Handles authentication and playlist operations for Deezer
 """
 
-import aiohttp
-import json
 import time
-from typing import Dict, List, Optional, Any
-from urllib.parse import urlencode
+from typing import Any
+
+from utils.playlist_parser import parse_playlist_url
 
 from .client_base import BaseAPIClient
-from utils.playlist_parser import parse_playlist_url
 
 
 class DeezerClient(BaseAPIClient):
     """Client for Deezer API operations"""
-    
+
     def __init__(self, config):
         super().__init__(
             config=config,
-            client_name='deezer',
-            base_url='https://api.deezer.com',
+            client_name="deezer",
+            base_url="https://api.deezer.com",
             rate_limit=50.0,  # Deezer allows 50 requests per 5 seconds
-            headers={}
+            headers={},
         )
-        
-        self.app_id = config.DEEZER_APP_ID if hasattr(config, 'DEEZER_APP_ID') else None
-        self.app_secret = config.DEEZER_APP_SECRET if hasattr(config, 'DEEZER_APP_SECRET') else None
+
+        self.app_id = config.DEEZER_APP_ID if hasattr(config, "DEEZER_APP_ID") else None
+        self.app_secret = config.DEEZER_APP_SECRET if hasattr(config, "DEEZER_APP_SECRET") else None
         self.access_token = None
         self.token_expires_at = 0
-        
+
         # Deezer public API doesn't require authentication
         self.logger.info("Deezer client initialized - public API access enabled")
-    
+
     async def _get_access_token(self) -> bool:
         """Get Deezer access token - not required for public playlists"""
         # Deezer allows public access to playlists without authentication
         # We'll use a simple identifier for logging purposes
         self.access_token = "public_access"
         self.token_expires_at = time.time() + (24 * 60 * 60)  # 24 hours
-        
+
         self.logger.info("Using public access for Deezer playlists (no authentication required)")
         return True
-    
+
     async def _ensure_valid_token(self) -> bool:
         """Ensure we have a valid access token"""
         if not self.access_token or time.time() >= self.token_expires_at:
             return await self._get_access_token()
         return True
-    
-    async def _make_request(self, endpoint: str, params: Dict[str, str] = None, 
-                           method: str = 'GET', **kwargs) -> Optional[Dict[str, Any]]:
+
+    async def _make_request(
+        self, endpoint: str, params: dict[str, str] = None, method: str = "GET", **kwargs
+    ) -> dict[str, Any] | None:
         """Override to handle Deezer public API (no authentication required)"""
         # Deezer public API doesn't require authentication
         # We can make requests directly without access tokens
-        
+
         # Call parent method
         return await super()._make_request(endpoint, params, method, **kwargs)
-    
-    async def get_playlist_info(self, url: str) -> Dict[str, Any]:
+
+    async def get_playlist_info(self, url: str) -> dict[str, Any]:
         """
         Get playlist metadata from Deezer URL
-        
+
         Args:
             url: Deezer playlist URL
-            
+
         Returns:
             Dict with playlist metadata or error info
         """
         try:
             # Parse URL to get playlist ID
             parsed = parse_playlist_url(url)
-            if not parsed['valid']:
-                return {
-                    'success': False,
-                    'error': parsed['error']
-                }
-            
-            playlist_id = parsed['playlist_id']
-            
+            if not parsed["valid"]:
+                return {"success": False, "error": parsed["error"]}
+
+            playlist_id = parsed["playlist_id"]
+
             # Fetch playlist info from Deezer
             return await self._get_playlist_info_async(playlist_id)
-            
+
         except Exception as e:
             self.logger.error(f"Error getting playlist info: {e}")
-            return {
-                'success': False,
-                'error': 'Failed to fetch playlist info'
-            }
-    
-    async def _get_playlist_info_async(self, playlist_id: str) -> Dict[str, Any]:
+            return {"success": False, "error": "Failed to fetch playlist info"}
+
+    async def _get_playlist_info_async(self, playlist_id: str) -> dict[str, Any]:
         """Async helper to get playlist info"""
         try:
             result = await self._get(f"/playlist/{playlist_id}")
-            
-            if result and not result.get('error'):
+
+            if result and not result.get("error"):
                 return {
-                    'success': True,
-                    'name': result.get('title', 'Unknown Playlist'),
-                    'description': result.get('description', ''),
-                    'owner': result.get('creator', {}).get('name', 'Unknown'),
-                    'track_count': result.get('nb_tracks', 0),
-                    'playlist_id': playlist_id,
-                    'public': True,  # Deezer playlists are generally public
-                    'collaborative': False,  # Deezer doesn't have collaborative playlists
-                    'fans': result.get('fans', 0),
-                    'duration': result.get('duration', 0)
+                    "success": True,
+                    "name": result.get("title", "Unknown Playlist"),
+                    "description": result.get("description", ""),
+                    "owner": result.get("creator", {}).get("name", "Unknown"),
+                    "track_count": result.get("nb_tracks", 0),
+                    "playlist_id": playlist_id,
+                    "public": True,  # Deezer playlists are generally public
+                    "collaborative": False,  # Deezer doesn't have collaborative playlists
+                    "fans": result.get("fans", 0),
+                    "duration": result.get("duration", 0),
                 }
             else:
-                error_msg = result.get('error', {}).get('message', 'Unknown error') if result else 'No response'
+                error_msg = (
+                    result.get("error", {}).get("message", "Unknown error")
+                    if result
+                    else "No response"
+                )
                 return {
-                    'success': False,
-                    'error': f'Failed to fetch playlist from Deezer: {error_msg}'
+                    "success": False,
+                    "error": f"Failed to fetch playlist from Deezer: {error_msg}",
                 }
-                
+
         except Exception as e:
             self.logger.error(f"Error fetching playlist info: {e}")
-            return {
-                'success': False,
-                'error': 'Failed to fetch playlist from Deezer'
-            }
-    
-    async def get_playlist_tracks(self, url: str) -> Dict[str, Any]:
+            return {"success": False, "error": "Failed to fetch playlist from Deezer"}
+
+    async def get_playlist_tracks(self, url: str) -> dict[str, Any]:
         """
         Get all tracks from a Deezer playlist
-        
+
         Args:
             url: Deezer playlist URL
-            
+
         Returns:
             Dict with tracks list or error info
         """
         try:
             # Parse URL to get playlist ID
             parsed = parse_playlist_url(url)
-            if not parsed['valid']:
-                return {
-                    'success': False,
-                    'error': parsed['error']
-                }
-            
-            playlist_id = parsed['playlist_id']
-            
+            if not parsed["valid"]:
+                return {"success": False, "error": parsed["error"]}
+
+            playlist_id = parsed["playlist_id"]
+
             # Fetch tracks from Deezer using the async method
             return await self._get_playlist_tracks_async(playlist_id)
-            
+
         except Exception as e:
             self.logger.error(f"Error getting playlist tracks: {e}")
-            return {
-                'success': False,
-                'error': f"Failed to fetch playlist tracks: {str(e)}"
-            }
-    
-    async def _get_playlist_tracks_async(self, playlist_id: str) -> Dict[str, Any]:
+            return {"success": False, "error": f"Failed to fetch playlist tracks: {str(e)}"}
+
+    async def _get_playlist_tracks_async(self, playlist_id: str) -> dict[str, Any]:
         """Async helper to get all playlist tracks with pagination"""
         try:
             all_tracks = []
             index = 0
             limit = 25  # Deezer's max per request
-            
+
             while True:
-                params = {
-                    'limit': limit,
-                    'index': index
-                }
-                
+                params = {"limit": limit, "index": index}
+
                 result = await self._get(f"/playlist/{playlist_id}/tracks", params=params)
-                
-                if not result or result.get('error'):
+
+                if not result or result.get("error"):
                     break
-                
-                tracks = result.get('data', [])
+
+                tracks = result.get("data", [])
                 if not tracks:
                     break
-                
+
                 # Process tracks
                 for track in tracks:
-                    if track and track.get('title'):  # Skip null tracks
-                        artist = track.get('artist', {})
-                        artist_name = artist.get('name', 'Unknown Artist') if artist else 'Unknown Artist'
-                        
+                    if track and track.get("title"):  # Skip null tracks
+                        artist = track.get("artist", {})
+                        artist_name = (
+                            artist.get("name", "Unknown Artist") if artist else "Unknown Artist"
+                        )
+
                         # Normalize text for consistent matching
                         from utils.text_normalizer import normalize_text
+
                         artist_name = normalize_text(artist_name)
-                        track_name = normalize_text(track.get('title', 'Unknown Track'))
-                        album_name = normalize_text(track.get('album', {}).get('title', 'Unknown Album'))
-                        
-                        all_tracks.append({
-                            'artist': artist_name,
-                            'track': track_name,
-                            'album': album_name,
-                            'duration': track.get('duration', 0),
-                            'explicit_lyrics': track.get('explicit_lyrics', False)
-                        })
-                
+                        track_name = normalize_text(track.get("title", "Unknown Track"))
+                        album_name = normalize_text(
+                            track.get("album", {}).get("title", "Unknown Album")
+                        )
+
+                        all_tracks.append(
+                            {
+                                "artist": artist_name,
+                                "track": track_name,
+                                "album": album_name,
+                                "duration": track.get("duration", 0),
+                                "explicit_lyrics": track.get("explicit_lyrics", False),
+                            }
+                        )
+
                 # Check if we got less than requested (end of results)
                 if len(tracks) < limit:
                     break
-                
+
                 index += limit
-                
+
                 # Safety check to prevent infinite loops
                 if index > 10000:  # Reasonable playlist limit
                     self.logger.warning("Reached safety limit for playlist tracks")
                     break
-            
-            return {
-                'success': True,
-                'tracks': all_tracks,
-                'total_tracks': len(all_tracks)
-            }
-            
+
+            return {"success": True, "tracks": all_tracks, "total_tracks": len(all_tracks)}
+
         except Exception as e:
             self.logger.error(f"Error fetching playlist tracks: {e}")
+            return {"success": False, "error": f"Failed to fetch tracks: {str(e)}"}
+
+    async def get_album(self, album_id: str) -> dict[str, Any]:
+        """Get album by ID. Returns artist_id, artist_name, title, album_url, etc."""
+        try:
+            result = await self._get(f"/album/{album_id}")
+            if not result or result.get("error"):
+                return {
+                    "success": False,
+                    "error": result.get("error", {}).get("message", "No response")
+                    if result
+                    else "No response",
+                }
+            artist = result.get("artist", {})
+            artist_id = str(artist.get("id", "")) if artist else ""
+            artist_name = artist.get("name", "") if artist else ""
+            album_url = result.get("link") or f"https://www.deezer.com/album/{album_id}"
             return {
-                'success': False,
-                'error': f"Failed to fetch tracks: {str(e)}"
+                "success": True,
+                "id": str(result.get("id", "")),
+                "title": result.get("title", ""),
+                "artist_id": artist_id,
+                "artist_name": artist_name,
+                "release_date": result.get("release_date", ""),
+                "record_type": (result.get("record_type") or "album").lower(),
+                "nb_tracks": result.get("nb_tracks", 0),
+                "album_url": album_url,
             }
-    
-    async def get_artist(self, artist_id: str) -> Dict[str, Any]:
+        except Exception as e:
+            self.logger.error(f"Error fetching album {album_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_artist(self, artist_id: str) -> dict[str, Any]:
         """
         Get artist by Deezer ID (for name validation when using Lidarr's Deezer link).
         Returns dict with id, name, or error. Matches Spotify client shape.
         """
         try:
             result = await self._get(f"/artist/{artist_id}")
-            if not result or result.get('error'):
-                return {'success': False, 'error': result.get('error', {}).get('message', 'No response') if result else 'No response', 'name': None}
+            if not result or result.get("error"):
+                return {
+                    "success": False,
+                    "error": result.get("error", {}).get("message", "No response")
+                    if result
+                    else "No response",
+                    "name": None,
+                }
             return {
-                'success': True,
-                'id': str(result.get('id', '')),
-                'name': result.get('name'),
+                "success": True,
+                "id": str(result.get("id", "")),
+                "name": result.get("name"),
             }
         except Exception as e:
             self.logger.error(f"Error fetching artist {artist_id}: {e}")
-            return {'success': False, 'error': str(e), 'name': None}
+            return {"success": False, "error": str(e), "name": None}
 
-    async def search_artists(self, name: str, limit: int = 5) -> Dict[str, Any]:
+    async def search_artists(self, name: str, limit: int = 5) -> dict[str, Any]:
         """
         Search for artists by name on Deezer.
         Returns dict with success, artists list (id, name, link) matching Spotify shape.
+        Uses order=RATING_DESC to prioritize the most popular (likely correct) match.
         """
         try:
-            params = {'q': name, 'limit': min(limit, 25)}
+            params = {"q": name, "limit": min(limit, 25), "order": "RATING_DESC"}
             result = await self._get("/search/artist", params=params)
-            if not result or result.get('error'):
-                return {'success': False, 'error': 'No response from Deezer', 'artists': []}
-            artists_data = result.get('data', [])
+            if not result or result.get("error"):
+                return {"success": False, "error": "No response from Deezer", "artists": []}
+            artists_data = result.get("data", [])
             artists = []
             for artist in artists_data[:limit]:
-                if artist and artist.get('name'):
-                    artists.append({
-                        'id': str(artist.get('id', '')),
-                        'name': artist.get('name'),
-                        'uri': artist.get('link', ''),
-                        'external_url': artist.get('link', ''),
-                    })
-            return {'success': True, 'artists': artists}
+                if artist and artist.get("name"):
+                    artists.append(
+                        {
+                            "id": str(artist.get("id", "")),
+                            "name": artist.get("name"),
+                            "uri": artist.get("link", ""),
+                            "external_url": artist.get("link", ""),
+                        }
+                    )
+            return {"success": True, "artists": artists}
         except Exception as e:
             self.logger.error(f"Error searching for artist '{name}': {e}")
-            return {'success': False, 'error': str(e), 'artists': []}
+            return {"success": False, "error": str(e), "artists": []}
 
     def _get_artist_albums_cache_key(self, artist_id: str) -> str:
         """Generate cache key for artist albums"""
         return f"deezer_artist_albums:{artist_id}"
 
-    async def get_artist_albums(self, artist_id: str, limit: int = 50,
-                                include_groups: str = 'album,single,compilation,appears_on',
-                                fetch_all: bool = False) -> Dict[str, Any]:
+    async def get_artist_albums(
+        self,
+        artist_id: str,
+        limit: int = 50,
+        include_groups: str = "album,single,compilation,appears_on",
+        fetch_all: bool = False,
+    ) -> dict[str, Any]:
         """
         Get albums for an artist from Deezer.
         Returns same shape as Spotify: success, albums with id, name, release_date,
@@ -277,41 +305,53 @@ class DeezerClient(BaseAPIClient):
         try:
             cache_key = self._get_artist_albums_cache_key(artist_id)
             if self.cache_enabled and self.cache and fetch_all:
-                cached = self.cache.get(cache_key, 'deezer')
+                cached = self.cache.get(cache_key, "deezer")
                 if cached is not None:
                     self.logger.debug(f"Cache hit for Deezer albums: {artist_id}")
-                    return {'success': True, 'albums': cached}
+                    return {"success": True, "albums": cached}
 
             all_albums = []
             request_url = f"/artist/{artist_id}/albums"
-            request_params = {'limit': min(limit, 100), 'index': 0}
+            request_params = {"limit": min(limit, 100), "index": 0}
 
             while True:
                 result = await self._get(request_url, params=request_params)
-                if not result or result.get('error'):
+                if not result or result.get("error"):
                     break
-                items = result.get('data', [])
+                items = result.get("data", [])
                 for item in items:
                     if not item:
                         continue
-                    artist_obj = item.get('artist', {})
-                    primary_artist_id = str(artist_obj.get('id', '')) if artist_obj else str(artist_id)
-                    record_type = (item.get('record_type') or 'album').lower()
-                    album_type = record_type if record_type in ('album', 'single', 'ep', 'compilation', 'appears_on') else 'album'
-                    deezer_url = item.get('link') or f"https://www.deezer.com/album/{item.get('id', '')}"
-                    all_albums.append({
-                        'id': str(item.get('id', '')),
-                        'name': item.get('title', ''),
-                        'release_date': item.get('release_date', ''),
-                        'release_date_precision': 'day' if item.get('release_date') and len(item.get('release_date', '')) >= 10 else 'year',
-                        'album_type': album_type,
-                        'total_tracks': item.get('nb_tracks', 0),
-                        'primary_artist_id': primary_artist_id,
-                        'external_url': deezer_url,
-                        'spotify_url': deezer_url,
-                    })
-                next_url = result.get('next')
-                if not fetch_all or not next_url or len(items) < request_params.get('limit', 100):
+                    artist_obj = item.get("artist", {})
+                    primary_artist_id = (
+                        str(artist_obj.get("id", "")) if artist_obj else str(artist_id)
+                    )
+                    record_type = (item.get("record_type") or "album").lower()
+                    album_type = (
+                        record_type
+                        if record_type in ("album", "single", "ep", "compilation", "appears_on")
+                        else "album"
+                    )
+                    deezer_url = (
+                        item.get("link") or f"https://www.deezer.com/album/{item.get('id', '')}"
+                    )
+                    all_albums.append(
+                        {
+                            "id": str(item.get("id", "")),
+                            "name": item.get("title", ""),
+                            "release_date": item.get("release_date", ""),
+                            "release_date_precision": "day"
+                            if item.get("release_date") and len(item.get("release_date", "")) >= 10
+                            else "year",
+                            "album_type": album_type,
+                            "total_tracks": item.get("nb_tracks", 0),
+                            "primary_artist_id": primary_artist_id,
+                            "external_url": deezer_url,
+                            "spotify_url": deezer_url,
+                        }
+                    )
+                next_url = result.get("next")
+                if not fetch_all or not next_url or len(items) < request_params.get("limit", 100):
                     break
                 request_url = next_url
                 request_params = {}
@@ -319,49 +359,55 @@ class DeezerClient(BaseAPIClient):
                     break
 
             if self.cache_enabled and self.cache and fetch_all:
-                ttl = getattr(self.config, 'NEW_RELEASES_CACHE_DAYS', 14)
-                self.cache.set(cache_key, 'deezer', all_albums, ttl)
+                ttl = getattr(self.config, "NEW_RELEASES_CACHE_DAYS", 14)
+                self.cache.set(cache_key, "deezer", all_albums, ttl)
 
-            return {'success': True, 'albums': all_albums}
+            return {"success": True, "albums": all_albums}
         except Exception as e:
             self.logger.error(f"Error getting albums for artist {artist_id}: {e}")
-            return {'success': False, 'error': str(e), 'albums': []}
+            return {"success": False, "error": str(e), "albums": []}
 
     async def test_connection(self) -> bool:
         """Test connection to Deezer API"""
         try:
             self.logger.info("Testing connection to Deezer API...")
-            
+
             # Deezer public API doesn't require authentication
             # Test with a public endpoint
             result = await self._get("/track/3135556")  # "Bohemian Rhapsody" by Queen
-            
-            if result and not result.get('error'):
+
+            if result and not result.get("error"):
                 self.logger.info("Successfully connected to Deezer API")
                 return True
             else:
-                error_msg = result.get('error', {}).get('message', 'Unknown error') if result else 'No response'
+                error_msg = (
+                    result.get("error", {}).get("message", "Unknown error")
+                    if result
+                    else "No response"
+                )
                 self.logger.error(f"Deezer API test failed: {error_msg}")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"Failed to connect to Deezer: {e}")
             return False
         finally:
             # Ensure session is closed
             await self.close()
-    
-    async def get_api_stats(self) -> Dict[str, Any]:
+
+    async def get_api_stats(self) -> dict[str, Any]:
         """Get Deezer API usage statistics"""
         stats = await super().get_api_stats()
-        stats.update({
-            'app_id_configured': bool(self.app_id),
-            'app_secret_configured': bool(self.app_secret),
-            'public_access': True,  # Deezer uses public API
-            'authentication_required': False
-        })
+        stats.update(
+            {
+                "app_id_configured": bool(self.app_id),
+                "app_secret_configured": bool(self.app_secret),
+                "public_access": True,  # Deezer uses public API
+                "authentication_required": False,
+            }
+        )
         return stats
-    
+
     async def close(self):
         """Close HTTP session"""
         try:
@@ -371,11 +417,11 @@ class DeezerClient(BaseAPIClient):
             self.logger.warning(f"Error closing Deezer client session: {e}")
         finally:
             self.session = None
-    
+
     def __del__(self):
         """Ensure session is closed when object is destroyed"""
         try:
-            if hasattr(self, 'session') and self.session and not self.session.closed:
+            if hasattr(self, "session") and self.session and not self.session.closed:
                 # Note: This is a synchronous cleanup - the session should already be closed
                 # This is just a safety net for cases where async cleanup didn't happen
                 pass

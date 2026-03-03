@@ -2,10 +2,18 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { api } from '@/lib/api'
 import type { ImportListMetrics } from '@/lib/types'
 import { toast } from 'sonner'
-import { Copy, Music, Disc } from 'lucide-react'
+import { Copy, Music, Disc, RotateCcw } from 'lucide-react'
 
 function formatFileSize(sizeBytes: number): string {
   if (sizeBytes < 1024) return `${sizeBytes} B`
@@ -24,10 +32,14 @@ function getStatusVariant(status: string): 'default' | 'secondary' | 'destructiv
   return 'outline'
 }
 
+type ResetListId = 'lastfm' | 'playlistsync'
+
 export function ImportListsPage() {
   const [metrics, setMetrics] = useState<ImportListMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [resetDialogOpen, setResetDialogOpen] = useState<ResetListId | null>(null)
+  const [resetting, setResetting] = useState(false)
 
   useEffect(() => {
     loadMetrics()
@@ -44,6 +56,20 @@ export function ImportListsPage() {
       toast.error(msg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleReset = async (listId: ResetListId) => {
+    try {
+      setResetting(true)
+      await api.resetImportList(listId)
+      toast.success('Import list cleared')
+      setResetDialogOpen(null)
+      await loadMetrics()
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to reset import list')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -151,6 +177,15 @@ export function ImportListsPage() {
                   <Copy className="h-4 w-4 mr-1" />
                   Copy
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setResetDialogOpen('lastfm')}
+                  disabled={!metrics?.lastfm?.exists || metrics.lastfm.entry_count === 0}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Reset
+                </Button>
               </div>
             </div>
             {metrics?.lastfm?.exists && (
@@ -214,6 +249,15 @@ export function ImportListsPage() {
                 <Button variant="secondary" size="sm" onClick={() => copyToClipboard(playlistsyncUrl)}>
                   <Copy className="h-4 w-4 mr-1" />
                   Copy
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setResetDialogOpen('playlistsync')}
+                  disabled={!metrics?.unified?.exists || metrics.unified.entry_count === 0}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Reset
                 </Button>
               </div>
             </div>
@@ -304,6 +348,31 @@ export function ImportListsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Reset confirmation dialog */}
+      <Dialog open={!!resetDialogOpen} onOpenChange={(open) => !open && setResetDialogOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Import List</DialogTitle>
+            <DialogDescription>
+              {resetDialogOpen &&
+                `Clear all ${resetDialogOpen === 'lastfm' ? metrics?.lastfm?.entry_count ?? 0 : metrics?.unified?.entry_count ?? 0} artists from this import list? Artists already in Lidarr will not be removed.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetDialogOpen(null)} disabled={resetting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => resetDialogOpen && handleReset(resetDialogOpen)}
+              disabled={resetting}
+            >
+              {resetting ? 'Resetting...' : 'Reset'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

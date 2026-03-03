@@ -132,3 +132,6 @@ coverage/
 # Temporary files
 temp/
 tmp/
+
+# Test/debug scripts (not for production)
+scripts/

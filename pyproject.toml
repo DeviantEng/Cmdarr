@@ -1,0 +1,35 @@
+# Project metadata omitted; version lives in __version__.py only
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", "venv", "frontend", "node_modules", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "FAST",   # FastAPI-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B904",   # raise from - enable incrementally
+    "B008",   # function call in default arg (Depends) - overlaps with FAST002
+    "FAST002",  # FastAPI Annotated deps - enable incrementally
+]
+# Migration scripts and run_fastapi use sys.path before imports
+[tool.ruff.lint.per-file-ignores]
+"database/migrate_split_simple.py" = ["E402"]
+"database/version_migrations.py" = ["E402"]
+"run_fastapi.py" = ["E402"]
+"app/main.py" = ["E402"]
+"commands/new_releases_discovery.py" = ["E402"]
+"database/init_commands.py" = ["E402"]
+"clients/client_base.py" = ["B024"]
+
+[tool.ruff.format]
+quote-style = "double"
