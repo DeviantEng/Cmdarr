@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Harmony Support**: Deezer album URLs work with Harmony for MusicBrainz import
 
 ### 🔧 Fixes & Improvements
-- **Access Log Suppression**: High-frequency polling endpoints (/health, /api/status/*, /api/commands/*, /static/*) suppressed from access logs to reduce console noise
+- **Access Log Level**: High-frequency polling endpoints (/health, /api/status/*, /api/commands/*, /static/*) downgraded to DEBUG—visible when LOG_LEVEL=DEBUG, hidden at INFO
 - **Error Messages**: API validation errors (e.g. missing Spotify creds) now shown in toast instead of generic "Failed to update"
 - **Cache Builder (Plex)**: Use `/recentlyAdded` endpoint instead of `addedAt>=` filter—Plex QueryParser rejects that filter for music and returns the entire library; recentlyAdded returns items most-recent first with no filter params
 

@@ -80,15 +80,23 @@ _UVICORN_QUIET_ENDPOINTS = (
 
 
 class UvicornHealthCheckFilter(logging.Filter):
-    """Filter for Uvicorn access logs: suppress high-frequency polls entirely"""
+    """Filter for Uvicorn access logs: downgrade high-frequency polls to DEBUG level.
+    Uvicorn passes (client_addr, method, full_path, http_version, status_code) in record.args—
+    getMessage() does not include these, so we must use record.args."""
     
     def filter(self, record):
-        if hasattr(record, 'getMessage'):
-            message = record.getMessage()
-            # Suppress successful GETs (2xx) to quiet endpoints
-            if ' 200 ' in message or ' 204 ' in message:
-                if any(endpoint in message for endpoint in _UVICORN_QUIET_ENDPOINTS):
-                    return False  # Don't log at all
+        try:
+            args = getattr(record, 'args', ())
+            if isinstance(args, (list, tuple)) and len(args) >= 5:
+                full_path = args[2]  # e.g. /health, /api/status/raw
+                status_code = int(args[4]) if args[4] else 0
+                if status_code in (200, 204) and any(
+                    ep in str(full_path) for ep in _UVICORN_QUIET_ENDPOINTS
+                ):
+                    record.levelno = logging.DEBUG
+                    record.levelname = 'DEBUG'
+        except (IndexError, TypeError, ValueError):
+            pass
         return True
 
 

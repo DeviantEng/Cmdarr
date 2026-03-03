@@ -418,5 +418,17 @@ app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 
 
 if __name__ == "__main__":
+    import copy
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn_log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    uvicorn_log_config["filters"] = uvicorn_log_config.get("filters", {})
+    uvicorn_log_config["filters"]["health_check_filter"] = {
+        "()": "utils.logger.UvicornHealthCheckFilter"
+    }
+    uvicorn_log_config["loggers"]["uvicorn.access"]["filters"] = ["health_check_filter"]
+    if "handlers" in uvicorn_log_config and "access" in uvicorn_log_config["handlers"]:
+        uvicorn_log_config["handlers"]["access"]["level"] = "INFO"
+    uvicorn.run(
+        app, host="0.0.0.0", port=8080,
+        log_config=uvicorn_log_config
+    )

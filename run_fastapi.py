@@ -92,8 +92,10 @@ def main():
             "()": "utils.logger.UvicornHealthCheckFilter"
         }
         
-        # Apply filter to uvicorn.access logger
+        # Apply filter to uvicorn.access logger; ensure handler at INFO so DEBUG records are hidden
         uvicorn_log_config["loggers"]["uvicorn.access"]["filters"] = ["health_check_filter"]
+        if "handlers" in uvicorn_log_config and "access" in uvicorn_log_config["handlers"]:
+            uvicorn_log_config["handlers"]["access"]["level"] = "INFO"
         
         uvicorn.run(
             "app.main:app",
