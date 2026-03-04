@@ -76,8 +76,7 @@ CodeQL runs independently (already configured in the repo).
 When the Docker image is built (push to main or develop), Trivy scans the image before push:
 
 - **Fail** on CRITICAL or HIGH vulnerabilities
-- **Report** in Action run log (table format)
-- **SARIF** uploaded to GitHub Security tab
+- **Report** in Action run summary (table format)
 
 The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan passes.
 

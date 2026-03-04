@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prettier**: Frontend formatting with `format` / `format:check` scripts; `eslint-config-prettier` to avoid conflicts
 - **Makefile**: `make check` (lint/format without auto-fix), `make fix` (auto-fix)
 - **PR Checks**: Workflow for PRs to main—ruff, frontend lint/format, npm-audit, pip-audit
-- **Trivy**: Image vulnerability scan in docker-publish; fails on CRITICAL/HIGH; SARIF upload for Security tab; table output in job summary
-- **CodeQL**: Updated upload-sarif to v4
+- **Trivy**: Image vulnerability scan in docker-publish; fails on CRITICAL/HIGH; table output in job summary
 - **ESLint**: Fixed 48 issues—types, unused vars, theme split into `theme-context`/`use-theme`, badge/button variants
 
 ### 🔧 Stability & Bug Fixes
