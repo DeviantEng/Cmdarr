@@ -89,6 +89,9 @@ jobs:
           cache-to: type=gha,mode=max
           no-cache: ${{ github.event.inputs.no_cache == 'true' }}
 
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+
       - name: Run Trivy vulnerability scanner (table)
         run: |
           if [ -f .trivyignore ]; then
@@ -102,15 +105,11 @@ jobs:
           echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           set +e
-          output=$(docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v ${{ github.workspace }}:/src \
-            -w /src \
-            aquasec/trivy image \
+          output=$(trivy image \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             --format table \
-            --ignorefile /src/.trivyignore \
+            --ignorefile .trivyignore \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan 2>&1)
           exitcode=$?
           set -e
