@@ -1,12 +1,12 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { ThemeProvider } from '@/lib/theme'
-import { Toaster } from '@/components/ui/sonner'
-import { Layout } from '@/components/Layout'
-import { CommandsPage } from '@/pages/Commands'
-import { ConfigPage } from '@/pages/Config'
-import { StatusPage } from '@/pages/Status'
-import { ImportListsPage } from '@/pages/ImportLists'
-import { NewReleasesPage } from '@/pages/NewReleases'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "@/lib/theme";
+import { Toaster } from "@/components/ui/sonner";
+import { Layout } from "@/components/Layout";
+import { CommandsPage } from "@/pages/Commands";
+import { ConfigPage } from "@/pages/Config";
+import { StatusPage } from "@/pages/Status";
+import { ImportListsPage } from "@/pages/ImportLists";
+import { NewReleasesPage } from "@/pages/NewReleases";
 
 function App() {
   return (
@@ -24,7 +24,7 @@ function App() {
       </Router>
       <Toaster />
     </ThemeProvider>
-  )
+  );
 }
 
-export default App
+export default App;

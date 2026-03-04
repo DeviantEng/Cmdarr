@@ -34,6 +34,7 @@ npm run dev
 ```
 
 The dev server will start on http://localhost:5173 with:
+
 - Hot module replacement
 - Proxy to FastAPI backend (http://localhost:8080)
 - WebSocket proxy for real-time updates
@@ -55,6 +56,7 @@ npm run preview
 ## Features
 
 ### Commands Page
+
 - Card and table view modes
 - Real-time status updates via WebSocket
 - Advanced filtering (status, type, search)
@@ -63,6 +65,7 @@ npm run preview
 - Properly positioned "New Command" button (finally!)
 
 ### Configuration Page
+
 - Tabbed interface organized by category:
   - Application (logging, web, output)
   - Music Sources (LastFM, ListenBrainz, Spotify, etc.)
@@ -75,12 +78,14 @@ npm run preview
 - Real-time save tracking
 
 ### Status Page
+
 - System health monitoring
 - Uptime tracking
 - Database and configuration status
 - API endpoint information
 
 ### Dark Mode
+
 - Automatic dark mode support
 - Persisted user preference
 - System preference detection
@@ -134,11 +139,13 @@ The frontend communicates with the FastAPI backend through:
 ## Troubleshooting
 
 ### Port 5173 already in use
+
 ```bash
 lsof -ti:5173 | xargs kill -9
 ```
 
 ### Build fails
+
 ```bash
 rm -rf node_modules dist
 npm install
@@ -146,4 +153,5 @@ npm run build
 ```
 
 ### WebSocket connection issues
+
 Ensure FastAPI backend is running on http://localhost:8080

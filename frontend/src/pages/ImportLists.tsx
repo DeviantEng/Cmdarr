@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -9,99 +9,99 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { api } from '@/lib/api'
-import type { ImportListMetrics } from '@/lib/types'
-import { toast } from 'sonner'
-import { Copy, Music, Disc, RotateCcw } from 'lucide-react'
+} from "@/components/ui/dialog";
+import { api } from "@/lib/api";
+import type { ImportListMetrics } from "@/lib/types";
+import { toast } from "sonner";
+import { Copy, Music, Disc, RotateCcw } from "lucide-react";
 
 function formatFileSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes} B`
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatStatus(status: string): string {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  return status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-function getStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'fresh') return 'default'
-  if (status === 'stale') return 'secondary'
-  if (status === 'very_stale' || status === 'empty') return 'destructive'
-  return 'outline'
+function getStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "fresh") return "default";
+  if (status === "stale") return "secondary";
+  if (status === "very_stale" || status === "empty") return "destructive";
+  return "outline";
 }
 
-type ResetListId = 'lastfm' | 'playlistsync'
+type ResetListId = "lastfm" | "playlistsync";
 
 export function ImportListsPage() {
-  const [metrics, setMetrics] = useState<ImportListMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [resetDialogOpen, setResetDialogOpen] = useState<ResetListId | null>(null)
-  const [resetting, setResetting] = useState(false)
+  const [metrics, setMetrics] = useState<ImportListMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState<ResetListId | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    loadMetrics()
-  }, [])
+    loadMetrics();
+  }, []);
 
   const loadMetrics = async () => {
     try {
-      setError(null)
-      const data = await api.getImportListMetrics()
-      setMetrics(data)
-    } catch (err: any) {
-      const msg = err?.message || 'Failed to load import list metrics'
-      setError(msg)
-      toast.error(msg)
+      setError(null);
+      const data = await api.getImportListMetrics();
+      setMetrics(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load import list metrics";
+      setError(msg);
+      toast.error(msg);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleReset = async (listId: ResetListId) => {
     try {
-      setResetting(true)
-      await api.resetImportList(listId)
-      toast.success('Import list cleared')
-      setResetDialogOpen(null)
-      await loadMetrics()
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to reset import list')
+      setResetting(true);
+      await api.resetImportList(listId);
+      toast.success("Import list cleared");
+      setResetDialogOpen(null);
+      await loadMetrics();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset import list");
     } finally {
-      setResetting(false)
+      setResetting(false);
     }
-  }
+  };
 
   const copyToClipboard = async (url: string) => {
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url)
-        toast.success('URL copied to clipboard')
-        return
+        await navigator.clipboard.writeText(url);
+        toast.success("URL copied to clipboard");
+        return;
       }
     } catch {
       /* fall through to legacy fallback */
     }
     // Fallback for HTTP/non-secure contexts where clipboard API is blocked
     try {
-      const textarea = document.createElement('textarea')
-      textarea.value = url
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      toast.success('URL copied to clipboard')
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      toast.success("URL copied to clipboard");
     } catch {
-      toast.error('Failed to copy URL (try selecting and copying manually)')
+      toast.error("Failed to copy URL (try selecting and copying manually)");
     }
-  }
+  };
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-  const lastfmUrl = `${baseUrl}/import_lists/discovery_lastfm`
-  const playlistsyncUrl = `${baseUrl}/import_lists/discovery_playlistsync`
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const lastfmUrl = `${baseUrl}/import_lists/discovery_lastfm`;
+  const playlistsyncUrl = `${baseUrl}/import_lists/discovery_playlistsync`;
 
   if (loading) {
     return (
@@ -114,7 +114,7 @@ export function ImportListsPage() {
         </div>
         <div className="text-center text-muted-foreground py-12">Loading...</div>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -134,7 +134,7 @@ export function ImportListsPage() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
@@ -157,7 +157,7 @@ export function ImportListsPage() {
               </h2>
               {metrics?.lastfm && (
                 <Badge variant={getStatusVariant(metrics.lastfm.status)}>
-                  {metrics.lastfm.exists ? formatStatus(metrics.lastfm.status) : 'Not Available'}
+                  {metrics.lastfm.exists ? formatStatus(metrics.lastfm.status) : "Not Available"}
                 </Badge>
               )}
             </div>
@@ -180,7 +180,7 @@ export function ImportListsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setResetDialogOpen('lastfm')}
+                  onClick={() => setResetDialogOpen("lastfm")}
                   disabled={!metrics?.lastfm?.exists || metrics.lastfm.entry_count === 0}
                 >
                   <RotateCcw className="h-4 w-4 mr-1" />
@@ -230,12 +230,14 @@ export function ImportListsPage() {
               </h2>
               {metrics?.unified && (
                 <Badge variant={getStatusVariant(metrics.unified.status)}>
-                  {metrics.unified.exists ? formatStatus(metrics.unified.status) : 'Not Available'}
+                  {metrics.unified.exists ? formatStatus(metrics.unified.status) : "Not Available"}
                 </Badge>
               )}
             </div>
             <p className="text-muted-foreground mb-4">
-              Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when tracks fail to match in your library. Requires &quot;Enable artist discovery&quot; to be checked in the playlist sync command settings (Commands → Edit).
+              Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when
+              tracks fail to match in your library. Requires &quot;Enable artist discovery&quot; to
+              be checked in the playlist sync command settings (Commands → Edit).
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Endpoint URL</label>
@@ -246,14 +248,18 @@ export function ImportListsPage() {
                   value={playlistsyncUrl}
                   className="flex-1 px-3 py-2 bg-muted border rounded-md text-sm font-mono"
                 />
-                <Button variant="secondary" size="sm" onClick={() => copyToClipboard(playlistsyncUrl)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => copyToClipboard(playlistsyncUrl)}
+                >
                   <Copy className="h-4 w-4 mr-1" />
                   Copy
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setResetDialogOpen('playlistsync')}
+                  onClick={() => setResetDialogOpen("playlistsync")}
                   disabled={!metrics?.unified?.exists || metrics.unified.entry_count === 0}
                 >
                   <RotateCcw className="h-4 w-4 mr-1" />
@@ -304,19 +310,25 @@ export function ImportListsPage() {
               <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
                 1
               </span>
-              <span>Go to <strong>Settings → Import Lists</strong></span>
+              <span>
+                Go to <strong>Settings → Import Lists</strong>
+              </span>
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
                 2
               </span>
-              <span>Click <strong>Add → Custom List</strong></span>
+              <span>
+                Click <strong>Add → Custom List</strong>
+              </span>
             </div>
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
                 3
               </span>
-              <span>Set <strong>URL</strong> to one of:</span>
+              <span>
+                Set <strong>URL</strong> to one of:
+              </span>
             </div>
             <div className="ml-9 space-y-2">
               <div className="flex items-center gap-2">
@@ -325,7 +337,9 @@ export function ImportListsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <code className="bg-muted px-2 py-1 rounded text-sm">{playlistsyncUrl}</code>
-                <span className="text-sm text-muted-foreground">(Playlist sync discovered artists)</span>
+                <span className="text-sm text-muted-foreground">
+                  (Playlist sync discovered artists)
+                </span>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -343,7 +357,8 @@ export function ImportListsPage() {
           </div>
           <div className="mt-4 p-3 bg-muted rounded-md">
             <p className="text-sm">
-              <strong>Pro tip:</strong> You can add multiple import lists for different discovery sources! Each provides unique recommendations based on different algorithms.
+              <strong>Pro tip:</strong> You can add multiple import lists for different discovery
+              sources! Each provides unique recommendations based on different algorithms.
             </p>
           </div>
         </CardContent>
@@ -356,7 +371,7 @@ export function ImportListsPage() {
             <DialogTitle>Reset Import List</DialogTitle>
             <DialogDescription>
               {resetDialogOpen &&
-                `Clear all ${resetDialogOpen === 'lastfm' ? metrics?.lastfm?.entry_count ?? 0 : metrics?.unified?.entry_count ?? 0} artists from this import list? Artists already in Lidarr will not be removed.`}
+                `Clear all ${resetDialogOpen === "lastfm" ? (metrics?.lastfm?.entry_count ?? 0) : (metrics?.unified?.entry_count ?? 0)} artists from this import list? Artists already in Lidarr will not be removed.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -368,11 +383,11 @@ export function ImportListsPage() {
               onClick={() => resetDialogOpen && handleReset(resetDialogOpen)}
               disabled={resetting}
             >
-              {resetting ? 'Resetting...' : 'Reset'}
+              {resetting ? "Resetting..." : "Reset"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

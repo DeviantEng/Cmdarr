@@ -4,6 +4,91 @@ This document covers architecture, command details, configuration reference, and
 
 ---
 
+## Development Flow
+
+This section describes the branching model, workflow, and quality gates for Cmdarr. AI agents and developers should follow this process.
+
+### Branch Model
+
+- **main** – Production; protected; only updated via PR from release branches
+- **develop** – Integration branch; feature/fix branches merge here freely
+- **feature/\*** – New features (e.g. `feature/daylist`)
+- **fix/\*** – Bug fixes (e.g. `fix/0.3.6-release`)
+- **release/\*** – Release preparation; created from develop, PR'd to main
+
+### Workflow
+
+```mermaid
+flowchart LR
+    subgraph dev [Development]
+        F[feature/fix branch] --> M[merge to develop]
+        M --> T1[test]
+        T1 --> R[run make check]
+        R --> FIX[fix issues]
+        FIX --> T2[push to develop]
+        T2 --> T3[test]
+    end
+
+    subgraph release [Release]
+        T3 --> RB[release branch + tag]
+        RB --> PR[PR to main]
+        PR --> GATE[gate checks]
+        GATE --> APPROVE[approve if clean]
+        APPROVE --> MERGE[merge]
+        MERGE --> BUILD[CI builds prod image]
+        BUILD --> SYNC[push main to develop]
+    end
+```
+
+1. Create feature/fix branch from develop
+2. Work, test, run `make check`; fix any issues with `make fix` or manual changes
+3. Merge to develop (no PR required for solo development)
+4. Test on develop
+5. When ready to release: create release branch from develop, tag, open PR to main
+6. Gate runs on PR to main; all checks must pass
+7. Approve and merge; CI builds prod image; push main back to develop
+
+### Dev-Time Commands
+
+| Command | Purpose |
+|---------|---------|
+| `make check` | Run all gate checks (mirrors CI); no auto-fix |
+| `make fix` | Auto-fix high-confidence issues (formatting, safe lint fixes); review diff before commit |
+
+Run `make check` before pushing to develop or opening a PR to main. Use `make fix` to auto-fix; manually fix anything that remains.
+
+### Gate Check Specification
+
+The PR gate runs on `pull_request` to `main` only. All jobs must pass. No gates on develop or commits.
+
+| Job | Working dir | Command | Fail if |
+|-----|-------------|---------|---------|
+| ruff | repo root | `ruff check . && ruff format --check .` | exit code != 0 |
+| frontend-lint | frontend | `npm ci && npm run lint` | exit code != 0 |
+| frontend-format | frontend | `npm run format:check` | exit code != 0 |
+| npm-audit | frontend | `npm ci && npm audit --audit-level=high` | vulnerabilities found |
+| pip-audit | repo root | `pip install pip-audit && pip-audit` | vulnerabilities found |
+
+CodeQL runs independently (already configured in the repo).
+
+### Docker Build Pipeline
+
+When the Docker image is built (push to main or develop), Trivy scans the image before push:
+
+- **Fail** on CRITICAL or HIGH vulnerabilities
+- **Report** in Action run log (table format)
+- **SARIF** uploaded to GitHub Security tab
+
+The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan passes.
+
+### Best Practices
+
+- No auto-fix at the gate; all fixes must be committed before the PR
+- Run `make check` locally before opening a PR to main
+- Fix issues in development; the gate is the final verification
+
+---
+
 ## Available Commands
 
 ### Discovery Commands

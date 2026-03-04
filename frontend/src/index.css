@@ -42,7 +42,7 @@
   --color-destructive-foreground: oklch(98% 0 0);
   --color-border: oklch(28% 0.03 255);
   --color-input: oklch(24% 0.03 255);
-  --color-ring: oklch(48% 0.20 255);
+  --color-ring: oklch(48% 0.2 255);
 }
 
 * {

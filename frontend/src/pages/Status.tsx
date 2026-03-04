@@ -1,135 +1,155 @@
-import { useState, useEffect } from 'react'
-import { Activity, CheckCircle2, XCircle, Clock, Server, RotateCcw, Database, RefreshCw, RotateCw } from 'lucide-react'
-import { api } from '@/lib/api'
-import type { StatusInfo, LibraryCacheStatus } from '@/lib/types'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { toast } from 'sonner'
+import { useState, useEffect } from "react";
+import {
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Server,
+  RotateCcw,
+  Database,
+  RefreshCw,
+  RotateCw,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import type { StatusInfo, LibraryCacheStatus } from "@/lib/types";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 export function StatusPage() {
-  const [status, setStatus] = useState<StatusInfo | null>(null)
-  const [health, setHealth] = useState<any>(null)
-  const [cacheStatus, setCacheStatus] = useState<{ plex: LibraryCacheStatus; jellyfin: LibraryCacheStatus } | null>(null)
-  const [cacheActionLoading, setCacheActionLoading] = useState<'refresh' | 'rebuild' | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [dismissedOpen, setDismissedOpen] = useState(false)
-  const [dismissed, setDismissed] = useState<{ id: number; artist_name: string; album_title: string; release_date?: string }[]>([])
-  const [dismissedTotal, setDismissedTotal] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<StatusInfo | null>(null);
+  const [health, setHealth] = useState<{
+    status: string;
+    message: string;
+    timestamp: string;
+  } | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<{
+    plex: LibraryCacheStatus;
+    jellyfin: LibraryCacheStatus;
+  } | null>(null);
+  const [cacheActionLoading, setCacheActionLoading] = useState<"refresh" | "rebuild" | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dismissedOpen, setDismissedOpen] = useState(false);
+  const [dismissed, setDismissed] = useState<
+    { id: number; artist_name: string; album_title: string; release_date?: string }[]
+  >([]);
+  const [dismissedTotal, setDismissedTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStatus()
-    const interval = setInterval(loadStatus, 30000) // Refresh every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
+    loadStatus();
+    const interval = setInterval(loadStatus, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
 
   const loadDismissed = async () => {
     try {
-      const data = await api.getDismissedReleases({ limit: 100 })
-      setDismissed(data.items)
-      setDismissedTotal(data.total)
+      const data = await api.getDismissedReleases({ limit: 100 });
+      setDismissed(data.items);
+      setDismissedTotal(data.total);
     } catch {
-      setDismissed([])
-      setDismissedTotal(0)
+      setDismissed([]);
+      setDismissedTotal(0);
     }
-  }
+  };
 
   const handleRestore = async (id: number) => {
     try {
-      await api.restoreDismissed(id)
-      toast.success('Restored - will reappear on next scan')
-      loadDismissed()
+      await api.restoreDismissed(id);
+      toast.success("Restored - will reappear on next scan");
+      loadDismissed();
     } catch {
-      toast.error('Failed to restore')
+      toast.error("Failed to restore");
     }
-  }
+  };
 
   const loadStatus = async () => {
-    setError(null)
+    setError(null);
     try {
       const [statusData, healthData, cacheData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
         api.getCacheStatus().catch(() => null),
-      ])
-      setStatus(statusData)
-      setHealth(healthData)
-      setCacheStatus(cacheData)
-    } catch (err) {
-      setError('Failed to load status')
-      toast.error('Failed to load status')
-      console.error(err)
+      ]);
+      setStatus(statusData);
+      setHealth(healthData);
+      setCacheStatus(cacheData);
+    } catch {
+      setError("Failed to load status");
+      toast.error("Failed to load status");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const formatCacheTime = (ts: number | null) => {
-    if (!ts) return 'Never'
-    return new Date(ts * 1000).toLocaleString()
-  }
+    if (!ts) return "Never";
+    return new Date(ts * 1000).toLocaleString();
+  };
 
   const handleCacheRefresh = async (forceRebuild: boolean) => {
-    setCacheActionLoading(forceRebuild ? 'rebuild' : 'refresh')
+    setCacheActionLoading(forceRebuild ? "rebuild" : "refresh");
     try {
-      const result = await api.refreshLibraryCache('all', forceRebuild)
+      const result = await api.refreshLibraryCache("all", forceRebuild);
       if (result.success) {
-        toast.success(result.message ?? (forceRebuild ? 'Cache rebuilt' : 'Cache refreshed'))
-        loadStatus()
+        toast.success(result.message ?? (forceRebuild ? "Cache rebuilt" : "Cache refreshed"));
+        loadStatus();
       } else {
-        toast.error(result.error ?? 'Cache operation failed')
+        toast.error(result.error ?? "Cache operation failed");
       }
-    } catch (err) {
-      toast.error('Cache operation failed')
+    } catch {
+      toast.error("Cache operation failed");
     } finally {
-      setCacheActionLoading(null)
+      setCacheActionLoading(null);
     }
-  }
+  };
 
   const openDismissed = () => {
-    setDismissedOpen(true)
-    loadDismissed()
-  }
+    setDismissedOpen(true);
+    loadDismissed();
+  };
 
   const formatUptime = (seconds: number) => {
-    const days = Math.floor(seconds / 86400)
-    const hours = Math.floor((seconds % 86400) / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    
-    const parts = []
-    if (days > 0) parts.push(`${days}d`)
-    if (hours > 0) parts.push(`${hours}h`)
-    if (minutes > 0) parts.push(`${minutes}m`)
-    
-    return parts.join(' ') || '<1m'
-  }
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+
+    return parts.join(" ") || "<1m";
+  };
 
   if (loading) {
     return (
       <div>
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Status</h1>
-          <p className="mt-2 text-muted-foreground">
-            System status and health information
-          </p>
+          <p className="mt-2 text-muted-foreground">System status and health information</p>
         </div>
         <div className="text-center text-muted-foreground">Loading status...</div>
       </div>
-    )
+    );
   }
 
-  const isHealthy = health?.status === 'healthy'
+  const isHealthy = health?.status === "healthy";
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold">Status</h1>
-        <p className="mt-2 text-muted-foreground">
-          System status and health information
-        </p>
+        <p className="mt-2 text-muted-foreground">System status and health information</p>
       </div>
 
       {error && (
@@ -167,7 +187,7 @@ export function StatusPage() {
         <CardContent>
           <p className="text-sm text-muted-foreground">{health?.message}</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Last checked: {health?.timestamp ? new Date(health.timestamp).toLocaleString() : 'N/A'}
+            Last checked: {health?.timestamp ? new Date(health.timestamp).toLocaleString() : "N/A"}
           </p>
         </CardContent>
       </Card>
@@ -185,9 +205,9 @@ export function StatusPage() {
               <p className="text-xs text-muted-foreground">
                 {status.version}
                 {status.runtime_mode && (
-                  <> · {status.runtime_mode === 'docker' ? 'Docker' : 'Standalone'}</>
+                  <> · {status.runtime_mode === "docker" ? "Docker" : "Standalone"}</>
                 )}
-                {status.runtime_mode === 'docker' && status.docker_image_tag && (
+                {status.runtime_mode === "docker" && status.docker_image_tag && (
                   <> · :{status.docker_image_tag}</>
                 )}
               </p>
@@ -213,7 +233,7 @@ export function StatusPage() {
             <CardContent>
               <div className="text-2xl font-bold capitalize">{status.database_status}</div>
               <p className="text-xs text-muted-foreground">
-                {status.database_status === 'connected' ? 'Operating normally' : 'Check connection'}
+                {status.database_status === "connected" ? "Operating normally" : "Check connection"}
               </p>
             </CardContent>
           </Card>
@@ -226,7 +246,7 @@ export function StatusPage() {
             <CardContent>
               <div className="text-2xl font-bold capitalize">{status.configuration_status}</div>
               <p className="text-xs text-muted-foreground">
-                {status.configuration_status === 'valid' ? 'All set' : 'Needs attention'}
+                {status.configuration_status === "valid" ? "All set" : "Needs attention"}
               </p>
             </CardContent>
           </Card>
@@ -242,7 +262,8 @@ export function StatusPage() {
                   {status.execution_stats.total_execution_count.toLocaleString()} total
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {status.execution_stats.total_success_count.toLocaleString()} success · {status.execution_stats.total_failure_count.toLocaleString()} failed
+                  {status.execution_stats.total_success_count.toLocaleString()} success ·{" "}
+                  {status.execution_stats.total_failure_count.toLocaleString()} failed
                 </p>
               </CardContent>
             </Card>
@@ -271,7 +292,9 @@ export function StatusPage() {
                   onClick={() => handleCacheRefresh(false)}
                   disabled={!!cacheActionLoading}
                 >
-                  <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === 'refresh' ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "refresh" ? "animate-spin" : ""}`}
+                  />
                   Refresh
                 </Button>
                 <Button
@@ -280,7 +303,9 @@ export function StatusPage() {
                   onClick={() => handleCacheRefresh(true)}
                   disabled={!!cacheActionLoading}
                 >
-                  <RotateCw className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === 'rebuild' ? 'animate-spin' : ''}`} />
+                  <RotateCw
+                    className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "rebuild" ? "animate-spin" : ""}`}
+                  />
                   Force Rebuild
                 </Button>
               </div>
@@ -308,7 +333,9 @@ export function StatusPage() {
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Status</dt>
                     <dd>
-                      <Badge variant={cacheStatus.plex.status === 'Available' ? 'default' : 'secondary'}>
+                      <Badge
+                        variant={cacheStatus.plex.status === "Available" ? "default" : "secondary"}
+                      >
                         {cacheStatus.plex.status}
                       </Badge>
                     </dd>
@@ -335,7 +362,11 @@ export function StatusPage() {
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Status</dt>
                     <dd>
-                      <Badge variant={cacheStatus.jellyfin.status === 'Available' ? 'default' : 'secondary'}>
+                      <Badge
+                        variant={
+                          cacheStatus.jellyfin.status === "Available" ? "default" : "secondary"
+                        }
+                      >
                         {cacheStatus.jellyfin.status}
                       </Badge>
                     </dd>
@@ -386,7 +417,9 @@ export function StatusPage() {
                     <span className="mx-2 text-muted-foreground">—</span>
                     <span>{item.album_title}</span>
                     {item.release_date && (
-                      <span className="ml-2 text-xs text-muted-foreground">{item.release_date}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {item.release_date}
+                      </span>
                     )}
                   </div>
                   <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
@@ -438,5 +471,5 @@ export function StatusPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
