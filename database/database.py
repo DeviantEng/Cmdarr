@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from .cache_models import CacheBase
 from .config_models import ConfigBase
@@ -36,9 +36,11 @@ class DatabaseManager:
         if cache_url is None:
             cache_url = f"sqlite:///{os.path.join(data_dir, 'cmdarr_cache.db')}"
 
-        # SQLite configuration for better performance
+        # SQLite configuration: SingletonThreadPool gives each thread its own connection,
+        # avoiding sqlite3.InterfaceError when scheduler/workers access config concurrently.
+        is_sqlite = config_url.startswith("sqlite:///")
         engine_kwargs = {
-            "poolclass": StaticPool,
+            "poolclass": SingletonThreadPool if is_sqlite else StaticPool,
             "connect_args": {
                 "check_same_thread": False,  # Allow multi-threading
                 "timeout": 30,  # Connection timeout
@@ -46,8 +48,8 @@ class DatabaseManager:
             "echo": False,  # Set to True for SQL debugging
         }
 
-        # Add WAL mode for better concurrency
-        if config_url.startswith("sqlite:///"):
+        # Add WAL mode for better concurrency (file-based SQLite only)
+        if is_sqlite:
             engine_kwargs["connect_args"]["isolation_level"] = None
 
         # Create engines for both databases
@@ -70,7 +72,7 @@ class DatabaseManager:
         ConfigBase.metadata.create_all(bind=self.config_engine)
         CacheBase.metadata.create_all(bind=self.cache_engine)
 
-    def get_config_session(self) -> Generator[Session, None, None]:
+    def get_config_session(self) -> Generator[Session]:
         """Get config database session with proper cleanup"""
         session = self.ConfigSessionLocal()
         try:
@@ -78,7 +80,7 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_cache_session(self) -> Generator[Session, None, None]:
+    def get_cache_session(self) -> Generator[Session]:
         """Get cache database session with proper cleanup"""
         session = self.CacheSessionLocal()
         try:
@@ -103,7 +105,7 @@ class DatabaseManager:
         return self.CacheSessionLocal()
 
     # Backward compatibility methods (default to config database)
-    def get_session(self) -> Generator[Session, None, None]:
+    def get_session(self) -> Generator[Session]:
         """Get config database session (backward compatibility)"""
         yield from self.get_config_session()
 
@@ -128,19 +130,19 @@ def get_database_manager() -> DatabaseManager:
     return db_manager
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Dependency for FastAPI to get config database session (backward compatibility)"""
     manager = get_database_manager()
     yield from manager.get_config_session()
 
 
-def get_config_db() -> Generator[Session, None, None]:
+def get_config_db() -> Generator[Session]:
     """Dependency for FastAPI to get config database session"""
     manager = get_database_manager()
     yield from manager.get_config_session()
 
 
-def get_cache_db() -> Generator[Session, None, None]:
+def get_cache_db() -> Generator[Session]:
     """Dependency for FastAPI to get cache database session"""
     manager = get_database_manager()
     yield from manager.get_cache_session()

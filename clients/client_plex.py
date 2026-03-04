@@ -11,6 +11,8 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from cache_manager import get_cache_manager
 from utils.cache_client import create_cache_client
@@ -43,6 +45,22 @@ class PlexClient(BaseAPIClient):
         # Register with library cache manager for per-client stats if library cache is enabled
         if config.get("LIBRARY_CACHE_PLEX_ENABLED", False):
             self._register_with_cache_manager()
+
+        # Session with retries for transient failures (5xx, 429, timeouts)
+        self._session = self._create_session_with_retries()
+
+    def _create_session_with_retries(self) -> requests.Session:
+        """Create a requests session with retry logic for transient failures"""
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1.0,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
 
     def _register_with_cache_manager(self) -> None:
         """Register this client with the library cache manager for per-client stats"""
@@ -847,7 +865,7 @@ class PlexClient(BaseAPIClient):
         }
         req_timeout = self.config.PLEX_TIMEOUT
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=req_timeout)
+            r = self._session.get(url, params=params, headers=headers, timeout=req_timeout)
             r.raise_for_status()
 
             # Handle both XML and JSON responses
@@ -886,7 +904,7 @@ class PlexClient(BaseAPIClient):
         }
 
         try:
-            r = requests.post(
+            r = self._session.post(
                 url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT
             )
             r.raise_for_status()
@@ -930,7 +948,7 @@ class PlexClient(BaseAPIClient):
         for path in endpoints:
             try:
                 url = f"{self.base_url.rstrip('/')}{path}"
-                r = requests.post(
+                r = self._session.post(
                     url,
                     params=params,
                     data=image_bytes,
@@ -964,7 +982,7 @@ class PlexClient(BaseAPIClient):
         }
 
         try:
-            r = requests.put(
+            r = self._session.put(
                 url, params=params, data=data, headers=headers, timeout=self.config.PLEX_TIMEOUT
             )
             r.raise_for_status()
@@ -996,7 +1014,7 @@ class PlexClient(BaseAPIClient):
         }
 
         try:
-            r = requests.delete(
+            r = self._session.delete(
                 url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT
             )
             r.raise_for_status()
@@ -1112,7 +1130,7 @@ class PlexClient(BaseAPIClient):
             k = lib.get("key") or ""
             try:
                 return (0, int(k))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return (1, str(k))
 
         return min(libraries, key=sort_key)
@@ -1171,7 +1189,7 @@ class PlexClient(BaseAPIClient):
                 "X-Plex-Token": self.token,
                 "X-Plex-Client-Identifier": "cmdarr-daylist",
             }
-            resp = requests.get(url, params=params, timeout=10)
+            resp = self._session.get(url, params=params, timeout=10)
             resp.raise_for_status()
             root = ET.fromstring(resp.text)
             accounts = []
@@ -1376,7 +1394,7 @@ class PlexClient(BaseAPIClient):
                                     a = tr.get("addedAt") or 0
                                     try:
                                         a = int(a) if a else 0
-                                    except (TypeError, ValueError):
+                                    except TypeError, ValueError:
                                         a = 0
                                     if a >= cutoff_ts:
                                         all_tracks.append(tr)
@@ -1386,7 +1404,7 @@ class PlexClient(BaseAPIClient):
                         added = t.get("addedAt") or 0
                         try:
                             added = int(added) if added else 0
-                        except (TypeError, ValueError):
+                        except TypeError, ValueError:
                             added = 0
                         if added < cutoff_ts:
                             self.logger.debug(f"Reached cutoff at {len(all_tracks)} tracks (album)")
@@ -1397,7 +1415,7 @@ class PlexClient(BaseAPIClient):
                     added = t.get("addedAt") or 0
                     try:
                         added = int(added) if added else 0
-                    except (TypeError, ValueError):
+                    except TypeError, ValueError:
                         added = 0
                     if added >= cutoff_ts:
                         all_tracks.append(t)
@@ -1670,7 +1688,7 @@ class PlexClient(BaseAPIClient):
 
             self.logger.debug("Creating playlist with first track...")
             headers = {"Accept": "application/json"}
-            response = requests.post(
+            response = self._session.post(
                 f"{self.base_url}/playlists",
                 params=params,
                 headers=headers,
@@ -1737,7 +1755,7 @@ class PlexClient(BaseAPIClient):
 
                     add_url = f"{self.base_url}/playlists/{playlist_rating_key}/items"
                     headers = {"Accept": "application/json"}
-                    response = requests.put(
+                    response = self._session.put(
                         add_url, params=params, headers=headers, timeout=self.config.PLEX_TIMEOUT
                     )
                     response.raise_for_status()

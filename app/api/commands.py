@@ -384,6 +384,71 @@ async def execute_command(
         raise HTTPException(status_code=500, detail="Failed to execute command")
 
 
+@router.post("/{command_name}/cancel")
+async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
+    """Cancel the currently running execution for a command (if any)"""
+    try:
+        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        if not command:
+            raise HTTPException(status_code=404, detail="Command not found")
+
+        # Find the running execution for this command
+        execution = (
+            db.query(CommandExecution)
+            .filter(
+                CommandExecution.command_name == command_name,
+                CommandExecution.status == "running",
+            )
+            .order_by(CommandExecution.started_at.desc())
+            .first()
+        )
+
+        if not execution:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No running execution for command {command_name}",
+            )
+
+        execution_id = execution.id
+
+        # Update the execution status to cancelled
+        execution.status = "cancelled"
+        execution.completed_at = datetime.utcnow()
+        execution.success = False
+        execution.error_message = "Execution cancelled by user"
+
+        if execution.started_at:
+            execution.duration = (execution.completed_at - execution.started_at).total_seconds()
+
+        command_config = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == execution.command_name)
+            .first()
+        )
+        if command_config:
+            command_config.last_run = datetime.utcnow()
+            command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
+            command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
+
+        db.commit()
+
+        try:
+            command_executor.kill_execution(execution_id)
+        except Exception as e:
+            get_commands_logger().warning(
+                f"Failed to kill process for execution {execution_id}: {e}"
+            )
+
+        get_commands_logger().info(f"Execution {execution_id} cancelled successfully")
+        return {"message": f"Command {command_name} cancelled successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to cancel command {command_name}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to cancel command")
+
+
 @router.get("/{command_name}/executions", response_model=list[CommandExecutionResponse])
 async def get_command_executions(
     command_name: str, limit: int = 50, db: Session = Depends(get_config_db)
@@ -491,7 +556,7 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
         if execution.started_at:
             execution.duration = (execution.completed_at - execution.started_at).total_seconds()
 
-        # Update command's last_run so scheduler doesn't immediately re-queue (e.g. library cache rebuild)
+        # Update command's last_run and aggregate stats
         command_config = (
             db.query(CommandConfig)
             .filter(CommandConfig.command_name == execution.command_name)
@@ -499,13 +564,13 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
         )
         if command_config:
             command_config.last_run = datetime.utcnow()
+            command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
+            command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
 
         db.commit()
 
         # Try to kill the actual process if it's running
         try:
-            from services.command_executor import command_executor
-
             command_executor.kill_execution(execution_id)
         except Exception as e:
             get_commands_logger().warning(
@@ -703,10 +768,10 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "exclude_played_days": int(request.get("exclude_played_days", 3)),
             "history_lookback_days": int(request.get("history_lookback_days", 45)),
             "max_tracks": int(request.get("max_tracks", 50)),
-            "sonic_similar_limit": int(request.get("sonic_similar_limit", 8)),
+            "sonic_similar_limit": int(request.get("sonic_similar_limit", 10)),
             "sonic_similarity_limit": int(request.get("sonic_similarity_limit", 50)),
-            "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 1.0)),
-            "historical_ratio": float(request.get("historical_ratio", 0.3)),
+            "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.8)),
+            "historical_ratio": float(request.get("historical_ratio", 0.4)),
             "time_periods": request.get("time_periods"),  # Optional custom periods
             "timezone": (request.get("timezone") or "").strip() or None,
         }
@@ -852,7 +917,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -868,7 +933,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Find the next available ID
@@ -1011,7 +1076,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1027,7 +1092,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Find the next available ID

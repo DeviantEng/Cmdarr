@@ -603,6 +603,18 @@ class CommandExecutor:
                             command_config.last_error = error_message
                         else:
                             command_config.last_error = None
+                        # Aggregate stats (survive execution rolloff)
+                        command_config.total_execution_count = (
+                            command_config.total_execution_count or 0
+                        ) + 1
+                        if success:
+                            command_config.total_success_count = (
+                                command_config.total_success_count or 0
+                            ) + 1
+                        else:
+                            command_config.total_failure_count = (
+                                command_config.total_failure_count or 0
+                            ) + 1
 
                     session.commit()
             finally:

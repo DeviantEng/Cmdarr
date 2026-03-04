@@ -320,7 +320,7 @@ async def get_statistics(db: Annotated[Session, Depends(get_config_db)]):
         failed_executions = (
             db.query(CommandExecution)
             .filter(CommandExecution.started_at >= thirty_days_ago)
-            .filter(not CommandExecution.success)
+            .filter(CommandExecution.success.is_(False))
             .count()
         )
 

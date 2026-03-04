@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-02-23
+
+### 🐳 Base Images & Runtime
+- **Docker**: Node 24 on Debian 13 (Trixie), Python 3.14 on Debian 13 (Trixie)
+- **Trivy**: Ignorefile for CVE-2026-0861 (glibc; revisit when Debian ships fix); ignored CVEs shown in job summary
+- **Local/CI**: `.nvmrc` (24), `.python-version` (3.14); pr-checks and Ruff use Node 24 and Python 3.14; Ruff target `py314`
+
+### 🛠️ Dev Tooling & CI
+- **Prettier**: Frontend formatting with `format` / `format:check` scripts; `eslint-config-prettier` to avoid conflicts
+- **Makefile**: `make check` (lint/format without auto-fix), `make fix` (auto-fix)
+- **PR Checks**: Workflow for PRs to main—ruff, frontend lint/format, npm-audit, pip-audit
+- **Trivy**: Image vulnerability scan in docker-publish; fails on CRITICAL/HIGH; table output in job summary
+- **ESLint**: Fixed 48 issues—types, unused vars, theme split into `theme-context`/`use-theme`, badge/button variants
+
+### 🔧 Stability & Bug Fixes
+- **Status Page**: Fixed failed execution count (SQLAlchemy `filter(not column)` bug—now uses `.is_(False)`)
+- **Sensitive Config**: Treat `null` as "leave unchanged" for masked settings
+- **Frontend API**: 30s fetch timeout with `AbortController`; clear timeout error messages
+- **Daylist**: Manual/API triggers always execute; only scheduled runs skip when time period unchanged
+
+### ⚡ Efficiency
+- **Command Cleanup**: Runs daily at 2am; aggregate stats (`total_execution_count`, `total_success_count`, `total_failure_count`) on Status page
+- **Cleanup Service**: `get_running_commands` returns plain dicts instead of detached ORM objects
+
+### 🛡️ Reliability
+- **ListenBrainz Playlist Sync**: Replaced `asyncio.run()` in async context with `await asyncio.to_thread()` to avoid event loop conflicts
+- **Cancel Endpoint**: `POST /api/commands/{name}/cancel` to cancel running command execution
+- **Plex/Jellyfin Clients**: `requests.Session` with retry (3 retries on 429/5xx)
+- **HTTP Client**: 429 already retried; no change
+
+### 🎨 UX
+- **Validation Errors**: API `detail` array formatted into readable strings in frontend
+- **Debug Log**: Removed `console.log` from `getCommands()`
+- **Execution Polling**: 10s when running; paused when edit dialog open
+- **Error Banners**: Config and Status pages show "Try Again" on load failure
+- **Status Page**: Runtime mode (Docker/Standalone) and image tag display
+- **Daylist Defaults**: `historical_ratio` 0.4, `sonic_similarity_distance` 0.8, `sonic_similar_limit` 10
+- **Daylist Cover**: Smaller mood adjectives; "Cmdarr's Daylist" in dark bar at bottom for readability
+
 ## [0.3.5] - 2026-02-23
 
 ### 🎵 Daylist – Time-of-Day Playlist Generator

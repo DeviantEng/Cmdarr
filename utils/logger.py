@@ -65,7 +65,7 @@ class HTTPAccessFilter(logging.Filter):
                             record.levelno = logging.ERROR
                             record.levelname = "ERROR"
 
-                    except (ValueError, IndexError):
+                    except ValueError, IndexError:
                         # If we can't parse status code, leave as-is
                         pass
 
@@ -103,7 +103,7 @@ class UvicornHealthCheckFilter(logging.Filter):
                 if is_quiet:
                     record.levelno = logging.DEBUG
                     record.levelname = "DEBUG"
-        except (IndexError, TypeError, ValueError):
+        except IndexError, TypeError, ValueError:
             pass
         return True
 
@@ -271,7 +271,7 @@ class CmdarrLogger:
                         os.remove(log_file)
                         files_removed += 1
 
-                except (OSError, ValueError):
+                except OSError, ValueError:
                     # Skip files we can't process
                     continue
 

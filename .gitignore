@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
 lib64/
 parts/
 sdist/
@@ -132,6 +133,9 @@ coverage/
 # Temporary files
 temp/
 tmp/
+
+# pip-audit cache
+.pip-audit-cache/
 
 # Test/debug scripts (not for production)
 scripts/

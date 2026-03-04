@@ -1,5 +1,5 @@
 # Stage 1: Build React frontend
-FROM node:20-slim AS frontend-builder
+FROM node:24-trixie-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,10 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python application
-FROM python:3.13-slim
+FROM python:3.14-slim-trixie
+
+ARG IMAGE_TAG=latest
+ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
 
 # Set working directory
 WORKDIR /app

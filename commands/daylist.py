@@ -154,16 +154,11 @@ class DaylistCommand(BaseCommand):
 
     def _should_skip(self, triggered_by: str = "scheduler") -> tuple[bool, str]:
         """Check if we should skip (period unchanged). Returns (skip, reason)."""
-        # When manually requested: run if playlist doesn't exist (user may have deleted it)
+        # Manual/api: always run (user may have changed settings, deleted playlist, or wants to regenerate)
         if triggered_by in ("manual", "api"):
-            try:
-                existing = self.plex_client.find_playlist_by_prefix("Cmdarr's Daylist")
-                if not existing:
-                    return False, ""  # Playlist missing, always run
-            except Exception as e:
-                self.logger.debug(f"Playlist existence check failed: {e}")
-                return False, ""  # On error, run to be safe
+            return False, ""
 
+        # Scheduled runs only: skip if period unchanged
         current = self._get_current_period()
         last = (self.config_json or {}).get("last_daylist_period")
         if last and last == current:
@@ -326,7 +321,7 @@ class DaylistCommand(BaseCommand):
             if tz:
                 return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def _generate_playlist_title_and_description(
@@ -368,9 +363,11 @@ class DaylistCommand(BaseCommand):
                         break
 
         playlist_title = "Cmdarr's Daylist"
-        cover_text = f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
-            "  ", " "
-        ).strip()
+        cover_text = (
+            f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
+                "  ", " "
+            ).strip()
+        )
 
         max_styles = 6
         highlight_styles = sorted_genres[:3] + sorted_moods[:3]
@@ -431,12 +428,15 @@ class DaylistCommand(BaseCommand):
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             ]
-            font_size = 112
-            font_main = ImageFont.load_default()
+            mood_font_size = 90  # ~20% smaller than original 112
+            branding_font_size = 110  # Larger than mood; "Cmdarr's Daylist" at bottom
+            font_mood = ImageFont.load_default()
+            font_branding = ImageFont.load_default()
             for fp in font_paths:
                 try:
                     if fp and Path(fp).exists():
-                        font_main = ImageFont.truetype(fp, font_size)
+                        font_mood = ImageFont.truetype(fp, mood_font_size)
+                        font_branding = ImageFont.truetype(fp, branding_font_size)
                         break
                 except OSError:
                     continue
@@ -470,22 +470,49 @@ class DaylistCommand(BaseCommand):
                     lines.append(current)
                 return lines
 
-            lines = wrap_text(display_text, font_main, text_draw, text_box_width)
+            # Mood adjectives in upper right (smaller font)
+            lines = wrap_text(display_text, font_mood, text_draw, text_box_width)
             for line in lines:
-                bbox = text_draw.textbbox((0, 0), line, font=font_main)
+                bbox = text_draw.textbbox((0, 0), line, font=font_mood)
                 lw = bbox[2] - bbox[0]
                 x = text_box_left + (text_box_width - lw) // 2
                 shadow_draw.text(
                     (x + shadow_offset, y + shadow_offset),
                     line,
-                    font=font_main,
+                    font=font_mood,
                     fill=(0, 0, 0, 120),
                 )
-                text_draw.text((x, y), line, font=font_main, fill=(255, 255, 255, 255))
+                text_draw.text((x, y), line, font=font_mood, fill=(255, 255, 255, 255))
                 y += bbox[3] - bbox[1] + 12
+
+            # Semi-transparent dark bar at bottom (Spotify-style) for readability
+            branding_text = "Cmdarr's Daylist"
+            bbox_brand = text_draw.textbbox((0, 0), branding_text, font=font_branding)
+            brand_w = bbox_brand[2] - bbox_brand[0]
+            brand_h = bbox_brand[3] - bbox_brand[1]
+            bar_height = brand_h + 80  # padding above and below text
+            bar_top = image.height - bar_height
+            bar_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            bar_draw = ImageDraw.Draw(bar_layer)
+            bar_draw.rectangle(
+                [(0, bar_top), (image.width, image.height)],
+                fill=(0, 0, 0, 180),
+            )
+            brand_x = (image.width - brand_w) // 2
+            brand_y = bar_top + (bar_height - brand_h) // 2
+            shadow_draw.text(
+                (brand_x + shadow_offset, brand_y + shadow_offset),
+                branding_text,
+                font=font_branding,
+                fill=(0, 0, 0, 120),
+            )
+            text_draw.text(
+                (brand_x, brand_y), branding_text, font=font_branding, fill=(255, 255, 255, 255)
+            )
 
             shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
             combined = Image.alpha_composite(image, shadow_layer)
+            combined = Image.alpha_composite(combined, bar_layer)
             combined = Image.alpha_composite(combined, text_layer)
 
             import io
@@ -532,10 +559,10 @@ class DaylistCommand(BaseCommand):
             exclude_days = int(config.get("exclude_played_days", 3))
             lookback_days = int(config.get("history_lookback_days", 45))
             max_tracks = int(config.get("max_tracks", 50))
-            sonic_limit = int(config.get("sonic_similar_limit", 8))
+            sonic_limit = int(config.get("sonic_similar_limit", 10))
             sonic_similarity_limit = int(config.get("sonic_similarity_limit", 50))
-            sonic_similarity_distance = float(config.get("sonic_similarity_distance", 1.0))
-            historical_ratio = float(config.get("historical_ratio", 0.3))
+            sonic_similarity_distance = float(config.get("sonic_similarity_distance", 0.8))
+            historical_ratio = float(config.get("historical_ratio", 0.4))
 
             time_periods = self._get_time_periods()
             period_hours = set(time_periods.get(current_period, [0, 1, 2]))

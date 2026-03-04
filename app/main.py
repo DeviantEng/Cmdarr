@@ -352,21 +352,66 @@ async def health_check():
         )
 
 
+def _detect_runtime_mode() -> tuple[str, str | None]:
+    """Detect if running in Docker and get image tag. Returns (runtime_mode, docker_image_tag)."""
+    # Check env first (can be set at build/run time)
+    if os.environ.get("AM_I_IN_A_DOCKER_CONTAINER"):
+        tag = os.environ.get("CMDARR_IMAGE_TAG") or os.environ.get("IMAGE_TAG")
+        return ("docker", tag)
+    try:
+        from pathlib import Path
+
+        if Path("/.dockerenv").is_file():
+            tag = os.environ.get("CMDARR_IMAGE_TAG") or os.environ.get("IMAGE_TAG")
+            return ("docker", tag)
+        cgroup = Path("/proc/self/cgroup")
+        if cgroup.is_file() and "docker" in cgroup.read_text():
+            tag = os.environ.get("CMDARR_IMAGE_TAG") or os.environ.get("IMAGE_TAG")
+            return ("docker", tag)
+    except Exception:
+        pass
+    return ("standalone", None)
+
+
 # API endpoint for raw status data
 @app.get("/api/status/raw")
 async def detailed_status_api(db: Annotated[Session, Depends(get_config_db)]):
     """Detailed status API endpoint with comprehensive information"""
     try:
+        runtime_mode, docker_image_tag = _detect_runtime_mode()
+
+        # Aggregate execution stats (survive rolloff)
+        from sqlalchemy import func
+
+        from database.config_models import CommandConfig
+
+        stats = (
+            db.query(
+                func.coalesce(func.sum(CommandConfig.total_execution_count), 0).label("total"),
+                func.coalesce(func.sum(CommandConfig.total_success_count), 0).label("success"),
+                func.coalesce(func.sum(CommandConfig.total_failure_count), 0).label("failure"),
+            )
+        ).first()
+
+        execution_stats = {
+            "total_execution_count": int(stats.total) if stats else 0,
+            "total_success_count": int(stats.success) if stats else 0,
+            "total_failure_count": int(stats.failure) if stats else 0,
+        }
+
         # Get system information
         system_info = {
             "app_name": "Cmdarr",
             "version": __version__,
+            "runtime_mode": runtime_mode,
+            "docker_image_tag": docker_image_tag,
             "uptime_seconds": time.time() - getattr(app.state, "start_time", time.time()),
             "database_status": "connected",
             "configuration_status": "valid"
             if not config_service.validate_required_settings()
             else "incomplete",
             "timestamp": datetime.utcnow().isoformat() + "Z",
+            "execution_stats": execution_stats,
         }
 
         # Get configuration summary (non-sensitive)

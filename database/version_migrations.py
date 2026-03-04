@@ -245,14 +245,31 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
-    # Add future migrations here for new versions
-    # Example:
-    # runner.add_migration(VersionMigration(
-    #     version="0.1.6",
-    #     name="new_feature",
-    #     description="Add new feature",
-    #     up_func=your_migration_function
-    # ))
+    def migrate_command_aggregate_stats(cursor):
+        """Add aggregate execution stats to command_configs"""
+        cursor.execute("PRAGMA table_info(command_configs)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "total_execution_count" not in cols:
+            cursor.execute(
+                "ALTER TABLE command_configs ADD COLUMN total_execution_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "total_success_count" not in cols:
+            cursor.execute(
+                "ALTER TABLE command_configs ADD COLUMN total_success_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "total_failure_count" not in cols:
+            cursor.execute(
+                "ALTER TABLE command_configs ADD COLUMN total_failure_count INTEGER NOT NULL DEFAULT 0"
+            )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.6",
+            name="command_aggregate_stats",
+            description="Add total_execution_count, total_success_count, total_failure_count to command_configs",
+            up_func=migrate_command_aggregate_stats,
+        )
+    )
 
     return runner
 

@@ -88,7 +88,7 @@ async def get_config_setting_details(
                 import json
 
                 options = json.loads(setting.options)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 options = None
 
         effective_value = setting.get_effective_value()
@@ -184,8 +184,8 @@ async def update_config_setting(
         if not setting:
             raise HTTPException(status_code=404, detail="Configuration setting not found")
 
-        # For sensitive settings, "***" means "leave unchanged" (user didn't reveal the value)
-        if setting.is_sensitive and request.value in ("***", ""):
+        # For sensitive settings, "***", "", or null means "leave unchanged" (user didn't reveal the value)
+        if setting.is_sensitive and (request.value is None or request.value in ("***", "")):
             return {"key": key, "value": "***", "message": "Sensitive value unchanged"}
 
         # Update setting
