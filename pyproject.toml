@@ -1,7 +1,7 @@
 # Project metadata omitted; version lives in __version__.py only
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py314"
 line-length = 100
 exclude = [".venv", "venv", "frontend", "node_modules", "dist"]
 

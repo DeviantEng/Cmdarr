@@ -66,6 +66,8 @@ docker run -d \
 For development or running without Docker:
 
 > **Important:** Build the React frontend before starting. The app will not start without it.
+>
+> **Requirements:** Python 3.14, Node 24 (see `.python-version` and `.nvmrc`)
 
 ```bash
 git clone https://github.com/DeviantEng/cmdarr.git

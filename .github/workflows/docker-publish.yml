@@ -92,25 +92,50 @@ jobs:
 
       - name: Run Trivy vulnerability scanner (table)
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          if [ -f .trivyignore ]; then
+            echo "### Ignored CVEs (revisit when upstream ships a fix)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat .trivyignore >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          set +e
+          output=$(docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/src \
+            -w /src \
             aquasec/trivy image \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             --format table \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+            --ignorefile /src/.trivyignore \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan 2>&1)
+          exitcode=$?
+          set -e
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit $exitcode
 
       - name: Run Trivy vulnerability scanner (SARIF)
         if: always()
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${{ github.workspace }}:/output \
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/src \
+            -w /src \
             aquasec/trivy image \
             --format sarif \
-            --output /output/trivy-results.sarif \
+            --output /src/trivy-results.sarif \
+            --ignorefile /src/.trivyignore \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
 
