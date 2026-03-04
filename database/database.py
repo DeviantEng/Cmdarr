@@ -72,7 +72,7 @@ class DatabaseManager:
         ConfigBase.metadata.create_all(bind=self.config_engine)
         CacheBase.metadata.create_all(bind=self.cache_engine)
 
-    def get_config_session(self) -> Generator[Session, None, None]:
+    def get_config_session(self) -> Generator[Session]:
         """Get config database session with proper cleanup"""
         session = self.ConfigSessionLocal()
         try:
@@ -80,7 +80,7 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_cache_session(self) -> Generator[Session, None, None]:
+    def get_cache_session(self) -> Generator[Session]:
         """Get cache database session with proper cleanup"""
         session = self.CacheSessionLocal()
         try:
@@ -105,7 +105,7 @@ class DatabaseManager:
         return self.CacheSessionLocal()
 
     # Backward compatibility methods (default to config database)
-    def get_session(self) -> Generator[Session, None, None]:
+    def get_session(self) -> Generator[Session]:
         """Get config database session (backward compatibility)"""
         yield from self.get_config_session()
 
@@ -130,19 +130,19 @@ def get_database_manager() -> DatabaseManager:
     return db_manager
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Dependency for FastAPI to get config database session (backward compatibility)"""
     manager = get_database_manager()
     yield from manager.get_config_session()
 
 
-def get_config_db() -> Generator[Session, None, None]:
+def get_config_db() -> Generator[Session]:
     """Dependency for FastAPI to get config database session"""
     manager = get_database_manager()
     yield from manager.get_config_session()
 
 
-def get_cache_db() -> Generator[Session, None, None]:
+def get_cache_db() -> Generator[Session]:
     """Dependency for FastAPI to get cache database session"""
     manager = get_database_manager()
     yield from manager.get_cache_session()

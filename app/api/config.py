@@ -88,7 +88,7 @@ async def get_config_setting_details(
                 import json
 
                 options = json.loads(setting.options)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 options = None
 
         effective_value = setting.get_effective_value()

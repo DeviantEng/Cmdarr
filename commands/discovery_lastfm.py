@@ -123,7 +123,7 @@ class DiscoveryLastfmCommand(BaseCommand):
             try:
                 with open(path, encoding="utf-8") as f:
                     existing = json.load(f) or {}
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 pass
         for mbid in mbids:
             existing[mbid] = now_iso
@@ -251,7 +251,7 @@ class DiscoveryLastfmCommand(BaseCommand):
                 if match_score < min_match_score:
                     stats.filtered_low_score += 1
                     continue
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 stats.filtered_low_score += 1
                 continue
 

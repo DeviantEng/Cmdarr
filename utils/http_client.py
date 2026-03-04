@@ -225,42 +225,42 @@ class HTTPRequestBuilder:
         self._headers = {}
         self._timeout = 30
 
-    def endpoint(self, endpoint: str) -> "HTTPRequestBuilder":
+    def endpoint(self, endpoint: str) -> HTTPRequestBuilder:
         """Set the API endpoint"""
         self._endpoint = endpoint.lstrip("/")
         return self
 
-    def method(self, method: str) -> "HTTPRequestBuilder":
+    def method(self, method: str) -> HTTPRequestBuilder:
         """Set the HTTP method"""
         self._method = method.upper()
         return self
 
-    def params(self, **kwargs) -> "HTTPRequestBuilder":
+    def params(self, **kwargs) -> HTTPRequestBuilder:
         """Add query parameters"""
         self._params.update(kwargs)
         return self
 
-    def headers(self, **kwargs) -> "HTTPRequestBuilder":
+    def headers(self, **kwargs) -> HTTPRequestBuilder:
         """Add headers"""
         self._headers.update(kwargs)
         return self
 
-    def timeout(self, seconds: int) -> "HTTPRequestBuilder":
+    def timeout(self, seconds: int) -> HTTPRequestBuilder:
         """Set request timeout"""
         self._timeout = seconds
         return self
 
-    def auth_token(self, token: str) -> "HTTPRequestBuilder":
+    def auth_token(self, token: str) -> HTTPRequestBuilder:
         """Add authentication token"""
         self._headers["Authorization"] = f"Token {token}"
         return self
 
-    def api_key(self, key: str) -> "HTTPRequestBuilder":
+    def api_key(self, key: str) -> HTTPRequestBuilder:
         """Add API key"""
         self._headers["X-Api-Key"] = key
         return self
 
-    def user_agent(self, user_agent: str, contact: str = None) -> "HTTPRequestBuilder":
+    def user_agent(self, user_agent: str, contact: str = None) -> HTTPRequestBuilder:
         """Add user agent"""
         self._headers["User-Agent"] = HTTPClientUtils.create_user_agent(user_agent, contact)
         return self

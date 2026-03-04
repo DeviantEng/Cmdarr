@@ -321,7 +321,7 @@ class DaylistCommand(BaseCommand):
             if tz:
                 return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def _generate_playlist_title_and_description(
@@ -506,7 +506,9 @@ class DaylistCommand(BaseCommand):
                 font=font_branding,
                 fill=(0, 0, 0, 120),
             )
-            text_draw.text((brand_x, brand_y), branding_text, font=font_branding, fill=(255, 255, 255, 255))
+            text_draw.text(
+                (brand_x, brand_y), branding_text, font=font_branding, fill=(255, 255, 255, 255)
+            )
 
             shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
             combined = Image.alpha_composite(image, shadow_layer)

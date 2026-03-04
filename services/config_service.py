@@ -732,7 +732,7 @@ class ConfigService:
             if value is None:
                 return default
             return int(value)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             self.logger.warning(f"Failed to convert {key} to int, using default: {default}")
             return default
 
