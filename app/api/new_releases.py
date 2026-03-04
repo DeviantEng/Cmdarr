@@ -818,11 +818,10 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed")
 
-    mb_artist_mbid: str | None = None
-    best_missing: list[dict] = []
-    scan_result: dict | None = None
-
-    try:
+    async def _do_mb_scan() -> dict:
+        """Run MusicBrainz scan; returns result dict. Raises HTTPException on error."""
+        mb_artist_mbid: str | None = None
+        best_missing: list[dict] = []
         async with MusicBrainzClient(config) as mb_client:
             candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
 
@@ -881,7 +880,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                     if item:
                         best_missing.append(item)
 
-            scan_result = {
+            return {
                 "success": True,
                 "artist_name": artist_name,
                 "artist_in_mb": mb_artist_mbid is not None,
@@ -892,13 +891,14 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 "missing_count": len(best_missing),
                 "albums": best_missing,
             }
+
+    try:
+        return await _do_mb_scan()
     except HTTPException:
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed")
-
-    return scan_result
 
 
 @router.post("/new-releases/sync-lidarr-artists")
