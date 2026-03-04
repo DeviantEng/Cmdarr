@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error Banners**: Config and Status pages show "Try Again" on load failure
 - **Status Page**: Runtime mode (Docker/Standalone) and image tag display
 - **Daylist Defaults**: `historical_ratio` 0.4, `sonic_similarity_distance` 0.8, `sonic_similar_limit` 10
+- **Daylist Cover**: Smaller mood adjectives; "Cmdarr's Daylist" in dark bar at bottom for readability
 
 ## [0.3.5] - 2026-02-23
 
