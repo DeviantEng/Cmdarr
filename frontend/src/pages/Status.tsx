@@ -17,6 +17,7 @@ export function StatusPage() {
   const [dismissedOpen, setDismissedOpen] = useState(false)
   const [dismissed, setDismissed] = useState<{ id: number; artist_name: string; album_title: string; release_date?: string }[]>([])
   const [dismissedTotal, setDismissedTotal] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadStatus()
@@ -46,6 +47,7 @@ export function StatusPage() {
   }
 
   const loadStatus = async () => {
+    setError(null)
     try {
       const [statusData, healthData, cacheData] = await Promise.all([
         api.getStatus(),
@@ -55,9 +57,10 @@ export function StatusPage() {
       setStatus(statusData)
       setHealth(healthData)
       setCacheStatus(cacheData)
-    } catch (error) {
+    } catch (err) {
+      setError('Failed to load status')
       toast.error('Failed to load status')
-      console.error(error)
+      console.error(err)
     } finally {
       setLoading(false)
     }
@@ -129,6 +132,15 @@ export function StatusPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => loadStatus()}>
+            Try Again
+          </Button>
+        </div>
+      )}
+
       {/* Overall Health */}
       <Card>
         <CardHeader>
@@ -170,7 +182,15 @@ export function StatusPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{status.app_name}</div>
-              <p className="text-xs text-muted-foreground">Version {status.version}</p>
+              <p className="text-xs text-muted-foreground">
+                {status.version}
+                {status.runtime_mode && (
+                  <> · {status.runtime_mode === 'docker' ? 'Docker' : 'Standalone'}</>
+                )}
+                {status.runtime_mode === 'docker' && status.docker_image_tag && (
+                  <> · :{status.docker_image_tag}</>
+                )}
+              </p>
             </CardContent>
           </Card>
 
@@ -210,6 +230,23 @@ export function StatusPage() {
               </p>
             </CardContent>
           </Card>
+
+          {status.execution_stats && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Execution Stats</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {status.execution_stats.total_execution_count.toLocaleString()} total
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {status.execution_stats.total_success_count.toLocaleString()} success · {status.execution_stats.total_failure_count.toLocaleString()} failed
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

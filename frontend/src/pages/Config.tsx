@@ -53,12 +53,14 @@ export function ConfigPage() {
   const [showConnectivityDialog, setShowConnectivityDialog] = useState(false)
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadConfiguration()
   }, [])
 
   const loadConfiguration = async () => {
+    setError(null)
     try {
       const configData = await api.getAllConfig()
       
@@ -77,9 +79,10 @@ export function ConfigPage() {
       }
       
       setSettings(detailedSettings)
-    } catch (error) {
+    } catch (err) {
+      setError('Failed to load configuration')
       toast.error('Failed to load configuration')
-      console.error(error)
+      console.error(err)
     } finally {
       setLoading(false)
     }
@@ -346,6 +349,15 @@ export function ConfigPage() {
           Manage your Cmdarr configuration settings
         </p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => loadConfiguration()}>
+            Try Again
+          </Button>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

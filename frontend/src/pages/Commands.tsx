@@ -142,6 +142,14 @@ export function CommandsPage() {
     }
   }
 
+  // Poll executions every 10s when commands are running; pause when edit dialog is open
+  useEffect(() => {
+    const hasRunning = recentExecutions.some((e) => e.status === 'running')
+    if (!hasRunning || editingCommand) return
+    const id = setInterval(loadExecutions, 10000)
+    return () => clearInterval(id)
+  }, [recentExecutions, editingCommand])
+
   const getCommandDisplayName = (commandName: string) => {
     const cmd = commands.find((c) => c.command_name === commandName)
     return cmd?.display_name || commandName.replace(/_/g, ' ')
@@ -270,10 +278,10 @@ export function CommandsPage() {
       exclude_played_days: typeof cfg.exclude_played_days === 'number' ? cfg.exclude_played_days : 3,
       history_lookback_days: typeof cfg.history_lookback_days === 'number' ? cfg.history_lookback_days : 45,
       max_tracks: typeof cfg.max_tracks === 'number' ? cfg.max_tracks : 50,
-      sonic_similar_limit: typeof cfg.sonic_similar_limit === 'number' ? cfg.sonic_similar_limit : 8,
+      sonic_similar_limit: typeof cfg.sonic_similar_limit === 'number' ? cfg.sonic_similar_limit : 10,
       sonic_similarity_limit: typeof cfg.sonic_similarity_limit === 'number' ? cfg.sonic_similarity_limit : 50,
-      sonic_similarity_distance: typeof cfg.sonic_similarity_distance === 'number' ? cfg.sonic_similarity_distance : 1.0,
-      historical_ratio: typeof cfg.historical_ratio === 'number' ? cfg.historical_ratio : 0.3,
+      sonic_similarity_distance: typeof cfg.sonic_similarity_distance === 'number' ? cfg.sonic_similarity_distance : 0.8,
+      historical_ratio: typeof cfg.historical_ratio === 'number' ? cfg.historical_ratio : 0.4,
       timezone: (cfg.timezone as string) || '',
       time_periods: timePeriods,
     })
@@ -1102,13 +1110,13 @@ export function CommandsPage() {
                       <div className="mt-4 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>Historical ratio: {editForm.historical_ratio ?? 0.3}</Label>
+                            <Label>Historical ratio: {editForm.historical_ratio ?? 0.4}</Label>
                             <input
                               type="range"
                               min={0.1}
                               max={0.8}
                               step={0.1}
-                              value={editForm.historical_ratio ?? 0.3}
+                              value={editForm.historical_ratio ?? 0.4}
                               onChange={(e) =>
                                 setEditForm((f) => ({ ...f, historical_ratio: parseFloat(e.target.value) }))
                               }
@@ -1122,15 +1130,15 @@ export function CommandsPage() {
                               type="number"
                               min={1}
                               max={30}
-                              value={editForm.sonic_similar_limit ?? 8}
+                              value={editForm.sonic_similar_limit ?? 10}
                               onChange={(e) => {
                                 const v = parseInt(e.target.value, 10)
-                                setEditForm((f) => ({ ...f, sonic_similar_limit: isNaN(v) ? 8 : v }))
+                                setEditForm((f) => ({ ...f, sonic_similar_limit: isNaN(v) ? 10 : v }))
                               }}
                               onBlur={(e) => {
                                 const v = parseInt(e.target.value, 10)
                                 if (!isNaN(v)) setEditForm((f) => ({ ...f, sonic_similar_limit: Math.max(1, Math.min(30, v)) }))
-                                else setEditForm((f) => ({ ...f, sonic_similar_limit: 8 }))
+                                else setEditForm((f) => ({ ...f, sonic_similar_limit: 10 }))
                               }}
                             />
                             <p className="text-xs text-muted-foreground">Max similar tracks per seed. Min: 1, max: 30.</p>
@@ -1155,15 +1163,15 @@ export function CommandsPage() {
                             <p className="text-xs text-muted-foreground">Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.</p>
                           </div>
                           <div className="space-y-2">
-                            <Label>Sonically similar distance: {editForm.sonic_similarity_distance ?? 1.0}</Label>
+                            <Label>Sonically similar distance: {editForm.sonic_similarity_distance ?? 0.8}</Label>
                             <input
                               type="range"
                               min={0.1}
                               max={2}
                               step={0.1}
-                              value={editForm.sonic_similarity_distance ?? 1.0}
+                              value={editForm.sonic_similarity_distance ?? 0.8}
                               onChange={(e) =>
-                                setEditForm((f) => ({ ...f, sonic_similarity_distance: parseFloat(e.target.value) }))
+                                setEditForm((f) => ({ ...f, sonic_similarity_distance: parseFloat(e.target.value) || 0.8 }))
                               }
                               className="slider-range"
                             />
@@ -1566,10 +1574,10 @@ export function CommandsPage() {
                           exclude_played_days: editForm.exclude_played_days ?? 3,
                           history_lookback_days: editForm.history_lookback_days ?? 45,
                           max_tracks: editForm.max_tracks ?? 50,
-                          sonic_similar_limit: editForm.sonic_similar_limit ?? 8,
+                          sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
                           sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
-                          sonic_similarity_distance: editForm.sonic_similarity_distance ?? 1.0,
-                          historical_ratio: editForm.historical_ratio ?? 0.3,
+                          sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
+                          historical_ratio: editForm.historical_ratio ?? 0.4,
                           timezone: editForm.timezone || undefined,
                           time_periods,
                         },

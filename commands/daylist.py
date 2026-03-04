@@ -154,16 +154,11 @@ class DaylistCommand(BaseCommand):
 
     def _should_skip(self, triggered_by: str = "scheduler") -> tuple[bool, str]:
         """Check if we should skip (period unchanged). Returns (skip, reason)."""
-        # When manually requested: run if playlist doesn't exist (user may have deleted it)
+        # Manual/api: always run (user may have changed settings, deleted playlist, or wants to regenerate)
         if triggered_by in ("manual", "api"):
-            try:
-                existing = self.plex_client.find_playlist_by_prefix("Cmdarr's Daylist")
-                if not existing:
-                    return False, ""  # Playlist missing, always run
-            except Exception as e:
-                self.logger.debug(f"Playlist existence check failed: {e}")
-                return False, ""  # On error, run to be safe
+            return False, ""
 
+        # Scheduled runs only: skip if period unchanged
         current = self._get_current_period()
         last = (self.config_json or {}).get("last_daylist_period")
         if last and last == current:
@@ -368,9 +363,11 @@ class DaylistCommand(BaseCommand):
                         break
 
         playlist_title = "Cmdarr's Daylist"
-        cover_text = f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
-            "  ", " "
-        ).strip()
+        cover_text = (
+            f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
+                "  ", " "
+            ).strip()
+        )
 
         max_styles = 6
         highlight_styles = sorted_genres[:3] + sorted_moods[:3]
@@ -532,10 +529,10 @@ class DaylistCommand(BaseCommand):
             exclude_days = int(config.get("exclude_played_days", 3))
             lookback_days = int(config.get("history_lookback_days", 45))
             max_tracks = int(config.get("max_tracks", 50))
-            sonic_limit = int(config.get("sonic_similar_limit", 8))
+            sonic_limit = int(config.get("sonic_similar_limit", 10))
             sonic_similarity_limit = int(config.get("sonic_similarity_limit", 50))
-            sonic_similarity_distance = float(config.get("sonic_similarity_distance", 1.0))
-            historical_ratio = float(config.get("historical_ratio", 0.3))
+            sonic_similarity_distance = float(config.get("sonic_similarity_distance", 0.8))
+            historical_ratio = float(config.get("historical_ratio", 0.4))
 
             time_periods = self._get_time_periods()
             period_hours = set(time_periods.get(current_period, [0, 1, 2]))

@@ -74,8 +74,8 @@ class HTTPClientUtils:
                                     f"Successful {method} request to {url} (status {response.status}, no content)"
                                 )
                             return {}
-                    elif response.status == 503 and attempt < max_retries:
-                        # Rate limit error - retry with exponential backoff
+                    elif response.status in (429, 503) and attempt < max_retries:
+                        # Rate limit (429) or service unavailable (503) - retry with exponential backoff
                         error_text = await response.text()
                         wait_time = retry_delay * (2**attempt)  # Exponential backoff
                         if logger:

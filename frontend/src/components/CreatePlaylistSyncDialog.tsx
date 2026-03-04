@@ -86,10 +86,10 @@ export function CreatePlaylistSyncDialog({
     exclude_played_days: 3,
     history_lookback_days: 45,
     max_tracks: 50,
-    sonic_similar_limit: 8,
+    sonic_similar_limit: 10,
     sonic_similarity_limit: 50,
-    sonic_similarity_distance: 1.0,
-    historical_ratio: 0.3,
+    sonic_similarity_distance: 0.8,
+    historical_ratio: 0.4,
     timezone: '',
     time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS } as Record<string, { start: number; end: number }>,
   })
@@ -127,10 +127,10 @@ export function CreatePlaylistSyncDialog({
         exclude_played_days: 3,
         history_lookback_days: 45,
         max_tracks: 50,
-        sonic_similar_limit: 8,
+        sonic_similar_limit: 10,
         sonic_similarity_limit: 50,
-        sonic_similarity_distance: 1.0,
-        historical_ratio: 0.3,
+        sonic_similarity_distance: 0.8,
+        historical_ratio: 0.4,
         timezone: '',
         time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
       })
@@ -592,12 +592,12 @@ export function CreatePlaylistSyncDialog({
                           value={daylistForm.sonic_similar_limit}
                           onChange={(e) => {
                             const v = parseInt(e.target.value, 10)
-                            setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: isNaN(v) ? 8 : v }))
+                            setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: isNaN(v) ? 10 : v }))
                           }}
                           onBlur={(e) => {
                             const v = parseInt(e.target.value, 10)
                             if (!isNaN(v)) setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: Math.max(1, Math.min(30, v)) }))
-                            else setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: 8 }))
+                            else setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: 10 }))
                           }}
                         />
                         <p className="text-xs text-muted-foreground">Max similar tracks per seed. Min: 1, max: 30.</p>

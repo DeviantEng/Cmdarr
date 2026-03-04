@@ -213,7 +213,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
         curated_playlists = await self.listenbrainz_client.get_curated_playlists(username)
 
         # Check for available library cache
-        library_cache = self._check_library_cache()
+        library_cache = await self._check_library_cache()
 
         if library_cache:
             track_count = library_cache.get("total_tracks", 0)
@@ -468,7 +468,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
 
             self.logger.warning(f"Full traceback: {traceback.format_exc()}")
 
-    def _check_library_cache(self) -> dict[str, Any] | None:
+    async def _check_library_cache(self) -> dict[str, Any] | None:
         """Check if library cache is available and fresh, build if missing"""
         try:
             target_type = self.target_name.lower()
@@ -481,7 +481,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
 
             if not library_cache:
                 self.logger.info(f"No library cache found for {target_type}, building cache...")
-                return self._build_library_cache_if_enabled(target_type)
+                return await self._build_library_cache_if_enabled(target_type)
 
             # Check if cache is fresh (within TTL)
             cache_age_hours = (time.time() - library_cache.get("built_at", 0)) / 3600
@@ -491,7 +491,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 self.logger.info(
                     f"Library cache for {target_type} is stale ({cache_age_hours:.1f}h old, TTL: {ttl_hours}h), rebuilding..."
                 )
-                return self._build_library_cache_if_enabled(target_type)
+                return await self._build_library_cache_if_enabled(target_type)
 
             self.logger.debug(
                 f"Library cache for {target_type} is fresh ({cache_age_hours:.1f}h old)"
@@ -502,7 +502,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             self.logger.warning(f"Failed to check library cache: {e}")
             return None
 
-    def _build_library_cache_if_enabled(self, target_type: str) -> dict[str, Any] | None:
+    async def _build_library_cache_if_enabled(self, target_type: str) -> dict[str, Any] | None:
         """Build library cache if enabled for the target"""
         try:
             # Check if cache building is enabled for this target
@@ -515,7 +515,6 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
 
             self.logger.info(f"Building library cache for {target_type}...")
 
-            # Import and execute cache builder
             import asyncio
 
             from commands.library_cache_builder import LibraryCacheBuilderCommand
@@ -534,8 +533,8 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 self.config.LIBRARY_CACHE_PLEX_ENABLED = False
                 self.config.LIBRARY_CACHE_JELLYFIN_ENABLED = True
 
-            # Execute cache building
-            result = asyncio.run(cache_builder.execute())
+            # Execute cache building (sync command) in thread pool to avoid blocking event loop
+            result = await asyncio.to_thread(cache_builder.execute)
 
             # Restore original settings
             self.config.LIBRARY_CACHE_PLEX_ENABLED = original_plex_enabled

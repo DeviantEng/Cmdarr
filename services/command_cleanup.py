@@ -44,13 +44,26 @@ class CommandCleanupService:
             try:
                 await self.cleanup_stuck_commands()
                 await self.cleanup_timed_out_commands()
-                await self.cleanup_old_executions()
+                # Run execution history cleanup only at 2am (scheduler timezone)
+                if self._is_cleanup_hour():
+                    await self.cleanup_old_executions()
                 await asyncio.sleep(self.cleanup_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute before retrying
+
+    def _is_cleanup_hour(self) -> bool:
+        """True if current hour is 2am in scheduler timezone (for daily execution cleanup)"""
+        try:
+            from utils.timezone import get_scheduler_timezone
+
+            tz = get_scheduler_timezone()
+            now = datetime.now(tz)
+            return now.hour == 2
+        except Exception:
+            return False
 
     async def cleanup_stuck_commands(self):
         """Clean up commands that have been running for too long without a timeout"""
@@ -182,23 +195,44 @@ class CommandCleanupService:
         if execution.started_at:
             execution.duration = (execution.completed_at - execution.started_at).total_seconds()
 
-    async def get_running_commands(self) -> list[CommandExecution]:
-        """Get all currently running commands"""
+        # Update aggregate stats on CommandConfig
+        command_config = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == execution.command_name)
+            .first()
+        )
+        if command_config:
+            command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
+            command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
+
+    async def get_running_commands(self) -> list[dict]:
+        """Get all currently running commands as plain dicts (avoids detached ORM issues)"""
         try:
             from database.database import get_database_manager
 
             manager = get_database_manager()
             db = manager.get_session_sync()
-            return db.query(CommandExecution).filter(CommandExecution.status == "running").all()
+            try:
+                executions = (
+                    db.query(CommandExecution).filter(CommandExecution.status == "running").all()
+                )
+                return [
+                    {
+                        "id": e.id,
+                        "command_name": e.command_name,
+                        "started_at": e.started_at.isoformat() if e.started_at else None,
+                        "status": e.status,
+                    }
+                    for e in executions
+                ]
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Failed to get running commands: {e}")
             return []
-        finally:
-            if "db" in locals():
-                db.close()
 
     async def cleanup_old_executions(self, keep_count: int | None = None):
-        """Clean up old command executions, keeping only the most recent ones"""
+        """Clean up old command executions, keeping only the most recent ones per command"""
         try:
             # Get retention count from config if not provided
             if keep_count is None:
@@ -211,40 +245,41 @@ class CommandCleanupService:
             manager = get_database_manager()
             db = manager.get_session_sync()
 
-            # Get all commands and clean up each one
-            commands = db.query(CommandConfig).all()
-            total_deleted = 0
-
-            for command in commands:
-                # Get executions for this command
+            try:
+                # Single query: fetch all executions ordered by command_name, started_at DESC
                 executions = (
                     db.query(CommandExecution)
-                    .filter(CommandExecution.command_name == command.command_name)
-                    .order_by(CommandExecution.started_at.desc())
+                    .order_by(
+                        CommandExecution.command_name,
+                        CommandExecution.started_at.desc(),
+                    )
                     .all()
                 )
 
-                if len(executions) > keep_count:
-                    # Delete old executions beyond keep_count
-                    executions_to_delete = executions[keep_count:]
-                    for execution in executions_to_delete:
-                        db.delete(execution)
+                # Group by command, keep top keep_count per command, collect rest for deletion
+                from collections import defaultdict
 
-                    deleted_count = len(executions_to_delete)
-                    total_deleted += deleted_count
-                    logger.info(
-                        f"Cleaned up {deleted_count} old executions for {command.command_name}"
-                    )
+                kept_per_command: dict[str, int] = defaultdict(int)
+                to_delete: list[CommandExecution] = []
 
-            if total_deleted > 0:
-                db.commit()
-                logger.info(f"Total cleaned up {total_deleted} old executions across all commands")
+                for execution in executions:
+                    cmd = execution.command_name
+                    if kept_per_command[cmd] < keep_count:
+                        kept_per_command[cmd] += 1
+                    else:
+                        to_delete.append(execution)
+
+                for execution in to_delete:
+                    db.delete(execution)
+
+                if to_delete:
+                    db.commit()
+                    logger.info(f"Cleaned up {len(to_delete)} old executions across all commands")
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Failed to cleanup old executions: {e}")
-        finally:
-            if "db" in locals():
-                db.close()
 
     async def force_cleanup_all_running(self):
         """Force cleanup all running commands (emergency function)"""

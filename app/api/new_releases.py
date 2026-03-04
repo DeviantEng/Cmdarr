@@ -791,8 +791,8 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             }
         except HTTPException:
             raise
-        except Exception as e:
-            logger.exception(f"Scan album URL failed: {e}")
+        except Exception:
+            logger.exception("Scan album URL failed")
             raise HTTPException(status_code=500, detail="Scan album URL failed")
 
     # --- Artist URL: full scan ---
@@ -814,81 +814,88 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             albums = albums_result.get("albums", [])
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception(f"Scan artist URL failed: {e}")
+    except Exception:
+        logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed")
 
     mb_artist_mbid: str | None = None
     best_missing: list[dict] = []
 
-    async with MusicBrainzClient(config) as mb_client:
-        candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
+    try:
+        async with MusicBrainzClient(config) as mb_client:
+            candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
 
-        # 1. Check URL match: does any MB artist have our Spotify/Deezer link?
-        for cand in candidates:
-            mbid = cand.get("mbid")
-            if not mbid:
-                continue
-            if await mb_client.artist_has_streaming_link(mbid, provider, artist_id):
-                mb_artist_mbid = mbid
-                titles = (
-                    await mb_client.get_artist_release_groups(mbid, cache_ttl_days=cache_ttl) or []
-                )
-                for album in albums:
-                    item = _build_missing_album(album, artist_id, selected)
-                    if item and not _title_matches_mb(album.get("name", ""), titles):
-                        best_missing.append(item)
-                break
-
-        # 2. No URL match: try release match - most recent MB album/EP vs streaming
-        if mb_artist_mbid is None and candidates:
+            # 1. Check URL match: does any MB artist have our Spotify/Deezer link?
             for cand in candidates:
                 mbid = cand.get("mbid")
                 if not mbid:
                     continue
-                recent_title = await mb_client.get_artist_most_recent_release_title(
-                    mbid, prefer_album=True
-                )
-                if not recent_title:
-                    recent_title = await mb_client.get_artist_most_recent_release_title(
-                        mbid, prefer_album=False
+                if await mb_client.artist_has_streaming_link(mbid, provider, artist_id):
+                    mb_artist_mbid = mbid
+                    titles = (
+                        await mb_client.get_artist_release_groups(mbid, cache_ttl_days=cache_ttl)
+                        or []
                     )
-                if recent_title:
                     for album in albums:
-                        if _title_matches_mb(album.get("name", ""), [recent_title]):
-                            mb_artist_mbid = mbid
-                            titles = (
-                                await mb_client.get_artist_release_groups(
-                                    mbid, cache_ttl_days=cache_ttl
-                                )
-                                or []
-                            )
-                            for a in albums:
-                                item = _build_missing_album(a, artist_id, selected)
-                                if item and not _title_matches_mb(a.get("name", ""), titles):
-                                    best_missing.append(item)
-                            break
-                if mb_artist_mbid:
+                        item = _build_missing_album(album, artist_id, selected)
+                        if item and not _title_matches_mb(album.get("name", ""), titles):
+                            best_missing.append(item)
                     break
 
-        # 3. No match: artist not in MB - show all albums with Add to MB
-        if mb_artist_mbid is None:
-            for album in albums:
-                item = _build_missing_album(album, artist_id, selected)
-                if item:
-                    best_missing.append(item)
+            # 2. No URL match: try release match - most recent MB album/EP vs streaming
+            if mb_artist_mbid is None and candidates:
+                for cand in candidates:
+                    mbid = cand.get("mbid")
+                    if not mbid:
+                        continue
+                    recent_title = await mb_client.get_artist_most_recent_release_title(
+                        mbid, prefer_album=True
+                    )
+                    if not recent_title:
+                        recent_title = await mb_client.get_artist_most_recent_release_title(
+                            mbid, prefer_album=False
+                        )
+                    if recent_title:
+                        for album in albums:
+                            if _title_matches_mb(album.get("name", ""), [recent_title]):
+                                mb_artist_mbid = mbid
+                                titles = (
+                                    await mb_client.get_artist_release_groups(
+                                        mbid, cache_ttl_days=cache_ttl
+                                    )
+                                    or []
+                                )
+                                for a in albums:
+                                    item = _build_missing_album(a, artist_id, selected)
+                                    if item and not _title_matches_mb(a.get("name", ""), titles):
+                                        best_missing.append(item)
+                                break
+                    if mb_artist_mbid:
+                        break
 
-    return {
-        "success": True,
-        "artist_name": artist_name,
-        "artist_in_mb": mb_artist_mbid is not None,
-        "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}"
-        if mb_artist_mbid
-        else None,
-        "total_albums": len(albums),
-        "missing_count": len(best_missing),
-        "albums": best_missing,
-    }
+            # 3. No match: artist not in MB - show all albums with Add to MB
+            if mb_artist_mbid is None:
+                for album in albums:
+                    item = _build_missing_album(album, artist_id, selected)
+                    if item:
+                        best_missing.append(item)
+
+        return {
+            "success": True,
+            "artist_name": artist_name,
+            "artist_in_mb": mb_artist_mbid is not None,
+            "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}"
+            if mb_artist_mbid
+            else None,
+            "total_albums": len(albums),
+            "missing_count": len(best_missing),
+            "albums": best_missing,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Scan artist URL failed")
+        raise HTTPException(status_code=500, detail="Scan artist URL failed")
 
 
 @router.post("/new-releases/sync-lidarr-artists")

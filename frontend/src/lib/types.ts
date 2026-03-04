@@ -92,10 +92,17 @@ export interface ConnectivityTestResult {
 export interface StatusInfo {
   app_name: string
   version: string
+  runtime_mode?: string
+  docker_image_tag?: string | null
   uptime_seconds: number
   database_status: string
   configuration_status: string
   timestamp: string
+  execution_stats?: {
+    total_execution_count: number
+    total_success_count: number
+    total_failure_count: number
+  }
 }
 
 export interface ApiResponse<T = any> {

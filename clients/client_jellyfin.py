@@ -8,6 +8,8 @@ import time
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from cache_manager import get_cache_manager
 from utils.cache_client import create_cache_client
@@ -48,6 +50,22 @@ class JellyfinClient(BaseAPIClient):
         # Load cached library if library cache is enabled
         if config.get("LIBRARY_CACHE_JELLYFIN_ENABLED", False):
             self._load_cached_library()
+
+        # Session with retries for transient failures (5xx, 429, timeouts)
+        self._session = self._create_session_with_retries()
+
+    def _create_session_with_retries(self) -> requests.Session:
+        """Create a requests session with retry logic for transient failures"""
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1.0,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
 
     def get_resolved_library_key(self) -> str | None:
         """Return the resolved music library key for cache, playlist sync, and search. Single library only."""
@@ -139,7 +157,7 @@ class JellyfinClient(BaseAPIClient):
         headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
 
         try:
-            response = requests.get(
+            response = self._session.get(
                 f"{self.base_url}{path}", params=params, headers=headers, timeout=30
             )
             response.raise_for_status()
@@ -165,7 +183,7 @@ class JellyfinClient(BaseAPIClient):
         headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
 
         try:
-            response = requests.post(
+            response = self._session.post(
                 f"{self.base_url}{path}", params=params, json=json_data, headers=headers, timeout=30
             )
             response.raise_for_status()
@@ -1017,7 +1035,7 @@ class JellyfinClient(BaseAPIClient):
             # Use synchronous requests like the working test script
             headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
 
-            response = requests.post(
+            response = self._session.post(
                 f"{self.base_url}/Playlists", json=playlist_data, headers=headers, timeout=30
             )
             response.raise_for_status()
@@ -1091,7 +1109,7 @@ class JellyfinClient(BaseAPIClient):
             # Try to find the Playlists folder
             folder_params = {"UserId": self.user_id, "IncludeItemTypes": "ManualPlaylistsFolder"}
 
-            folder_response = requests.get(
+            folder_response = self._session.get(
                 f"{self.base_url}/Items", params=folder_params, headers=headers, timeout=30
             )
 
@@ -1116,7 +1134,7 @@ class JellyfinClient(BaseAPIClient):
                     "Recursive": "true",
                 }
 
-            response = requests.get(
+            response = self._session.get(
                 f"{self.base_url}/Items", params=params, headers=headers, timeout=30
             )
             response.raise_for_status()
@@ -1226,7 +1244,7 @@ class JellyfinClient(BaseAPIClient):
         try:
             headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
 
-            response = requests.delete(
+            response = self._session.delete(
                 f"{self.base_url}/Items/{playlist_id}", headers=headers, timeout=30
             )
 
@@ -1290,7 +1308,7 @@ class JellyfinClient(BaseAPIClient):
 
             headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
 
-            response = requests.get(
+            response = self._session.get(
                 f"{self.base_url}/Playlists/{playlist_id}/Items",
                 params=params,
                 headers=headers,

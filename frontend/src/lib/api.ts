@@ -41,26 +41,31 @@ class ApiClient {
   // Public request method for custom API calls
   async request<T>(
     endpoint: string,
-    options?: RequestInit
+    options?: RequestInit & { timeout?: number }
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
-    
+    const { timeout: timeoutMs = 30_000, ...fetchOptions } = options ?? {}
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
     try {
       const response = await fetch(url, {
-        ...options,
+        ...fetchOptions,
+        signal: fetchOptions.signal ?? controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          ...options?.headers,
+          ...fetchOptions.headers,
         },
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new ApiError(
-          errorData.detail || `HTTP ${response.status}: ${response.statusText}`,
-          response.status,
-          errorData
-        )
+        const detail = errorData.detail
+        const detailMsg = Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join('; ')
+          : (detail ?? `HTTP ${response.status}: ${response.statusText}`)
+        throw new ApiError(detailMsg, response.status, errorData)
       }
 
       return await response.json()
@@ -68,18 +73,20 @@ class ApiClient {
       if (error instanceof ApiError) {
         throw error
       }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new ApiError(`Request timed out after ${timeoutMs / 1000}s`)
+      }
       throw new ApiError(
         error instanceof Error ? error.message : 'Network request failed'
       )
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 
   // Commands API
   async getCommands(): Promise<CommandConfig[]> {
-    const response = await this.request<CommandConfig[]>('/api/commands/')
-    console.log('API Response:', response)
-    console.log('Commands count:', response.length)
-    return response
+    return await this.request<CommandConfig[]>('/api/commands/')
   }
 
   async getCommand(commandName: string): Promise<CommandConfig> {

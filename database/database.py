@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from .cache_models import CacheBase
 from .config_models import ConfigBase
@@ -36,9 +36,11 @@ class DatabaseManager:
         if cache_url is None:
             cache_url = f"sqlite:///{os.path.join(data_dir, 'cmdarr_cache.db')}"
 
-        # SQLite configuration for better performance
+        # SQLite configuration: SingletonThreadPool gives each thread its own connection,
+        # avoiding sqlite3.InterfaceError when scheduler/workers access config concurrently.
+        is_sqlite = config_url.startswith("sqlite:///")
         engine_kwargs = {
-            "poolclass": StaticPool,
+            "poolclass": SingletonThreadPool if is_sqlite else StaticPool,
             "connect_args": {
                 "check_same_thread": False,  # Allow multi-threading
                 "timeout": 30,  # Connection timeout
@@ -46,8 +48,8 @@ class DatabaseManager:
             "echo": False,  # Set to True for SQL debugging
         }
 
-        # Add WAL mode for better concurrency
-        if config_url.startswith("sqlite:///"):
+        # Add WAL mode for better concurrency (file-based SQLite only)
+        if is_sqlite:
             engine_kwargs["connect_args"]["isolation_level"] = None
 
         # Create engines for both databases

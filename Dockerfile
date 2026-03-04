@@ -9,6 +9,9 @@ RUN npm run build
 # Stage 2: Python application
 FROM python:3.13-slim
 
+ARG IMAGE_TAG=latest
+ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
+
 # Set working directory
 WORKDIR /app
 

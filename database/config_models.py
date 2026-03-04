@@ -93,6 +93,9 @@ class CommandConfig(ConfigBase):
     last_success = Column(Boolean, nullable=True)
     last_duration = Column(Float, nullable=True)  # Duration in seconds
     last_error = Column(Text, nullable=True)
+    total_execution_count = Column(Integer, default=0, nullable=False)
+    total_success_count = Column(Integer, default=0, nullable=False)
+    total_failure_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
