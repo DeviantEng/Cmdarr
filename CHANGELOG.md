@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.6] - 2026-02-23
 
+### 🛠️ Dev Tooling & CI
+- **Prettier**: Frontend formatting with `format` / `format:check` scripts; `eslint-config-prettier` to avoid conflicts
+- **Makefile**: `make check` (lint/format without auto-fix), `make fix` (auto-fix)
+- **PR Checks**: Workflow for PRs to main—ruff, frontend lint/format, npm-audit, pip-audit
+- **Trivy**: Image vulnerability scan in docker-publish; fails on CRITICAL/HIGH; SARIF upload for Security tab
+- **ESLint**: Fixed 48 issues—types, unused vars, theme split into `theme-context`/`use-theme`, badge/button variants
+
 ### 🔧 Stability & Bug Fixes
 - **Status Page**: Fixed failed execution count (SQLAlchemy `filter(not column)` bug—now uses `.is_(False)`)
 - **Sensitive Config**: Treat `null` as "leave unchanged" for masked settings
