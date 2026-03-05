@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-03-05
+
+### 🎵 Artists Top Tracks Generator
+- **New Command**: Top Tracks builds playlists from a configurable artist list with top X tracks per artist
+- **Display Name Sync**: `display_name` stays in sync with playlist name on updates
+- **Name Change Cleanup**: Deleting old playlist when name changes; `last_playlist_title` persisted
+- **Prefix**: `[Cmdarr Top Tracks]` prefix for generated playlists
+- **Fuzzy Artist Matching**: Unicode normalization and fuzzy matching for artist resolution
+- **Summary**: Expanded output with artists matched and invalid list
+
+### 🗑️ Command Soft-Delete
+- **Execution History**: Deleting a command no longer loses display names in recent executions
+- **Soft Delete**: Commands marked `deleted_at` and hidden from UI; permanently removed after 7 days
+- **Cleanup Job**: Daily at 2am purges commands soft-deleted more than 7 days ago
+
+### ⏱️ Command Expiration
+- **Expires At**: Commands can have `config_json.expires_at` (ISO datetime) for time-limited use
+- **Auto-Disable**: Scheduler skips commands whose `expires_at` has passed
+- **Playlist Cleanup**: Expired playlist_sync, top_tracks, and daylist commands have their playlists removed from the target
+
 ## [0.3.6] - 2026-02-23
 
 ### 🐳 Base Images & Runtime
