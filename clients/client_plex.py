@@ -1373,6 +1373,50 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error getting popular tracks for artist {artist_rating_key}: {e}")
             return []
 
+    def get_tracks_by_mood(
+        self,
+        library_key: str,
+        mood: str,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """
+        Get tracks tagged with a given mood from a music library.
+        Uses Plex mood filter on /library/sections/{id}/all with type=10 (tracks).
+        """
+        if not mood or not str(mood).strip():
+            return []
+        try:
+            params = {
+                "type": 10,
+                "mood": mood.strip(),
+                "X-Plex-Container-Start": offset,
+                "X-Plex-Container-Size": min(limit, 500),
+            }
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            tracks = media_container.get("Metadata", [])
+            if not isinstance(tracks, list):
+                tracks = [tracks] if tracks else []
+
+            out = []
+            for t in tracks:
+                artist = (t.get("grandparentTitle", "") or "").strip()
+                title = (t.get("title", "") or "").strip()
+                album = (t.get("parentTitle", "") or "").strip()
+                key = t.get("ratingKey")
+                if key and title and artist:
+                    out.append({
+                        "key": key,
+                        "title": title,
+                        "artist": artist,
+                        "album": album,
+                    })
+            return out
+        except Exception as e:
+            self.logger.error(f"Error getting tracks by mood '{mood}' for library {library_key}: {e}")
+            return []
+
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):
         """
         Search for tracks using mediaQuery on /all.

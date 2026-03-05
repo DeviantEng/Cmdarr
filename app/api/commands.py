@@ -953,6 +953,119 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/mood-playlist/moods")
+async def mood_playlist_moods():
+    """Get mood list from moodmap.json for mood playlist generator."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent.parent / "commands" / "daylist" / "assets" / "moodmap.json"
+    try:
+        with open(path) as f:
+            moodmap = json.load(f)
+        return {"moods": sorted(moodmap.keys())}
+    except Exception as e:
+        get_commands_logger().error(f"Failed to load moodmap: {e}")
+        return {"moods": []}
+
+
+@router.get("/mood-playlist/exists")
+async def mood_playlist_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any mood playlist command exists (for New Command UI)."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("mood_playlist_%")).first()
+    return {"exists": existing is not None}
+
+
+@router.post("/mood-playlist/create")
+async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Mood Playlist generator command."""
+    try:
+        moods_raw = request.get("moods", [])
+        if isinstance(moods_raw, str):
+            moods_raw = [m.strip() for m in moods_raw.split(",") if m.strip()]
+        moods = [m for m in moods_raw if m]
+        if not moods:
+            raise HTTPException(status_code=400, detail="moods is required (list of mood names)")
+
+        playlist_name = (request.get("playlist_name") or "Mood Playlist").strip()
+        max_tracks = int(request.get("max_tracks", 50))
+        max_tracks = max(1, min(200, max_tracks))
+        exclude_last_run = bool(request.get("exclude_last_run", True))
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = None
+        if hasattr(config, "PLEX_LIBRARY_KEY"):
+            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key:
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("mood_playlist_%"))
+            .all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except (ValueError, IndexError):
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"mood_playlist_{next_id:05d}"
+
+        config_json = {
+            "moods": moods,
+            "playlist_name": playlist_name,
+            "max_tracks": max_tracks,
+            "exclude_last_run": exclude_last_run,
+            "target_library_key": str(library_key),
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=f"Mood Playlist: {playlist_name}",
+            description="Generate playlist from selected Plex moods with freshness (exclude last run, date-seeded sampling).",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_mood_playlist_commands()
+
+        return {"message": "Mood Playlist command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create mood playlist: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/playlist-sync/create")
 async def create_playlist_sync(request: dict, db: Annotated[Session, Depends(get_config_db)]):
     """Create a new playlist sync command"""

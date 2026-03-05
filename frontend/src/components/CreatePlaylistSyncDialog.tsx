@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import {
   toExpiresAtIso,
 } from "@/components/ExpirationFields";
 
-type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks";
+type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks" | "mood_playlist";
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -128,12 +128,29 @@ export function CreatePlaylistSyncDialog({
     expires_at: "",
   });
 
-  // Fetch daylist exists, top tracks exists, and plex accounts when dialog opens
+  const [moodPlaylistForm, setMoodPlaylistForm] = useState({
+    moods: [] as string[],
+    playlist_name: "Mood Playlist",
+    max_tracks: 50,
+    exclude_last_run: true,
+    schedule_cron: "0 6 * * *",
+    schedule_override: true,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+  });
+  const [moodsList, setMoodsList] = useState<string[]>([]);
+
+  // Fetch daylist exists, mood playlist moods, and plex accounts when dialog opens
   useEffect(() => {
     if (!open) return;
     api
       .request<{ exists: boolean }>("/api/commands/daylist/exists")
       .then((r) => setDaylistExists(r.exists));
+    api
+      .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
+      .then((r) => setMoodsList(r.moods || []))
+      .catch(() => setMoodsList([]));
     api
       .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
       .then((r) => setPlexAccounts(r.accounts || []))
@@ -180,6 +197,17 @@ export function CreatePlaylistSyncDialog({
         isValid: false,
         error: "",
         metadata: null,
+      });
+      setMoodPlaylistForm({
+        moods: [],
+        playlist_name: "Mood Playlist",
+        max_tracks: 50,
+        exclude_last_run: true,
+        schedule_cron: "0 6 * * *",
+        schedule_override: true,
+        enabled: true,
+        expires_at_enabled: false,
+        expires_at: "",
       });
     }
   }, [open]);
@@ -254,6 +282,15 @@ export function CreatePlaylistSyncDialog({
     }));
   };
 
+  const handleToggleMood = (mood: string) => {
+    setMoodPlaylistForm((prev) => ({
+      ...prev,
+      moods: prev.moods.includes(mood)
+        ? prev.moods.filter((m) => m !== mood)
+        : [...prev.moods, mood],
+    }));
+  };
+
   const canSubmit = () => {
     if (playlistType === "listenbrainz") {
       if (formData.playlist_types.length === 0) return false;
@@ -269,6 +306,11 @@ export function CreatePlaylistSyncDialog({
       if (topTracksForm.artists.trim().split("\n").filter((a) => a.trim()).length === 0)
         return false;
       if (topTracksForm.expires_at_enabled && !topTracksForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "mood_playlist") {
+      if (moodPlaylistForm.moods.length === 0) return false;
+      if (moodPlaylistForm.expires_at_enabled && !moodPlaylistForm.expires_at) return false;
       return true;
     }
     if (!validation.isValid) return false;
@@ -325,11 +367,28 @@ export function CreatePlaylistSyncDialog({
         if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
           daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
         }
-        const response = await api.request<{ message: string }>("/api/commands/daylist/create", {
-          method: "POST",
-          body: JSON.stringify(daylistPayload),
-        });
+        const response = await api.request<{ message: string }>(
+          "/api/commands/daylist/create",
+          { method: "POST", body: JSON.stringify(daylistPayload) }
+        );
         toast.success(response.message || "Daylist command created successfully");
+      } else if (playlistType === "mood_playlist") {
+        const payload: Record<string, unknown> = {
+          moods: moodPlaylistForm.moods,
+          playlist_name: moodPlaylistForm.playlist_name,
+          max_tracks: moodPlaylistForm.max_tracks,
+          exclude_last_run: moodPlaylistForm.exclude_last_run,
+          schedule_cron: moodPlaylistForm.schedule_override ? moodPlaylistForm.schedule_cron : undefined,
+          enabled: moodPlaylistForm.enabled,
+        };
+        if (moodPlaylistForm.expires_at_enabled && moodPlaylistForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(moodPlaylistForm.expires_at);
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/mood-playlist/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Mood Playlist command created");
       } else {
         const payload: Record<string, unknown> = {
           ...formData,
@@ -369,7 +428,9 @@ export function CreatePlaylistSyncDialog({
                 ? "Configure Daylist"
                 : playlistType === "top_tracks"
                   ? "Configure Artists Top Tracks"
-                  : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
+                  : playlistType === "mood_playlist"
+                    ? "Configure Mood Playlist"
+                    : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
@@ -378,7 +439,9 @@ export function CreatePlaylistSyncDialog({
                 ? "Configure your daylist settings"
                 : playlistType === "top_tracks"
                   ? "Artists must exist in your library. One artist per line."
-                  : "Configure your playlist sync settings"}
+                  : playlistType === "mood_playlist"
+                    ? "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher."
+                    : "Configure your playlist sync settings"}
           </DialogDescription>
         </DialogHeader>
 
@@ -452,6 +515,22 @@ export function CreatePlaylistSyncDialog({
                 <h3 className="font-semibold">Artists Top Tracks</h3>
                 <p className="text-sm text-muted-foreground">
                   Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
+                </p>
+              </div>
+            </button>
+
+            {/* Mood Playlist Option */}
+            <button
+              onClick={() => handleSelectType("mood_playlist")}
+              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900">
+                <Sparkles className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold">Mood Playlist</h3>
+                <p className="text-sm text-muted-foreground">
+                  Generate playlist from selected Plex moods. Fresh each run with exclude-last-run and date-seeded sampling.
                 </p>
               </div>
             </button>
@@ -1060,6 +1139,120 @@ export function CreatePlaylistSyncDialog({
                   }
                 />
               </>
+            ) : playlistType === "mood_playlist" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Moods (select one or more)</Label>
+                  <div className="max-h-[200px] overflow-y-auto rounded-md border border-input p-2">
+                    {moodsList.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Loading moods...</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1">
+                        {moodsList.map((mood) => (
+                          <label key={mood} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={moodPlaylistForm.moods.includes(mood)}
+                              onChange={() => handleToggleMood(mood)}
+                              className="rounded border-gray-300"
+                            />
+                            <span className="text-sm">{mood}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Tracks matching multiple selected moods rank higher. Uses Plex Sonic Analysis.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Playlist name</Label>
+                  <Input
+                    value={moodPlaylistForm.playlist_name}
+                    onChange={(e) =>
+                      setMoodPlaylistForm((prev) => ({ ...prev, playlist_name: e.target.value }))
+                    }
+                    placeholder="Mood Playlist"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Max tracks</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="50"
+                    value={moodPlaylistForm.max_tracks}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      const v = parseInt(raw, 10);
+                      setMoodPlaylistForm((prev) => ({
+                        ...prev,
+                        max_tracks: raw === "" ? 50 : isNaN(v) ? prev.max_tracks : Math.max(1, Math.min(200, v)),
+                      }));
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.trim();
+                      const v = parseInt(raw, 10);
+                      if (raw === "" || isNaN(v) || v < 1 || v > 200) {
+                        setMoodPlaylistForm((prev) => ({ ...prev, max_tracks: 50 }));
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">Min 1, max 200</p>
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={moodPlaylistForm.exclude_last_run}
+                    onChange={(e) =>
+                      setMoodPlaylistForm((prev) => ({ ...prev, exclude_last_run: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Exclude tracks from last run (freshness)</span>
+                </label>
+                <div className="space-y-2">
+                  <Label>Schedule (cron)</Label>
+                  <Input
+                    value={moodPlaylistForm.schedule_cron}
+                    onChange={(e) =>
+                      setMoodPlaylistForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                    }
+                    placeholder="0 6 * * *"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    e.g. 0 6 * * * = daily at 6am
+                  </p>
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={moodPlaylistForm.enabled}
+                    onChange={(e) =>
+                      setMoodPlaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+
+                <ExpirationFields
+                  idPrefix="create-mood"
+                  enabled={moodPlaylistForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={moodPlaylistForm.expires_at}
+                  onValueChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                />
+              </>
             ) : (
               <>
                 {/* Playlist URL */}
@@ -1122,8 +1315,8 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings (hidden for daylist and top_tracks - they have their own forms) */}
-            {playlistType !== "daylist" && playlistType !== "top_tracks" && (
+            {/* Common Settings (hidden for daylist, top_tracks, mood_playlist - they have their own forms) */}
+            {playlistType !== "daylist" && playlistType !== "top_tracks" && playlistType !== "mood_playlist" && (
               <>
                 <div className="space-y-2">
                   <Label>Target</Label>

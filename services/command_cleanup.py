@@ -221,6 +221,9 @@ class CommandCleanupService:
         elif name.startswith("daylist_"):
             playlist_name = "Cmdarr's Daylist"
             self._delete_playlist_if_exists("plex", playlist_name)
+        elif name.startswith("mood_playlist_"):
+            playlist_name = f"[Cmdarr Mood] {cfg.get('playlist_name', 'Mood Playlist')}"
+            self._delete_playlist_if_exists("plex", playlist_name)
 
     def _delete_playlist_if_exists(self, target: str, playlist_name: str):
         """Delete playlist from Plex or Jellyfin if it exists."""

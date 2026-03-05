@@ -64,6 +64,8 @@ class CommandExecutor:
             self._load_dynamic_daylist_commands()
             # Load dynamic top tracks commands from database
             self._load_dynamic_top_tracks_commands()
+            # Load dynamic mood playlist commands from database
+            self._load_dynamic_mood_playlist_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -811,6 +813,33 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic top tracks commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_mood_playlist_commands(self):
+        """Load dynamic mood playlist commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_mood import PlaylistGeneratorMoodCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                mood_playlist_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("mood_playlist_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in mood_playlist_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorMoodCommand
+                    self.logger.debug(f"Loaded dynamic mood playlist command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic mood playlist commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

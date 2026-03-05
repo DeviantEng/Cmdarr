@@ -158,10 +158,13 @@ export function CommandsPage() {
     source?: string;
     target?: string;
     playlist_name?: string;
+    moods?: string[];
+    exclude_last_run?: boolean;
     expires_at_enabled?: boolean;
     expires_at?: string;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
+  const [moodsList, setMoodsList] = useState<string[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
@@ -353,6 +356,8 @@ export function CommandsPage() {
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
       playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
+      moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
+      exclude_last_run: cfg.exclude_last_run !== false,
       expires_at_enabled: !!(cfg.expires_at as string),
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
     });
@@ -361,8 +366,16 @@ export function CommandsPage() {
         .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
         .then((r) => setPlexAccounts(r.accounts || []))
         .catch(() => setPlexAccounts([]));
+      setMoodsList([]);
+    } else if (command.command_name.startsWith("mood_playlist_")) {
+      api
+        .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
+        .then((r) => setMoodsList(r.moods || []))
+        .catch(() => setMoodsList([]));
+      setPlexAccounts([]);
     } else {
       setPlexAccounts([]);
+      setMoodsList([]);
     }
   };
 
@@ -1111,7 +1124,8 @@ export function CommandsPage() {
                     {/* Expiration - playlist sync, top tracks, daylist */}
                     {(editingCommand.command_name.startsWith("playlist_sync_") ||
                       editingCommand.command_name.startsWith("top_tracks_") ||
-                      editingCommand.command_name.startsWith("daylist_")) && (
+                      editingCommand.command_name.startsWith("daylist_") ||
+                      editingCommand.command_name.startsWith("mood_playlist_")) && (
                       <ExpirationFields
                         idPrefix="edit-exp"
                         enabled={editForm.expires_at_enabled ?? false}
@@ -1602,6 +1616,94 @@ export function CommandsPage() {
                       </>
                     )}
 
+                    {/* Mood Playlist - editable fields */}
+                    {editingCommand.command_name.startsWith("mood_playlist_") && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Moods (select one or more)</Label>
+                          <div className="max-h-[200px] overflow-y-auto rounded-md border border-input p-2">
+                            {moodsList.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">Loading moods...</p>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-1">
+                                {moodsList.map((mood) => (
+                                  <label key={mood} className="flex items-center space-x-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={(editForm.moods ?? []).includes(mood)}
+                                      onChange={() => {
+                                        const current = editForm.moods ?? [];
+                                        setEditForm((f) => ({
+                                          ...f,
+                                          moods: current.includes(mood)
+                                            ? current.filter((m) => m !== mood)
+                                            : [...current, mood],
+                                        }));
+                                      }}
+                                      className="rounded border-gray-300"
+                                    />
+                                    <span className="text-sm">{mood}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Playlist name</Label>
+                            <Input
+                              value={editForm.playlist_name ?? "Mood Playlist"}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, playlist_name: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Max tracks</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="50"
+                              value={editForm.max_tracks ?? 50}
+                              onChange={(e) => {
+                                const raw = e.target.value.trim();
+                                const v = parseInt(raw, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  max_tracks:
+                                    raw === ""
+                                      ? 50
+                                      : isNaN(v)
+                                        ? f.max_tracks ?? 50
+                                        : Math.max(1, Math.min(200, v)),
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const raw = e.target.value.trim();
+                                const v = parseInt(raw, 10);
+                                if (raw === "" || isNaN(v) || v < 1 || v > 200) {
+                                  setEditForm((f) => ({ ...f, max_tracks: 50 }));
+                                }
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">Min 1, max 200</p>
+                          </div>
+                        </div>
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editForm.exclude_last_run ?? true}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, exclude_last_run: e.target.checked }))
+                            }
+                            className="rounded border-gray-300"
+                          />
+                          <span className="text-sm">Exclude tracks from last run (freshness)</span>
+                        </label>
+                      </>
+                    )}
+
                     {/* Top Tracks - editable fields */}
                     {editingCommand.command_name.startsWith("top_tracks_") && (
                       <>
@@ -1983,11 +2085,39 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith("mood_playlist_") && (
+                  <Button
+                    onClick={() => {
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        moods: editForm.moods ?? [],
+                        playlist_name: editForm.playlist_name ?? "Mood Playlist",
+                        max_tracks: editForm.max_tracks ?? 50,
+                        exclude_last_run: editForm.exclude_last_run ?? true,
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                      } else {
+                        delete cfg.expires_at;
+                      }
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: cfg,
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name !== "new_releases_discovery" &&
                   editingCommand.command_name !== "discovery_lastfm" &&
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
-                  !editingCommand.command_name.startsWith("top_tracks_") && (
+                  !editingCommand.command_name.startsWith("top_tracks_") &&
+                  !editingCommand.command_name.startsWith("mood_playlist_") && (
                     <Button
                       onClick={() =>
                         handleSaveCommand({
