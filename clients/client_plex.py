@@ -1362,12 +1362,14 @@ class PlexClient(BaseAPIClient):
                 album = (t.get("parentTitle", "") or "").strip()
                 key = t.get("ratingKey")
                 if key and title and artist:
-                    out.append({
-                        "key": key,
-                        "title": title,
-                        "artist": artist,
-                        "album": album,
-                    })
+                    out.append(
+                        {
+                            "key": key,
+                            "title": title,
+                            "artist": artist,
+                            "album": album,
+                        }
+                    )
             return out
         except Exception as e:
             self.logger.error(f"Error getting popular tracks for artist {artist_rating_key}: {e}")
@@ -1412,19 +1414,23 @@ class PlexClient(BaseAPIClient):
                     if s:
                         try:
                             year_val = int(s.split("-")[0]) if "-" in s else int(s)
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             pass
                 if key and title and artist:
-                    out.append({
-                        "key": key,
-                        "title": title,
-                        "artist": artist,
-                        "album": album,
-                        "year": year_val,
-                    })
+                    out.append(
+                        {
+                            "key": key,
+                            "title": title,
+                            "artist": artist,
+                            "album": album,
+                            "year": year_val,
+                        }
+                    )
             return out
         except Exception as e:
-            self.logger.error(f"Error getting tracks by mood '{mood}' for library {library_key}: {e}")
+            self.logger.error(
+                f"Error getting tracks by mood '{mood}' for library {library_key}: {e}"
+            )
             return []
 
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):

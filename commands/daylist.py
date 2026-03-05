@@ -124,7 +124,11 @@ class DaylistCommand(BaseCommand):
             db = get_database_manager()
             session = db.get_config_session_sync()
             try:
-                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                cmd = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == cmd_name)
+                    .first()
+                )
                 if cmd and cmd.display_name != expected:
                     cmd.display_name = expected
                     session.commit()

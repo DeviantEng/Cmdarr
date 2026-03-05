@@ -18,16 +18,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic, Compass, Sparkles } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Music,
+  Globe,
+  Sun,
+  ListMusic,
+  Compass,
+  Sparkles,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import {
-  ExpirationFields,
-  toExpiresAtIso,
-} from "@/components/ExpirationFields";
+import { ExpirationFields } from "@/components/ExpirationFields";
+import { toExpiresAtIso } from "@/lib/expiration";
 
-type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks" | "local_discovery" | "mood_playlist";
+type PlaylistType =
+  | "listenbrainz"
+  | "other"
+  | "daylist"
+  | "top_tracks"
+  | "local_discovery"
+  | "mood_playlist";
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -83,6 +97,8 @@ export function CreatePlaylistSyncDialog({
     daily_jams_keep: 3,
     cleanup_enabled: true,
     enable_artist_discovery: false,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
     expires_at_enabled: false,
     expires_at: "",
     expires_at_delete_playlist: true,
@@ -205,6 +221,8 @@ export function CreatePlaylistSyncDialog({
         daily_jams_keep: 3,
         cleanup_enabled: true,
         enable_artist_discovery: false,
+        schedule_cron: "0 6 * * *",
+        schedule_override: false,
         expires_at_enabled: false,
         expires_at: "",
         expires_at_delete_playlist: true,
@@ -361,7 +379,12 @@ export function CreatePlaylistSyncDialog({
       return true;
     }
     if (playlistType === "top_tracks") {
-      if (topTracksForm.artists.trim().split("\n").filter((a) => a.trim()).length === 0)
+      if (
+        topTracksForm.artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
         return false;
       if (topTracksForm.expires_at_enabled && !topTracksForm.expires_at) return false;
       return true;
@@ -392,7 +415,10 @@ export function CreatePlaylistSyncDialog({
     try {
       if (playlistType === "top_tracks") {
         const payload: Record<string, unknown> = {
-          artists: topTracksForm.artists.trim().split("\n").filter((a) => a.trim()),
+          artists: topTracksForm.artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
           top_x: topTracksForm.top_x,
           source: topTracksForm.source,
           target: topTracksForm.target,
@@ -432,12 +458,13 @@ export function CreatePlaylistSyncDialog({
         };
         if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
           daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
-          daylistPayload.expires_at_delete_playlist = daylistForm.expires_at_delete_playlist ?? true;
+          daylistPayload.expires_at_delete_playlist =
+            daylistForm.expires_at_delete_playlist ?? true;
         }
-        const response = await api.request<{ message: string }>(
-          "/api/commands/daylist/create",
-          { method: "POST", body: JSON.stringify(daylistPayload) }
-        );
+        const response = await api.request<{ message: string }>("/api/commands/daylist/create", {
+          method: "POST",
+          body: JSON.stringify(daylistPayload),
+        });
         toast.success(response.message || "Daylist command created successfully");
       } else if (playlistType === "mood_playlist") {
         const payload: Record<string, unknown> = {
@@ -449,7 +476,9 @@ export function CreatePlaylistSyncDialog({
           limit_by_year: moodPlaylistForm.limit_by_year,
           min_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.min_year : undefined,
           max_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.max_year : undefined,
-          schedule_cron: moodPlaylistForm.schedule_override ? moodPlaylistForm.schedule_cron : undefined,
+          schedule_cron: moodPlaylistForm.schedule_override
+            ? moodPlaylistForm.schedule_cron
+            : undefined,
           enabled: moodPlaylistForm.enabled,
         };
         if (moodPlaylistForm.expires_at_enabled && moodPlaylistForm.expires_at) {
@@ -472,12 +501,15 @@ export function CreatePlaylistSyncDialog({
           sonic_similar_limit: localDiscoveryForm.sonic_similar_limit,
           sonic_similarity_distance: localDiscoveryForm.sonic_similarity_distance,
           historical_ratio: localDiscoveryForm.historical_ratio,
-          schedule_cron: localDiscoveryForm.schedule_override ? localDiscoveryForm.schedule_cron : undefined,
+          schedule_cron: localDiscoveryForm.schedule_override
+            ? localDiscoveryForm.schedule_cron
+            : undefined,
           enabled: localDiscoveryForm.enabled,
         };
         if (localDiscoveryForm.expires_at_enabled && localDiscoveryForm.expires_at) {
           payload.expires_at = toExpiresAtIso(localDiscoveryForm.expires_at);
-          payload.expires_at_delete_playlist = localDiscoveryForm.expires_at_delete_playlist ?? true;
+          payload.expires_at_delete_playlist =
+            localDiscoveryForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string }>(
           "/api/commands/local-discovery/create",
@@ -488,6 +520,7 @@ export function CreatePlaylistSyncDialog({
         const payload: Record<string, unknown> = {
           ...formData,
           playlist_type: playlistType,
+          schedule_cron: formData.schedule_override ? formData.schedule_cron : undefined,
         };
         if (formData.expires_at_enabled && formData.expires_at) {
           payload.expires_at = toExpiresAtIso(formData.expires_at);
@@ -631,7 +664,8 @@ export function CreatePlaylistSyncDialog({
               <div className="flex-1">
                 <h3 className="font-semibold">Mood Playlist</h3>
                 <p className="text-sm text-muted-foreground">
-                  Generate playlist from selected Plex moods. Fresh each run with exclude-last-run and date-seeded sampling.
+                  Generate playlist from selected Plex moods. Fresh each run with exclude-last-run
+                  and date-seeded sampling.
                 </p>
               </div>
             </button>
@@ -653,7 +687,8 @@ export function CreatePlaylistSyncDialog({
               <div className="flex-1">
                 <h3 className="font-semibold">Local Discovery</h3>
                 <p className="text-sm text-muted-foreground">
-                  Top artists from play history + sonically similar tracks. Fresh each run. Plex only.
+                  Top artists from play history + sonically similar tracks. Fresh each run. Plex
+                  only.
                 </p>
               </div>
             </button>
@@ -792,7 +827,10 @@ export function CreatePlaylistSyncDialog({
                       value={daylistForm.schedule_minute}
                       onChange={(e) => {
                         const v = parseInt(e.target.value, 10);
-                        setDaylistForm((prev) => ({ ...prev, schedule_minute: isNaN(v) ? prev.schedule_minute : v }));
+                        setDaylistForm((prev) => ({
+                          ...prev,
+                          schedule_minute: isNaN(v) ? prev.schedule_minute : v,
+                        }));
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
@@ -958,15 +996,20 @@ export function CreatePlaylistSyncDialog({
                         type="checkbox"
                         checked={daylistForm.use_primary_mood}
                         onChange={(e) =>
-                          setDaylistForm((prev) => ({ ...prev, use_primary_mood: e.target.checked }))
+                          setDaylistForm((prev) => ({
+                            ...prev,
+                            use_primary_mood: e.target.checked,
+                          }))
                         }
                         className="rounded border-input"
                       />
-                      <span className="text-sm">Use primary mood for cover (default: secondary)</span>
+                      <span className="text-sm">
+                        Use primary mood for cover (default: secondary)
+                      </span>
                     </label>
                     <p className="text-xs text-muted-foreground -mt-2">
-                      Cover text uses the second-most-common mood by default (Meloday). Enable to use
-                      the most common mood instead.
+                      Cover text uses the second-most-common mood by default (Meloday). Enable to
+                      use the most common mood instead.
                     </p>
 
                     <div className="space-y-2">
@@ -1064,9 +1107,7 @@ export function CreatePlaylistSyncDialog({
                     }))
                   }
                   value={daylistForm.expires_at}
-                  onValueChange={(v) =>
-                    setDaylistForm((prev) => ({ ...prev, expires_at: v }))
-                  }
+                  onValueChange={(v) => setDaylistForm((prev) => ({ ...prev, expires_at: v }))}
                   showDeletePlaylistOption={true}
                   deletePlaylistOnExpiry={daylistForm.expires_at_delete_playlist ?? true}
                   onDeletePlaylistChange={(v) =>
@@ -1115,7 +1156,8 @@ export function CreatePlaylistSyncDialog({
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.
+                      How far back to count plays. Shorter = more day-to-day variety. Min: 7, max:
+                      365.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -1230,7 +1272,8 @@ export function CreatePlaylistSyncDialog({
                       className="w-full"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.
+                      Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60%
+                      similar.
                     </p>
                   </div>
                 </div>
@@ -1245,7 +1288,9 @@ export function CreatePlaylistSyncDialog({
                         const v = parseFloat(e.target.value);
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          sonic_similarity_distance: isNaN(v) ? 0.25 : Math.max(0.1, Math.min(1, v)),
+                          sonic_similarity_distance: isNaN(v)
+                            ? 0.25
+                            : Math.max(0.1, Math.min(1, v)),
                         }));
                       }}
                     />
@@ -1277,7 +1322,10 @@ export function CreatePlaylistSyncDialog({
                           placeholder="0 6 * * *"
                           value={localDiscoveryForm.schedule_cron}
                           onChange={(e) =>
-                            setLocalDiscoveryForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                            setLocalDiscoveryForm((prev) => ({
+                              ...prev,
+                              schedule_cron: e.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1337,7 +1385,8 @@ export function CreatePlaylistSyncDialog({
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    Artists must exist in your library. Names are validated against the library cache.
+                    Artists must exist in your library. Names are validated against the library
+                    cache.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1352,7 +1401,8 @@ export function CreatePlaylistSyncDialog({
                       const v = parseInt(raw, 10);
                       setTopTracksForm((prev) => ({
                         ...prev,
-                        top_x: raw === "" ? 5 : isNaN(v) ? prev.top_x : Math.max(1, Math.min(20, v)),
+                        top_x:
+                          raw === "" ? 5 : isNaN(v) ? prev.top_x : Math.max(1, Math.min(20, v)),
                       }));
                     }}
                     onBlur={(e) => {
@@ -1387,9 +1437,7 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="jellyfin">Jellyfin</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Where to create the playlist.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Where to create the playlist.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Source (Jellyfin target uses Last.fm only)</Label>
@@ -1440,13 +1488,15 @@ export function CreatePlaylistSyncDialog({
                       placeholder="e.g. Road Trip Mix"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Override auto-generated name. Shown as [Cmdarr] Artist Essentials: &lt;name&gt;.
+                      Override auto-generated name. Shown as [Cmdarr] Artist Essentials:
+                      &lt;name&gt;.
                     </p>
                   </div>
                 )}
                 {!topTracksForm.use_custom_playlist_name && (
                   <p className="text-xs text-muted-foreground">
-                    Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3 More).
+                    Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3
+                    More).
                   </p>
                 )}
                 <div className="space-y-2">
@@ -1510,9 +1560,7 @@ export function CreatePlaylistSyncDialog({
                     }))
                   }
                   value={topTracksForm.expires_at}
-                  onValueChange={(v) =>
-                    setTopTracksForm((prev) => ({ ...prev, expires_at: v }))
-                  }
+                  onValueChange={(v) => setTopTracksForm((prev) => ({ ...prev, expires_at: v }))}
                   showDeletePlaylistOption={true}
                   deletePlaylistOnExpiry={topTracksForm.expires_at_delete_playlist ?? true}
                   onDeletePlaylistChange={(v) =>
@@ -1596,7 +1644,12 @@ export function CreatePlaylistSyncDialog({
                       const v = parseInt(raw, 10);
                       setMoodPlaylistForm((prev) => ({
                         ...prev,
-                        max_tracks: raw === "" ? 50 : isNaN(v) ? prev.max_tracks : Math.max(1, Math.min(200, v)),
+                        max_tracks:
+                          raw === ""
+                            ? 50
+                            : isNaN(v)
+                              ? prev.max_tracks
+                              : Math.max(1, Math.min(200, v)),
                       }));
                     }}
                     onBlur={(e) => {
@@ -1614,7 +1667,10 @@ export function CreatePlaylistSyncDialog({
                     type="checkbox"
                     checked={moodPlaylistForm.exclude_last_run}
                     onChange={(e) =>
-                      setMoodPlaylistForm((prev) => ({ ...prev, exclude_last_run: e.target.checked }))
+                      setMoodPlaylistForm((prev) => ({
+                        ...prev,
+                        exclude_last_run: e.target.checked,
+                      }))
                     }
                     className="rounded border-gray-300"
                   />
@@ -1700,7 +1756,10 @@ export function CreatePlaylistSyncDialog({
                           placeholder="0 6 * * *"
                           value={moodPlaylistForm.schedule_cron}
                           onChange={(e) =>
-                            setMoodPlaylistForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                            setMoodPlaylistForm((prev) => ({
+                              ...prev,
+                              schedule_cron: e.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1738,9 +1797,7 @@ export function CreatePlaylistSyncDialog({
                     }))
                   }
                   value={moodPlaylistForm.expires_at}
-                  onValueChange={(v) =>
-                    setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))
-                  }
+                  onValueChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))}
                   showDeletePlaylistOption={true}
                   deletePlaylistOnExpiry={moodPlaylistForm.expires_at_delete_playlist ?? true}
                   onDeletePlaylistChange={(v) =>
@@ -1815,96 +1872,147 @@ export function CreatePlaylistSyncDialog({
               playlistType !== "top_tracks" &&
               playlistType !== "local_discovery" &&
               playlistType !== "mood_playlist" && (
-              <>
-                <div className="space-y-2">
-                  <Label>Target</Label>
-                  <Select
-                    value={formData.target}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, target: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="plex">Plex</SelectItem>
-                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label>Target</Label>
+                    <Select
+                      value={formData.target}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, target: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="plex">Plex</SelectItem>
+                        <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Sync Mode</Label>
-                  <Select
-                    value={formData.sync_mode}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, sync_mode: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="full">Full Sync</SelectItem>
-                      <SelectItem value="append">Append Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="space-y-2">
+                    <Label>Sync Mode</Label>
+                    <Select
+                      value={formData.sync_mode}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, sync_mode: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Full Sync</SelectItem>
+                        <SelectItem value="append">Append Only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <p className="text-sm text-muted-foreground">
-                  New commands use the global schedule (Config → Scheduler). You can override
-                  per-command after creation.
-                </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="create-ext-schedule-override"
+                        checked={formData.schedule_override}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            schedule_override: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-input"
+                      />
+                      <Label
+                        htmlFor="create-ext-schedule-override"
+                        className="cursor-pointer font-normal"
+                      >
+                        Override default schedule
+                      </Label>
+                    </div>
+                    {formData.schedule_override && (
+                      <>
+                        <div className="space-y-2 rounded-lg border p-4">
+                          <Input
+                            placeholder="0 6 * * *"
+                            value={formData.schedule_cron}
+                            onChange={(e) =>
+                              setFormData((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
+                        </p>
+                      </>
+                    )}
+                    {!formData.schedule_override && (
+                      <p className="text-xs text-muted-foreground">
+                        Uses global default (Config → Scheduler)
+                      </p>
+                    )}
+                  </div>
 
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.enabled}
-                    onChange={(e) =>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.enabled}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          enabled: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Enable immediately after creation</span>
+                  </label>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="create-enable-artist-discovery"
+                        checked={formData.enable_artist_discovery}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            enable_artist_discovery: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-input"
+                      />
+                      <Label
+                        htmlFor="create-enable-artist-discovery"
+                        className="cursor-pointer font-normal"
+                      >
+                        Enable artist discovery
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      When tracks fail to match in your library, discover and add artists from those
+                      tracks.
+                    </p>
+                  </div>
+
+                  <ExpirationFields
+                    idPrefix="create-ext"
+                    enabled={formData.expires_at_enabled}
+                    onEnabledChange={(v) =>
                       setFormData((prev) => ({
                         ...prev,
-                        enabled: e.target.checked,
+                        expires_at_enabled: v,
+                        expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                       }))
                     }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">Enable immediately after creation</span>
-                </label>
-
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.enable_artist_discovery}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        enable_artist_discovery: e.target.checked,
-                      }))
+                    value={formData.expires_at}
+                    onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                    showDeletePlaylistOption={true}
+                    deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
+                    onDeletePlaylistChange={(v) =>
+                      setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                     }
-                    className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable artist discovery for this playlist</span>
-                </label>
-
-                <ExpirationFields
-                  idPrefix="create-ext"
-                  enabled={formData.expires_at_enabled}
-                  onEnabledChange={(v) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      expires_at_enabled: v,
-                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
-                    }))
-                  }
-                  value={formData.expires_at}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
-                    setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
-                  }
-                />
-              </>
-            )}
+                </>
+              )}
           </div>
         )}
 

@@ -112,11 +112,7 @@ class CommandExecutionResponse(BaseModel):
 async def get_all_commands(db: Annotated[Session, Depends(get_config_db)]):
     """Get all command configurations (excluding helper commands and soft-deleted)"""
     try:
-        commands = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.deleted_at.is_(None))
-            .all()
-        )
+        commands = db.query(CommandConfig).filter(CommandConfig.deleted_at.is_(None)).all()
 
         # Filter out helper commands
         visible_commands = []
@@ -827,7 +823,9 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
-            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
 
         if deleted_cmd:
             # Restore and overwrite the deleted record (preserves execution history)
@@ -940,7 +938,9 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
-            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
 
         schedule_cron = (request.get("schedule_cron") or "").strip() or None
         schedule_override = bool(schedule_cron)
@@ -975,7 +975,10 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
 
         command_executor._load_dynamic_local_discovery_commands()
 
-        return {"message": "Local Discovery command created", "command_name": "local_discovery_00001"}
+        return {
+            "message": "Local Discovery command created",
+            "command_name": "local_discovery_00001",
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1004,7 +1007,9 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         if isinstance(artists_raw, str):
             artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
         if not artists_raw:
-            raise HTTPException(status_code=400, detail="artists is required (list or newline-separated)")
+            raise HTTPException(
+                status_code=400, detail="artists is required (list or newline-separated)"
+            )
 
         top_x = int(request.get("top_x", 5))
         top_x = max(1, min(20, top_x))
@@ -1026,7 +1031,6 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         from commands.config_adapter import Config
 
         config = Config()
-        target_upper = target.upper()
         library_key = None
         if target == "plex" and hasattr(config, "PLEX_LIBRARY_KEY"):
             library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
@@ -1053,15 +1057,13 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
             )
 
         existing = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name.like("top_tracks_%"))
-            .all()
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("top_tracks_%")).all()
         )
         used_ids = set()
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1079,7 +1081,9 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
-            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
 
         cmd = CommandConfig(
             command_name=command_name,
@@ -1112,7 +1116,13 @@ async def mood_playlist_moods():
     import json
     from pathlib import Path
 
-    path = Path(__file__).resolve().parent.parent.parent / "commands" / "daylist" / "assets" / "moodmap.json"
+    path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "commands"
+        / "daylist"
+        / "assets"
+        / "moodmap.json"
+    )
     try:
         with open(path) as f:
             moodmap = json.load(f)
@@ -1179,15 +1189,13 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
             )
 
         existing = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name.like("mood_playlist_%"))
-            .all()
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("mood_playlist_%")).all()
         )
         used_ids = set()
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1200,11 +1208,11 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         if limit_by_year:
             try:
                 min_year = max(1800, min(2100, int(min_year))) if min_year is not None else None
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 min_year = None
             try:
                 max_year = max(1800, min(2100, int(max_year))) if max_year is not None else None
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 max_year = None
         else:
             min_year = max_year = None
@@ -1222,7 +1230,9 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
-            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
 
         cmd = CommandConfig(
             command_name=command_name,
@@ -1365,7 +1375,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1381,7 +1391,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Find the next available ID
@@ -1411,7 +1421,9 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
-                config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+                config_json["expires_at_delete_playlist"] = request.get(
+                    "expires_at_delete_playlist", True
+                )
 
             command = CommandConfig(
                 command_name=command_name,
@@ -1527,7 +1539,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1543,7 +1555,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             # Find the next available ID
@@ -1583,7 +1595,9 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
-                config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
+                config_json["expires_at_delete_playlist"] = request.get(
+                    "expires_at_delete_playlist", True
+                )
 
             command = CommandConfig(
                 command_name=command_name,

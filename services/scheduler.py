@@ -167,17 +167,15 @@ class CommandScheduler:
                     exp_str = cfg.get("expires_at")
                     if exp_str:
                         try:
-                            from datetime import timezone
-
                             s = str(exp_str).strip().replace("Z", "+00:00")
                             exp_dt = datetime.fromisoformat(s)
                             if exp_dt.tzinfo:
-                                exp_dt = exp_dt.astimezone(timezone.utc)
+                                exp_dt = exp_dt.astimezone(UTC)
                             else:
-                                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                                exp_dt = exp_dt.replace(tzinfo=UTC)
                             if now_utc >= exp_dt:
                                 continue  # Skip expired
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             pass
 
                     cron_expr = get_effective_cron(command)

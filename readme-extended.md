@@ -140,6 +140,15 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 **Requirements**: Lidarr; either Deezer (default) or Spotify credentials in Config  
 **Configuration**: Release source in Commands → Edit; `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources
 
+### Playlist Generators (Plex/Jellyfin)
+
+Create via Commands → New. All use `[Cmdarr]` prefix; display name syncs with playlist.
+
+- **Daylist** – Time-of-day playlists from Plex Sonic Analysis and listening history; configurable periods (dawn, morning, afternoon, etc.)
+- **Local Discovery** – Top artists from play history + sonically similar tracks; single instance; 90-day lookback default
+- **Artist Essentials** – Top X tracks per artist from a list; auto-naming or custom name
+- **Mood Playlist** – Selected Plex Sonic moods; multi-mood scoring; optional year filter
+
 ### Playlist Sync Commands
 
 #### Dynamic Playlist Sync Commands

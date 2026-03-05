@@ -155,7 +155,7 @@ class LastFMClient(BaseAPIClient):
                 match_score = artist.get("match", "0")
                 try:
                     float(match_score)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     skipped_artists.append(
                         {
                             "name": artist.get("name", ""),
@@ -206,9 +206,7 @@ class LastFMClient(BaseAPIClient):
 
             return [], []  # Return empty lists for both processed and skipped
 
-    async def get_top_tracks(
-        self, artist_name: str, limit: int = 10
-    ) -> list[dict[str, Any]]:
+    async def get_top_tracks(self, artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
         """
         Get top tracks for an artist via artist.getTopTracks.
         Returns list of {name, artist, playcount} for matching against library.
@@ -237,7 +235,9 @@ class LastFMClient(BaseAPIClient):
             if not response:
                 if self.cache_enabled and self.cache:
                     self.cache.mark_failed_lookup(
-                        cache_key, "lastfm", "API request failed",
+                        cache_key,
+                        "lastfm",
+                        "API request failed",
                         self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
                     )
                 return []
@@ -253,15 +253,19 @@ class LastFMClient(BaseAPIClient):
                 art = t.get("artist", {})
                 artist = art.get("name", artist_name) if isinstance(art, dict) else artist_name
                 if name:
-                    tracks.append({
-                        "name": name,
-                        "artist": artist,
-                        "playcount": int(t.get("playcount", 0)),
-                    })
+                    tracks.append(
+                        {
+                            "name": name,
+                            "artist": artist,
+                            "playcount": int(t.get("playcount", 0)),
+                        }
+                    )
 
             if self.cache_enabled and self.cache:
                 self.cache.set(
-                    cache_key, "lastfm", {"tracks": tracks},
+                    cache_key,
+                    "lastfm",
+                    {"tracks": tracks},
                     self.config.CACHE_LASTFM_TTL_DAYS,
                 )
             return tracks
@@ -269,7 +273,9 @@ class LastFMClient(BaseAPIClient):
             self.logger.error(f"Error getting top tracks for {artist_name}: {e}")
             if self.cache_enabled and self.cache:
                 self.cache.mark_failed_lookup(
-                    cache_key, "lastfm", str(e),
+                    cache_key,
+                    "lastfm",
+                    str(e),
                     self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
                 )
             return []

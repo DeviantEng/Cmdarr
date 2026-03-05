@@ -5,7 +5,7 @@ Handles stuck commands, timeouts, and cleanup tasks
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -172,10 +172,10 @@ class CommandCleanupService:
                         s = str(exp_str).strip().replace("Z", "+00:00")
                         exp_dt = datetime.fromisoformat(s)
                         if exp_dt.tzinfo:
-                            exp_dt = exp_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                            exp_dt = exp_dt.astimezone(UTC).replace(tzinfo=None)
                         if exp_dt <= now:
                             expired.append(cmd)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
                 if not expired:
@@ -217,7 +217,9 @@ class CommandCleanupService:
 
         if name.startswith("playlist_sync_"):
             target = str(cfg.get("target", "plex")).lower()
-            playlist_name = f"[{str(cfg.get('source', 'unknown')).title()}] {cfg.get('playlist_name', '')}"
+            playlist_name = (
+                f"[{str(cfg.get('source', 'unknown')).title()}] {cfg.get('playlist_name', '')}"
+            )
             self._delete_playlist_if_exists(target, playlist_name)
         elif name.startswith("top_tracks_"):
             target = str(cfg.get("target", "plex")).lower()
@@ -233,6 +235,7 @@ class CommandCleanupService:
                     pl_title = f"[Cmdarr] Artist Essentials: {custom}"
                 elif artists_raw:
                     from commands.playlist_generator_top_tracks import _build_auto_playlist_suffix
+
                     suffix = _build_auto_playlist_suffix(artists_raw[:50])
                     pl_title = f"[Cmdarr] Artist Essentials: {suffix}"
                 else:
@@ -252,7 +255,11 @@ class CommandCleanupService:
                 use_custom = cfg.get("use_custom_playlist_name", False)
                 custom = (cfg.get("custom_playlist_name") or "").strip()
                 # Backward compat: old configs used playlist_name
-                if not custom and cfg.get("playlist_name") and cfg.get("playlist_name") != "Mood Playlist":
+                if (
+                    not custom
+                    and cfg.get("playlist_name")
+                    and cfg.get("playlist_name") != "Mood Playlist"
+                ):
                     custom = (cfg.get("playlist_name") or "").strip()
                     use_custom = bool(custom)
                 if use_custom and custom:

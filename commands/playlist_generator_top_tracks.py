@@ -129,7 +129,11 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             db = get_database_manager()
             session = db.get_config_session_sync()
             try:
-                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                cmd = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == cmd_name)
+                    .first()
+                )
                 if cmd:
                     cfg = dict(cmd.config_json or {})
                     cfg["last_playlist_title"] = playlist_title
@@ -183,7 +187,8 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             # Ordered display names from user list (for auto-naming)
             valid_norms = set(valid_artists)
             ordered_display_names = [
-                a.strip() for a in artists_raw
+                a.strip()
+                for a in artists_raw
                 if (a or "").strip() and normalize_text((a or "").strip().lower()) in valid_norms
             ]
 
@@ -219,28 +224,34 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                         library_key, artist_rk, limit=top_x
                     )
                     for t in popular[:top_x]:
-                        tracks_for_playlist.append({
-                            "rating_key": t["key"],
-                            "artist": t["artist"],
-                            "track": t["title"],
-                            "album": t.get("album", ""),
-                        })
+                        tracks_for_playlist.append(
+                            {
+                                "rating_key": t["key"],
+                                "artist": t["artist"],
+                                "track": t["title"],
+                                "album": t.get("album", ""),
+                            }
+                        )
                     artists_processed += 1
             else:
                 # Last.fm: get top tracks, pass to sync_playlist for matching
                 async with self.lastfm_client:
                     for artist_name in valid_artists:
-                        top_tracks = await self.lastfm_client.get_top_tracks(artist_name, limit=top_x)
+                        top_tracks = await self.lastfm_client.get_top_tracks(
+                            artist_name, limit=top_x
+                        )
                         added = 0
                         for t in top_tracks[:top_x]:
                             track_name = t.get("name", "")
                             if not track_name:
                                 continue
-                            tracks_for_playlist.append({
-                                "artist": artist_name,
-                                "track": track_name,
-                                "album": t.get("album", ""),
-                            })
+                            tracks_for_playlist.append(
+                                {
+                                    "artist": artist_name,
+                                    "track": track_name,
+                                    "album": t.get("album", ""),
+                                }
+                            )
                             added += 1
                         if added > 0:
                             artists_processed += 1

@@ -7,62 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.7] - 2026-03-05
 
-### 🎵 Artist Essentials (formerly Top Tracks)
-- **Renamed**: Top Tracks → Artist Essentials; playlist prefix `[Cmdarr] Artist Essentials`
-- **Auto-Naming**: Playlist name auto-generated from artist list: 1–3 artists show all (Artist1 · Artist2 · Artist3), 4+ show first 2 + N More
-- **Custom Override**: Optional checkbox "Use custom playlist name" to override auto-generated name
-- **Display Name Sync**: Command display name updated on each run to match playlist title
-- **Fuzzy Artist Matching**: Unicode normalization and fuzzy matching for artist resolution
+### 🎵 New Playlist Generators
+- **Artist Essentials** (formerly Top Tracks): Auto-naming from artist list; optional custom name; fuzzy matching
+- **Local Discovery**: Top artists from play history + sonically similar tracks; 90-day lookback; Plex only; single instance
+- **Mood Playlist**: Selected Plex Sonic moods; multi-mood scoring; optional year filter; Plex only
+- **Playlist Naming**: `[Cmdarr]` prefix for all Cmdarr-generated playlists; display name syncs with Plex/Jellyfin
 
-### 📋 Playlist Naming Standardization
-- **Format**: `[Cmdarr]` prefix for all Cmdarr-generated playlists; sync playlists keep `[Source]` (e.g. `[Deezer]`, `[Spotify]`)
-- **Local Discovery**: `[Cmdarr] Local Discovery`
-- **Daylist**: `[Cmdarr] Daylist`
-- **Artist Essentials**: `[Cmdarr] Artist Essentials: Artist1 · Artist2 + N More` (or custom name)
-- **Display Name = Playlist Name**: Daylist, Local Discovery, and Artist Essentials commands show the same name in Cmdarr as in Plex/Jellyfin
+### 🎨 Command UX & Expiration
+- **Unified UI**: Schedule override, expiration, enable artist discovery—checkbox + description always visible; bordered sub-box when enabled
+- **Command Expiration**: `expires_at` disables command (not delete); optional playlist removal; create/edit for playlist sync, Artist Essentials, daylist, Local Discovery, Mood Playlist
+- **Daylist**: `use_primary_mood` option for cover descriptor
+- **ListenBrainz Edit**: Retention (weekly/daily jams) and cleanup toggle now editable
+- **Free Text Inputs**: Replaced restrictive number inputs across create/edit dialogs
 
-### 🎨 Command Settings UX
-- **Descriptions**: Consistent helper text for all command settings (Local Discovery, Artist Essentials) in create and edit dialogs
-- **Expiration UI**: Checkbox outside box; bordered sub-box when enabled; description below (matches schedule override layout)
-- **Schedule Override UI**: Bordered sub-box when enabled for visual consistency with expiration
-
-### 🗑️ Command Soft-Delete
-- **Execution History**: Deleting a command no longer loses display names in recent executions
-- **Soft Delete**: Commands marked `deleted_at` and hidden from UI; permanently removed after 7 days
-- **Cleanup Job**: Daily at 2am purges commands soft-deleted more than 7 days ago
-- **Exists Checks**: Local Discovery, Daylist, Top Tracks, Mood Playlist "exists" and create guards now exclude soft-deleted commands—you can create a new one immediately after deleting
-
-### ⏱️ Command Expiration
-- **Expires At**: Commands can have `config_json.expires_at` (ISO datetime) for time-limited use
-- **Expiration UI**: Enable expiration checkbox and datetime picker on create and edit for playlist sync, Artist Essentials, daylist, Local Discovery, and Mood Playlist
-- **Position**: Expiration settings moved below "Override default schedule" in command edit dialog
-- **Auto-Disable**: When the datetime is reached, the command is disabled (not deleted); checked every 5 minutes by cleanup
-- **Playlist Cleanup**: Expired playlist_sync, Artist Essentials, daylist, Local Discovery, and Mood Playlist commands optionally have their playlists removed from the target
-- **Delete Playlist Option**: Sub-checkbox "Delete playlist from target when expired" (default on); uncheck to disable command on schedule but keep the playlist
-
-### 🎵 Daylist: Primary Mood Option
-- **use_primary_mood**: Advanced option to use the most common mood (instead of second-most) for the cover descriptor
-- **UI**: Checkbox in Daylist create/edit advanced section
-
-### 🎵 Local Discovery Playlist Generator
-- **New Command**: Local Discovery builds playlists from top played artists + sonically similar tracks
-- **Freshness**: Artist pool + random sample, exclude played days, date-seeded sampling
-- **Default Lookback**: 30 days (was 90) for more day-to-day variety on daily refresh
-- **Config**: lookback_days, exclude_played_days, top_artists_count, artist_pool_size, max_tracks, sonic_similar_limit, sonic_similarity_distance, historical_ratio
-- **Settings Descriptions**: All fields have helper text; Sonic similarity distance in create form, Sonic similar limit in edit form
-- **Plex Only**: Uses play history and Plex Sonic Analysis
-- **Single Instance**: One Local Discovery command supported; create flow in New Command dialog
-
-### 🎵 Mood Playlist Generator
-- **New Command**: Mood Playlist builds playlists from selected Plex Sonic moods
-- **Multi-Mood Scoring**: Tracks matching multiple selected moods rank higher; weighted random sample
-- **Freshness**: "Force fresh (exclude tracks from previous run)"; date-seeded sampling for variety
-- **Naming**: `[Cmdarr] Mood:` prefix; auto-name from moods (1–3 show all, 4+ show first 2 + N More); optional custom override
-- **Display Name Sync**: Command display name updated on each run to match playlist title
-- **Release Year Filter**: Optional min/max year (1800–2100) to limit by album release year; tracks without year excluded when filter enabled
-- **Config**: moods, use_custom_playlist_name, custom_playlist_name, max_tracks, exclude_last_run, limit_by_year, min_year, max_year
-- **Plex Only**: Uses Plex Sonic Analysis mood tags
-- **Create Flow**: New Command dialog → Mood Playlist; 3-column mood list; expiration below schedule override
+### 🗑️ Soft-Delete & Fixes
+- **Soft Delete**: Commands marked `deleted_at`; purged after 7 days; create over deleted restores record (fixes UNIQUE constraint)
 
 ## [0.3.6] - 2026-02-23
 

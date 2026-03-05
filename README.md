@@ -8,7 +8,7 @@ A modular music automation platform that bridges services for your self-hosted m
 
 - **Automatic Music Discovery** – Similar artists (Last.fm), playlist-based discovery, new releases from Deezer/Spotify missing in MusicBrainz, scan artist by URL
 - **Playlist Management** – Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin; add discovered artists to Lidarr
-- **Daylist** – Time-of-day playlist generator using Plex Sonic Analysis and listening history (inspired by Meloday); configurable periods (dawn, morning, afternoon, evening, night, etc.)
+- **Playlist Generators** – Daylist (time-of-day), Local Discovery (top artists + sonic similar), Artist Essentials (top tracks per artist), Mood Playlist (Plex Sonic moods)
 - **Performance** – Library cache (6x faster syncs), rate limiting, cron scheduling, Docker-native deployment
 
 For detailed command descriptions, configuration, architecture, and troubleshooting, see **[readme-extended.md](readme-extended.md)**.
@@ -92,11 +92,10 @@ Visit `http://localhost:8080`. For frontend dev with hot reload: `npm run dev` i
 
 Access `http://localhost:8080` for:
 
-- **Commands** – Dashboard, enable/disable, manual run, edit
+- **Commands** – Dashboard, enable/disable, manual run, edit; create Daylist, Local Discovery, Artist Essentials, Mood Playlist, or playlist sync via New
 - **Config** – Web-based configuration with validation
 - **Status** – Health, cache status, system info
 - **New Releases** – Deezer/Spotify releases missing from MusicBrainz; scan artist by URL
-- **Daylist** – Time-of-day playlist generator (Plex)
 
 ## Lidarr Integration
 

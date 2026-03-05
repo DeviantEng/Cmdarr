@@ -84,7 +84,11 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             db = get_database_manager()
             session = db.get_config_session_sync()
             try:
-                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                cmd = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == cmd_name)
+                    .first()
+                )
                 if cmd:
                     cfg = dict(cmd.config_json or {})
                     cfg["last_playlist_title"] = playlist_title
@@ -121,7 +125,11 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             use_custom = config.get("use_custom_playlist_name", False)
             custom_name = (config.get("custom_playlist_name") or "").strip()
             # Backward compat: old configs used playlist_name for custom names
-            if not custom_name and config.get("playlist_name") and config.get("playlist_name") != "Mood Playlist":
+            if (
+                not custom_name
+                and config.get("playlist_name")
+                and config.get("playlist_name") != "Mood Playlist"
+            ):
                 custom_name = (config.get("playlist_name") or "").strip()
                 use_custom = bool(custom_name)
             if use_custom and custom_name:
@@ -140,7 +148,9 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 return False
 
             # 1. Fetch tracks per mood, union and count mood matches per track
-            limit_by_year = config.get("limit_by_year", False) or config.get("min_year_enabled", False)
+            limit_by_year = config.get("limit_by_year", False) or config.get(
+                "min_year_enabled", False
+            )
             min_year = config.get("min_year")
             max_year = config.get("max_year")
             if limit_by_year:
@@ -148,13 +158,13 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                     min_year = int(min_year) if min_year is not None else None
                     if min_year is not None:
                         min_year = max(1800, min(2100, min_year))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     min_year = None
                 try:
                     max_year = int(max_year) if max_year is not None else None
                     if max_year is not None:
                         max_year = max(1800, min(2100, max_year))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     max_year = None
             else:
                 min_year = max_year = None
@@ -163,9 +173,7 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             track_to_mood_count: dict[str, int] = defaultdict(int)
 
             for mood in moods:
-                tracks = self.plex_client.get_tracks_by_mood(
-                    library_key, mood, limit=500, offset=0
-                )
+                tracks = self.plex_client.get_tracks_by_mood(library_key, mood, limit=500, offset=0)
                 for t in tracks:
                     key = str(t["key"])
                     track_year = t.get("year")
@@ -191,7 +199,9 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 return True
 
             # 2. Exclude last run
-            last_run_ids = set(config.get("last_run_track_ids") or []) if exclude_last_run else set()
+            last_run_ids = (
+                set(config.get("last_run_track_ids") or []) if exclude_last_run else set()
+            )
             pool = [t for t in pool if t["rating_key"] not in last_run_ids]
 
             if not pool:

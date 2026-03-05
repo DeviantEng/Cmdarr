@@ -276,9 +276,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         cursor.execute("PRAGMA table_info(command_configs)")
         cols = [r[1] for r in cursor.fetchall()]
         if "deleted_at" not in cols:
-            cursor.execute(
-                "ALTER TABLE command_configs ADD COLUMN deleted_at DATETIME NULL"
-            )
+            cursor.execute("ALTER TABLE command_configs ADD COLUMN deleted_at DATETIME NULL")
 
     runner.add_migration(
         VersionMigration(

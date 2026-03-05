@@ -179,9 +179,7 @@ async def get_health_status():
 async def get_commands_status(db: Annotated[Session, Depends(get_config_db)]):
     """Get status of all commands"""
     try:
-        all_commands = (
-            db.query(CommandConfig).filter(CommandConfig.deleted_at.is_(None)).all()
-        )
+        all_commands = db.query(CommandConfig).filter(CommandConfig.deleted_at.is_(None)).all()
         helper_commands = {"library_cache_builder"}  # Known helper commands
 
         # Filter out helper commands
@@ -276,7 +274,9 @@ async def get_recent_executions(limit: int = 20, db: Session = Depends(get_confi
                 {
                     "id": execution.id,
                     "command_name": execution.command_name,
-                    "display_name": command_config.display_name if command_config else execution.command_name.replace("_", " "),
+                    "display_name": command_config.display_name
+                    if command_config
+                    else execution.command_name.replace("_", " "),
                     "started_at": execution.started_at.isoformat() + "Z",
                     "completed_at": execution.completed_at.isoformat() + "Z"
                     if execution.completed_at

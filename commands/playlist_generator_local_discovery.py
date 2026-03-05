@@ -27,7 +27,7 @@ def _parse_viewed_at(item: dict, tz=None) -> datetime | None:
         if tz:
             return datetime.fromtimestamp(ts, tz=tz)
         return datetime.fromtimestamp(ts)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -58,7 +58,11 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
             db = get_database_manager()
             session = db.get_config_session_sync()
             try:
-                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                cmd = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == cmd_name)
+                    .first()
+                )
                 if cmd and cmd.display_name != expected:
                     cmd.display_name = expected
                     session.commit()
@@ -119,7 +123,11 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 viewed = _parse_viewed_at(h, tz)
                 if viewed and viewed >= exclude_start:
                     excluded_keys.add(str(h.get("ratingKey")))
-                if viewed and viewed >= history_start and str(h.get("ratingKey")) not in excluded_keys:
+                if (
+                    viewed
+                    and viewed >= history_start
+                    and str(h.get("ratingKey")) not in excluded_keys
+                ):
                     history_items.append(h)
 
             if not history_items:
@@ -193,17 +201,27 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                     seed_seen.add(k)
                     seed_deduped.append(t)
 
-            historical_pool = [t for t in seed_deduped if str(t.get("ratingKey")) not in excluded_keys]
-            historical_sample = rng.sample(
-                historical_pool, min(n_historical, len(historical_pool))
-            ) if historical_pool else []
+            historical_pool = [
+                t for t in seed_deduped if str(t.get("ratingKey")) not in excluded_keys
+            ]
+            historical_sample = (
+                rng.sample(historical_pool, min(n_historical, len(historical_pool)))
+                if historical_pool
+                else []
+            )
 
-            similar_pool = [t for t in similar_tracks if str(t.get("ratingKey")) not in excluded_keys]
+            similar_pool = [
+                t for t in similar_tracks if str(t.get("ratingKey")) not in excluded_keys
+            ]
             final_rks = {str(t.get("ratingKey")) for t in historical_sample}
-            similar_candidates = [t for t in similar_pool if str(t.get("ratingKey")) not in final_rks]
-            similar_sample = rng.sample(
-                similar_candidates, min(n_similar, len(similar_candidates))
-            ) if similar_candidates else []
+            similar_candidates = [
+                t for t in similar_pool if str(t.get("ratingKey")) not in final_rks
+            ]
+            similar_sample = (
+                rng.sample(similar_candidates, min(n_similar, len(similar_candidates)))
+                if similar_candidates
+                else []
+            )
 
             final_tracks = historical_sample + similar_sample
             rng.shuffle(final_tracks)
@@ -217,19 +235,23 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 title = (t.get("title") or "").strip()
                 album = (t.get("parentTitle") or "").strip()
                 if rk and title and artist:
-                    tracks_for_playlist.append({
-                        "rating_key": str(rk),
-                        "artist": artist,
-                        "track": title,
-                        "album": album,
-                    })
+                    tracks_for_playlist.append(
+                        {
+                            "rating_key": str(rk),
+                            "artist": artist,
+                            "track": title,
+                            "album": album,
+                        }
+                    )
 
             if not tracks_for_playlist:
                 self.logger.warning("No tracks for playlist")
                 return True
 
             playlist_title = PLAYLIST_TITLE_PREFIX
-            summary = f"Top {top_artists_count} artists from {lookback_days}d history + sonic expansion"
+            summary = (
+                f"Top {top_artists_count} artists from {lookback_days}d history + sonic expansion"
+            )
 
             result = self.plex_client.sync_playlist(
                 title=playlist_title,
