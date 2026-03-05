@@ -216,7 +216,7 @@ class CommandCleanupService:
             self._delete_playlist_if_exists(target, playlist_name)
         elif name.startswith("top_tracks_"):
             target = str(cfg.get("target", "plex")).lower()
-            playlist_name = f"[Top Tracks] {cfg.get('playlist_name', 'Artists Top Tracks')}"
+            playlist_name = f"[Cmdarr Top Tracks] {cfg.get('playlist_name', 'Artists Top Tracks')}"
             self._delete_playlist_if_exists(target, playlist_name)
         elif name.startswith("daylist_"):
             playlist_name = "Cmdarr's Daylist"
