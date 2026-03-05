@@ -158,6 +158,10 @@ export function CommandsPage() {
     source?: string;
     target?: string;
     playlist_name?: string;
+    lookback_days?: number;
+    top_artists_count?: number;
+    artist_pool_size?: number;
+    sonic_similarity_distance?: number;
     expires_at_enabled?: boolean;
     expires_at?: string;
     expires_at_delete_playlist?: boolean;
@@ -356,11 +360,16 @@ export function CommandsPage() {
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
       playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
+      lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 90,
+      top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
+      artist_pool_size: typeof cfg.artist_pool_size === "number" ? cfg.artist_pool_size : 20,
+      sonic_similarity_distance:
+        typeof cfg.sonic_similarity_distance === "number" ? cfg.sonic_similarity_distance : 0.25,
       expires_at_enabled: !!(cfg.expires_at as string),
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
       expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,
     });
-    if (isDaylist) {
+    if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       api
         .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
         .then((r) => setPlexAccounts(r.accounts || []))
@@ -1606,6 +1615,145 @@ export function CommandsPage() {
                       </>
                     )}
 
+                    {/* Local Discovery - editable fields */}
+                    {editingCommand.command_name.startsWith("local_discovery_") && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Plex Account (play history source)</Label>
+                          <Select
+                            value={editForm.plex_history_account_id ?? ""}
+                            onValueChange={(v) =>
+                              setEditForm((f) => ({ ...f, plex_history_account_id: v }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {plexAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.name || acc.id}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Lookback days</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.lookback_days ?? 90}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  lookback_days: isNaN(v) ? 90 : Math.max(7, Math.min(365, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Exclude played days</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.exclude_played_days ?? 3}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  exclude_played_days: isNaN(v) ? 3 : Math.max(0, Math.min(30, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Top artists count</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.top_artists_count ?? 10}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  top_artists_count: isNaN(v) ? 10 : Math.max(1, Math.min(20, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Artist pool size</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.artist_pool_size ?? 20}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  artist_pool_size: isNaN(v) ? 20 : Math.max(f.top_artists_count ?? 10, Math.min(50, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Max tracks</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.max_tracks ?? 50}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  max_tracks: isNaN(v) ? 50 : Math.max(1, Math.min(200, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonic similarity distance</Label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={editForm.sonic_similarity_distance ?? 0.25}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similarity_distance: isNaN(v) ? 0.25 : Math.max(0.1, Math.min(1, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Historical ratio: {editForm.historical_ratio ?? 0.4}</Label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={editForm.historical_ratio ?? 0.4}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                historical_ratio: parseFloat(e.target.value),
+                              }))
+                            }
+                            className="w-full"
+                          />
+                        </div>
+                      </>
+                    )}
+
                     {/* Top Tracks - editable fields */}
                     {editingCommand.command_name.startsWith("top_tracks_") && (
                       <>
@@ -1747,10 +1895,11 @@ export function CommandsPage() {
                       </div>
                     )}
 
-                    {/* Expiration - playlist sync, top tracks, daylist (below schedule) */}
+                    {/* Expiration - playlist sync, top tracks, daylist, local discovery (below schedule) */}
                     {(editingCommand.command_name.startsWith("playlist_sync_") ||
                       editingCommand.command_name.startsWith("top_tracks_") ||
-                      editingCommand.command_name.startsWith("daylist_")) && (
+                      editingCommand.command_name.startsWith("daylist_") ||
+                      editingCommand.command_name.startsWith("local_discovery_")) && (
                       <ExpirationFields
                         idPrefix="edit-exp"
                         enabled={editForm.expires_at_enabled ?? false}
@@ -2020,11 +2169,44 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith("local_discovery_") && (
+                  <Button
+                    onClick={() => {
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        plex_history_account_id: editForm.plex_history_account_id ?? "",
+                        lookback_days: editForm.lookback_days ?? 90,
+                        exclude_played_days: editForm.exclude_played_days ?? 3,
+                        top_artists_count: editForm.top_artists_count ?? 10,
+                        artist_pool_size: editForm.artist_pool_size ?? 20,
+                        max_tracks: editForm.max_tracks ?? 50,
+                        sonic_similar_limit: editForm.sonic_similar_limit ?? 15,
+                        sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.25,
+                        historical_ratio: editForm.historical_ratio ?? 0.4,
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                      } else {
+                        delete cfg.expires_at;
+                      }
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: cfg,
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name !== "new_releases_discovery" &&
                   editingCommand.command_name !== "discovery_lastfm" &&
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
-                  !editingCommand.command_name.startsWith("top_tracks_") && (
+                  !editingCommand.command_name.startsWith("top_tracks_") &&
+                  !editingCommand.command_name.startsWith("local_discovery_") && (
                     <Button
                       onClick={() =>
                         handleSaveCommand({

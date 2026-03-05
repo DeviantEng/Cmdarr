@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Playlist Cleanup**: Expired playlist_sync, top_tracks, and daylist commands optionally have their playlists removed from the target
 - **Delete Playlist Option**: Sub-checkbox "Delete playlist from target when expired" (default on); uncheck to disable command on schedule but keep the playlist
 
+### 🎵 Daylist: Primary Mood Option
+- **use_primary_mood**: Advanced option to use the most common mood (instead of second-most) for the cover descriptor
+- **UI**: Checkbox in Daylist create/edit advanced section
+
+### 🎵 Local Discovery Playlist Generator
+- **New Command**: Local Discovery builds playlists from top played artists + sonically similar tracks
+- **Freshness**: Artist pool + random sample, exclude played days, date-seeded sampling
+- **Config**: lookback_days, exclude_played_days, top_artists_count, artist_pool_size, max_tracks, historical_ratio
+- **Plex Only**: Uses play history and Plex Sonic Analysis
+- **Single Instance**: One Local Discovery command supported; create flow in New Command dialog
+
 ## [0.3.6] - 2026-02-23
 
 ### 🐳 Base Images & Runtime
