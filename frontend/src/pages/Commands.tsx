@@ -333,6 +333,14 @@ export function CommandsPage() {
       historical_ratio: typeof cfg.historical_ratio === "number" ? cfg.historical_ratio : 0.4,
       timezone: (cfg.timezone as string) || "",
       time_periods: timePeriods,
+      artists:
+        Array.isArray(cfg.artists)
+          ? (cfg.artists as string[]).join("\n")
+          : (cfg.artists as string) || "",
+      top_x: typeof cfg.top_x === "number" ? cfg.top_x : 5,
+      source: (cfg.source as string) || "plex",
+      target: (cfg.target as string) || "plex",
+      playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
     });
     if (isDaylist) {
       api
@@ -1559,6 +1567,94 @@ export function CommandsPage() {
                       </>
                     )}
 
+                    {/* Top Tracks - editable fields */}
+                    {editingCommand.command_name.startsWith("top_tracks_") && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Artists (one per line)</Label>
+                          <textarea
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={editForm.artists ?? ""}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, artists: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Top X per artist</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={20}
+                              value={editForm.top_x ?? 5}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  top_x: isNaN(v) ? 5 : Math.max(1, Math.min(20, v)),
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Playlist name</Label>
+                            <Input
+                              value={editForm.playlist_name ?? ""}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, playlist_name: e.target.value }))
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Target</Label>
+                            <Select
+                              value={editForm.target ?? "plex"}
+                              onValueChange={(v) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  target: v,
+                                  source: v === "jellyfin" ? "lastfm" : (f.source ?? "plex"),
+                                }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="plex">Plex</SelectItem>
+                                <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Source</Label>
+                            <Select
+                              value={
+                                editForm.target === "jellyfin"
+                                  ? "lastfm"
+                                  : (editForm.source ?? "plex")
+                              }
+                              disabled={editForm.target === "jellyfin"}
+                              onValueChange={(v) =>
+                                setEditForm((f) => ({ ...f, source: v }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="plex">Plex</SelectItem>
+                                <SelectItem value="lastfm">Last.fm</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     {/* Schedule - all commands except daylist (override default cron) */}
                     {!editingCommand.command_name.startsWith("daylist_") && (
                       <div className="space-y-2">
@@ -1798,10 +1894,35 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith("top_tracks_") && (
+                  <Button
+                    onClick={() => {
+                      const artistsRaw = (editForm.artists ?? "").trim().split("\n");
+                      const artists = artistsRaw.filter((a) => a.trim());
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          artists,
+                          top_x: editForm.top_x ?? 5,
+                          source: editForm.source ?? "plex",
+                          target: editForm.target ?? "plex",
+                          playlist_name: editForm.playlist_name ?? "Artists Top Tracks",
+                        },
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name !== "new_releases_discovery" &&
                   editingCommand.command_name !== "discovery_lastfm" &&
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
-                  !editingCommand.command_name.startsWith("daylist_") && (
+                  !editingCommand.command_name.startsWith("daylist_") &&
+                  !editingCommand.command_name.startsWith("top_tracks_") && (
                     <Button
                       onClick={() =>
                         handleSaveCommand({

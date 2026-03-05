@@ -801,6 +801,120 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/top-tracks/exists")
+async def top_tracks_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any top tracks command exists (for New Command UI)."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("top_tracks_%")).first()
+    return {"exists": existing is not None}
+
+
+@router.post("/top-tracks/create")
+async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Artists Top Tracks generator command."""
+    try:
+        artists_raw = request.get("artists", [])
+        if isinstance(artists_raw, str):
+            artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+        if not artists_raw:
+            raise HTTPException(status_code=400, detail="artists is required (list or newline-separated)")
+
+        top_x = int(request.get("top_x", 5))
+        top_x = max(1, min(20, top_x))
+        source = str(request.get("source", "plex")).lower()
+        if source not in ("plex", "lastfm"):
+            source = "plex"
+        target = str(request.get("target", "plex")).lower()
+        if target not in ("plex", "jellyfin"):
+            target = "plex"
+        if target == "jellyfin":
+            source = "lastfm"
+
+        playlist_name = (request.get("playlist_name") or "Artists Top Tracks").strip()
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        target_upper = target.upper()
+        library_key = None
+        if target == "plex" and hasattr(config, "PLEX_LIBRARY_KEY"):
+            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key and target == "plex":
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+
+        if target == "jellyfin":
+            from clients.client_jellyfin import JellyfinClient
+
+            jc = JellyfinClient(config)
+            libs = jc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("Id") or libs[0].get("key")
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_KEY or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("top_tracks_%"))
+            .all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except (ValueError, IndexError):
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"top_tracks_{next_id:05d}"
+
+        config_json = {
+            "artists": artists_raw,
+            "top_x": top_x,
+            "source": source,
+            "target": target,
+            "target_library_key": str(library_key),
+            "playlist_name": playlist_name,
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=f"Top Tracks: {playlist_name}",
+            description="Generate playlist from artist list with top X tracks per artist.",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_top_tracks_commands()
+
+        return {"message": "Top Tracks command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create top tracks: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/playlist-sync/create")
 async def create_playlist_sync(request: dict, db: Annotated[Session, Depends(get_config_db)]):
     """Create a new playlist sync command"""
@@ -917,7 +1031,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -933,7 +1047,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID
@@ -1076,7 +1190,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1092,7 +1206,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID

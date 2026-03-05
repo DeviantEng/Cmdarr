@@ -18,12 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type PlaylistType = "listenbrainz" | "other" | "daylist";
+type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks";
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -107,7 +107,18 @@ export function CreatePlaylistSyncDialog({
     >,
   });
 
-  // Fetch daylist exists and plex accounts when dialog opens
+  const [topTracksForm, setTopTracksForm] = useState({
+    artists: "",
+    top_x: 5,
+    source: "plex" as "plex" | "lastfm",
+    target: "plex" as "plex" | "jellyfin",
+    playlist_name: "Artists Top Tracks",
+    schedule_cron: "0 6 * * *",
+    schedule_override: true,
+    enabled: true,
+  });
+
+  // Fetch daylist exists, top tracks exists, and plex accounts when dialog opens
   useEffect(() => {
     if (!open) return;
     api
@@ -236,6 +247,9 @@ export function CreatePlaylistSyncDialog({
     if (playlistType === "daylist") {
       return !!daylistForm.plex_history_account_id;
     }
+    if (playlistType === "top_tracks") {
+      return topTracksForm.artists.trim().split("\n").filter((a) => a.trim()).length > 0;
+    }
     return validation.isValid;
   };
 
@@ -248,7 +262,24 @@ export function CreatePlaylistSyncDialog({
     setIsSubmitting(true);
 
     try {
-      if (playlistType === "daylist") {
+      if (playlistType === "top_tracks") {
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/top-tracks/create",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              artists: topTracksForm.artists.trim().split("\n").filter((a) => a.trim()),
+              top_x: topTracksForm.top_x,
+              source: topTracksForm.source,
+              target: topTracksForm.target,
+              playlist_name: topTracksForm.playlist_name,
+              schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
+              enabled: topTracksForm.enabled,
+            }),
+          }
+        );
+        toast.success(response.message || "Top Tracks command created");
+      } else if (playlistType === "daylist") {
         const time_periods: Record<string, number[]> = {};
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
           time_periods[period] = hoursFromRange(start, end);
@@ -303,14 +334,18 @@ export function CreatePlaylistSyncDialog({
               ? "Create New Command"
               : playlistType === "daylist"
                 ? "Configure Daylist"
-                : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
+                : playlistType === "top_tracks"
+                  ? "Configure Artists Top Tracks"
+                  : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
               ? "Choose the type of command to create"
               : playlistType === "daylist"
                 ? "Configure your daylist settings"
-                : "Configure your playlist sync settings"}
+                : playlistType === "top_tracks"
+                  ? "Artists must exist in your library. One artist per line."
+                  : "Configure your playlist sync settings"}
           </DialogDescription>
         </DialogHeader>
 
@@ -368,6 +403,22 @@ export function CreatePlaylistSyncDialog({
                 <p className="text-sm text-muted-foreground">
                   Time-of-day playlists from Plex listening history and Sonic Analysis. Plex only.
                   Inspired by Meloday.
+                </p>
+              </div>
+            </button>
+
+            {/* Artists Top Tracks Option */}
+            <button
+              onClick={() => handleSelectType("top_tracks")}
+              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
+                <ListMusic className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold">Artists Top Tracks</h3>
+                <p className="text-sm text-muted-foreground">
+                  Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
                 </p>
               </div>
             </button>
@@ -829,6 +880,112 @@ export function CreatePlaylistSyncDialog({
                   <span className="text-sm">Enable immediately after creation</span>
                 </label>
               </>
+            ) : playlistType === "top_tracks" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Artists (one per line)</Label>
+                  <textarea
+                    className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Artist One&#10;Artist Two&#10;Artist Three"
+                    value={topTracksForm.artists}
+                    onChange={(e) =>
+                      setTopTracksForm((prev) => ({ ...prev, artists: e.target.value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Artists must exist in your library. Names are validated against the library cache.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Top X tracks per artist</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={topTracksForm.top_x}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setTopTracksForm((prev) => ({
+                        ...prev,
+                        top_x: isNaN(v) ? 5 : Math.max(1, Math.min(20, v)),
+                      }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Target</Label>
+                  <Select
+                    value={topTracksForm.target}
+                    onValueChange={(v: "plex" | "jellyfin") =>
+                      setTopTracksForm((prev) => ({
+                        ...prev,
+                        target: v,
+                        source: v === "jellyfin" ? "lastfm" : prev.source,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex</SelectItem>
+                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Source (Jellyfin target uses Last.fm only)</Label>
+                  <Select
+                    value={topTracksForm.target === "jellyfin" ? "lastfm" : topTracksForm.source}
+                    disabled={topTracksForm.target === "jellyfin"}
+                    onValueChange={(v: "plex" | "lastfm") =>
+                      setTopTracksForm((prev) => ({ ...prev, source: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex (ratingCount)</SelectItem>
+                      <SelectItem value="lastfm">Last.fm</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Playlist name</Label>
+                  <Input
+                    value={topTracksForm.playlist_name}
+                    onChange={(e) =>
+                      setTopTracksForm((prev) => ({ ...prev, playlist_name: e.target.value }))
+                    }
+                    placeholder="Artists Top Tracks"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Schedule (cron)</Label>
+                  <Input
+                    value={topTracksForm.schedule_cron}
+                    onChange={(e) =>
+                      setTopTracksForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                    }
+                    placeholder="0 6 * * *"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    e.g. 0 6 * * * = daily at 6am
+                  </p>
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={topTracksForm.enabled}
+                    onChange={(e) =>
+                      setTopTracksForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+              </>
             ) : (
               <>
                 {/* Playlist URL */}
@@ -891,8 +1048,8 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings (hidden for daylist - has its own form) */}
-            {playlistType !== "daylist" && (
+            {/* Common Settings (hidden for daylist and top_tracks - they have their own forms) */}
+            {playlistType !== "daylist" && playlistType !== "top_tracks" && (
               <>
                 <div className="space-y-2">
                   <Label>Target</Label>

@@ -62,6 +62,8 @@ class CommandExecutor:
             self._load_dynamic_playlist_sync_commands()
             # Load dynamic daylist commands from database
             self._load_dynamic_daylist_commands()
+            # Load dynamic top tracks commands from database
+            self._load_dynamic_top_tracks_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -415,6 +417,8 @@ class CommandExecutor:
             return self._build_new_releases_summary(stats, duration)
         elif command_name.startswith("daylist_") and stats:
             return self._build_daylist_summary(stats, duration)
+        elif command_name.startswith("top_tracks_") and stats:
+            return self._build_top_tracks_summary(stats, duration)
 
         return f"Command completed successfully in {duration:.1f}s"
 
@@ -425,6 +429,18 @@ class CommandExecutor:
         period = stats.get("period", "")
         count = stats.get("track_count", 0)
         return f"Daylist updated: {period}, {count} tracks ({duration:.1f}s)"
+
+    def _build_top_tracks_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build top tracks generator summary from command result"""
+        artists = stats.get("artists_processed", 0)
+        found = stats.get("tracks_found", 0)
+        total = stats.get("tracks_total", 0)
+        source = stats.get("source", "")
+        parts = [f"Top Tracks completed in {duration:.1f}s"]
+        parts.append(f"{artists} artists, {found}/{total} tracks")
+        if source:
+            parts.append(f"source: {source}")
+        return " • ".join(parts)
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
@@ -758,6 +774,32 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic daylist commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_top_tracks_commands(self):
+        """Load dynamic top tracks commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_top_tracks import PlaylistGeneratorTopTracksCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                top_tracks_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("top_tracks_%"))
+                    .all()
+                )
+                for command_config in top_tracks_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorTopTracksCommand
+                    self.logger.debug(f"Loaded dynamic top tracks command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic top tracks commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

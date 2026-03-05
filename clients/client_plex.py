@@ -738,6 +738,14 @@ class PlexClient(BaseAPIClient):
             processed = 0
 
             for _i, track in enumerate(tracks):
+                # Support pre-resolved rating keys (e.g. from Plex popular tracks)
+                rating_key = track.get("rating_key") or track.get("key")
+                if rating_key:
+                    found_track_keys.append(str(rating_key))
+                    processed += 1
+                    self.logger.debug(f"[{processed}/{len(tracks)}] Using pre-resolved key {rating_key}")
+                    continue
+
                 artist = track.get("artist", "")
                 track_name = track.get("track", "")
 
@@ -1296,6 +1304,67 @@ class PlexClient(BaseAPIClient):
             return metadata
         except Exception as e:
             self.logger.error(f"Error getting sonically similar for {track_rating_key}: {e}")
+            return []
+
+    def get_artist_rating_key_from_track(self, track_rating_key: str | int) -> str | None:
+        """Get artist ratingKey from a track. Fetches track metadata and returns grandparentRatingKey."""
+        try:
+            results = self._get(f"/library/metadata/{track_rating_key}")
+            media_container = results.get("MediaContainer", {})
+            metadata = media_container.get("Metadata", [])
+            if not metadata:
+                track = media_container.get("Metadata")
+                if isinstance(track, dict):
+                    metadata = [track]
+            if not metadata:
+                return None
+            track_obj = metadata[0] if isinstance(metadata, list) else metadata
+            return str(track_obj.get("grandparentRatingKey", "")) or None
+        except Exception as e:
+            self.logger.error(f"Error getting artist from track {track_rating_key}: {e}")
+            return None
+
+    def get_artist_popular_tracks(
+        self,
+        library_key: str,
+        artist_rating_key: str | int,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Get popular tracks for an artist (Plex Popular Tracks equivalent).
+        Uses ratingCount (Last.fm scrobble data) for ordering. Returns library tracks directly.
+        """
+        try:
+            params = {
+                "type": 10,
+                "artist.id": artist_rating_key,
+                "ratingCount>>": 0,
+                "sort": "ratingCount:desc",
+                "X-Plex-Container-Start": 0,
+                "X-Plex-Container-Size": min(limit, 100),
+            }
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            tracks = media_container.get("Metadata", [])
+            if not isinstance(tracks, list):
+                tracks = [tracks] if tracks else []
+
+            out = []
+            for t in tracks:
+                artist = (t.get("grandparentTitle", "") or "").strip()
+                title = (t.get("title", "") or "").strip()
+                album = (t.get("parentTitle", "") or "").strip()
+                key = t.get("ratingKey")
+                if key and title and artist:
+                    out.append({
+                        "key": key,
+                        "title": title,
+                        "artist": artist,
+                        "album": album,
+                    })
+            return out
+        except Exception as e:
+            self.logger.error(f"Error getting popular tracks for artist {artist_rating_key}: {e}")
             return []
 
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):
