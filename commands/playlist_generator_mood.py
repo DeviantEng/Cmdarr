@@ -96,6 +96,16 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Could not persist after success: {e}")
 
+    def _delete_playlist_by_name(self, playlist_title: str) -> None:
+        """Delete a playlist by name from Plex (mood playlists are Plex-only)."""
+        try:
+            pl = self.plex_client.find_playlist_by_name(playlist_title)
+            if pl and pl.get("ratingKey"):
+                self.plex_client.delete_playlist(pl["ratingKey"])
+                self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
+        except Exception as e:
+            self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
+
     async def execute(self) -> bool:
         try:
             config = self.config_json or {}
@@ -130,6 +140,25 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 return False
 
             # 1. Fetch tracks per mood, union and count mood matches per track
+            limit_by_year = config.get("limit_by_year", False) or config.get("min_year_enabled", False)
+            min_year = config.get("min_year")
+            max_year = config.get("max_year")
+            if limit_by_year:
+                try:
+                    min_year = int(min_year) if min_year is not None else None
+                    if min_year is not None:
+                        min_year = max(1800, min(2100, min_year))
+                except (TypeError, ValueError):
+                    min_year = None
+                try:
+                    max_year = int(max_year) if max_year is not None else None
+                    if max_year is not None:
+                        max_year = max(1800, min(2100, max_year))
+                except (TypeError, ValueError):
+                    max_year = None
+            else:
+                min_year = max_year = None
+
             track_to_data: dict[str, dict[str, Any]] = {}
             track_to_mood_count: dict[str, int] = defaultdict(int)
 
@@ -139,6 +168,14 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 )
                 for t in tracks:
                     key = str(t["key"])
+                    track_year = t.get("year")
+                    if limit_by_year and (min_year is not None or max_year is not None):
+                        if track_year is None:
+                            continue
+                        if min_year is not None and track_year < min_year:
+                            continue
+                        if max_year is not None and track_year > max_year:
+                            continue
                     track_to_mood_count[key] += 1
                     if key not in track_to_data:
                         track_to_data[key] = {
@@ -185,7 +222,7 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
             last_playlist_title = config.get("last_playlist_title")
             if last_playlist_title and last_playlist_title != playlist_title:
-                self._delete_playlist_by_name(playlist_title)
+                self._delete_playlist_by_name(last_playlist_title)
             summary = f"Moods: {', '.join(moods[:5])}{'...' if len(moods) > 5 else ''}"
 
             result = self.plex_client.sync_playlist(

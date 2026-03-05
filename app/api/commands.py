@@ -1150,12 +1150,30 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
             next_id += 1
         command_name = f"mood_playlist_{next_id:05d}"
 
+        limit_by_year = bool(request.get("limit_by_year", False))
+        min_year = request.get("min_year")
+        max_year = request.get("max_year")
+        if limit_by_year:
+            try:
+                min_year = max(1800, min(2100, int(min_year))) if min_year is not None else None
+            except (TypeError, ValueError):
+                min_year = None
+            try:
+                max_year = max(1800, min(2100, int(max_year))) if max_year is not None else None
+            except (TypeError, ValueError):
+                max_year = None
+        else:
+            min_year = max_year = None
+
         config_json = {
             "moods": moods,
             "use_custom_playlist_name": use_custom,
             "custom_playlist_name": custom_name if use_custom else "",
             "max_tracks": max_tracks,
             "exclude_last_run": exclude_last_run,
+            "limit_by_year": limit_by_year,
+            "min_year": min_year,
+            "max_year": max_year,
             "target_library_key": str(library_key),
         }
         if request.get("expires_at"):

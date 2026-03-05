@@ -161,6 +161,9 @@ export function CommandsPage() {
     custom_playlist_name?: string;
     moods?: string[];
     exclude_last_run?: boolean;
+    limit_by_year?: boolean;
+    min_year?: number;
+    max_year?: number;
     lookback_days?: number;
     top_artists_count?: number;
     artist_pool_size?: number;
@@ -369,6 +372,19 @@ export function CommandsPage() {
         (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
       moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
       exclude_last_run: cfg.exclude_last_run !== false,
+      limit_by_year: !!cfg.limit_by_year || !!cfg.min_year_enabled,
+      min_year: (() => {
+        const v = cfg.min_year;
+        if (v == null) return undefined;
+        const n = typeof v === "number" ? v : parseInt(String(v), 10);
+        return isNaN(n) ? undefined : Math.max(1800, Math.min(2100, n));
+      })(),
+      max_year: (() => {
+        const v = cfg.max_year;
+        if (v == null) return undefined;
+        const n = typeof v === "number" ? v : parseInt(String(v), 10);
+        return isNaN(n) ? undefined : Math.max(1800, Math.min(2100, n));
+      })(),
       lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 30,
       top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
       artist_pool_size: typeof cfg.artist_pool_size === "number" ? cfg.artist_pool_size : 20,
@@ -1740,6 +1756,70 @@ export function CommandsPage() {
                           />
                           <span className="text-sm">Force fresh (exclude tracks from previous run)</span>
                         </label>
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editForm.limit_by_year ?? false}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, limit_by_year: e.target.checked }))
+                            }
+                            className="rounded border-input"
+                          />
+                          <span className="text-sm">Limit by release year (album year)</span>
+                        </label>
+                        {editForm.limit_by_year && (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Min year</Label>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="e.g. 1990"
+                                value={editForm.min_year ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const v = raw === "" ? undefined : parseInt(raw, 10);
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    min_year:
+                                      v === undefined
+                                        ? undefined
+                                        : isNaN(v)
+                                          ? f.min_year
+                                          : Math.max(1800, Math.min(2100, v)),
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Max year</Label>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="e.g. 2010"
+                                value={editForm.max_year ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const v = raw === "" ? undefined : parseInt(raw, 10);
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    max_year:
+                                      v === undefined
+                                        ? undefined
+                                        : isNaN(v)
+                                          ? f.max_year
+                                          : Math.max(1800, Math.min(2100, v)),
+                                  }));
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {editForm.limit_by_year && (
+                          <p className="text-xs text-muted-foreground">
+                            Set min and/or max. Tracks without year metadata are excluded. Range: 1800–2100.
+                          </p>
+                        )}
                       </>
                     )}
 
@@ -2424,6 +2504,15 @@ export function CommandsPage() {
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
                         max_tracks: editForm.max_tracks ?? 50,
                         exclude_last_run: editForm.exclude_last_run ?? true,
+                        limit_by_year: editForm.limit_by_year ?? false,
+                        min_year:
+                          editForm.limit_by_year && editForm.min_year != null
+                            ? Math.max(1800, Math.min(2100, editForm.min_year))
+                            : undefined,
+                        max_year:
+                          editForm.limit_by_year && editForm.max_year != null
+                            ? Math.max(1800, Math.min(2100, editForm.max_year))
+                            : undefined,
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);

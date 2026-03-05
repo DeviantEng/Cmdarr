@@ -157,6 +157,9 @@ export function CreatePlaylistSyncDialog({
     custom_playlist_name: "",
     max_tracks: 50,
     exclude_last_run: true,
+    limit_by_year: false,
+    min_year: undefined as number | undefined,
+    max_year: undefined as number | undefined,
     schedule_cron: "0 6 * * *",
     schedule_override: true,
     enabled: true,
@@ -251,6 +254,9 @@ export function CreatePlaylistSyncDialog({
         custom_playlist_name: "",
         max_tracks: 50,
         exclude_last_run: true,
+        limit_by_year: false,
+        min_year: undefined,
+        max_year: undefined,
         schedule_cron: "0 6 * * *",
         schedule_override: true,
         enabled: true,
@@ -438,6 +444,9 @@ export function CreatePlaylistSyncDialog({
           custom_playlist_name: moodPlaylistForm.custom_playlist_name,
           max_tracks: moodPlaylistForm.max_tracks,
           exclude_last_run: moodPlaylistForm.exclude_last_run,
+          limit_by_year: moodPlaylistForm.limit_by_year,
+          min_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.min_year : undefined,
+          max_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.max_year : undefined,
           schedule_cron: moodPlaylistForm.schedule_override ? moodPlaylistForm.schedule_cron : undefined,
           enabled: moodPlaylistForm.enabled,
         };
@@ -1628,6 +1637,63 @@ export function CreatePlaylistSyncDialog({
                   />
                   <span className="text-sm">Force fresh (exclude tracks from previous run)</span>
                 </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={moodPlaylistForm.limit_by_year}
+                    onChange={(e) =>
+                      setMoodPlaylistForm((prev) => ({
+                        ...prev,
+                        limit_by_year: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Limit by release year (album year)</span>
+                </label>
+                {moodPlaylistForm.limit_by_year && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Min year</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="e.g. 1990"
+                        value={moodPlaylistForm.min_year ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const v = raw === "" ? undefined : parseInt(raw, 10);
+                          setMoodPlaylistForm((prev) => ({
+                            ...prev,
+                            min_year: v === undefined ? undefined : isNaN(v) ? prev.min_year : Math.max(1800, Math.min(2100, v)),
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Max year</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="e.g. 2010"
+                        value={moodPlaylistForm.max_year ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const v = raw === "" ? undefined : parseInt(raw, 10);
+                          setMoodPlaylistForm((prev) => ({
+                            ...prev,
+                            max_year: v === undefined ? undefined : isNaN(v) ? prev.max_year : Math.max(1800, Math.min(2100, v)),
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {moodPlaylistForm.limit_by_year && (
+                  <p className="text-xs text-muted-foreground">
+                    Set min and/or max. Tracks without year metadata are excluded. Range: 1800–2100.
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label>Schedule (cron)</Label>
                   <Input

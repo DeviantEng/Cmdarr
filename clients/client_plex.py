@@ -1405,12 +1405,22 @@ class PlexClient(BaseAPIClient):
                 title = (t.get("title", "") or "").strip()
                 album = (t.get("parentTitle", "") or "").strip()
                 key = t.get("ratingKey")
+                year = t.get("parentYear") or t.get("year")
+                year_val = None
+                if year is not None:
+                    s = str(year).strip()
+                    if s:
+                        try:
+                            year_val = int(s.split("-")[0]) if "-" in s else int(s)
+                        except (ValueError, TypeError):
+                            pass
                 if key and title and artist:
                     out.append({
                         "key": key,
                         "title": title,
                         "artist": artist,
                         "album": album,
+                        "year": year_val,
                     })
             return out
         except Exception as e:

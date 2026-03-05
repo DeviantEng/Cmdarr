@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Execution History**: Deleting a command no longer loses display names in recent executions
 - **Soft Delete**: Commands marked `deleted_at` and hidden from UI; permanently removed after 7 days
 - **Cleanup Job**: Daily at 2am purges commands soft-deleted more than 7 days ago
+- **Exists Checks**: Local Discovery, Daylist, Top Tracks, Mood Playlist "exists" and create guards now exclude soft-deleted commands—you can create a new one immediately after deleting
 
 ### ⏱️ Command Expiration
 - **Expires At**: Commands can have `config_json.expires_at` (ISO datetime) for time-limited use
@@ -55,11 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🎵 Mood Playlist Generator
 - **New Command**: Mood Playlist builds playlists from selected Plex Sonic moods
 - **Multi-Mood Scoring**: Tracks matching multiple selected moods rank higher; weighted random sample
-- **Freshness**: Exclude tracks from last run; date-seeded sampling for variety
-- **Config**: moods (from moodmap.json), playlist_name, max_tracks, exclude_last_run
-- **Prefix**: `[Cmdarr Mood]` prefix for generated playlists
+- **Freshness**: "Force fresh (exclude tracks from previous run)"; date-seeded sampling for variety
+- **Naming**: `[Cmdarr] Mood:` prefix; auto-name from moods (1–3 show all, 4+ show first 2 + N More); optional custom override
+- **Display Name Sync**: Command display name updated on each run to match playlist title
+- **Release Year Filter**: Optional min/max year (1800–2100) to limit by album release year; tracks without year excluded when filter enabled
+- **Config**: moods, use_custom_playlist_name, custom_playlist_name, max_tracks, exclude_last_run, limit_by_year, min_year, max_year
 - **Plex Only**: Uses Plex Sonic Analysis mood tags
-- **Create Flow**: New Command dialog → Mood Playlist; select moods from library
+- **Create Flow**: New Command dialog → Mood Playlist; 3-column mood list; expiration below schedule override
 
 ## [0.3.6] - 2026-02-23
 
