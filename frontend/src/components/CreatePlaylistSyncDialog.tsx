@@ -121,7 +121,7 @@ export function CreatePlaylistSyncDialog({
 
   const [localDiscoveryForm, setLocalDiscoveryForm] = useState({
     plex_history_account_id: "",
-    lookback_days: 30,
+    lookback_days: 90,
     exclude_played_days: 3,
     top_artists_count: 10,
     artist_pool_size: 20,
@@ -130,10 +130,11 @@ export function CreatePlaylistSyncDialog({
     sonic_similarity_distance: 0.25,
     historical_ratio: 0.4,
     schedule_cron: "0 6 * * *",
-    schedule_override: true,
+    schedule_override: false,
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
 
   const [topTracksForm, setTopTracksForm] = useState({
@@ -144,7 +145,7 @@ export function CreatePlaylistSyncDialog({
     use_custom_playlist_name: false,
     custom_playlist_name: "",
     schedule_cron: "0 6 * * *",
-    schedule_override: true,
+    schedule_override: false,
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
@@ -161,7 +162,7 @@ export function CreatePlaylistSyncDialog({
     min_year: undefined as number | undefined,
     max_year: undefined as number | undefined,
     schedule_cron: "0 6 * * *",
-    schedule_override: true,
+    schedule_override: false,
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
@@ -234,7 +235,7 @@ export function CreatePlaylistSyncDialog({
       });
       setLocalDiscoveryForm({
         plex_history_account_id: "",
-        lookback_days: 30,
+        lookback_days: 90,
         exclude_played_days: 3,
         top_artists_count: 10,
         artist_pool_size: 20,
@@ -243,10 +244,11 @@ export function CreatePlaylistSyncDialog({
         sonic_similarity_distance: 0.25,
         historical_ratio: 0.4,
         schedule_cron: "0 6 * * *",
-        schedule_override: true,
+        schedule_override: false,
         enabled: true,
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
       });
       setMoodPlaylistForm({
         moods: [],
@@ -258,7 +260,7 @@ export function CreatePlaylistSyncDialog({
         min_year: undefined,
         max_year: undefined,
         schedule_cron: "0 6 * * *",
-        schedule_override: true,
+        schedule_override: false,
         enabled: true,
         expires_at_enabled: false,
         expires_at: "",
@@ -475,6 +477,7 @@ export function CreatePlaylistSyncDialog({
         };
         if (localDiscoveryForm.expires_at_enabled && localDiscoveryForm.expires_at) {
           payload.expires_at = toExpiresAtIso(localDiscoveryForm.expires_at);
+          payload.expires_at_delete_playlist = localDiscoveryForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string }>(
           "/api/commands/local-discovery/create",
@@ -689,46 +692,46 @@ export function CreatePlaylistSyncDialog({
                     <div>
                       <Label className="text-xs">Weekly Exploration</Label>
                       <Input
-                        type="number"
-                        min="1"
-                        max="10"
+                        type="text"
+                        inputMode="numeric"
                         value={formData.weekly_exploration_keep}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
                           setFormData((prev) => ({
                             ...prev,
-                            weekly_exploration_keep: parseInt(e.target.value),
-                          }))
-                        }
+                            weekly_exploration_keep: isNaN(v) ? prev.weekly_exploration_keep : v,
+                          }));
+                        }}
                       />
                     </div>
                     <div>
                       <Label className="text-xs">Weekly Jams</Label>
                       <Input
-                        type="number"
-                        min="1"
-                        max="10"
+                        type="text"
+                        inputMode="numeric"
                         value={formData.weekly_jams_keep}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
                           setFormData((prev) => ({
                             ...prev,
-                            weekly_jams_keep: parseInt(e.target.value),
-                          }))
-                        }
+                            weekly_jams_keep: isNaN(v) ? prev.weekly_jams_keep : v,
+                          }));
+                        }}
                       />
                     </div>
                     <div>
                       <Label className="text-xs">Daily Jams</Label>
                       <Input
-                        type="number"
-                        min="1"
-                        max="10"
+                        type="text"
+                        inputMode="numeric"
                         value={formData.daily_jams_keep}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
                           setFormData((prev) => ({
                             ...prev,
-                            daily_jams_keep: parseInt(e.target.value),
-                          }))
-                        }
+                            daily_jams_keep: isNaN(v) ? prev.daily_jams_keep : v,
+                          }));
+                        }}
                       />
                     </div>
                   </div>
@@ -784,21 +787,12 @@ export function CreatePlaylistSyncDialog({
                   <div className="space-y-2">
                     <Label>Run at minute of hour (0–59)</Label>
                     <Input
-                      type="number"
-                      min={0}
-                      max={59}
+                      type="text"
+                      inputMode="numeric"
                       value={daylistForm.schedule_minute}
                       onChange={(e) => {
                         const v = parseInt(e.target.value, 10);
-                        setDaylistForm((prev) => ({ ...prev, schedule_minute: isNaN(v) ? 0 : v }));
-                      }}
-                      onBlur={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (!isNaN(v))
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            schedule_minute: Math.max(0, Math.min(59, v)),
-                          }));
+                        setDaylistForm((prev) => ({ ...prev, schedule_minute: isNaN(v) ? prev.schedule_minute : v }));
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
@@ -811,25 +805,15 @@ export function CreatePlaylistSyncDialog({
                     <div className="space-y-2">
                       <Label>Exclude played (days)</Label>
                       <Input
-                        type="number"
-                        min={1}
-                        max={30}
+                        type="text"
+                        inputMode="numeric"
                         value={daylistForm.exclude_played_days}
                         onChange={(e) => {
                           const v = parseInt(e.target.value, 10);
                           setDaylistForm((prev) => ({
                             ...prev,
-                            exclude_played_days: isNaN(v) ? 3 : v,
+                            exclude_played_days: isNaN(v) ? prev.exclude_played_days : v,
                           }));
-                        }}
-                        onBlur={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          if (!isNaN(v))
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              exclude_played_days: Math.max(1, Math.min(30, v)),
-                            }));
-                          else setDaylistForm((prev) => ({ ...prev, exclude_played_days: 3 }));
                         }}
                       />
                       <p className="text-xs text-muted-foreground">
@@ -839,25 +823,15 @@ export function CreatePlaylistSyncDialog({
                     <div className="space-y-2">
                       <Label>History lookback (days)</Label>
                       <Input
-                        type="number"
-                        min={7}
-                        max={365}
+                        type="text"
+                        inputMode="numeric"
                         value={daylistForm.history_lookback_days}
                         onChange={(e) => {
                           const v = parseInt(e.target.value, 10);
                           setDaylistForm((prev) => ({
                             ...prev,
-                            history_lookback_days: isNaN(v) ? 45 : v,
+                            history_lookback_days: isNaN(v) ? prev.history_lookback_days : v,
                           }));
-                        }}
-                        onBlur={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          if (!isNaN(v))
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              history_lookback_days: Math.max(7, Math.min(365, v)),
-                            }));
-                          else setDaylistForm((prev) => ({ ...prev, history_lookback_days: 45 }));
                         }}
                       />
                       <p className="text-xs text-muted-foreground">
@@ -922,25 +896,15 @@ export function CreatePlaylistSyncDialog({
                       <div className="space-y-2">
                         <Label>Sonically similar limit</Label>
                         <Input
-                          type="number"
-                          min={1}
-                          max={30}
+                          type="text"
+                          inputMode="numeric"
                           value={daylistForm.sonic_similar_limit}
                           onChange={(e) => {
                             const v = parseInt(e.target.value, 10);
                             setDaylistForm((prev) => ({
                               ...prev,
-                              sonic_similar_limit: isNaN(v) ? 10 : v,
+                              sonic_similar_limit: isNaN(v) ? prev.sonic_similar_limit : v,
                             }));
-                          }}
-                          onBlur={(e) => {
-                            const v = parseInt(e.target.value, 10);
-                            if (!isNaN(v))
-                              setDaylistForm((prev) => ({
-                                ...prev,
-                                sonic_similar_limit: Math.max(1, Math.min(30, v)),
-                              }));
-                            else setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: 10 }));
                           }}
                         />
                         <p className="text-xs text-muted-foreground">
@@ -950,26 +914,15 @@ export function CreatePlaylistSyncDialog({
                       <div className="space-y-2">
                         <Label>Sonically similar playlist limit</Label>
                         <Input
-                          type="number"
-                          min={10}
-                          max={200}
+                          type="text"
+                          inputMode="numeric"
                           value={daylistForm.sonic_similarity_limit}
                           onChange={(e) => {
                             const v = parseInt(e.target.value, 10);
                             setDaylistForm((prev) => ({
                               ...prev,
-                              sonic_similarity_limit: isNaN(v) ? 50 : v,
+                              sonic_similarity_limit: isNaN(v) ? prev.sonic_similarity_limit : v,
                             }));
-                          }}
-                          onBlur={(e) => {
-                            const v = parseInt(e.target.value, 10);
-                            if (!isNaN(v))
-                              setDaylistForm((prev) => ({
-                                ...prev,
-                                sonic_similarity_limit: Math.max(10, Math.min(200, v)),
-                              }));
-                            else
-                              setDaylistForm((prev) => ({ ...prev, sonic_similarity_limit: 50 }));
                           }}
                         />
                         <p className="text-xs text-muted-foreground">
@@ -1042,9 +995,8 @@ export function CreatePlaylistSyncDialog({
                             <div key={period} className="flex items-center gap-3">
                               <span className="w-28 text-sm">{period}</span>
                               <Input
-                                type="number"
-                                min={0}
-                                max={23}
+                                type="text"
+                                inputMode="numeric"
                                 className="w-16"
                                 value={start}
                                 onChange={(e) => {
@@ -1055,30 +1007,16 @@ export function CreatePlaylistSyncDialog({
                                       ...prev.time_periods,
                                       [period]: {
                                         ...prev.time_periods[period],
-                                        start: isNaN(v) ? 0 : v,
+                                        start: isNaN(v) ? prev.time_periods[period].start : v,
                                       },
                                     },
                                   }));
                                 }}
-                                onBlur={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v)) {
-                                    const clamped = Math.max(0, Math.min(23, v));
-                                    setDaylistForm((prev) => ({
-                                      ...prev,
-                                      time_periods: {
-                                        ...prev.time_periods,
-                                        [period]: { ...prev.time_periods[period], start: clamped },
-                                      },
-                                    }));
-                                  }
-                                }}
                               />
                               <span className="text-muted-foreground">–</span>
                               <Input
-                                type="number"
-                                min={0}
-                                max={23}
+                                type="text"
+                                inputMode="numeric"
                                 className="w-16"
                                 value={end}
                                 onChange={(e) => {
@@ -1089,23 +1027,10 @@ export function CreatePlaylistSyncDialog({
                                       ...prev.time_periods,
                                       [period]: {
                                         ...prev.time_periods[period],
-                                        end: isNaN(v) ? 0 : v,
+                                        end: isNaN(v) ? prev.time_periods[period].end : v,
                                       },
                                     },
                                   }));
-                                }}
-                                onBlur={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v)) {
-                                    const clamped = Math.max(0, Math.min(23, v));
-                                    setDaylistForm((prev) => ({
-                                      ...prev,
-                                      time_periods: {
-                                        ...prev.time_periods,
-                                        [period]: { ...prev.time_periods[period], end: clamped },
-                                      },
-                                    }));
-                                  }
                                 }}
                               />
                             </div>
@@ -1185,7 +1110,7 @@ export function CreatePlaylistSyncDialog({
                         const v = parseInt(e.target.value, 10);
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          lookback_days: isNaN(v) ? 30 : Math.max(7, Math.min(365, v)),
+                          lookback_days: isNaN(v) ? 90 : v,
                         }));
                       }}
                     />
@@ -1238,15 +1163,16 @@ export function CreatePlaylistSyncDialog({
                       inputMode="numeric"
                       value={localDiscoveryForm.artist_pool_size}
                       onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
+                        const raw = e.target.value.trim();
+                        const v = parseInt(raw, 10);
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          artist_pool_size: isNaN(v) ? 20 : Math.max(prev.top_artists_count, Math.min(50, v)),
+                          artist_pool_size: raw === "" ? 20 : isNaN(v) ? prev.artist_pool_size : v,
                         }));
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Size of artist pool to sample from (must be ≥ top artists count). Min: top artists, max: 50.
+                      Size of artist pool to sample from (must be ≥ top artists count).
                     </p>
                   </div>
                 </div>
@@ -1329,15 +1255,42 @@ export function CreatePlaylistSyncDialog({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Schedule (cron)</Label>
-                  <Input
-                    value={localDiscoveryForm.schedule_cron}
-                    onChange={(e) =>
-                      setLocalDiscoveryForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                    }
-                    placeholder="0 6 * * *"
-                  />
-                  <p className="text-xs text-muted-foreground">e.g. 0 6 * * * = daily at 6am</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-ld-schedule-override"
+                      checked={localDiscoveryForm.schedule_override}
+                      onChange={(e) =>
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-ld-schedule-override">Override default schedule</Label>
+                  </div>
+                  {localDiscoveryForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder="0 6 * * *"
+                          value={localDiscoveryForm.schedule_cron}
+                          onChange={(e) =>
+                            setLocalDiscoveryForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
+                      </p>
+                    </>
+                  )}
+                  {!localDiscoveryForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses global default (Config → Scheduler)
+                    </p>
+                  )}
                 </div>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1363,6 +1316,11 @@ export function CreatePlaylistSyncDialog({
                   value={localDiscoveryForm.expires_at}
                   onValueChange={(v) =>
                     setLocalDiscoveryForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={localDiscoveryForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>
@@ -1492,17 +1450,42 @@ export function CreatePlaylistSyncDialog({
                   </p>
                 )}
                 <div className="space-y-2">
-                  <Label>Schedule (cron)</Label>
-                  <Input
-                    value={topTracksForm.schedule_cron}
-                    onChange={(e) =>
-                      setTopTracksForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                    }
-                    placeholder="0 6 * * *"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    e.g. 0 6 * * * = daily at 6am
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-tt-schedule-override"
+                      checked={topTracksForm.schedule_override}
+                      onChange={(e) =>
+                        setTopTracksForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-tt-schedule-override">Override default schedule</Label>
+                  </div>
+                  {topTracksForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder="0 6 * * *"
+                          value={topTracksForm.schedule_cron}
+                          onChange={(e) =>
+                            setTopTracksForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
+                      </p>
+                    </>
+                  )}
+                  {!topTracksForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses global default (Config → Scheduler)
+                    </p>
+                  )}
                 </div>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1665,7 +1648,7 @@ export function CreatePlaylistSyncDialog({
                           const v = raw === "" ? undefined : parseInt(raw, 10);
                           setMoodPlaylistForm((prev) => ({
                             ...prev,
-                            min_year: v === undefined ? undefined : isNaN(v) ? prev.min_year : Math.max(1800, Math.min(2100, v)),
+                            min_year: v === undefined ? undefined : isNaN(v) ? prev.min_year : v,
                           }));
                         }}
                       />
@@ -1682,7 +1665,7 @@ export function CreatePlaylistSyncDialog({
                           const v = raw === "" ? undefined : parseInt(raw, 10);
                           setMoodPlaylistForm((prev) => ({
                             ...prev,
-                            max_year: v === undefined ? undefined : isNaN(v) ? prev.max_year : Math.max(1800, Math.min(2100, v)),
+                            max_year: v === undefined ? undefined : isNaN(v) ? prev.max_year : v,
                           }));
                         }}
                       />
@@ -1695,17 +1678,42 @@ export function CreatePlaylistSyncDialog({
                   </p>
                 )}
                 <div className="space-y-2">
-                  <Label>Schedule (cron)</Label>
-                  <Input
-                    value={moodPlaylistForm.schedule_cron}
-                    onChange={(e) =>
-                      setMoodPlaylistForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                    }
-                    placeholder="0 6 * * *"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    e.g. 0 6 * * * = daily at 6am
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-mood-schedule-override"
+                      checked={moodPlaylistForm.schedule_override}
+                      onChange={(e) =>
+                        setMoodPlaylistForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-mood-schedule-override">Override default schedule</Label>
+                  </div>
+                  {moodPlaylistForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder="0 6 * * *"
+                          value={moodPlaylistForm.schedule_cron}
+                          onChange={(e) =>
+                            setMoodPlaylistForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
+                      </p>
+                    </>
+                  )}
+                  {!moodPlaylistForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses global default (Config → Scheduler)
+                    </p>
+                  )}
                 </div>
                 <label className="flex items-center space-x-2">
                   <input

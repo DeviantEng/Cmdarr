@@ -928,7 +928,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
 
         config_json = {
             "plex_history_account_id": str(plex_account_id),
-            "lookback_days": int(request.get("lookback_days", 30)),
+            "lookback_days": int(request.get("lookback_days", 90)),
             "exclude_played_days": int(request.get("exclude_played_days", 3)),
             "top_artists_count": int(request.get("top_artists_count", 10)),
             "artist_pool_size": int(request.get("artist_pool_size", 20)),
@@ -940,8 +940,9 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
-        schedule_cron = (request.get("schedule_cron") or "0 6 * * *").strip()
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
         schedule_override = bool(schedule_cron)
 
         if deleted_cmd:

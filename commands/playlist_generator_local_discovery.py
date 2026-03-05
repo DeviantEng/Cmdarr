@@ -83,7 +83,7 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 self.logger.error("No target library configured")
                 return False
 
-            lookback_days = int(config.get("lookback_days", 30))
+            lookback_days = int(config.get("lookback_days", 90))
             exclude_played_days = int(config.get("exclude_played_days", 3))
             top_artists_count = int(config.get("top_artists_count", 10))
             artist_pool_size = int(config.get("artist_pool_size", 20))

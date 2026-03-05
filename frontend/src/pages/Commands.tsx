@@ -385,7 +385,7 @@ export function CommandsPage() {
         const n = typeof v === "number" ? v : parseInt(String(v), 10);
         return isNaN(n) ? undefined : Math.max(1800, Math.min(2100, n));
       })(),
-      lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 30,
+      lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 90,
       top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
       artist_pool_size: typeof cfg.artist_pool_size === "number" ? cfg.artist_pool_size : 20,
       expires_at_enabled: !!(cfg.expires_at as string),
@@ -1183,21 +1183,12 @@ export function CommandsPage() {
                           <div className="space-y-2">
                             <Label>Run at minute of hour (0–59)</Label>
                             <Input
-                              type="number"
-                              min={0}
-                              max={59}
+                              type="text"
+                              inputMode="numeric"
                               value={editForm.schedule_minute ?? 0}
                               onChange={(e) => {
                                 const v = parseInt(e.target.value, 10);
-                                setEditForm((f) => ({ ...f, schedule_minute: isNaN(v) ? 0 : v }));
-                              }}
-                              onBlur={(e) => {
-                                const v = parseInt(e.target.value, 10);
-                                if (!isNaN(v))
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    schedule_minute: Math.max(0, Math.min(59, v)),
-                                  }));
+                                setEditForm((f) => ({ ...f, schedule_minute: isNaN(v) ? f.schedule_minute ?? 0 : v }));
                               }}
                             />
                             <p className="text-xs text-muted-foreground">
@@ -1209,25 +1200,15 @@ export function CommandsPage() {
                             <div className="space-y-2">
                               <Label>Exclude played (days)</Label>
                               <Input
-                                type="number"
-                                min={1}
-                                max={30}
+                                type="text"
+                                inputMode="numeric"
                                 value={editForm.exclude_played_days ?? 3}
                                 onChange={(e) => {
                                   const v = parseInt(e.target.value, 10);
                                   setEditForm((f) => ({
                                     ...f,
-                                    exclude_played_days: isNaN(v) ? 3 : v,
+                                    exclude_played_days: isNaN(v) ? f.exclude_played_days ?? 3 : v,
                                   }));
-                                }}
-                                onBlur={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v))
-                                    setEditForm((f) => ({
-                                      ...f,
-                                      exclude_played_days: Math.max(1, Math.min(30, v)),
-                                    }));
-                                  else setEditForm((f) => ({ ...f, exclude_played_days: 3 }));
                                 }}
                               />
                               <p className="text-xs text-muted-foreground">
@@ -1237,25 +1218,15 @@ export function CommandsPage() {
                             <div className="space-y-2">
                               <Label>History lookback (days)</Label>
                               <Input
-                                type="number"
-                                min={7}
-                                max={365}
+                                type="text"
+                                inputMode="numeric"
                                 value={editForm.history_lookback_days ?? 45}
                                 onChange={(e) => {
                                   const v = parseInt(e.target.value, 10);
                                   setEditForm((f) => ({
                                     ...f,
-                                    history_lookback_days: isNaN(v) ? 45 : v,
+                                    history_lookback_days: isNaN(v) ? f.history_lookback_days ?? 45 : v,
                                   }));
-                                }}
-                                onBlur={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v))
-                                    setEditForm((f) => ({
-                                      ...f,
-                                      history_lookback_days: Math.max(7, Math.min(365, v)),
-                                    }));
-                                  else setEditForm((f) => ({ ...f, history_lookback_days: 45 }));
                                 }}
                               />
                               <p className="text-xs text-muted-foreground">
@@ -1264,25 +1235,15 @@ export function CommandsPage() {
                             </div>
                             <div className="space-y-2">
                               <Label>Max tracks</Label>
-                              <Input
-                                type="number"
-                                min={10}
-                                max={200}
-                                value={editForm.max_tracks ?? 50}
-                                onChange={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  setEditForm((f) => ({ ...f, max_tracks: isNaN(v) ? 50 : v }));
-                                }}
-                                onBlur={(e) => {
-                                  const v = parseInt(e.target.value, 10);
-                                  if (!isNaN(v))
-                                    setEditForm((f) => ({
-                                      ...f,
-                                      max_tracks: Math.max(10, Math.min(200, v)),
-                                    }));
-                                  else setEditForm((f) => ({ ...f, max_tracks: 50 }));
-                                }}
-                              />
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={editForm.max_tracks ?? 50}
+                                  onChange={(e) => {
+                                    const v = parseInt(e.target.value, 10);
+                                    setEditForm((f) => ({ ...f, max_tracks: isNaN(v) ? f.max_tracks ?? 50 : v }));
+                                  }}
+                                />
                               <p className="text-xs text-muted-foreground">
                                 Target playlist size. Min: 10, max: 200.
                               </p>
@@ -1320,25 +1281,15 @@ export function CommandsPage() {
                               <div className="space-y-2">
                                 <Label>Sonically similar limit</Label>
                                 <Input
-                                  type="number"
-                                  min={1}
-                                  max={30}
+                                  type="text"
+                                  inputMode="numeric"
                                   value={editForm.sonic_similar_limit ?? 10}
                                   onChange={(e) => {
                                     const v = parseInt(e.target.value, 10);
                                     setEditForm((f) => ({
                                       ...f,
-                                      sonic_similar_limit: isNaN(v) ? 10 : v,
+                                      sonic_similar_limit: isNaN(v) ? f.sonic_similar_limit ?? 10 : v,
                                     }));
-                                  }}
-                                  onBlur={(e) => {
-                                    const v = parseInt(e.target.value, 10);
-                                    if (!isNaN(v))
-                                      setEditForm((f) => ({
-                                        ...f,
-                                        sonic_similar_limit: Math.max(1, Math.min(30, v)),
-                                      }));
-                                    else setEditForm((f) => ({ ...f, sonic_similar_limit: 10 }));
                                   }}
                                 />
                                 <p className="text-xs text-muted-foreground">
@@ -1348,25 +1299,15 @@ export function CommandsPage() {
                               <div className="space-y-2">
                                 <Label>Sonically similar playlist limit</Label>
                                 <Input
-                                  type="number"
-                                  min={10}
-                                  max={200}
+                                  type="text"
+                                  inputMode="numeric"
                                   value={editForm.sonic_similarity_limit ?? 50}
                                   onChange={(e) => {
                                     const v = parseInt(e.target.value, 10);
                                     setEditForm((f) => ({
                                       ...f,
-                                      sonic_similarity_limit: isNaN(v) ? 50 : v,
+                                      sonic_similarity_limit: isNaN(v) ? f.sonic_similarity_limit ?? 50 : v,
                                     }));
-                                  }}
-                                  onBlur={(e) => {
-                                    const v = parseInt(e.target.value, 10);
-                                    if (!isNaN(v))
-                                      setEditForm((f) => ({
-                                        ...f,
-                                        sonic_similarity_limit: Math.max(10, Math.min(200, v)),
-                                      }));
-                                    else setEditForm((f) => ({ ...f, sonic_similarity_limit: 50 }));
                                   }}
                                 />
                                 <p className="text-xs text-muted-foreground">
@@ -1445,9 +1386,8 @@ export function CommandsPage() {
                                   <div key={period} className="flex items-center gap-3">
                                     <span className="w-28 text-sm">{period}</span>
                                     <Input
-                                      type="number"
-                                      min={0}
-                                      max={23}
+                                      type="text"
+                                      inputMode="numeric"
                                       className="w-16"
                                       value={start}
                                       onChange={(e) => {
@@ -1458,36 +1398,16 @@ export function CommandsPage() {
                                             ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
                                             [period]: {
                                               ...(f.time_periods?.[period] ?? { start: 0, end: 0 }),
-                                              start: isNaN(v) ? 0 : v,
+                                              start: isNaN(v) ? (f.time_periods?.[period]?.start ?? 0) : v,
                                             },
                                           },
                                         }));
                                       }}
-                                      onBlur={(e) => {
-                                        const v = parseInt(e.target.value, 10);
-                                        if (!isNaN(v)) {
-                                          const clamped = Math.max(0, Math.min(23, v));
-                                          setEditForm((f) => ({
-                                            ...f,
-                                            time_periods: {
-                                              ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                              [period]: {
-                                                ...(f.time_periods?.[period] ?? {
-                                                  start: 0,
-                                                  end: 0,
-                                                }),
-                                                start: clamped,
-                                              },
-                                            },
-                                          }));
-                                        }
-                                      }}
                                     />
                                     <span className="text-muted-foreground">–</span>
                                     <Input
-                                      type="number"
-                                      min={0}
-                                      max={23}
+                                      type="text"
+                                      inputMode="numeric"
                                       className="w-16"
                                       value={end}
                                       onChange={(e) => {
@@ -1498,29 +1418,10 @@ export function CommandsPage() {
                                             ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
                                             [period]: {
                                               ...(f.time_periods?.[period] ?? { start: 0, end: 0 }),
-                                              end: isNaN(v) ? 0 : v,
+                                              end: isNaN(v) ? (f.time_periods?.[period]?.end ?? 0) : v,
                                             },
                                           },
                                         }));
-                                      }}
-                                      onBlur={(e) => {
-                                        const v = parseInt(e.target.value, 10);
-                                        if (!isNaN(v)) {
-                                          const clamped = Math.max(0, Math.min(23, v));
-                                          setEditForm((f) => ({
-                                            ...f,
-                                            time_periods: {
-                                              ...(f.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS),
-                                              [period]: {
-                                                ...(f.time_periods?.[period] ?? {
-                                                  start: 0,
-                                                  end: 0,
-                                                }),
-                                                end: clamped,
-                                              },
-                                            },
-                                          }));
-                                        }
                                       }}
                                     />
                                   </div>
@@ -1781,12 +1682,7 @@ export function CommandsPage() {
                                   const v = raw === "" ? undefined : parseInt(raw, 10);
                                   setEditForm((f) => ({
                                     ...f,
-                                    min_year:
-                                      v === undefined
-                                        ? undefined
-                                        : isNaN(v)
-                                          ? f.min_year
-                                          : Math.max(1800, Math.min(2100, v)),
+                                    min_year: v === undefined ? undefined : isNaN(v) ? f.min_year : v,
                                   }));
                                 }}
                               />
@@ -1803,12 +1699,7 @@ export function CommandsPage() {
                                   const v = raw === "" ? undefined : parseInt(raw, 10);
                                   setEditForm((f) => ({
                                     ...f,
-                                    max_year:
-                                      v === undefined
-                                        ? undefined
-                                        : isNaN(v)
-                                          ? f.max_year
-                                          : Math.max(1800, Math.min(2100, v)),
+                                    max_year: v === undefined ? undefined : isNaN(v) ? f.max_year : v,
                                   }));
                                 }}
                               />
@@ -1855,12 +1746,13 @@ export function CommandsPage() {
                             <Input
                               type="text"
                               inputMode="numeric"
-                              value={editForm.lookback_days ?? 30}
+                              value={editForm.lookback_days ?? 90}
                               onChange={(e) => {
-                                const v = parseInt(e.target.value, 10);
+                                const raw = e.target.value.trim();
+                                const v = parseInt(raw, 10);
                                 setEditForm((f) => ({
                                   ...f,
-                                  lookback_days: isNaN(v) ? 30 : Math.max(7, Math.min(365, v)),
+                                  lookback_days: raw === "" ? 90 : isNaN(v) ? f.lookback_days ?? 90 : v,
                                 }));
                               }}
                             />
@@ -1913,10 +1805,11 @@ export function CommandsPage() {
                               inputMode="numeric"
                               value={editForm.artist_pool_size ?? 20}
                               onChange={(e) => {
-                                const v = parseInt(e.target.value, 10);
+                                const raw = e.target.value.trim();
+                                const v = parseInt(raw, 10);
                                 setEditForm((f) => ({
                                   ...f,
-                                    artist_pool_size: isNaN(v) ? 20 : Math.max(f.top_artists_count ?? 10, Math.min(50, v)),
+                                  artist_pool_size: raw === "" ? 20 : isNaN(v) ? f.artist_pool_size ?? 20 : v,
                                 }));
                               }}
                             />
@@ -2468,7 +2361,7 @@ export function CommandsPage() {
                       const cfg: Record<string, unknown> = {
                         ...(editingCommand.config_json || {}),
                         plex_history_account_id: editForm.plex_history_account_id ?? "",
-                        lookback_days: editForm.lookback_days ?? 30,
+                        lookback_days: editForm.lookback_days ?? 90,
                         exclude_played_days: editForm.exclude_played_days ?? 3,
                         top_artists_count: editForm.top_artists_count ?? 10,
                         artist_pool_size: editForm.artist_pool_size ?? 20,
