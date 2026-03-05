@@ -443,7 +443,7 @@ class CommandExecutor:
         total = stats.get("tracks_total", 0)
         source = stats.get("source", "")
         invalid = stats.get("invalid_artists", [])[:5]
-        parts = [f"Top Tracks completed in {duration:.1f}s"]
+        parts = [f"Artist Essentials completed in {duration:.1f}s"]
         parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
         if source:
             parts.append(f"source: {source}")

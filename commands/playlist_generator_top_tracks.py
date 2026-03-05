@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Artists Top Tracks Generator - Create playlist from artist list with top X tracks each.
+Artist Essentials Generator - Create playlist from artist list with top X tracks per artist.
 Source: Plex (ratingCount) or Last.fm. Target: Plex or Jellyfin.
 """
 
@@ -15,7 +15,19 @@ from utils.text_normalizer import normalize_text
 
 from .command_base import BaseCommand
 
-PLAYLIST_TITLE_PREFIX = "[Cmdarr Top Tracks]"
+PLAYLIST_TITLE_PREFIX = "[Cmdarr] Artist Essentials"
+SEP = " · "
+MAX_ARTIST_LEN = 40
+
+
+def _build_auto_playlist_suffix(artist_names: list[str]) -> str:
+    """Build suffix from artist names: 1-3 artists show all, 4+ show first 2 + N More."""
+    names = [n.strip()[:MAX_ARTIST_LEN] for n in artist_names if (n or "").strip()]
+    if not names:
+        return "Mix"
+    if len(names) <= 3:
+        return SEP.join(names)
+    return f"{names[0]}{SEP}{names[1]} + {len(names) - 2} More"
 
 
 class PlaylistGeneratorTopTracksCommand(BaseCommand):
@@ -105,8 +117,8 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
 
-    def _persist_last_playlist_title(self, playlist_title: str) -> None:
-        """Persist last_playlist_title to database for cleanup on next name change."""
+    def _persist_after_success(self, playlist_title: str) -> None:
+        """Persist last_playlist_title and update display_name to match playlist."""
         try:
             from database.config_models import CommandConfig
             from database.database import get_database_manager
@@ -122,11 +134,12 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                     cfg = dict(cmd.config_json or {})
                     cfg["last_playlist_title"] = playlist_title
                     cmd.config_json = cfg
+                    cmd.display_name = playlist_title
                     session.commit()
             finally:
                 session.close()
         except Exception as e:
-            self.logger.warning(f"Could not persist last_playlist_title: {e}")
+            self.logger.warning(f"Could not persist after success: {e}")
 
     async def execute(self) -> bool:
         try:
@@ -139,7 +152,6 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             source = str(config.get("source", "plex")).lower()
             target_client, target_name = self._get_target_client()
             library_key = config.get("target_library_key")
-            playlist_name = config.get("playlist_name", "Artists Top Tracks")
 
             if not library_key and hasattr(target_client, "get_resolved_library_key"):
                 library_key = target_client.get_resolved_library_key()
@@ -168,15 +180,23 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 self.logger.error("No valid artists found in library")
                 return False
 
-            playlist_title = f"{PLAYLIST_TITLE_PREFIX} {playlist_name}"
+            # Ordered display names from user list (for auto-naming)
+            valid_norms = set(valid_artists)
+            ordered_display_names = [
+                a.strip() for a in artists_raw
+                if (a or "").strip() and normalize_text((a or "").strip().lower()) in valid_norms
+            ]
+
+            use_custom = config.get("use_custom_playlist_name", False)
+            custom_name = (config.get("custom_playlist_name") or "").strip()
+            if use_custom and custom_name:
+                suffix = custom_name
+            else:
+                suffix = _build_auto_playlist_suffix(ordered_display_names)
+            playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
             last_playlist_title = config.get("last_playlist_title")
-            # Delete old playlist if name changed (or migrate from legacy "[Top Tracks]" prefix)
             if last_playlist_title and last_playlist_title != playlist_title:
                 self._delete_playlist_by_name(target_client, last_playlist_title)
-            elif not last_playlist_title:
-                # Migration: clean up legacy "[Top Tracks] {name}" if it exists
-                legacy_title = f"[Top Tracks] {playlist_name}"
-                self._delete_playlist_by_name(target_client, legacy_title)
 
             tracks_for_playlist: list[dict[str, Any]] = []
             artists_processed = 0
@@ -264,7 +284,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 self.logger.info(
                     f"Created playlist '{playlist_title}': {found}/{total} tracks from {artists_processed} artists"
                 )
-                self._persist_last_playlist_title(playlist_title)
+                self._persist_after_success(playlist_title)
             return success
 
         except Exception as e:

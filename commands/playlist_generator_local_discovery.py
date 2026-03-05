@@ -14,7 +14,7 @@ from utils.library_cache_manager import get_library_cache_manager
 
 from .command_base import BaseCommand
 
-PLAYLIST_TITLE_PREFIX = "[Cmdarr Local Discovery]"
+PLAYLIST_TITLE_PREFIX = "[Cmdarr] Local Discovery"
 
 
 def _parse_viewed_at(item: dict, tz=None) -> datetime | None:
@@ -46,9 +46,31 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
     def get_logger_name(self) -> str:
         return "playlist_generator.local_discovery"
 
+    def _ensure_display_name(self, expected: str) -> None:
+        """Ensure command display_name matches playlist name for consistency."""
+        try:
+            from database.config_models import CommandConfig
+            from database.database import get_database_manager
+
+            cmd_name = (self.config_json or {}).get("command_name", "")
+            if not cmd_name:
+                return
+            db = get_database_manager()
+            session = db.get_config_session_sync()
+            try:
+                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                if cmd and cmd.display_name != expected:
+                    cmd.display_name = expected
+                    session.commit()
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.warning(f"Could not update display_name: {e}")
+
     async def execute(self) -> bool:
         try:
             config = self.config_json or {}
+            self._ensure_display_name("[Cmdarr] Local Discovery")
             account_id = config.get("plex_history_account_id")
             if not account_id:
                 self.logger.error("plex_history_account_id is required")
@@ -61,7 +83,7 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 self.logger.error("No target library configured")
                 return False
 
-            lookback_days = int(config.get("lookback_days", 90))
+            lookback_days = int(config.get("lookback_days", 30))
             exclude_played_days = int(config.get("exclude_played_days", 3))
             top_artists_count = int(config.get("top_artists_count", 10))
             artist_pool_size = int(config.get("artist_pool_size", 20))

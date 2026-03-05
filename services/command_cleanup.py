@@ -221,14 +221,27 @@ class CommandCleanupService:
             self._delete_playlist_if_exists(target, playlist_name)
         elif name.startswith("top_tracks_"):
             target = str(cfg.get("target", "plex")).lower()
-            playlist_name = f"[Cmdarr Top Tracks] {cfg.get('playlist_name', 'Artists Top Tracks')}"
-            self._delete_playlist_if_exists(target, playlist_name)
+            # Use last run's playlist title; fallback to recompute from config
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                artists_raw = cfg.get("artists", [])
+                if isinstance(artists_raw, str):
+                    artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+                use_custom = cfg.get("use_custom_playlist_name", False)
+                custom = (cfg.get("custom_playlist_name") or "").strip()
+                if use_custom and custom:
+                    pl_title = f"[Cmdarr] Artist Essentials: {custom}"
+                elif artists_raw:
+                    from commands.playlist_generator_top_tracks import _build_auto_playlist_suffix
+                    suffix = _build_auto_playlist_suffix(artists_raw[:50])
+                    pl_title = f"[Cmdarr] Artist Essentials: {suffix}"
+                else:
+                    pl_title = "[Cmdarr] Artist Essentials: Mix"
+            self._delete_playlist_if_exists(target, pl_title)
         elif name.startswith("daylist_"):
-            playlist_name = "Cmdarr's Daylist"
-            self._delete_playlist_if_exists("plex", playlist_name)
+            self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist")
         elif name.startswith("local_discovery_"):
-            playlist_name = "[Cmdarr Local Discovery]"
-            self._delete_playlist_if_exists("plex", playlist_name)
+            self._delete_playlist_if_exists("plex", "[Cmdarr] Local Discovery")
 
     def _delete_playlist_if_exists(self, target: str, playlist_name: str):
         """Delete playlist from Plex or Jellyfin if it exists."""

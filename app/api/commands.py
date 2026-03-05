@@ -329,10 +329,7 @@ async def update_command(
                             detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
                         )
             command.config_json = request.config_json
-            # Sync display_name with playlist_name for top_tracks commands
-            if command_name.startswith("top_tracks_") and "playlist_name" in request.config_json:
-                pn = request.config_json.get("playlist_name", "Artists Top Tracks")
-                command.display_name = f"Top Tracks: {pn}"
+            # display_name for top_tracks is updated by the command when it runs (matches playlist title)
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -818,7 +815,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
 
         cmd = CommandConfig(
             command_name="daylist_00001",
-            display_name="Daylist",
+            display_name="[Cmdarr] Daylist",
             description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
             enabled=bool(request.get("enabled", True)),
             schedule_cron=None,  # Daylist uses config_json schedule_minute
@@ -886,7 +883,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
 
         config_json = {
             "plex_history_account_id": str(plex_account_id),
-            "lookback_days": int(request.get("lookback_days", 90)),
+            "lookback_days": int(request.get("lookback_days", 30)),
             "exclude_played_days": int(request.get("exclude_played_days", 3)),
             "top_artists_count": int(request.get("top_artists_count", 10)),
             "artist_pool_size": int(request.get("artist_pool_size", 20)),
@@ -904,7 +901,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
 
         cmd = CommandConfig(
             command_name="local_discovery_00001",
-            display_name="Local Discovery",
+            display_name="[Cmdarr] Local Discovery",
             description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
             enabled=bool(request.get("enabled", True)),
             schedule_cron=schedule_cron if schedule_override else None,
@@ -936,7 +933,7 @@ async def top_tracks_exists(db: Annotated[Session, Depends(get_config_db)]):
 
 @router.post("/top-tracks/create")
 async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new Artists Top Tracks generator command."""
+    """Create a new Artist Mix generator command."""
     try:
         artists_raw = request.get("artists", [])
         if isinstance(artists_raw, str):
@@ -955,7 +952,8 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         if target == "jellyfin":
             source = "lastfm"
 
-        playlist_name = (request.get("playlist_name") or "Artists Top Tracks").strip()
+        use_custom_playlist_name = bool(request.get("use_custom_playlist_name", False))
+        custom_playlist_name = (request.get("custom_playlist_name") or "").strip()
         schedule_cron = (request.get("schedule_cron") or "").strip() or None
         schedule_override = bool(schedule_cron)
         enabled = bool(request.get("enabled", True))
@@ -1011,7 +1009,8 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
             "source": source,
             "target": target,
             "target_library_key": str(library_key),
-            "playlist_name": playlist_name,
+            "use_custom_playlist_name": use_custom_playlist_name,
+            "custom_playlist_name": custom_playlist_name,
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
@@ -1019,7 +1018,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
 
         cmd = CommandConfig(
             command_name=command_name,
-            display_name=f"Top Tracks: {playlist_name}",
+            display_name="[Cmdarr] Artist Essentials",
             description="Generate playlist from artist list with top X tracks per artist.",
             enabled=enabled,
             schedule_cron=schedule_cron if schedule_override else None,
@@ -1033,7 +1032,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
 
         command_executor._load_dynamic_top_tracks_commands()
 
-        return {"message": "Top Tracks command created", "command_name": command_name}
+        return {"message": "Artist Essentials command created", "command_name": command_name}
     except HTTPException:
         raise
     except Exception as e:

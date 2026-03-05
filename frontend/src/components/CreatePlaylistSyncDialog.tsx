@@ -121,7 +121,7 @@ export function CreatePlaylistSyncDialog({
 
   const [localDiscoveryForm, setLocalDiscoveryForm] = useState({
     plex_history_account_id: "",
-    lookback_days: 90,
+    lookback_days: 30,
     exclude_played_days: 3,
     top_artists_count: 10,
     artist_pool_size: 20,
@@ -141,7 +141,8 @@ export function CreatePlaylistSyncDialog({
     top_x: 5,
     source: "plex" as "plex" | "lastfm",
     target: "plex" as "plex" | "jellyfin",
-    playlist_name: "Artists Top Tracks",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
     schedule_cron: "0 6 * * *",
     schedule_override: true,
     enabled: true,
@@ -211,7 +212,7 @@ export function CreatePlaylistSyncDialog({
       });
       setLocalDiscoveryForm({
         plex_history_account_id: "",
-        lookback_days: 90,
+        lookback_days: 30,
         exclude_played_days: 3,
         top_artists_count: 10,
         artist_pool_size: 20,
@@ -341,7 +342,8 @@ export function CreatePlaylistSyncDialog({
           top_x: topTracksForm.top_x,
           source: topTracksForm.source,
           target: topTracksForm.target,
-          playlist_name: topTracksForm.playlist_name,
+          use_custom_playlist_name: topTracksForm.use_custom_playlist_name,
+          custom_playlist_name: topTracksForm.custom_playlist_name,
           schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
           enabled: topTracksForm.enabled,
         };
@@ -353,7 +355,7 @@ export function CreatePlaylistSyncDialog({
           "/api/commands/top-tracks/create",
           { method: "POST", body: JSON.stringify(payload) }
         );
-        toast.success(response.message || "Top Tracks command created");
+        toast.success(response.message || "Artist Essentials command created");
       } else if (playlistType === "daylist") {
         const time_periods: Record<string, number[]> = {};
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
@@ -445,7 +447,7 @@ export function CreatePlaylistSyncDialog({
               : playlistType === "daylist"
                 ? "Configure Daylist"
                 : playlistType === "top_tracks"
-                  ? "Configure Artists Top Tracks"
+                  ? "Configure Artist Essentials"
                   : playlistType === "local_discovery"
                     ? "Configure Local Discovery"
                     : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
@@ -521,7 +523,7 @@ export function CreatePlaylistSyncDialog({
               </div>
             </button>
 
-            {/* Artists Top Tracks Option */}
+            {/* Artist Essentials Option */}
             <button
               onClick={() => handleSelectType("top_tracks")}
               className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
@@ -530,7 +532,7 @@ export function CreatePlaylistSyncDialog({
                 <ListMusic className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold">Artists Top Tracks</h3>
+                <h3 className="font-semibold">Artist Essentials</h3>
                 <p className="text-sm text-muted-foreground">
                   Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
                 </p>
@@ -1075,6 +1077,9 @@ export function CreatePlaylistSyncDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Plex Home users only. Local Discovery uses this account&apos;s play history.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1087,11 +1092,13 @@ export function CreatePlaylistSyncDialog({
                         const v = parseInt(e.target.value, 10);
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          lookback_days: isNaN(v) ? 90 : Math.max(7, Math.min(365, v)),
+                          lookback_days: isNaN(v) ? 30 : Math.max(7, Math.min(365, v)),
                         }));
                       }}
                     />
-                    <p className="text-xs text-muted-foreground">How far back to count plays (7-365)</p>
+                    <p className="text-xs text-muted-foreground">
+                      How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Exclude played days</Label>
@@ -1107,7 +1114,9 @@ export function CreatePlaylistSyncDialog({
                         }));
                       }}
                     />
-                    <p className="text-xs text-muted-foreground">Skip tracks played in last N days</p>
+                    <p className="text-xs text-muted-foreground">
+                      Skip tracks played in last N days. Reduces repetition. Min: 0, max: 30.
+                    </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1125,6 +1134,9 @@ export function CreatePlaylistSyncDialog({
                         }));
                       }}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      How many top artists to randomly pick each run. Min: 1, max: 20.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Artist pool size</Label>
@@ -1140,7 +1152,9 @@ export function CreatePlaylistSyncDialog({
                         }));
                       }}
                     />
-                    <p className="text-xs text-muted-foreground">Random sample from top N artists</p>
+                    <p className="text-xs text-muted-foreground">
+                      Size of artist pool to sample from (must be ≥ top artists count). Min: top artists, max: 50.
+                    </p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1157,6 +1171,9 @@ export function CreatePlaylistSyncDialog({
                       }));
                     }}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Target playlist size. Min: 1, max: 200.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1173,6 +1190,9 @@ export function CreatePlaylistSyncDialog({
                         }));
                       }}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Max sonically similar tracks per seed. Min: 5, max: 50.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Historical ratio: {localDiscoveryForm.historical_ratio}</Label>
@@ -1190,7 +1210,29 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="w-full"
                     />
-                    <p className="text-xs text-muted-foreground">Share from played tracks vs sonic similar</p>
+                    <p className="text-xs text-muted-foreground">
+                      Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Sonic similarity distance</Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={localDiscoveryForm.sonic_similarity_distance}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          sonic_similarity_distance: isNaN(v) ? 0.25 : Math.max(0.1, Math.min(1, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.
+                    </p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1270,7 +1312,9 @@ export function CreatePlaylistSyncDialog({
                       }
                     }}
                   />
-                  <p className="text-xs text-muted-foreground">Min 1, max 20</p>
+                  <p className="text-xs text-muted-foreground">
+                    Number of top tracks per artist. Min: 1, max: 20.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Target</Label>
@@ -1292,6 +1336,9 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="jellyfin">Jellyfin</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Where to create the playlist.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Source (Jellyfin target uses Last.fm only)</Label>
@@ -1310,17 +1357,47 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="lastfm">Last.fm</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Plex uses ratingCount; Last.fm uses play counts. Jellyfin requires Last.fm.
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Playlist name</Label>
-                  <Input
-                    value={topTracksForm.playlist_name}
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={topTracksForm.use_custom_playlist_name}
                     onChange={(e) =>
-                      setTopTracksForm((prev) => ({ ...prev, playlist_name: e.target.value }))
+                      setTopTracksForm((prev) => ({
+                        ...prev,
+                        use_custom_playlist_name: e.target.checked,
+                      }))
                     }
-                    placeholder="Artists Top Tracks"
+                    className="rounded border-gray-300"
                   />
-                </div>
+                  <span className="text-sm">Use custom playlist name</span>
+                </label>
+                {topTracksForm.use_custom_playlist_name && (
+                  <div className="space-y-2">
+                    <Label>Custom playlist name</Label>
+                    <Input
+                      value={topTracksForm.custom_playlist_name}
+                      onChange={(e) =>
+                        setTopTracksForm((prev) => ({
+                          ...prev,
+                          custom_playlist_name: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Road Trip Mix"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Override auto-generated name. Shown as [Cmdarr] Artist Essentials: &lt;name&gt;.
+                    </p>
+                  </div>
+                )}
+                {!topTracksForm.use_custom_playlist_name && (
+                  <p className="text-xs text-muted-foreground">
+                    Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3 More).
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label>Schedule (cron)</Label>
                   <Input
@@ -1543,7 +1620,7 @@ export function CreatePlaylistSyncDialog({
               ) : playlistType === "daylist" ? (
                 "Create Daylist"
               ) : playlistType === "top_tracks" ? (
-                "Create Top Tracks"
+                "Create Artist Essentials"
               ) : playlistType === "local_discovery" ? (
                 "Create Local Discovery"
               ) : (
