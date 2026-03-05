@@ -206,9 +206,14 @@ class CommandCleanupService:
         """
         Run command-specific cleanup on expiry (e.g. delete playlist).
         Called synchronously from cleanup_expired_commands.
+        Only deletes playlist when expires_at_delete_playlist is True (default).
         """
         cfg = command_config.config_json or {}
         name = command_config.command_name or ""
+        delete_playlist = cfg.get("expires_at_delete_playlist", True)
+
+        if not delete_playlist:
+            return
 
         if name.startswith("playlist_sync_"):
             target = str(cfg.get("target", "plex")).lower()

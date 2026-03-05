@@ -28,6 +28,10 @@ interface ExpirationFieldsProps {
   value: string;
   onValueChange: (value: string) => void;
   idPrefix?: string;
+  /** When true, show "Delete playlist from target" sub-option. Only relevant for playlist-creating commands. */
+  showDeletePlaylistOption?: boolean;
+  deletePlaylistOnExpiry?: boolean;
+  onDeletePlaylistChange?: (v: boolean) => void;
 }
 
 export function ExpirationFields({
@@ -36,6 +40,9 @@ export function ExpirationFields({
   value,
   onValueChange,
   idPrefix = "exp",
+  showDeletePlaylistOption = false,
+  deletePlaylistOnExpiry = true,
+  onDeletePlaylistChange,
 }: ExpirationFieldsProps) {
   const minDatetime = (() => {
     const now = new Date();
@@ -74,9 +81,23 @@ export function ExpirationFields({
             onChange={(e) => onValueChange(e.target.value)}
             className="max-w-xs"
           />
+          {showDeletePlaylistOption && onDeletePlaylistChange && (
+            <label className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id={`${idPrefix}-delete-playlist`}
+                checked={deletePlaylistOnExpiry}
+                onChange={(e) => onDeletePlaylistChange(e.target.checked)}
+                className="rounded border-input"
+              />
+              <span className="text-sm">Delete playlist from target when expired</span>
+            </label>
+          )}
           <p className="text-xs text-muted-foreground">
-            When this time passes, the command will be disabled (not deleted) and its playlist
-            removed from the target.
+            When this time passes, the command will be disabled (not deleted).
+            {showDeletePlaylistOption
+              ? " Optionally remove its playlist from the target."
+              : ""}
           </p>
         </div>
       )}

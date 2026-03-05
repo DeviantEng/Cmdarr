@@ -23,8 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ⏱️ Command Expiration
 - **Expires At**: Commands can have `config_json.expires_at` (ISO datetime) for time-limited use
 - **Expiration UI**: Enable expiration checkbox and datetime picker on create and edit for playlist sync, top tracks, and daylist
+- **Position**: Expiration settings moved below "Override default schedule" in command edit dialog
 - **Auto-Disable**: When the datetime is reached, the command is disabled (not deleted); checked every 5 minutes by cleanup
-- **Playlist Cleanup**: Expired playlist_sync, top_tracks, and daylist commands have their playlists removed from the target
+- **Playlist Cleanup**: Expired playlist_sync, top_tracks, and daylist commands optionally have their playlists removed from the target
+- **Delete Playlist Option**: Sub-checkbox "Delete playlist from target when expired" (default on); uncheck to disable command on schedule but keep the playlist
 
 ## [0.3.6] - 2026-02-23
 

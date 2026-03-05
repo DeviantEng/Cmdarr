@@ -85,6 +85,7 @@ export function CreatePlaylistSyncDialog({
     enable_artist_discovery: false,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
   const [validation, setValidation] = useState<PlaylistValidation>({
     isValidating: false,
@@ -113,6 +114,7 @@ export function CreatePlaylistSyncDialog({
     >,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
 
   const [topTracksForm, setTopTracksForm] = useState({
@@ -126,6 +128,7 @@ export function CreatePlaylistSyncDialog({
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
 
   // Fetch daylist exists, top tracks exists, and plex accounts when dialog opens
@@ -158,6 +161,7 @@ export function CreatePlaylistSyncDialog({
         enable_artist_discovery: false,
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
       });
       setDaylistForm({
         plex_history_account_id: "",
@@ -174,6 +178,7 @@ export function CreatePlaylistSyncDialog({
         time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
       });
       setValidation({
         isValidating: false,
@@ -297,6 +302,7 @@ export function CreatePlaylistSyncDialog({
         };
         if (topTracksForm.expires_at_enabled && topTracksForm.expires_at) {
           payload.expires_at = toExpiresAtIso(topTracksForm.expires_at);
+          payload.expires_at_delete_playlist = topTracksForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string; command_name: string }>(
           "/api/commands/top-tracks/create",
@@ -324,6 +330,7 @@ export function CreatePlaylistSyncDialog({
         };
         if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
           daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
+          daylistPayload.expires_at_delete_playlist = daylistForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string }>("/api/commands/daylist/create", {
           method: "POST",
@@ -337,8 +344,10 @@ export function CreatePlaylistSyncDialog({
         };
         if (formData.expires_at_enabled && formData.expires_at) {
           payload.expires_at = toExpiresAtIso(formData.expires_at);
+          payload.expires_at_delete_playlist = formData.expires_at_delete_playlist ?? true;
         } else {
           delete payload.expires_at;
+          delete payload.expires_at_delete_playlist;
         }
         const response = await api.request<{ message: string }>(
           "/api/commands/playlist-sync/create",
@@ -927,6 +936,11 @@ export function CreatePlaylistSyncDialog({
                   onValueChange={(v) =>
                     setDaylistForm((prev) => ({ ...prev, expires_at: v }))
                   }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={daylistForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setDaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
                 />
               </>
             ) : playlistType === "top_tracks" ? (
@@ -1057,6 +1071,11 @@ export function CreatePlaylistSyncDialog({
                   value={topTracksForm.expires_at}
                   onValueChange={(v) =>
                     setTopTracksForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={topTracksForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>
@@ -1206,6 +1225,11 @@ export function CreatePlaylistSyncDialog({
                   }
                   value={formData.expires_at}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
                 />
               </>
             )}

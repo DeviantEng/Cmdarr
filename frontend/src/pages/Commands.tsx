@@ -160,6 +160,7 @@ export function CommandsPage() {
     playlist_name?: string;
     expires_at_enabled?: boolean;
     expires_at?: string;
+    expires_at_delete_playlist?: boolean;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
@@ -355,6 +356,7 @@ export function CommandsPage() {
       playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
       expires_at_enabled: !!(cfg.expires_at as string),
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
+      expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,
     });
     if (isDaylist) {
       api
@@ -1108,27 +1110,6 @@ export function CommandsPage() {
                       </div>
                     )}
 
-                    {/* Expiration - playlist sync, top tracks, daylist */}
-                    {(editingCommand.command_name.startsWith("playlist_sync_") ||
-                      editingCommand.command_name.startsWith("top_tracks_") ||
-                      editingCommand.command_name.startsWith("daylist_")) && (
-                      <ExpirationFields
-                        idPrefix="edit-exp"
-                        enabled={editForm.expires_at_enabled ?? false}
-                        onEnabledChange={(v) =>
-                          setEditForm((f) => ({
-                            ...f,
-                            expires_at_enabled: v,
-                            expires_at: v && !f.expires_at ? "" : f.expires_at,
-                          }))
-                        }
-                        value={editForm.expires_at ?? ""}
-                        onValueChange={(v) =>
-                          setEditForm((f) => ({ ...f, expires_at: v }))
-                        }
-                      />
-                    )}
-
                     {/* Daylist - editable fields */}
                     {editingCommand.command_name.startsWith("daylist_") && (
                       <>
@@ -1743,6 +1724,32 @@ export function CommandsPage() {
                       </div>
                     )}
 
+                    {/* Expiration - playlist sync, top tracks, daylist (below schedule) */}
+                    {(editingCommand.command_name.startsWith("playlist_sync_") ||
+                      editingCommand.command_name.startsWith("top_tracks_") ||
+                      editingCommand.command_name.startsWith("daylist_")) && (
+                      <ExpirationFields
+                        idPrefix="edit-exp"
+                        enabled={editForm.expires_at_enabled ?? false}
+                        onEnabledChange={(v) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            expires_at_enabled: v,
+                            expires_at: v && !f.expires_at ? "" : f.expires_at,
+                          }))
+                        }
+                        value={editForm.expires_at ?? ""}
+                        onValueChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at: v }))
+                        }
+                        showDeletePlaylistOption={true}
+                        deletePlaylistOnExpiry={editForm.expires_at_delete_playlist ?? true}
+                        onDeletePlaylistChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at_delete_playlist: v }))
+                        }
+                      />
+                    )}
+
                     {/* New Releases Discovery - editable fields */}
                     {editingCommand.command_name === "new_releases_discovery" && (
                       <>
@@ -1904,8 +1911,10 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
@@ -1944,8 +1953,10 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({ config_json: cfg });
                     }}
@@ -1968,8 +1979,10 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,

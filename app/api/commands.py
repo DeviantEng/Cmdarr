@@ -813,6 +813,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
         cmd = CommandConfig(
             command_name="daylist_00001",
@@ -927,6 +928,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
         cmd = CommandConfig(
             command_name=command_name,
@@ -1115,6 +1117,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
+                config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
             command = CommandConfig(
                 command_name=command_name,
@@ -1286,6 +1289,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
+                config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
             command = CommandConfig(
                 command_name=command_name,
