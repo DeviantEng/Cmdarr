@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic, Sparkles } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic, Compass, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import {
   toExpiresAtIso,
 } from "@/components/ExpirationFields";
 
-type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks" | "mood_playlist";
+type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks" | "local_discovery" | "mood_playlist";
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -85,6 +85,7 @@ export function CreatePlaylistSyncDialog({
     enable_artist_discovery: false,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
   const [validation, setValidation] = useState<PlaylistValidation>({
     isValidating: false,
@@ -94,6 +95,7 @@ export function CreatePlaylistSyncDialog({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [daylistExists, setDaylistExists] = useState(false);
+  const [localDiscoveryExists, setLocalDiscoveryExists] = useState(false);
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [daylistForm, setDaylistForm] = useState({
     plex_history_account_id: "",
@@ -113,6 +115,25 @@ export function CreatePlaylistSyncDialog({
     >,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
+    use_primary_mood: false,
+  });
+
+  const [localDiscoveryForm, setLocalDiscoveryForm] = useState({
+    plex_history_account_id: "",
+    lookback_days: 30,
+    exclude_played_days: 3,
+    top_artists_count: 10,
+    artist_pool_size: 20,
+    max_tracks: 50,
+    sonic_similar_limit: 15,
+    sonic_similarity_distance: 0.25,
+    historical_ratio: 0.4,
+    schedule_cron: "0 6 * * *",
+    schedule_override: true,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
   });
 
   const [topTracksForm, setTopTracksForm] = useState({
@@ -120,12 +141,14 @@ export function CreatePlaylistSyncDialog({
     top_x: 5,
     source: "plex" as "plex" | "lastfm",
     target: "plex" as "plex" | "jellyfin",
-    playlist_name: "Artists Top Tracks",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
     schedule_cron: "0 6 * * *",
     schedule_override: true,
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
 
   const [moodPlaylistForm, setMoodPlaylistForm] = useState({
@@ -138,15 +161,19 @@ export function CreatePlaylistSyncDialog({
     enabled: true,
     expires_at_enabled: false,
     expires_at: "",
+    expires_at_delete_playlist: true,
   });
   const [moodsList, setMoodsList] = useState<string[]>([]);
 
-  // Fetch daylist exists, mood playlist moods, and plex accounts when dialog opens
+  // Fetch daylist exists, local discovery exists, mood playlist moods, and plex accounts when dialog opens
   useEffect(() => {
     if (!open) return;
     api
       .request<{ exists: boolean }>("/api/commands/daylist/exists")
       .then((r) => setDaylistExists(r.exists));
+    api
+      .request<{ exists: boolean }>("/api/commands/local-discovery/exists")
+      .then((r) => setLocalDiscoveryExists(r.exists));
     api
       .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
       .then((r) => setMoodsList(r.moods || []))
@@ -175,6 +202,7 @@ export function CreatePlaylistSyncDialog({
         enable_artist_discovery: false,
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
       });
       setDaylistForm({
         plex_history_account_id: "",
@@ -191,12 +219,30 @@ export function CreatePlaylistSyncDialog({
         time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
+        use_primary_mood: false,
       });
       setValidation({
         isValidating: false,
         isValid: false,
         error: "",
         metadata: null,
+      });
+      setLocalDiscoveryForm({
+        plex_history_account_id: "",
+        lookback_days: 30,
+        exclude_played_days: 3,
+        top_artists_count: 10,
+        artist_pool_size: 20,
+        max_tracks: 50,
+        sonic_similar_limit: 15,
+        sonic_similarity_distance: 0.25,
+        historical_ratio: 0.4,
+        schedule_cron: "0 6 * * *",
+        schedule_override: true,
+        enabled: true,
+        expires_at_enabled: false,
+        expires_at: "",
       });
       setMoodPlaylistForm({
         moods: [],
@@ -208,6 +254,7 @@ export function CreatePlaylistSyncDialog({
         enabled: true,
         expires_at_enabled: false,
         expires_at: "",
+        expires_at_delete_playlist: true,
       });
     }
   }, [open]);
@@ -263,6 +310,7 @@ export function CreatePlaylistSyncDialog({
 
   const handleSelectType = (type: PlaylistType) => {
     if (type === "daylist" && daylistExists) return;
+    if (type === "local_discovery" && localDiscoveryExists) return;
     setPlaylistType(type);
     setStep("form");
     if (type === "listenbrainz") {
@@ -313,6 +361,11 @@ export function CreatePlaylistSyncDialog({
       if (moodPlaylistForm.expires_at_enabled && !moodPlaylistForm.expires_at) return false;
       return true;
     }
+    if (playlistType === "local_discovery") {
+      if (!localDiscoveryForm.plex_history_account_id) return false;
+      if (localDiscoveryForm.expires_at_enabled && !localDiscoveryForm.expires_at) return false;
+      return true;
+    }
     if (!validation.isValid) return false;
     if (formData.expires_at_enabled && !formData.expires_at) return false;
     return true;
@@ -333,18 +386,20 @@ export function CreatePlaylistSyncDialog({
           top_x: topTracksForm.top_x,
           source: topTracksForm.source,
           target: topTracksForm.target,
-          playlist_name: topTracksForm.playlist_name,
+          use_custom_playlist_name: topTracksForm.use_custom_playlist_name,
+          custom_playlist_name: topTracksForm.custom_playlist_name,
           schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
           enabled: topTracksForm.enabled,
         };
         if (topTracksForm.expires_at_enabled && topTracksForm.expires_at) {
           payload.expires_at = toExpiresAtIso(topTracksForm.expires_at);
+          payload.expires_at_delete_playlist = topTracksForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string; command_name: string }>(
           "/api/commands/top-tracks/create",
           { method: "POST", body: JSON.stringify(payload) }
         );
-        toast.success(response.message || "Top Tracks command created");
+        toast.success(response.message || "Artist Essentials command created");
       } else if (playlistType === "daylist") {
         const time_periods: Record<string, number[]> = {};
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
@@ -363,9 +418,11 @@ export function CreatePlaylistSyncDialog({
           historical_ratio: daylistForm.historical_ratio,
           timezone: daylistForm.timezone || undefined,
           time_periods,
+          use_primary_mood: daylistForm.use_primary_mood,
         };
         if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
           daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
+          daylistPayload.expires_at_delete_playlist = daylistForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string }>(
           "/api/commands/daylist/create",
@@ -383,12 +440,35 @@ export function CreatePlaylistSyncDialog({
         };
         if (moodPlaylistForm.expires_at_enabled && moodPlaylistForm.expires_at) {
           payload.expires_at = toExpiresAtIso(moodPlaylistForm.expires_at);
+          payload.expires_at_delete_playlist = moodPlaylistForm.expires_at_delete_playlist ?? true;
         }
         const response = await api.request<{ message: string; command_name: string }>(
           "/api/commands/mood-playlist/create",
           { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "Mood Playlist command created");
+      } else if (playlistType === "local_discovery") {
+        const payload: Record<string, unknown> = {
+          plex_history_account_id: localDiscoveryForm.plex_history_account_id,
+          lookback_days: localDiscoveryForm.lookback_days,
+          exclude_played_days: localDiscoveryForm.exclude_played_days,
+          top_artists_count: localDiscoveryForm.top_artists_count,
+          artist_pool_size: localDiscoveryForm.artist_pool_size,
+          max_tracks: localDiscoveryForm.max_tracks,
+          sonic_similar_limit: localDiscoveryForm.sonic_similar_limit,
+          sonic_similarity_distance: localDiscoveryForm.sonic_similarity_distance,
+          historical_ratio: localDiscoveryForm.historical_ratio,
+          schedule_cron: localDiscoveryForm.schedule_override ? localDiscoveryForm.schedule_cron : undefined,
+          enabled: localDiscoveryForm.enabled,
+        };
+        if (localDiscoveryForm.expires_at_enabled && localDiscoveryForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(localDiscoveryForm.expires_at);
+        }
+        const response = await api.request<{ message: string }>(
+          "/api/commands/local-discovery/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Local Discovery command created");
       } else {
         const payload: Record<string, unknown> = {
           ...formData,
@@ -396,8 +476,10 @@ export function CreatePlaylistSyncDialog({
         };
         if (formData.expires_at_enabled && formData.expires_at) {
           payload.expires_at = toExpiresAtIso(formData.expires_at);
+          payload.expires_at_delete_playlist = formData.expires_at_delete_playlist ?? true;
         } else {
           delete payload.expires_at;
+          delete payload.expires_at_delete_playlist;
         }
         const response = await api.request<{ message: string }>(
           "/api/commands/playlist-sync/create",
@@ -427,10 +509,12 @@ export function CreatePlaylistSyncDialog({
               : playlistType === "daylist"
                 ? "Configure Daylist"
                 : playlistType === "top_tracks"
-                  ? "Configure Artists Top Tracks"
-                  : playlistType === "mood_playlist"
-                    ? "Configure Mood Playlist"
-                    : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
+                  ? "Configure Artist Essentials"
+                  : playlistType === "local_discovery"
+                    ? "Configure Local Discovery"
+                    : playlistType === "mood_playlist"
+                      ? "Configure Mood Playlist"
+                      : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
@@ -439,9 +523,11 @@ export function CreatePlaylistSyncDialog({
                 ? "Configure your daylist settings"
                 : playlistType === "top_tracks"
                   ? "Artists must exist in your library. One artist per line."
-                  : playlistType === "mood_playlist"
-                    ? "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher."
-                    : "Configure your playlist sync settings"}
+                  : playlistType === "local_discovery"
+                    ? "Top artists from play history + sonically similar tracks. Fresh each run."
+                    : playlistType === "mood_playlist"
+                      ? "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher."
+                      : "Configure your playlist sync settings"}
           </DialogDescription>
         </DialogHeader>
 
@@ -503,7 +589,7 @@ export function CreatePlaylistSyncDialog({
               </div>
             </button>
 
-            {/* Artists Top Tracks Option */}
+            {/* Artist Essentials Option */}
             <button
               onClick={() => handleSelectType("top_tracks")}
               className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
@@ -512,7 +598,7 @@ export function CreatePlaylistSyncDialog({
                 <ListMusic className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold">Artists Top Tracks</h3>
+                <h3 className="font-semibold">Artist Essentials</h3>
                 <p className="text-sm text-muted-foreground">
                   Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
                 </p>
@@ -531,6 +617,28 @@ export function CreatePlaylistSyncDialog({
                 <h3 className="font-semibold">Mood Playlist</h3>
                 <p className="text-sm text-muted-foreground">
                   Generate playlist from selected Plex moods. Fresh each run with exclude-last-run and date-seeded sampling.
+                </p>
+              </div>
+            </button>
+            {/* Local Discovery Option */}
+            <button
+              onClick={() => handleSelectType("local_discovery")}
+              disabled={localDiscoveryExists}
+              className={cn(
+                "flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors",
+                localDiscoveryExists
+                  ? "cursor-not-allowed opacity-50"
+                  : "hover:border-primary hover:bg-accent"
+              )}
+              title={localDiscoveryExists ? "Local Discovery command already exists" : undefined}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900">
+                <Compass className="h-6 w-6 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold">Local Discovery</h3>
+                <p className="text-sm text-muted-foreground">
+                  Top artists from play history + sonically similar tracks. Fresh each run. Plex only.
                 </p>
               </div>
             </button>
@@ -880,6 +988,22 @@ export function CreatePlaylistSyncDialog({
                       </div>
                     </div>
 
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={daylistForm.use_primary_mood}
+                        onChange={(e) =>
+                          setDaylistForm((prev) => ({ ...prev, use_primary_mood: e.target.checked }))
+                        }
+                        className="rounded border-input"
+                      />
+                      <span className="text-sm">Use primary mood for cover (default: secondary)</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground -mt-2">
+                      Cover text uses the second-most-common mood by default (Meloday). Enable to use
+                      the most common mood instead.
+                    </p>
+
                     <div className="space-y-2">
                       <Label>Timezone (optional)</Label>
                       <Input
@@ -1006,6 +1130,228 @@ export function CreatePlaylistSyncDialog({
                   onValueChange={(v) =>
                     setDaylistForm((prev) => ({ ...prev, expires_at: v }))
                   }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={daylistForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setDaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
+                />
+              </>
+            ) : playlistType === "local_discovery" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Plex Account (play history source)</Label>
+                  <Select
+                    value={localDiscoveryForm.plex_history_account_id}
+                    onValueChange={(v) =>
+                      setLocalDiscoveryForm((prev) => ({ ...prev, plex_history_account_id: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {plexAccounts.map((acc) => (
+                        <SelectItem key={acc.id} value={acc.id}>
+                          {acc.name || acc.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Plex Home users only. Local Discovery uses this account&apos;s play history.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Lookback days</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={localDiscoveryForm.lookback_days}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          lookback_days: isNaN(v) ? 30 : Math.max(7, Math.min(365, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Exclude played days</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={localDiscoveryForm.exclude_played_days}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          exclude_played_days: isNaN(v) ? 3 : Math.max(0, Math.min(30, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Skip tracks played in last N days. Reduces repetition. Min: 0, max: 30.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Top artists count</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={localDiscoveryForm.top_artists_count}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          top_artists_count: isNaN(v) ? 10 : Math.max(1, Math.min(20, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      How many top artists to randomly pick each run. Min: 1, max: 20.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Artist pool size</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={localDiscoveryForm.artist_pool_size}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          artist_pool_size: isNaN(v) ? 20 : Math.max(prev.top_artists_count, Math.min(50, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Size of artist pool to sample from (must be ≥ top artists count). Min: top artists, max: 50.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max tracks</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={localDiscoveryForm.max_tracks}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setLocalDiscoveryForm((prev) => ({
+                        ...prev,
+                        max_tracks: isNaN(v) ? 50 : Math.max(1, Math.min(200, v)),
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Target playlist size. Min: 1, max: 200.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Sonic similar limit</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={localDiscoveryForm.sonic_similar_limit}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          sonic_similar_limit: isNaN(v) ? 15 : Math.max(5, Math.min(50, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Max sonically similar tracks per seed. Min: 5, max: 50.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Historical ratio: {localDiscoveryForm.historical_ratio}</Label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={localDiscoveryForm.historical_ratio}
+                      onChange={(e) =>
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          historical_ratio: parseFloat(e.target.value),
+                        }))
+                      }
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Sonic similarity distance</Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={localDiscoveryForm.sonic_similarity_distance}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        setLocalDiscoveryForm((prev) => ({
+                          ...prev,
+                          sonic_similarity_distance: isNaN(v) ? 0.25 : Math.max(0.1, Math.min(1, v)),
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Schedule (cron)</Label>
+                  <Input
+                    value={localDiscoveryForm.schedule_cron}
+                    onChange={(e) =>
+                      setLocalDiscoveryForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                    }
+                    placeholder="0 6 * * *"
+                  />
+                  <p className="text-xs text-muted-foreground">e.g. 0 6 * * * = daily at 6am</p>
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={localDiscoveryForm.enabled}
+                    onChange={(e) =>
+                      setLocalDiscoveryForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+                <ExpirationFields
+                  idPrefix="create-ld"
+                  enabled={localDiscoveryForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={localDiscoveryForm.expires_at}
+                  onValueChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({ ...prev, expires_at: v }))
+                  }
                 />
               </>
             ) : playlistType === "top_tracks" ? (
@@ -1047,7 +1393,9 @@ export function CreatePlaylistSyncDialog({
                       }
                     }}
                   />
-                  <p className="text-xs text-muted-foreground">Min 1, max 20</p>
+                  <p className="text-xs text-muted-foreground">
+                    Number of top tracks per artist. Min: 1, max: 20.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Target</Label>
@@ -1069,6 +1417,9 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="jellyfin">Jellyfin</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Where to create the playlist.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Source (Jellyfin target uses Last.fm only)</Label>
@@ -1087,17 +1438,47 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="lastfm">Last.fm</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Plex uses ratingCount; Last.fm uses play counts. Jellyfin requires Last.fm.
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Playlist name</Label>
-                  <Input
-                    value={topTracksForm.playlist_name}
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={topTracksForm.use_custom_playlist_name}
                     onChange={(e) =>
-                      setTopTracksForm((prev) => ({ ...prev, playlist_name: e.target.value }))
+                      setTopTracksForm((prev) => ({
+                        ...prev,
+                        use_custom_playlist_name: e.target.checked,
+                      }))
                     }
-                    placeholder="Artists Top Tracks"
+                    className="rounded border-gray-300"
                   />
-                </div>
+                  <span className="text-sm">Use custom playlist name</span>
+                </label>
+                {topTracksForm.use_custom_playlist_name && (
+                  <div className="space-y-2">
+                    <Label>Custom playlist name</Label>
+                    <Input
+                      value={topTracksForm.custom_playlist_name}
+                      onChange={(e) =>
+                        setTopTracksForm((prev) => ({
+                          ...prev,
+                          custom_playlist_name: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Road Trip Mix"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Override auto-generated name. Shown as [Cmdarr] Artist Essentials: &lt;name&gt;.
+                    </p>
+                  </div>
+                )}
+                {!topTracksForm.use_custom_playlist_name && (
+                  <p className="text-xs text-muted-foreground">
+                    Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3 More).
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label>Schedule (cron)</Label>
                   <Input
@@ -1136,6 +1517,11 @@ export function CreatePlaylistSyncDialog({
                   value={topTracksForm.expires_at}
                   onValueChange={(v) =>
                     setTopTracksForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={topTracksForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>
@@ -1315,8 +1701,11 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings (hidden for daylist, top_tracks, mood_playlist - they have their own forms) */}
-            {playlistType !== "daylist" && playlistType !== "top_tracks" && playlistType !== "mood_playlist" && (
+            {/* Common Settings (hidden for daylist, top_tracks, local_discovery, mood_playlist - they have their own forms) */}
+            {playlistType !== "daylist" &&
+              playlistType !== "top_tracks" &&
+              playlistType !== "local_discovery" &&
+              playlistType !== "mood_playlist" && (
               <>
                 <div className="space-y-2">
                   <Label>Target</Label>
@@ -1399,6 +1788,11 @@ export function CreatePlaylistSyncDialog({
                   }
                   value={formData.expires_at}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
                 />
               </>
             )}
@@ -1423,6 +1817,10 @@ export function CreatePlaylistSyncDialog({
                 </>
               ) : playlistType === "daylist" ? (
                 "Create Daylist"
+              ) : playlistType === "top_tracks" ? (
+                "Create Artist Essentials"
+              ) : playlistType === "local_discovery" ? (
+                "Create Local Discovery"
               ) : (
                 "Create Playlist Sync"
               )}

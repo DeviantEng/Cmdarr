@@ -112,6 +112,27 @@ class DaylistCommand(BaseCommand):
         """Return logger name."""
         return "daylist"
 
+    def _ensure_display_name(self, expected: str) -> None:
+        """Ensure command display_name matches playlist name for consistency."""
+        try:
+            from database.config_models import CommandConfig
+            from database.database import get_database_manager
+
+            cmd_name = (self.config_json or {}).get("command_name", "")
+            if not cmd_name:
+                return
+            db = get_database_manager()
+            session = db.get_config_session_sync()
+            try:
+                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                if cmd and cmd.display_name != expected:
+                    cmd.display_name = expected
+                    session.commit()
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.warning(f"Could not update display_name: {e}")
+
     def _get_time_periods(self) -> dict[str, list[int]]:
         """Get time periods from config or defaults."""
         custom = (self.config_json or {}).get("time_periods")
@@ -349,20 +370,24 @@ class DaylistCommand(BaseCommand):
         most_common_mood = sorted_moods[0] if sorted_moods else "Vibes"
         second_common_mood = sorted_moods[1] if len(sorted_moods) > 1 else None
 
+        # Use primary (most common) or secondary mood for descriptor (Meloday uses secondary)
+        use_primary = bool((self.config_json or {}).get("use_primary_mood", False))
+        mood_for_descriptor = most_common_mood if use_primary else second_common_mood
+
         descriptor = "Vibrant"
-        if second_common_mood and moodmap:
-            variants = moodmap.get(second_common_mood)
+        if mood_for_descriptor and moodmap:
+            variants = moodmap.get(mood_for_descriptor)
             if variants:
                 descriptor = random.choice(variants)
             else:
                 for key in moodmap:
-                    if key.lower() == second_common_mood.lower():
+                    if key.lower() == mood_for_descriptor.lower():
                         variants = moodmap[key]
                         if variants:
                             descriptor = random.choice(variants)
                         break
 
-        playlist_title = "Cmdarr's Daylist"
+        playlist_title = "[Cmdarr] Daylist"
         cover_text = (
             f"{most_common_mood} {descriptor} {most_common_genre} {day_name} {period}".replace(
                 "  ", " "
@@ -429,7 +454,7 @@ class DaylistCommand(BaseCommand):
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             ]
             mood_font_size = 90  # ~20% smaller than original 112
-            branding_font_size = 110  # Larger than mood; "Cmdarr's Daylist" at bottom
+            branding_font_size = 110  # Larger than mood; "[Cmdarr] Daylist" at bottom
             font_mood = ImageFont.load_default()
             font_branding = ImageFont.load_default()
             for fp in font_paths:
@@ -486,7 +511,7 @@ class DaylistCommand(BaseCommand):
                 y += bbox[3] - bbox[1] + 12
 
             # Semi-transparent dark bar at bottom (Spotify-style) for readability
-            branding_text = "Cmdarr's Daylist"
+            branding_text = "[Cmdarr] Daylist"
             bbox_brand = text_draw.textbbox((0, 0), branding_text, font=font_branding)
             brand_w = bbox_brand[2] - bbox_brand[0]
             brand_h = bbox_brand[3] - bbox_brand[1]
@@ -530,6 +555,7 @@ class DaylistCommand(BaseCommand):
             self.logger.info("Starting Daylist command")
 
             config = self.config_json or {}
+            self._ensure_display_name("[Cmdarr] Daylist")
             account_id = config.get("plex_history_account_id")
             if not account_id:
                 self.logger.error("No plex_history_account_id configured")
@@ -710,7 +736,7 @@ class DaylistCommand(BaseCommand):
                 playlist_title,
                 rating_keys,
                 description,
-                match_prefix="Cmdarr's Daylist",
+                match_prefix="[Cmdarr] Daylist",
             )
 
             if not success:
@@ -718,7 +744,7 @@ class DaylistCommand(BaseCommand):
                 return False
 
             # Upload dynamic cover (Meloday-style: period-specific image with title overlay)
-            playlist = self.plex_client.find_playlist_by_prefix("Cmdarr's Daylist")
+            playlist = self.plex_client.find_playlist_by_prefix("[Cmdarr] Daylist")
             if playlist:
                 cover_bytes = self._generate_cover_image(current_period, cover_text)
                 if cover_bytes:

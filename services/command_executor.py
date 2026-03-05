@@ -66,6 +66,8 @@ class CommandExecutor:
             self._load_dynamic_top_tracks_commands()
             # Load dynamic mood playlist commands from database
             self._load_dynamic_mood_playlist_commands()
+            # Load dynamic local discovery commands from database
+            self._load_dynamic_local_discovery_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -443,7 +445,7 @@ class CommandExecutor:
         total = stats.get("tracks_total", 0)
         source = stats.get("source", "")
         invalid = stats.get("invalid_artists", [])[:5]
-        parts = [f"Top Tracks completed in {duration:.1f}s"]
+        parts = [f"Artist Essentials completed in {duration:.1f}s"]
         parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
         if source:
             parts.append(f"source: {source}")
@@ -840,6 +842,32 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic mood playlist commands: {e}")
+
+    def _load_dynamic_local_discovery_commands(self):
+        """Load dynamic local discovery commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_local_discovery import (
+                PlaylistGeneratorLocalDiscoveryCommand,
+            )
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                local_discovery_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("local_discovery_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in local_discovery_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorLocalDiscoveryCommand
+                    self.logger.debug(f"Loaded dynamic local discovery command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic local discovery commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

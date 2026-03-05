@@ -7,13 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.7] - 2026-03-05
 
-### 🎵 Artists Top Tracks Generator
-- **New Command**: Top Tracks builds playlists from a configurable artist list with top X tracks per artist
-- **Display Name Sync**: `display_name` stays in sync with playlist name on updates
-- **Name Change Cleanup**: Deleting old playlist when name changes; `last_playlist_title` persisted
-- **Prefix**: `[Cmdarr Top Tracks]` prefix for generated playlists
+### 🎵 Artist Essentials (formerly Top Tracks)
+- **Renamed**: Top Tracks → Artist Essentials; playlist prefix `[Cmdarr] Artist Essentials`
+- **Auto-Naming**: Playlist name auto-generated from artist list: 1–3 artists show all (Artist1 · Artist2 · Artist3), 4+ show first 2 + N More
+- **Custom Override**: Optional checkbox "Use custom playlist name" to override auto-generated name
+- **Display Name Sync**: Command display name updated on each run to match playlist title
 - **Fuzzy Artist Matching**: Unicode normalization and fuzzy matching for artist resolution
-- **Summary**: Expanded output with artists matched and invalid list
+
+### 📋 Playlist Naming Standardization
+- **Format**: `[Cmdarr]` prefix for all Cmdarr-generated playlists; sync playlists keep `[Source]` (e.g. `[Deezer]`, `[Spotify]`)
+- **Local Discovery**: `[Cmdarr] Local Discovery`
+- **Daylist**: `[Cmdarr] Daylist`
+- **Artist Essentials**: `[Cmdarr] Artist Essentials: Artist1 · Artist2 + N More` (or custom name)
+- **Display Name = Playlist Name**: Daylist, Local Discovery, and Artist Essentials commands show the same name in Cmdarr as in Plex/Jellyfin
+
+### 🎨 Command Settings UX
+- **Descriptions**: Consistent helper text for all command settings (Local Discovery, Artist Essentials) in create and edit dialogs
+- **Expiration UI**: Checkbox outside box; bordered sub-box when enabled; description below (matches schedule override layout)
+- **Schedule Override UI**: Bordered sub-box when enabled for visual consistency with expiration
 
 ### 🗑️ Command Soft-Delete
 - **Execution History**: Deleting a command no longer loses display names in recent executions
@@ -22,9 +33,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⏱️ Command Expiration
 - **Expires At**: Commands can have `config_json.expires_at` (ISO datetime) for time-limited use
-- **Expiration UI**: Enable expiration checkbox and datetime picker on create and edit for playlist sync, top tracks, and daylist
+- **Expiration UI**: Enable expiration checkbox and datetime picker on create and edit for playlist sync, Artist Essentials, daylist, Local Discovery, and Mood Playlist
+- **Position**: Expiration settings moved below "Override default schedule" in command edit dialog
 - **Auto-Disable**: When the datetime is reached, the command is disabled (not deleted); checked every 5 minutes by cleanup
-- **Playlist Cleanup**: Expired playlist_sync, top_tracks, and daylist commands have their playlists removed from the target
+- **Playlist Cleanup**: Expired playlist_sync, Artist Essentials, daylist, Local Discovery, and Mood Playlist commands optionally have their playlists removed from the target
+- **Delete Playlist Option**: Sub-checkbox "Delete playlist from target when expired" (default on); uncheck to disable command on schedule but keep the playlist
+
+### 🎵 Daylist: Primary Mood Option
+- **use_primary_mood**: Advanced option to use the most common mood (instead of second-most) for the cover descriptor
+- **UI**: Checkbox in Daylist create/edit advanced section
+
+### 🎵 Local Discovery Playlist Generator
+- **New Command**: Local Discovery builds playlists from top played artists + sonically similar tracks
+- **Freshness**: Artist pool + random sample, exclude played days, date-seeded sampling
+- **Default Lookback**: 30 days (was 90) for more day-to-day variety on daily refresh
+- **Config**: lookback_days, exclude_played_days, top_artists_count, artist_pool_size, max_tracks, sonic_similar_limit, sonic_similarity_distance, historical_ratio
+- **Settings Descriptions**: All fields have helper text; Sonic similarity distance in create form, Sonic similar limit in edit form
+- **Plex Only**: Uses play history and Plex Sonic Analysis
+- **Single Instance**: One Local Discovery command supported; create flow in New Command dialog
+
+### 🎵 Mood Playlist Generator
+- **New Command**: Mood Playlist builds playlists from selected Plex Sonic moods
+- **Multi-Mood Scoring**: Tracks matching multiple selected moods rank higher; weighted random sample
+- **Freshness**: Exclude tracks from last run; date-seeded sampling for variety
+- **Config**: moods (from moodmap.json), playlist_name, max_tracks, exclude_last_run
+- **Prefix**: `[Cmdarr Mood]` prefix for generated playlists
+- **Plex Only**: Uses Plex Sonic Analysis mood tags
+- **Create Flow**: New Command dialog → Mood Playlist; select moods from library
 
 ## [0.3.6] - 2026-02-23
 

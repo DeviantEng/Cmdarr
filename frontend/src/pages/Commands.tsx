@@ -157,11 +157,18 @@ export function CommandsPage() {
     top_x?: number;
     source?: string;
     target?: string;
-    playlist_name?: string;
+    use_custom_playlist_name?: boolean;
+    custom_playlist_name?: string;
     moods?: string[];
+    playlist_name?: string;
     exclude_last_run?: boolean;
+    lookback_days?: number;
+    top_artists_count?: number;
+    artist_pool_size?: number;
     expires_at_enabled?: boolean;
     expires_at?: string;
+    expires_at_delete_playlist?: boolean;
+    use_primary_mood?: boolean;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [moodsList, setMoodsList] = useState<string[]>([]);
@@ -348,6 +355,7 @@ export function CommandsPage() {
       historical_ratio: typeof cfg.historical_ratio === "number" ? cfg.historical_ratio : 0.4,
       timezone: (cfg.timezone as string) || "",
       time_periods: timePeriods,
+      use_primary_mood: !!cfg.use_primary_mood,
       artists:
         Array.isArray(cfg.artists)
           ? (cfg.artists as string[]).join("\n")
@@ -355,13 +363,19 @@ export function CommandsPage() {
       top_x: typeof cfg.top_x === "number" ? cfg.top_x : 5,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
-      playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
+      use_custom_playlist_name: Boolean(cfg.use_custom_playlist_name ?? cfg.playlist_name),
+      custom_playlist_name: (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
       moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
+      playlist_name: (cfg.playlist_name as string) ?? "Mood Playlist",
       exclude_last_run: cfg.exclude_last_run !== false,
+      lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 30,
+      top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
+      artist_pool_size: typeof cfg.artist_pool_size === "number" ? cfg.artist_pool_size : 20,
       expires_at_enabled: !!(cfg.expires_at as string),
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
+      expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,
     });
-    if (isDaylist) {
+    if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       api
         .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
         .then((r) => setPlexAccounts(r.accounts || []))
@@ -1121,10 +1135,11 @@ export function CommandsPage() {
                       </div>
                     )}
 
-                    {/* Expiration - playlist sync, top tracks, daylist */}
+                    {/* Expiration - playlist sync, Artist Essentials, daylist, Local Discovery, Mood Playlist */}
                     {(editingCommand.command_name.startsWith("playlist_sync_") ||
                       editingCommand.command_name.startsWith("top_tracks_") ||
                       editingCommand.command_name.startsWith("daylist_") ||
+                      editingCommand.command_name.startsWith("local_discovery_") ||
                       editingCommand.command_name.startsWith("mood_playlist_")) && (
                       <ExpirationFields
                         idPrefix="edit-exp"
@@ -1140,9 +1155,13 @@ export function CommandsPage() {
                         onValueChange={(v) =>
                           setEditForm((f) => ({ ...f, expires_at: v }))
                         }
+                        showDeletePlaylistOption={true}
+                        deletePlaylistOnExpiry={editForm.expires_at_delete_playlist ?? true}
+                        onDeletePlaylistChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at_delete_playlist: v }))
+                        }
                       />
                     )}
-
                     {/* Daylist - editable fields */}
                     {editingCommand.command_name.startsWith("daylist_") && (
                       <>
@@ -1389,6 +1408,27 @@ export function CommandsPage() {
                                 </p>
                               </div>
                             </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id="edit-use-primary-mood"
+                                checked={editForm.use_primary_mood ?? false}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    use_primary_mood: e.target.checked,
+                                  }))
+                                }
+                                className="rounded border-input"
+                              />
+                              <Label htmlFor="edit-use-primary-mood" className="font-normal">
+                                Use primary mood for cover (default: secondary)
+                              </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground -mt-2">
+                              Cover text uses the second-most-common mood by default (Meloday).
+                              Enable to use the most common mood instead.
+                            </p>
                             <div className="space-y-2">
                               <Label>Timezone (optional)</Label>
                               <Input
@@ -1640,7 +1680,7 @@ export function CommandsPage() {
                                             : [...current, mood],
                                         }));
                                       }}
-                                      className="rounded border-gray-300"
+                                      className="rounded border-input"
                                     />
                                     <span className="text-sm">{mood}</span>
                                   </label>
@@ -1697,14 +1737,195 @@ export function CommandsPage() {
                             onChange={(e) =>
                               setEditForm((f) => ({ ...f, exclude_last_run: e.target.checked }))
                             }
-                            className="rounded border-gray-300"
+                            className="rounded border-input"
                           />
                           <span className="text-sm">Exclude tracks from last run (freshness)</span>
                         </label>
                       </>
                     )}
 
-                    {/* Top Tracks - editable fields */}
+                    {/* Local Discovery - editable fields */}
+                    {editingCommand.command_name.startsWith("local_discovery_") && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Plex Account (play history source)</Label>
+                          <Select
+                            value={editForm.plex_history_account_id ?? ""}
+                            onValueChange={(v) =>
+                              setEditForm((f) => ({ ...f, plex_history_account_id: v }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {plexAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.name || acc.id}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Plex Home users only. Local Discovery uses this account&apos;s play history.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Lookback days</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.lookback_days ?? 30}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  lookback_days: isNaN(v) ? 30 : Math.max(7, Math.min(365, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Exclude played days</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.exclude_played_days ?? 3}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  exclude_played_days: isNaN(v) ? 3 : Math.max(0, Math.min(30, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Skip tracks played in last N days. Reduces repetition. Min: 0, max: 30.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Top artists count</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.top_artists_count ?? 10}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  top_artists_count: isNaN(v) ? 10 : Math.max(1, Math.min(20, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              How many top artists to randomly pick each run. Min: 1, max: 20.
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Artist pool size</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.artist_pool_size ?? 20}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                    artist_pool_size: isNaN(v) ? 20 : Math.max(f.top_artists_count ?? 10, Math.min(50, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Size of artist pool to sample from (must be ≥ top artists count). Min: top artists, max: 50.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Max tracks</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.max_tracks ?? 50}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  max_tracks: isNaN(v) ? 50 : Math.max(1, Math.min(200, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Target playlist size. Min: 1, max: 200.
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonic similar limit</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={editForm.sonic_similar_limit ?? 15}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similar_limit: isNaN(v) ? 15 : Math.max(5, Math.min(50, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Max sonically similar tracks per seed. Min: 5, max: 50.
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Sonic similarity distance</Label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={editForm.sonic_similarity_distance ?? 0.25}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  sonic_similarity_distance: isNaN(v) ? 0.25 : Math.max(0.1, Math.min(1, v)),
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Historical ratio: {editForm.historical_ratio ?? 0.4}</Label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={editForm.historical_ratio ?? 0.4}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                historical_ratio: parseFloat(e.target.value),
+                              }))
+                            }
+                            className="w-full"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Artist Essentials - editable fields */}
                     {editingCommand.command_name.startsWith("top_tracks_") && (
                       <>
                         <div className="space-y-2">
@@ -1716,6 +1937,9 @@ export function CommandsPage() {
                               setEditForm((f) => ({ ...f, artists: e.target.value }))
                             }
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Artists must exist in your library. Names are validated against the library cache.
+                          </p>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
@@ -1746,17 +1970,47 @@ export function CommandsPage() {
                                 }
                               }}
                             />
-                            <p className="text-xs text-muted-foreground">Min 1, max 20</p>
+                            <p className="text-xs text-muted-foreground">
+                              Number of top tracks per artist. Min: 1, max: 20.
+                            </p>
                           </div>
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editForm.use_custom_playlist_name ?? false}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                use_custom_playlist_name: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-input"
+                          />
+                          <span className="text-sm">Use custom playlist name</span>
+                        </label>
+                        {editForm.use_custom_playlist_name && (
                           <div className="space-y-2">
-                            <Label>Playlist name</Label>
+                            <Label>Custom playlist name</Label>
                             <Input
-                              value={editForm.playlist_name ?? ""}
+                              value={editForm.custom_playlist_name ?? ""}
                               onChange={(e) =>
-                                setEditForm((f) => ({ ...f, playlist_name: e.target.value }))
+                                setEditForm((f) => ({
+                                  ...f,
+                                  custom_playlist_name: e.target.value,
+                                }))
                               }
+                              placeholder="e.g. Road Trip Mix"
                             />
+                            <p className="text-xs text-muted-foreground">
+                              Override auto-generated name. Shown as [Cmdarr] Artist Essentials: &lt;name&gt;.
+                            </p>
                           </div>
+                        )}
+                        {!editForm.use_custom_playlist_name && (
+                          <p className="text-xs text-muted-foreground">
+                            Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3 More).
+                          </p>
+                        )}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
@@ -1779,6 +2033,9 @@ export function CommandsPage() {
                                 <SelectItem value="jellyfin">Jellyfin</SelectItem>
                               </SelectContent>
                             </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Where to create the playlist.
+                            </p>
                           </div>
                           <div className="space-y-2">
                             <Label>Source</Label>
@@ -1801,6 +2058,9 @@ export function CommandsPage() {
                                 <SelectItem value="lastfm">Last.fm</SelectItem>
                               </SelectContent>
                             </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Plex uses ratingCount; Last.fm uses play counts. Jellyfin requires Last.fm.
+                            </p>
                           </div>
                         </div>
                       </>
@@ -1823,14 +2083,16 @@ export function CommandsPage() {
                         </div>
                         {editForm.schedule_override && (
                           <>
-                            <Input
-                              id="edit-schedule-cron"
-                              placeholder="0 3 * * *"
-                              value={editForm.schedule_cron ?? "0 3 * * *"}
-                              onChange={(e) =>
-                                setEditForm((f) => ({ ...f, schedule_cron: e.target.value }))
-                              }
-                            />
+                            <div className="space-y-2 rounded-lg border p-4">
+                              <Input
+                                id="edit-schedule-cron"
+                                placeholder="0 3 * * *"
+                                value={editForm.schedule_cron ?? "0 3 * * *"}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({ ...f, schedule_cron: e.target.value }))
+                                }
+                              />
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               Cron format: minute hour day month weekday (e.g. 0 3 * * * = 3 AM
                               daily)
@@ -1843,6 +2105,33 @@ export function CommandsPage() {
                           </p>
                         )}
                       </div>
+                    )}
+
+                    {/* Expiration - playlist sync, top tracks, daylist, local discovery (below schedule) */}
+                    {(editingCommand.command_name.startsWith("playlist_sync_") ||
+                      editingCommand.command_name.startsWith("top_tracks_") ||
+                      editingCommand.command_name.startsWith("daylist_") ||
+                      editingCommand.command_name.startsWith("local_discovery_")) && (
+                      <ExpirationFields
+                        idPrefix="edit-exp"
+                        enabled={editForm.expires_at_enabled ?? false}
+                        onEnabledChange={(v) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            expires_at_enabled: v,
+                            expires_at: v && !f.expires_at ? "" : f.expires_at,
+                          }))
+                        }
+                        value={editForm.expires_at ?? ""}
+                        onValueChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at: v }))
+                        }
+                        showDeletePlaylistOption={true}
+                        deletePlaylistOnExpiry={editForm.expires_at_delete_playlist ?? true}
+                        onDeletePlaylistChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at_delete_playlist: v }))
+                        }
+                      />
                     )}
 
                     {/* New Releases Discovery - editable fields */}
@@ -2006,8 +2295,10 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
@@ -2043,11 +2334,14 @@ export function CommandsPage() {
                         historical_ratio: editForm.historical_ratio ?? 0.4,
                         timezone: editForm.timezone || undefined,
                         time_periods,
+                        use_primary_mood: editForm.use_primary_mood ?? false,
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({ config_json: cfg });
                     }}
@@ -2066,7 +2360,42 @@ export function CommandsPage() {
                         top_x: editForm.top_x ?? 5,
                         source: editForm.source ?? "plex",
                         target: editForm.target ?? "plex",
-                        playlist_name: editForm.playlist_name ?? "Artists Top Tracks",
+                        use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
+                        custom_playlist_name: editForm.custom_playlist_name ?? "",
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist = editForm.expires_at_delete_playlist ?? true;
+                      } else {
+                        delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
+                      }
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: cfg,
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
+                {editingCommand.command_name.startsWith("local_discovery_") && (
+                  <Button
+                    onClick={() => {
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        plex_history_account_id: editForm.plex_history_account_id ?? "",
+                        lookback_days: editForm.lookback_days ?? 30,
+                        exclude_played_days: editForm.exclude_played_days ?? 3,
+                        top_artists_count: editForm.top_artists_count ?? 10,
+                        artist_pool_size: editForm.artist_pool_size ?? 20,
+                        max_tracks: editForm.max_tracks ?? 50,
+                        sonic_similar_limit: editForm.sonic_similar_limit ?? 15,
+                        sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.25,
+                        historical_ratio: editForm.historical_ratio ?? 0.4,
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
@@ -2117,7 +2446,8 @@ export function CommandsPage() {
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
                   !editingCommand.command_name.startsWith("top_tracks_") &&
-                  !editingCommand.command_name.startsWith("mood_playlist_") && (
+                  !editingCommand.command_name.startsWith("mood_playlist_") &&
+                  !editingCommand.command_name.startsWith("local_discovery_") && (
                     <Button
                       onClick={() =>
                         handleSaveCommand({
