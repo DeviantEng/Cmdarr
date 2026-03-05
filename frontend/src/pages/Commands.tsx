@@ -161,7 +161,6 @@ export function CommandsPage() {
     lookback_days?: number;
     top_artists_count?: number;
     artist_pool_size?: number;
-    sonic_similarity_distance?: number;
     expires_at_enabled?: boolean;
     expires_at?: string;
     expires_at_delete_playlist?: boolean;
@@ -363,8 +362,6 @@ export function CommandsPage() {
       lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 90,
       top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
       artist_pool_size: typeof cfg.artist_pool_size === "number" ? cfg.artist_pool_size : 20,
-      sonic_similarity_distance:
-        typeof cfg.sonic_similarity_distance === "number" ? cfg.sonic_similarity_distance : 0.25,
       expires_at_enabled: !!(cfg.expires_at as string),
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
       expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,

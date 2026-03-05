@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic, Compass } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
