@@ -110,9 +110,13 @@ class CommandExecutionResponse(BaseModel):
 
 @router.get("/", response_model=list[CommandConfigResponse])
 async def get_all_commands(db: Annotated[Session, Depends(get_config_db)]):
-    """Get all command configurations (excluding helper commands)"""
+    """Get all command configurations (excluding helper commands and soft-deleted)"""
     try:
-        commands = db.query(CommandConfig).all()
+        commands = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.deleted_at.is_(None))
+            .all()
+        )
 
         # Filter out helper commands
         visible_commands = []
@@ -254,7 +258,14 @@ async def validate_playlist_url(url: str):
 async def get_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
     """Get a specific command configuration"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -272,7 +283,14 @@ async def update_command(
 ):
     """Update a command configuration"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -355,8 +373,15 @@ async def execute_command(
 ):
     """Execute a command"""
     try:
-        # Check if command exists and is enabled
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        # Check if command exists and is enabled (exclude soft-deleted)
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -392,7 +417,14 @@ async def execute_command(
 async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
     """Cancel the currently running execution for a command (if any)"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -1319,7 +1351,14 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         if not command_name:
             raise HTTPException(status_code=400, detail="Command name is required")
 
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -1335,7 +1374,9 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         ]:
             raise HTTPException(status_code=400, detail="Cannot delete built-in commands")
 
-        db.delete(command)
+        # Soft delete: keep for 7 days so execution history retains display_name
+        command.deleted_at = datetime.utcnow()
+        command.enabled = False
         db.commit()
 
         # Reload command executor to remove deleted command

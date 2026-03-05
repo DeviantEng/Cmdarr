@@ -271,6 +271,24 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_command_deleted_at(cursor):
+        """Add deleted_at for soft-delete (keeps execution history for 7 days)"""
+        cursor.execute("PRAGMA table_info(command_configs)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "deleted_at" not in cols:
+            cursor.execute(
+                "ALTER TABLE command_configs ADD COLUMN deleted_at DATETIME NULL"
+            )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.7",
+            name="command_deleted_at",
+            description="Add deleted_at for soft-delete of commands",
+            up_func=migrate_command_deleted_at,
+        )
+    )
+
     return runner
 
 

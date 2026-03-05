@@ -47,6 +47,7 @@ class CommandCleanupService:
                 # Run execution history cleanup only at 2am (scheduler timezone)
                 if self._is_cleanup_hour():
                     await self.cleanup_old_executions()
+                    await self.cleanup_soft_deleted_commands()
                 await asyncio.sleep(self.cleanup_interval)
             except asyncio.CancelledError:
                 break
@@ -281,6 +282,43 @@ class CommandCleanupService:
         except Exception as e:
             logger.error(f"Failed to cleanup old executions: {e}")
 
+    async def cleanup_soft_deleted_commands(self):
+        """Permanently delete commands that were soft-deleted more than 7 days ago."""
+        try:
+            from sqlalchemy.exc import OperationalError
+
+            from database.database import get_database_manager
+
+            manager = get_database_manager()
+            db = manager.get_config_session_sync()
+
+            try:
+                cutoff = datetime.utcnow() - timedelta(days=7)
+                to_delete = (
+                    db.query(CommandConfig)
+                    .filter(
+                        CommandConfig.deleted_at.isnot(None),
+                        CommandConfig.deleted_at < cutoff,
+                    )
+                    .all()
+                )
+                for cmd in to_delete:
+                    db.delete(cmd)
+                if to_delete:
+                    db.commit()
+                    logger.info(f"Permanently deleted {len(to_delete)} soft-deleted command(s)")
+            finally:
+                db.close()
+
+        except OperationalError as e:
+            # Column may not exist yet if migration hasn't run (e.g. pre-0.3.7)
+            if "deleted_at" in str(e).lower():
+                logger.debug("Skipping soft-delete cleanup (deleted_at column not yet migrated)")
+            else:
+                logger.error(f"Failed to cleanup soft-deleted commands: {e}")
+        except Exception as e:
+            logger.error(f"Failed to cleanup soft-deleted commands: {e}")
+
     async def force_cleanup_all_running(self):
         """Force cleanup all running commands (emergency function)"""
         try:
@@ -353,7 +391,12 @@ class CommandCleanupService:
                     from database.config_models import CommandConfig
 
                     exists = (
-                        db.query(CommandConfig).filter(CommandConfig.command_name == cmd).first()
+                        db.query(CommandConfig)
+                        .filter(
+                            CommandConfig.command_name == cmd,
+                            CommandConfig.deleted_at.is_(None),
+                        )
+                        .first()
                         is not None
                     )
                 finally:

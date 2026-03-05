@@ -890,7 +890,7 @@ export function CommandsPage() {
                         </div>
                         <div>
                           <p className="font-medium">
-                            {getCommandDisplayName(execution.command_name)}
+                            {execution.display_name ?? getCommandDisplayName(execution.command_name)}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {execution.started_at
@@ -932,7 +932,7 @@ export function CommandsPage() {
                     )}
                     {execution.status === "completed" && (
                       <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
-                        {getCommandDisplayName(execution.command_name)} completed successfully in{" "}
+                        {(execution.display_name ?? getCommandDisplayName(execution.command_name))} completed successfully in{" "}
                         {formatDuration(duration)}
                       </div>
                     )}

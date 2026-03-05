@@ -190,15 +190,18 @@ class CommandExecutor:
             return False
 
     async def _command_exists_in_db(self, command_name: str) -> bool:
-        """Check if a command exists in the database"""
+        """Check if a command exists in the database (excludes soft-deleted)"""
         try:
             db_manager = get_database_manager()
             session = db_manager.get_config_session_sync()
             try:
-                # Look for the command configuration
+                # Look for the command configuration (exclude soft-deleted)
                 command_config = (
                     session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == command_name)
+                    .filter(
+                        CommandConfig.command_name == command_name,
+                        CommandConfig.deleted_at.is_(None),
+                    )
                     .first()
                 )
 
@@ -664,7 +667,7 @@ class CommandExecutor:
             db_manager = get_database_manager()
             session = db_manager.get_config_session_sync()
             try:
-                # Get all playlist sync commands from database
+                # Get all playlist sync commands from database (exclude soft-deleted)
                 playlist_sync_commands = (
                     session.query(CommandConfig)
                     .filter(CommandConfig.command_name.like("playlist_sync_%"))
@@ -672,6 +675,7 @@ class CommandExecutor:
                         CommandConfig.command_name
                         != "playlist_sync_discovery_maintenance"  # Exclude maintenance command
                     )
+                    .filter(CommandConfig.deleted_at.is_(None))
                     .all()
                 )
 
@@ -769,6 +773,7 @@ class CommandExecutor:
                 daylist_commands = (
                     session.query(CommandConfig)
                     .filter(CommandConfig.command_name.like("daylist_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
                     .all()
                 )
                 for command_config in daylist_commands:
@@ -795,6 +800,7 @@ class CommandExecutor:
                 top_tracks_commands = (
                     session.query(CommandConfig)
                     .filter(CommandConfig.command_name.like("top_tracks_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
                     .all()
                 )
                 for command_config in top_tracks_commands:
