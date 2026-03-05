@@ -811,6 +811,8 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "time_periods": request.get("time_periods"),  # Optional custom periods
             "timezone": (request.get("timezone") or "").strip() or None,
         }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
 
         cmd = CommandConfig(
             command_name="daylist_00001",
@@ -1111,6 +1113,8 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 "sync_mode": sync_mode,
                 "enable_artist_discovery": request.get("enable_artist_discovery", False),
             }
+            if request.get("expires_at"):
+                config_json["expires_at"] = request.get("expires_at")
 
             command = CommandConfig(
                 command_name=command_name,
@@ -1280,6 +1284,8 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 "cleanup_enabled": cleanup_enabled,
                 "enable_artist_discovery": request.get("enable_artist_discovery", False),
             }
+            if request.get("expires_at"):
+                config_json["expires_at"] = request.get("expires_at")
 
             command = CommandConfig(
                 command_name=command_name,

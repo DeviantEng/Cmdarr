@@ -43,6 +43,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
+import {
+  ExpirationFields,
+  fromExpiresAtIso,
+  toExpiresAtIso,
+} from "@/components/ExpirationFields";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -153,6 +158,8 @@ export function CommandsPage() {
     source?: string;
     target?: string;
     playlist_name?: string;
+    expires_at_enabled?: boolean;
+    expires_at?: string;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
@@ -346,6 +353,8 @@ export function CommandsPage() {
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
       playlist_name: (cfg.playlist_name as string) || "Artists Top Tracks",
+      expires_at_enabled: !!(cfg.expires_at as string),
+      expires_at: fromExpiresAtIso(cfg.expires_at as string),
     });
     if (isDaylist) {
       api
@@ -1097,6 +1106,27 @@ export function CommandsPage() {
                           className="rounded border-input"
                         />
                       </div>
+                    )}
+
+                    {/* Expiration - playlist sync, top tracks, daylist */}
+                    {(editingCommand.command_name.startsWith("playlist_sync_") ||
+                      editingCommand.command_name.startsWith("top_tracks_") ||
+                      editingCommand.command_name.startsWith("daylist_")) && (
+                      <ExpirationFields
+                        idPrefix="edit-exp"
+                        enabled={editForm.expires_at_enabled ?? false}
+                        onEnabledChange={(v) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            expires_at_enabled: v,
+                            expires_at: v && !f.expires_at ? "" : f.expires_at,
+                          }))
+                        }
+                        value={editForm.expires_at ?? ""}
+                        onValueChange={(v) =>
+                          setEditForm((f) => ({ ...f, expires_at: v }))
+                        }
+                      />
                     )}
 
                     {/* Daylist - editable fields */}
@@ -1867,18 +1897,24 @@ export function CommandsPage() {
                 )}
                 {editingCommand.command_name.startsWith("playlist_sync_") && (
                   <Button
-                    onClick={() =>
+                    onClick={() => {
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                      } else {
+                        delete cfg.expires_at;
+                      }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
                         schedule_cron: editForm.schedule_override
                           ? editForm.schedule_cron
                           : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          enable_artist_discovery: editForm.enable_artist_discovery ?? false,
-                        },
-                      })
-                    }
+                        config_json: cfg,
+                      });
+                    }}
                   >
                     Save
                   </Button>
@@ -1892,22 +1928,26 @@ export function CommandsPage() {
                       )) {
                         time_periods[period] = hoursFromRange(start, end);
                       }
-                      handleSaveCommand({
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          schedule_minute: editForm.schedule_minute ?? 0,
-                          plex_history_account_id: editForm.plex_history_account_id ?? "",
-                          exclude_played_days: editForm.exclude_played_days ?? 3,
-                          history_lookback_days: editForm.history_lookback_days ?? 45,
-                          max_tracks: editForm.max_tracks ?? 50,
-                          sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
-                          sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
-                          sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
-                          historical_ratio: editForm.historical_ratio ?? 0.4,
-                          timezone: editForm.timezone || undefined,
-                          time_periods,
-                        },
-                      });
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        schedule_minute: editForm.schedule_minute ?? 0,
+                        plex_history_account_id: editForm.plex_history_account_id ?? "",
+                        exclude_played_days: editForm.exclude_played_days ?? 3,
+                        history_lookback_days: editForm.history_lookback_days ?? 45,
+                        max_tracks: editForm.max_tracks ?? 50,
+                        sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
+                        sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
+                        sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
+                        historical_ratio: editForm.historical_ratio ?? 0.4,
+                        timezone: editForm.timezone || undefined,
+                        time_periods,
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                      } else {
+                        delete cfg.expires_at;
+                      }
+                      handleSaveCommand({ config_json: cfg });
                     }}
                   >
                     Save
@@ -1918,19 +1958,25 @@ export function CommandsPage() {
                     onClick={() => {
                       const artistsRaw = (editForm.artists ?? "").trim().split("\n");
                       const artists = artistsRaw.filter((a: string) => a.trim());
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        artists,
+                        top_x: editForm.top_x ?? 5,
+                        source: editForm.source ?? "plex",
+                        target: editForm.target ?? "plex",
+                        playlist_name: editForm.playlist_name ?? "Artists Top Tracks",
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                      } else {
+                        delete cfg.expires_at;
+                      }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
                         schedule_cron: editForm.schedule_override
                           ? editForm.schedule_cron
                           : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists,
-                          top_x: editForm.top_x ?? 5,
-                          source: editForm.source ?? "plex",
-                          target: editForm.target ?? "plex",
-                          playlist_name: editForm.playlist_name ?? "Artists Top Tracks",
-                        },
+                        config_json: cfg,
                       });
                     }}
                   >

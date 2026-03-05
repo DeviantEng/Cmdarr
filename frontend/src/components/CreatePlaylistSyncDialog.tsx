@@ -22,6 +22,10 @@ import { Loader2, CheckCircle2, AlertCircle, Music, Globe, Sun, ListMusic } from
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  ExpirationFields,
+  toExpiresAtIso,
+} from "@/components/ExpirationFields";
 
 type PlaylistType = "listenbrainz" | "other" | "daylist" | "top_tracks";
 
@@ -79,6 +83,8 @@ export function CreatePlaylistSyncDialog({
     daily_jams_keep: 3,
     cleanup_enabled: true,
     enable_artist_discovery: false,
+    expires_at_enabled: false,
+    expires_at: "",
   });
   const [validation, setValidation] = useState<PlaylistValidation>({
     isValidating: false,
@@ -105,6 +111,8 @@ export function CreatePlaylistSyncDialog({
       string,
       { start: number; end: number }
     >,
+    expires_at_enabled: false,
+    expires_at: "",
   });
 
   const [topTracksForm, setTopTracksForm] = useState({
@@ -116,6 +124,8 @@ export function CreatePlaylistSyncDialog({
     schedule_cron: "0 6 * * *",
     schedule_override: true,
     enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
   });
 
   // Fetch daylist exists, top tracks exists, and plex accounts when dialog opens
@@ -146,6 +156,8 @@ export function CreatePlaylistSyncDialog({
         daily_jams_keep: 3,
         cleanup_enabled: true,
         enable_artist_discovery: false,
+        expires_at_enabled: false,
+        expires_at: "",
       });
       setDaylistForm({
         plex_history_account_id: "",
@@ -160,6 +172,8 @@ export function CreatePlaylistSyncDialog({
         historical_ratio: 0.4,
         timezone: "",
         time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
+        expires_at_enabled: false,
+        expires_at: "",
       });
       setValidation({
         isValidating: false,
@@ -242,15 +256,24 @@ export function CreatePlaylistSyncDialog({
 
   const canSubmit = () => {
     if (playlistType === "listenbrainz") {
-      return formData.playlist_types.length > 0;
+      if (formData.playlist_types.length === 0) return false;
+      if (formData.expires_at_enabled && !formData.expires_at) return false;
+      return true;
     }
     if (playlistType === "daylist") {
-      return !!daylistForm.plex_history_account_id;
+      if (!daylistForm.plex_history_account_id) return false;
+      if (daylistForm.expires_at_enabled && !daylistForm.expires_at) return false;
+      return true;
     }
     if (playlistType === "top_tracks") {
-      return topTracksForm.artists.trim().split("\n").filter((a) => a.trim()).length > 0;
+      if (topTracksForm.artists.trim().split("\n").filter((a) => a.trim()).length === 0)
+        return false;
+      if (topTracksForm.expires_at_enabled && !topTracksForm.expires_at) return false;
+      return true;
     }
-    return validation.isValid;
+    if (!validation.isValid) return false;
+    if (formData.expires_at_enabled && !formData.expires_at) return false;
+    return true;
   };
 
   const handleSubmit = async () => {
@@ -263,20 +286,21 @@ export function CreatePlaylistSyncDialog({
 
     try {
       if (playlistType === "top_tracks") {
+        const payload: Record<string, unknown> = {
+          artists: topTracksForm.artists.trim().split("\n").filter((a) => a.trim()),
+          top_x: topTracksForm.top_x,
+          source: topTracksForm.source,
+          target: topTracksForm.target,
+          playlist_name: topTracksForm.playlist_name,
+          schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
+          enabled: topTracksForm.enabled,
+        };
+        if (topTracksForm.expires_at_enabled && topTracksForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(topTracksForm.expires_at);
+        }
         const response = await api.request<{ message: string; command_name: string }>(
           "/api/commands/top-tracks/create",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              artists: topTracksForm.artists.trim().split("\n").filter((a) => a.trim()),
-              top_x: topTracksForm.top_x,
-              source: topTracksForm.source,
-              target: topTracksForm.target,
-              playlist_name: topTracksForm.playlist_name,
-              schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
-              enabled: topTracksForm.enabled,
-            }),
-          }
+          { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "Top Tracks command created");
       } else if (playlistType === "daylist") {
@@ -284,29 +308,38 @@ export function CreatePlaylistSyncDialog({
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
           time_periods[period] = hoursFromRange(start, end);
         }
+        const daylistPayload: Record<string, unknown> = {
+          plex_history_account_id: daylistForm.plex_history_account_id,
+          schedule_minute: daylistForm.schedule_minute,
+          enabled: daylistForm.enabled,
+          exclude_played_days: daylistForm.exclude_played_days,
+          history_lookback_days: daylistForm.history_lookback_days,
+          max_tracks: daylistForm.max_tracks,
+          sonic_similar_limit: daylistForm.sonic_similar_limit,
+          sonic_similarity_limit: daylistForm.sonic_similarity_limit,
+          sonic_similarity_distance: daylistForm.sonic_similarity_distance,
+          historical_ratio: daylistForm.historical_ratio,
+          timezone: daylistForm.timezone || undefined,
+          time_periods,
+        };
+        if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
+          daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
+        }
         const response = await api.request<{ message: string }>("/api/commands/daylist/create", {
           method: "POST",
-          body: JSON.stringify({
-            plex_history_account_id: daylistForm.plex_history_account_id,
-            schedule_minute: daylistForm.schedule_minute,
-            enabled: daylistForm.enabled,
-            exclude_played_days: daylistForm.exclude_played_days,
-            history_lookback_days: daylistForm.history_lookback_days,
-            max_tracks: daylistForm.max_tracks,
-            sonic_similar_limit: daylistForm.sonic_similar_limit,
-            sonic_similarity_limit: daylistForm.sonic_similarity_limit,
-            sonic_similarity_distance: daylistForm.sonic_similarity_distance,
-            historical_ratio: daylistForm.historical_ratio,
-            timezone: daylistForm.timezone || undefined,
-            time_periods,
-          }),
+          body: JSON.stringify(daylistPayload),
         });
         toast.success(response.message || "Daylist command created successfully");
       } else {
-        const payload = {
+        const payload: Record<string, unknown> = {
           ...formData,
           playlist_type: playlistType,
         };
+        if (formData.expires_at_enabled && formData.expires_at) {
+          payload.expires_at = toExpiresAtIso(formData.expires_at);
+        } else {
+          delete payload.expires_at;
+        }
         const response = await api.request<{ message: string }>(
           "/api/commands/playlist-sync/create",
           {
@@ -879,6 +912,22 @@ export function CreatePlaylistSyncDialog({
                   />
                   <span className="text-sm">Enable immediately after creation</span>
                 </label>
+
+                <ExpirationFields
+                  idPrefix="create-daylist"
+                  enabled={daylistForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setDaylistForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={daylistForm.expires_at}
+                  onValueChange={(v) =>
+                    setDaylistForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                />
               </>
             ) : playlistType === "top_tracks" ? (
               <>
@@ -994,6 +1043,22 @@ export function CreatePlaylistSyncDialog({
                   />
                   <span className="text-sm">Enable immediately after creation</span>
                 </label>
+
+                <ExpirationFields
+                  idPrefix="create-tt"
+                  enabled={topTracksForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setTopTracksForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={topTracksForm.expires_at}
+                  onValueChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                />
               </>
             ) : (
               <>
@@ -1128,6 +1193,20 @@ export function CreatePlaylistSyncDialog({
                   />
                   <span className="text-sm">Enable artist discovery for this playlist</span>
                 </label>
+
+                <ExpirationFields
+                  idPrefix="create-ext"
+                  enabled={formData.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={formData.expires_at}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                />
               </>
             )}
           </div>
