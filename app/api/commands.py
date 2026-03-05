@@ -796,6 +796,14 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
                 detail="Daylist command already exists. Only one daylist is supported.",
             )
 
+        # If a deleted daylist exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
+        deleted_cmd = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == "daylist_00001")
+            .filter(CommandConfig.deleted_at.isnot(None))
+            .first()
+        )
+
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
             raise HTTPException(status_code=400, detail="plex_history_account_id is required")
@@ -821,18 +829,31 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             config_json["expires_at"] = request.get("expires_at")
             config_json["expires_at_delete_playlist"] = request.get("expires_at_delete_playlist", True)
 
-        cmd = CommandConfig(
-            command_name="daylist_00001",
-            display_name="[Cmdarr] Daylist",
-            description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
-            enabled=bool(request.get("enabled", True)),
-            schedule_cron=None,  # Daylist uses config_json schedule_minute
-            config_json=config_json,
-            command_type="playlist_generator",
-        )
-        db.add(cmd)
-        db.commit()
-        db.refresh(cmd)
+        if deleted_cmd:
+            # Restore and overwrite the deleted record (preserves execution history)
+            deleted_cmd.display_name = "[Cmdarr] Daylist"
+            deleted_cmd.description = "Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday."
+            deleted_cmd.enabled = bool(request.get("enabled", True))
+            deleted_cmd.schedule_cron = None
+            deleted_cmd.config_json = config_json
+            deleted_cmd.command_type = "playlist_generator"
+            deleted_cmd.deleted_at = None
+            db.commit()
+            db.refresh(deleted_cmd)
+            cmd = deleted_cmd
+        else:
+            cmd = CommandConfig(
+                command_name="daylist_00001",
+                display_name="[Cmdarr] Daylist",
+                description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
+                enabled=bool(request.get("enabled", True)),
+                schedule_cron=None,  # Daylist uses config_json schedule_minute
+                config_json=config_json,
+                command_type="playlist_generator",
+            )
+            db.add(cmd)
+            db.commit()
+            db.refresh(cmd)
 
         # Reload dynamic commands
         command_executor._load_dynamic_daylist_commands()
@@ -876,6 +897,14 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
                 detail="Local Discovery command already exists. Only one is supported.",
             )
 
+        # If a deleted local_discovery exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
+        deleted_cmd = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == "local_discovery_00001")
+            .filter(CommandConfig.deleted_at.isnot(None))
+            .first()
+        )
+
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
             raise HTTPException(status_code=400, detail="plex_history_account_id is required")
@@ -915,19 +944,33 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         schedule_cron = (request.get("schedule_cron") or "0 6 * * *").strip()
         schedule_override = bool(schedule_cron)
 
-        cmd = CommandConfig(
-            command_name="local_discovery_00001",
-            display_name="[Cmdarr] Local Discovery",
-            description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
-            enabled=bool(request.get("enabled", True)),
-            schedule_cron=schedule_cron if schedule_override else None,
-            timeout_minutes=30,
-            config_json=config_json,
-            command_type="playlist_generator",
-        )
-        db.add(cmd)
-        db.commit()
-        db.refresh(cmd)
+        if deleted_cmd:
+            # Restore and overwrite the deleted record (preserves execution history)
+            deleted_cmd.display_name = "[Cmdarr] Local Discovery"
+            deleted_cmd.description = "Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only."
+            deleted_cmd.enabled = bool(request.get("enabled", True))
+            deleted_cmd.schedule_cron = schedule_cron if schedule_override else None
+            deleted_cmd.timeout_minutes = 30
+            deleted_cmd.config_json = config_json
+            deleted_cmd.command_type = "playlist_generator"
+            deleted_cmd.deleted_at = None
+            db.commit()
+            db.refresh(deleted_cmd)
+            cmd = deleted_cmd
+        else:
+            cmd = CommandConfig(
+                command_name="local_discovery_00001",
+                display_name="[Cmdarr] Local Discovery",
+                description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
+                enabled=bool(request.get("enabled", True)),
+                schedule_cron=schedule_cron if schedule_override else None,
+                timeout_minutes=30,
+                config_json=config_json,
+                command_type="playlist_generator",
+            )
+            db.add(cmd)
+            db.commit()
+            db.refresh(cmd)
 
         command_executor._load_dynamic_local_discovery_commands()
 
