@@ -839,6 +839,92 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/local-discovery/exists")
+async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if a local discovery command already exists (for New Command UI grey-out)."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("local_discovery_%")).first()
+    return {"exists": existing is not None}
+
+
+@router.post("/local-discovery/create")
+async def create_local_discovery(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Local Discovery command (single instance)."""
+    try:
+        from database.config_models import CommandConfig
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("local_discovery_%")).first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Local Discovery command already exists. Only one is supported.",
+            )
+
+        plex_account_id = request.get("plex_history_account_id")
+        if not plex_account_id:
+            raise HTTPException(status_code=400, detail="plex_history_account_id is required")
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key:
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY.",
+            )
+
+        config_json = {
+            "plex_history_account_id": str(plex_account_id),
+            "lookback_days": int(request.get("lookback_days", 90)),
+            "exclude_played_days": int(request.get("exclude_played_days", 3)),
+            "top_artists_count": int(request.get("top_artists_count", 10)),
+            "artist_pool_size": int(request.get("artist_pool_size", 20)),
+            "max_tracks": int(request.get("max_tracks", 50)),
+            "sonic_similar_limit": int(request.get("sonic_similar_limit", 15)),
+            "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.25)),
+            "historical_ratio": float(request.get("historical_ratio", 0.4)),
+            "target_library_key": str(library_key),
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+
+        schedule_cron = (request.get("schedule_cron") or "0 6 * * *").strip()
+        schedule_override = bool(schedule_cron)
+
+        cmd = CommandConfig(
+            command_name="local_discovery_00001",
+            display_name="Local Discovery",
+            description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
+            enabled=bool(request.get("enabled", True)),
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_local_discovery_commands()
+
+        return {"message": "Local Discovery command created", "command_name": "local_discovery_00001"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create local discovery: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/top-tracks/exists")
 async def top_tracks_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if any top tracks command exists (for New Command UI)."""
