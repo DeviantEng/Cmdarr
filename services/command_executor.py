@@ -432,15 +432,20 @@ class CommandExecutor:
 
     def _build_top_tracks_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build top tracks generator summary from command result"""
-        artists = stats.get("artists_processed", 0)
+        artists_matched = stats.get("artists_processed", 0)
+        artists_total = stats.get("artists_total", artists_matched)
         found = stats.get("tracks_found", 0)
         total = stats.get("tracks_total", 0)
         source = stats.get("source", "")
+        invalid = stats.get("invalid_artists", [])[:5]
         parts = [f"Top Tracks completed in {duration:.1f}s"]
-        parts.append(f"{artists} artists, {found}/{total} tracks")
+        parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
         if source:
             parts.append(f"source: {source}")
-        return " • ".join(parts)
+        summary = " • ".join(parts)
+        if invalid:
+            summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
+        return summary
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""

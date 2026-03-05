@@ -743,7 +743,13 @@ class PlexClient(BaseAPIClient):
                 if rating_key:
                     found_track_keys.append(str(rating_key))
                     processed += 1
-                    self.logger.debug(f"[{processed}/{len(tracks)}] Using pre-resolved key {rating_key}")
+                    artist = track.get("artist", "")
+                    track_name = track.get("track", "")
+                    progress = f"[{processed}/{len(tracks)}]"
+                    if artist and track_name:
+                        self.logger.info(f"{progress} ✅ {artist} - {track_name}")
+                    else:
+                        self.logger.debug(f"{progress} Using pre-resolved key {rating_key}")
                     continue
 
                 artist = track.get("artist", "")

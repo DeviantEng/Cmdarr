@@ -899,18 +899,27 @@ export function CreatePlaylistSyncDialog({
                 <div className="space-y-2">
                   <Label>Top X tracks per artist</Label>
                   <Input
-                    type="number"
-                    min={1}
-                    max={20}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="5"
                     value={topTracksForm.top_x}
                     onChange={(e) => {
-                      const v = parseInt(e.target.value, 10);
+                      const raw = e.target.value.trim();
+                      const v = parseInt(raw, 10);
                       setTopTracksForm((prev) => ({
                         ...prev,
-                        top_x: isNaN(v) ? 5 : Math.max(1, Math.min(20, v)),
+                        top_x: raw === "" ? 5 : isNaN(v) ? prev.top_x : Math.max(1, Math.min(20, v)),
                       }));
                     }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.trim();
+                      const v = parseInt(raw, 10);
+                      if (raw === "" || isNaN(v) || v < 1 || v > 20) {
+                        setTopTracksForm((prev) => ({ ...prev, top_x: 5 }));
+                      }
+                    }}
                   />
+                  <p className="text-xs text-muted-foreground">Min 1, max 20</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Target</Label>

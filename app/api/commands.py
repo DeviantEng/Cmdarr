@@ -311,6 +311,10 @@ async def update_command(
                             detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
                         )
             command.config_json = request.config_json
+            # Sync display_name with playlist_name for top_tracks commands
+            if command_name.startswith("top_tracks_") and "playlist_name" in request.config_json:
+                pn = request.config_json.get("playlist_name", "Artists Top Tracks")
+                command.display_name = f"Top Tracks: {pn}"
 
         command.updated_at = datetime.utcnow()
         db.commit()
