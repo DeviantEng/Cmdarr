@@ -5,7 +5,7 @@ Handles stuck commands, timeouts, and cleanup tasks
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,7 @@ class CommandCleanupService:
             try:
                 await self.cleanup_stuck_commands()
                 await self.cleanup_timed_out_commands()
+                await self.cleanup_expired_commands()
                 # Run execution history cleanup only at 2am (scheduler timezone)
                 if self._is_cleanup_hour():
                     await self.cleanup_old_executions()
@@ -145,6 +146,106 @@ class CommandCleanupService:
         finally:
             if "db" in locals():
                 db.close()
+
+    async def cleanup_expired_commands(self):
+        """
+        Disable commands whose expires_at (in config_json) has passed.
+        For playlist commands, optionally delete the playlist from target.
+        """
+        try:
+            from database.database import get_database_manager
+
+            manager = get_database_manager()
+            db = manager.get_config_session_sync()
+
+            try:
+                now = datetime.utcnow()
+                all_commands = db.query(CommandConfig).all()
+                expired = []
+                for cmd in all_commands:
+                    cfg = cmd.config_json or {}
+                    exp_str = cfg.get("expires_at")
+                    if not exp_str:
+                        continue
+                    try:
+                        s = str(exp_str).strip().replace("Z", "+00:00")
+                        exp_dt = datetime.fromisoformat(s)
+                        if exp_dt.tzinfo:
+                            exp_dt = exp_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                        if exp_dt <= now:
+                            expired.append(cmd)
+                    except (ValueError, TypeError):
+                        continue
+
+                if not expired:
+                    return
+
+                for cmd in expired:
+                    try:
+                        self._run_expiry_cleanup(cmd)
+                    except Exception as e:
+                        logger.warning(f"Expiry cleanup for {cmd.command_name} failed: {e}")
+
+                    cmd.enabled = False
+                    if cmd.config_json:
+                        cfg = dict(cmd.config_json)
+                        cfg.pop("expires_at", None)
+                        cmd.config_json = cfg
+                    logger.info(f"Disabled expired command: {cmd.command_name}")
+
+                db.commit()
+                logger.info(f"Processed {len(expired)} expired command(s)")
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired commands: {e}")
+
+    def _run_expiry_cleanup(self, command_config: CommandConfig):
+        """
+        Run command-specific cleanup on expiry (e.g. delete playlist).
+        Called synchronously from cleanup_expired_commands.
+        """
+        cfg = command_config.config_json or {}
+        name = command_config.command_name or ""
+
+        if name.startswith("playlist_sync_"):
+            target = str(cfg.get("target", "plex")).lower()
+            playlist_name = f"[{str(cfg.get('source', 'unknown')).title()}] {cfg.get('playlist_name', '')}"
+            self._delete_playlist_if_exists(target, playlist_name)
+        elif name.startswith("top_tracks_"):
+            target = str(cfg.get("target", "plex")).lower()
+            playlist_name = f"[Top Tracks] {cfg.get('playlist_name', 'Artists Top Tracks')}"
+            self._delete_playlist_if_exists(target, playlist_name)
+        elif name.startswith("daylist_"):
+            playlist_name = "Cmdarr's Daylist"
+            self._delete_playlist_if_exists("plex", playlist_name)
+
+    def _delete_playlist_if_exists(self, target: str, playlist_name: str):
+        """Delete playlist from Plex or Jellyfin if it exists."""
+        try:
+            from commands.config_adapter import Config
+
+            config = Config()
+            if target == "plex":
+                from clients.client_plex import PlexClient
+
+                client = PlexClient(config)
+                pl = client.find_playlist_by_name(playlist_name)
+                if pl and pl.get("ratingKey"):
+                    client.delete_playlist(pl["ratingKey"])
+                    logger.info(f"Deleted expired playlist from Plex: {playlist_name}")
+            elif target == "jellyfin":
+                from clients.client_jellyfin import JellyfinClient
+
+                client = JellyfinClient(config)
+                pl = client.find_playlist_by_name(playlist_name)
+                if pl and pl.get("Id"):
+                    if hasattr(client, "delete_playlist_sync"):
+                        client.delete_playlist_sync(pl["Id"])
+                        logger.info(f"Deleted expired playlist from Jellyfin: {playlist_name}")
+        except Exception as e:
+            logger.warning(f"Could not delete playlist {playlist_name}: {e}")
 
     async def cleanup_startup_stuck_commands(self) -> list[str]:
         """
