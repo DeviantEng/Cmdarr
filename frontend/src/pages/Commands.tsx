@@ -148,6 +148,11 @@ export function CommandsPage() {
     historical_ratio?: number;
     timezone?: string;
     time_periods?: Record<string, { start: number; end: number }>;
+    artists?: string;
+    top_x?: number;
+    source?: string;
+    target?: string;
+    playlist_name?: string;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
@@ -1898,7 +1903,7 @@ export function CommandsPage() {
                   <Button
                     onClick={() => {
                       const artistsRaw = (editForm.artists ?? "").trim().split("\n");
-                      const artists = artistsRaw.filter((a) => a.trim());
+                      const artists = artistsRaw.filter((a: string) => a.trim());
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
                         schedule_cron: editForm.schedule_override
