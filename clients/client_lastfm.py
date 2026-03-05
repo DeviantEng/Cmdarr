@@ -206,6 +206,80 @@ class LastFMClient(BaseAPIClient):
 
             return [], []  # Return empty lists for both processed and skipped
 
+    async def get_top_tracks(self, artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
+        """
+        Get top tracks for an artist via artist.getTopTracks.
+        Returns list of {name, artist, playcount} for matching against library.
+        """
+        if not artist_name or not str(artist_name).strip():
+            return []
+
+        cache_key = f"toptracks:{artist_name}:{limit}"
+        if self.cache_enabled and self.cache:
+            if self.cache.is_failed_lookup(cache_key, "lastfm"):
+                return []
+            cached = self.cache.get(cache_key, "lastfm")
+            if cached is not None:
+                self.logger.debug(f"Cache hit for top tracks: {artist_name}")
+                return cached.get("tracks", [])
+
+        params = {
+            "method": "artist.getTopTracks",
+            "artist": artist_name.strip(),
+            "limit": str(min(limit, 50)),
+        }
+        try:
+            response = await self._make_request(
+                params, context_info=f"top tracks for '{artist_name}'"
+            )
+            if not response:
+                if self.cache_enabled and self.cache:
+                    self.cache.mark_failed_lookup(
+                        cache_key,
+                        "lastfm",
+                        "API request failed",
+                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
+                    )
+                return []
+
+            toptracks = response.get("toptracks", {})
+            track_list = toptracks.get("track", [])
+            if isinstance(track_list, dict):
+                track_list = [track_list]
+
+            tracks = []
+            for t in track_list:
+                name = t.get("name", "").strip()
+                art = t.get("artist", {})
+                artist = art.get("name", artist_name) if isinstance(art, dict) else artist_name
+                if name:
+                    tracks.append(
+                        {
+                            "name": name,
+                            "artist": artist,
+                            "playcount": int(t.get("playcount", 0)),
+                        }
+                    )
+
+            if self.cache_enabled and self.cache:
+                self.cache.set(
+                    cache_key,
+                    "lastfm",
+                    {"tracks": tracks},
+                    self.config.CACHE_LASTFM_TTL_DAYS,
+                )
+            return tracks
+        except Exception as e:
+            self.logger.error(f"Error getting top tracks for {artist_name}: {e}")
+            if self.cache_enabled and self.cache:
+                self.cache.mark_failed_lookup(
+                    cache_key,
+                    "lastfm",
+                    str(e),
+                    self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
+                )
+            return []
+
     async def get_artist_info(
         self, mbid: str = None, artist_name: str = None
     ) -> dict[str, Any] | None:

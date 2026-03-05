@@ -110,9 +110,9 @@ class CommandExecutionResponse(BaseModel):
 
 @router.get("/", response_model=list[CommandConfigResponse])
 async def get_all_commands(db: Annotated[Session, Depends(get_config_db)]):
-    """Get all command configurations (excluding helper commands)"""
+    """Get all command configurations (excluding helper commands and soft-deleted)"""
     try:
-        commands = db.query(CommandConfig).all()
+        commands = db.query(CommandConfig).filter(CommandConfig.deleted_at.is_(None)).all()
 
         # Filter out helper commands
         visible_commands = []
@@ -154,7 +154,12 @@ async def get_plex_accounts():
 @router.get("/daylist/exists")
 async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a daylist command already exists (for New Command UI grey-out)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("daylist_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
     return {"exists": existing is not None}
 
 
@@ -254,7 +259,14 @@ async def validate_playlist_url(url: str):
 async def get_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
     """Get a specific command configuration"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -272,7 +284,14 @@ async def update_command(
 ):
     """Update a command configuration"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -311,6 +330,7 @@ async def update_command(
                             detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
                         )
             command.config_json = request.config_json
+            # display_name for top_tracks is updated by the command when it runs (matches playlist title)
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -351,8 +371,15 @@ async def execute_command(
 ):
     """Execute a command"""
     try:
-        # Check if command exists and is enabled
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        # Check if command exists and is enabled (exclude soft-deleted)
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -388,7 +415,14 @@ async def execute_command(
 async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
     """Cancel the currently running execution for a command (if any)"""
     try:
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -745,15 +779,26 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
     try:
         from database.config_models import CommandConfig
 
-        # Check if daylist already exists
+        # Check if daylist already exists (exclude soft-deleted)
         existing = (
-            db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("daylist_%"))
+            .filter(CommandConfig.deleted_at.is_(None))
+            .first()
         )
         if existing:
             raise HTTPException(
                 status_code=400,
                 detail="Daylist command already exists. Only one daylist is supported.",
             )
+
+        # If a deleted daylist exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
+        deleted_cmd = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == "daylist_00001")
+            .filter(CommandConfig.deleted_at.isnot(None))
+            .first()
+        )
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -774,20 +819,39 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "historical_ratio": float(request.get("historical_ratio", 0.4)),
             "time_periods": request.get("time_periods"),  # Optional custom periods
             "timezone": (request.get("timezone") or "").strip() or None,
+            "use_primary_mood": bool(request.get("use_primary_mood", False)),
         }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
 
-        cmd = CommandConfig(
-            command_name="daylist_00001",
-            display_name="Daylist",
-            description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
-            enabled=bool(request.get("enabled", True)),
-            schedule_cron=None,  # Daylist uses config_json schedule_minute
-            config_json=config_json,
-            command_type="playlist_generator",
-        )
-        db.add(cmd)
-        db.commit()
-        db.refresh(cmd)
+        if deleted_cmd:
+            # Restore and overwrite the deleted record (preserves execution history)
+            deleted_cmd.display_name = "[Cmdarr] Daylist"
+            deleted_cmd.description = "Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday."
+            deleted_cmd.enabled = bool(request.get("enabled", True))
+            deleted_cmd.schedule_cron = None
+            deleted_cmd.config_json = config_json
+            deleted_cmd.command_type = "playlist_generator"
+            deleted_cmd.deleted_at = None
+            db.commit()
+            db.refresh(deleted_cmd)
+            cmd = deleted_cmd
+        else:
+            cmd = CommandConfig(
+                command_name="daylist_00001",
+                display_name="[Cmdarr] Daylist",
+                description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
+                enabled=bool(request.get("enabled", True)),
+                schedule_cron=None,  # Daylist uses config_json schedule_minute
+                config_json=config_json,
+                command_type="playlist_generator",
+            )
+            db.add(cmd)
+            db.commit()
+            db.refresh(cmd)
 
         # Reload dynamic commands
         command_executor._load_dynamic_daylist_commands()
@@ -797,6 +861,400 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         raise
     except Exception as e:
         get_commands_logger().error(f"Failed to create daylist: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/local-discovery/exists")
+async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if a local discovery command already exists (for New Command UI grey-out)."""
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("local_discovery_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
+@router.post("/local-discovery/create")
+async def create_local_discovery(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Local Discovery command (single instance)."""
+    try:
+        from database.config_models import CommandConfig
+
+        existing = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("local_discovery_%"))
+            .filter(CommandConfig.deleted_at.is_(None))
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Local Discovery command already exists. Only one is supported.",
+            )
+
+        # If a deleted local_discovery exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
+        deleted_cmd = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name == "local_discovery_00001")
+            .filter(CommandConfig.deleted_at.isnot(None))
+            .first()
+        )
+
+        plex_account_id = request.get("plex_history_account_id")
+        if not plex_account_id:
+            raise HTTPException(status_code=400, detail="plex_history_account_id is required")
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key:
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY.",
+            )
+
+        config_json = {
+            "plex_history_account_id": str(plex_account_id),
+            "lookback_days": int(request.get("lookback_days", 90)),
+            "exclude_played_days": int(request.get("exclude_played_days", 3)),
+            "top_artists_count": int(request.get("top_artists_count", 10)),
+            "artist_pool_size": int(request.get("artist_pool_size", 20)),
+            "max_tracks": int(request.get("max_tracks", 50)),
+            "sonic_similar_limit": int(request.get("sonic_similar_limit", 15)),
+            "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.25)),
+            "historical_ratio": float(request.get("historical_ratio", 0.4)),
+            "target_library_key": str(library_key),
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+
+        if deleted_cmd:
+            # Restore and overwrite the deleted record (preserves execution history)
+            deleted_cmd.display_name = "[Cmdarr] Local Discovery"
+            deleted_cmd.description = "Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only."
+            deleted_cmd.enabled = bool(request.get("enabled", True))
+            deleted_cmd.schedule_cron = schedule_cron if schedule_override else None
+            deleted_cmd.timeout_minutes = 30
+            deleted_cmd.config_json = config_json
+            deleted_cmd.command_type = "playlist_generator"
+            deleted_cmd.deleted_at = None
+            db.commit()
+            db.refresh(deleted_cmd)
+            cmd = deleted_cmd
+        else:
+            cmd = CommandConfig(
+                command_name="local_discovery_00001",
+                display_name="[Cmdarr] Local Discovery",
+                description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
+                enabled=bool(request.get("enabled", True)),
+                schedule_cron=schedule_cron if schedule_override else None,
+                timeout_minutes=30,
+                config_json=config_json,
+                command_type="playlist_generator",
+            )
+            db.add(cmd)
+            db.commit()
+            db.refresh(cmd)
+
+        command_executor._load_dynamic_local_discovery_commands()
+
+        return {
+            "message": "Local Discovery command created",
+            "command_name": "local_discovery_00001",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create local discovery: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-tracks/exists")
+async def top_tracks_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any top tracks command exists (for New Command UI)."""
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("top_tracks_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
+@router.post("/top-tracks/create")
+async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Artist Mix generator command."""
+    try:
+        artists_raw = request.get("artists", [])
+        if isinstance(artists_raw, str):
+            artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+        if not artists_raw:
+            raise HTTPException(
+                status_code=400, detail="artists is required (list or newline-separated)"
+            )
+
+        top_x = int(request.get("top_x", 5))
+        top_x = max(1, min(20, top_x))
+        source = str(request.get("source", "plex")).lower()
+        if source not in ("plex", "lastfm"):
+            source = "plex"
+        target = str(request.get("target", "plex")).lower()
+        if target not in ("plex", "jellyfin"):
+            target = "plex"
+        if target == "jellyfin":
+            source = "lastfm"
+
+        use_custom_playlist_name = bool(request.get("use_custom_playlist_name", False))
+        custom_playlist_name = (request.get("custom_playlist_name") or "").strip()
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = None
+        if target == "plex" and hasattr(config, "PLEX_LIBRARY_KEY"):
+            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key and target == "plex":
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+
+        if target == "jellyfin":
+            from clients.client_jellyfin import JellyfinClient
+
+            jc = JellyfinClient(config)
+            libs = jc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("Id") or libs[0].get("key")
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_KEY or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("top_tracks_%")).all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"top_tracks_{next_id:05d}"
+
+        config_json = {
+            "artists": artists_raw,
+            "top_x": top_x,
+            "source": source,
+            "target": target,
+            "target_library_key": str(library_key),
+            "use_custom_playlist_name": use_custom_playlist_name,
+            "custom_playlist_name": custom_playlist_name,
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name="[Cmdarr] Artist Essentials",
+            description="Generate playlist from artist list with top X tracks per artist.",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_top_tracks_commands()
+
+        return {"message": "Artist Essentials command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create top tracks: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/mood-playlist/moods")
+async def mood_playlist_moods():
+    """Get mood list from moodmap.json for mood playlist generator."""
+    import json
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "commands"
+        / "daylist"
+        / "assets"
+        / "moodmap.json"
+    )
+    try:
+        with open(path) as f:
+            moodmap = json.load(f)
+        return {"moods": sorted(moodmap.keys())}
+    except Exception as e:
+        get_commands_logger().error(f"Failed to load moodmap: {e}")
+        return {"moods": []}
+
+
+@router.get("/mood-playlist/exists")
+async def mood_playlist_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any mood playlist command exists (for New Command UI)."""
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("mood_playlist_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
+@router.post("/mood-playlist/create")
+async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a new Mood Playlist generator command."""
+    try:
+        moods_raw = request.get("moods", [])
+        if isinstance(moods_raw, str):
+            moods_raw = [m.strip() for m in moods_raw.split(",") if m.strip()]
+        moods = [m for m in moods_raw if m]
+        if not moods:
+            raise HTTPException(status_code=400, detail="moods is required (list of mood names)")
+
+        use_custom = bool(request.get("use_custom_playlist_name", False))
+        custom_name = (request.get("custom_playlist_name") or "").strip()
+        from commands.playlist_generator_mood import _build_auto_playlist_suffix
+
+        suffix = custom_name if (use_custom and custom_name) else _build_auto_playlist_suffix(moods)
+        display_name = f"[Cmdarr] Mood: {suffix}"
+        max_tracks = int(request.get("max_tracks", 50))
+        max_tracks = max(1, min(200, max_tracks))
+        exclude_last_run = bool(request.get("exclude_last_run", True))
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = None
+        if hasattr(config, "PLEX_LIBRARY_KEY"):
+            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
+        if not library_key:
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            libs = pc.get_music_libraries()
+            if libs:
+                library_key = libs[0].get("key")
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("mood_playlist_%")).all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"mood_playlist_{next_id:05d}"
+
+        limit_by_year = bool(request.get("limit_by_year", False))
+        min_year = request.get("min_year")
+        max_year = request.get("max_year")
+        if limit_by_year:
+            try:
+                min_year = max(1800, min(2100, int(min_year))) if min_year is not None else None
+            except TypeError, ValueError:
+                min_year = None
+            try:
+                max_year = max(1800, min(2100, int(max_year))) if max_year is not None else None
+            except TypeError, ValueError:
+                max_year = None
+        else:
+            min_year = max_year = None
+
+        config_json = {
+            "moods": moods,
+            "use_custom_playlist_name": use_custom,
+            "custom_playlist_name": custom_name if use_custom else "",
+            "max_tracks": max_tracks,
+            "exclude_last_run": exclude_last_run,
+            "limit_by_year": limit_by_year,
+            "min_year": min_year,
+            "max_year": max_year,
+            "target_library_key": str(library_key),
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description="Generate playlist from selected Plex moods with freshness (exclude last run, date-seeded sampling).",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_mood_playlist_commands()
+
+        return {"message": "Mood Playlist command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create mood playlist: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -961,6 +1419,11 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 "sync_mode": sync_mode,
                 "enable_artist_discovery": request.get("enable_artist_discovery", False),
             }
+            if request.get("expires_at"):
+                config_json["expires_at"] = request.get("expires_at")
+                config_json["expires_at_delete_playlist"] = request.get(
+                    "expires_at_delete_playlist", True
+                )
 
             command = CommandConfig(
                 command_name=command_name,
@@ -1130,6 +1593,11 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 "cleanup_enabled": cleanup_enabled,
                 "enable_artist_discovery": request.get("enable_artist_discovery", False),
             }
+            if request.get("expires_at"):
+                config_json["expires_at"] = request.get("expires_at")
+                config_json["expires_at_delete_playlist"] = request.get(
+                    "expires_at_delete_playlist", True
+                )
 
             command = CommandConfig(
                 command_name=command_name,
@@ -1201,7 +1669,14 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         if not command_name:
             raise HTTPException(status_code=400, detail="Command name is required")
 
-        command = db.query(CommandConfig).filter(CommandConfig.command_name == command_name).first()
+        command = (
+            db.query(CommandConfig)
+            .filter(
+                CommandConfig.command_name == command_name,
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not command:
             raise HTTPException(status_code=404, detail="Command not found")
 
@@ -1217,7 +1692,9 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         ]:
             raise HTTPException(status_code=400, detail="Cannot delete built-in commands")
 
-        db.delete(command)
+        # Soft delete: keep for 7 days so execution history retains display_name
+        command.deleted_at = datetime.utcnow()
+        command.enabled = False
         db.commit()
 
         # Reload command executor to remove deleted command

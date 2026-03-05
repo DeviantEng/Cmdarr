@@ -5,7 +5,7 @@ Handles stuck commands, timeouts, and cleanup tasks
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -44,9 +44,11 @@ class CommandCleanupService:
             try:
                 await self.cleanup_stuck_commands()
                 await self.cleanup_timed_out_commands()
+                await self.cleanup_expired_commands()
                 # Run execution history cleanup only at 2am (scheduler timezone)
                 if self._is_cleanup_hour():
                     await self.cleanup_old_executions()
+                    await self.cleanup_soft_deleted_commands()
                 await asyncio.sleep(self.cleanup_interval)
             except asyncio.CancelledError:
                 break
@@ -145,6 +147,156 @@ class CommandCleanupService:
         finally:
             if "db" in locals():
                 db.close()
+
+    async def cleanup_expired_commands(self):
+        """
+        Disable commands whose expires_at (in config_json) has passed.
+        For playlist commands, optionally delete the playlist from target.
+        """
+        try:
+            from database.database import get_database_manager
+
+            manager = get_database_manager()
+            db = manager.get_config_session_sync()
+
+            try:
+                now = datetime.utcnow()
+                all_commands = db.query(CommandConfig).all()
+                expired = []
+                for cmd in all_commands:
+                    cfg = cmd.config_json or {}
+                    exp_str = cfg.get("expires_at")
+                    if not exp_str:
+                        continue
+                    try:
+                        s = str(exp_str).strip().replace("Z", "+00:00")
+                        exp_dt = datetime.fromisoformat(s)
+                        if exp_dt.tzinfo:
+                            exp_dt = exp_dt.astimezone(UTC).replace(tzinfo=None)
+                        if exp_dt <= now:
+                            expired.append(cmd)
+                    except ValueError, TypeError:
+                        continue
+
+                if not expired:
+                    return
+
+                for cmd in expired:
+                    try:
+                        self._run_expiry_cleanup(cmd)
+                    except Exception as e:
+                        logger.warning(f"Expiry cleanup for {cmd.command_name} failed: {e}")
+
+                    cmd.enabled = False
+                    if cmd.config_json:
+                        cfg = dict(cmd.config_json)
+                        cfg.pop("expires_at", None)
+                        cmd.config_json = cfg
+                    logger.info(f"Disabled expired command: {cmd.command_name}")
+
+                db.commit()
+                logger.info(f"Processed {len(expired)} expired command(s)")
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired commands: {e}")
+
+    def _run_expiry_cleanup(self, command_config: CommandConfig):
+        """
+        Run command-specific cleanup on expiry (e.g. delete playlist).
+        Called synchronously from cleanup_expired_commands.
+        Only deletes playlist when expires_at_delete_playlist is True (default).
+        """
+        cfg = command_config.config_json or {}
+        name = command_config.command_name or ""
+        delete_playlist = cfg.get("expires_at_delete_playlist", True)
+
+        if not delete_playlist:
+            return
+
+        if name.startswith("playlist_sync_"):
+            target = str(cfg.get("target", "plex")).lower()
+            playlist_name = (
+                f"[{str(cfg.get('source', 'unknown')).title()}] {cfg.get('playlist_name', '')}"
+            )
+            self._delete_playlist_if_exists(target, playlist_name)
+        elif name.startswith("top_tracks_"):
+            target = str(cfg.get("target", "plex")).lower()
+            # Use last run's playlist title; fallback to recompute from config
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                artists_raw = cfg.get("artists", [])
+                if isinstance(artists_raw, str):
+                    artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+                use_custom = cfg.get("use_custom_playlist_name", False)
+                custom = (cfg.get("custom_playlist_name") or "").strip()
+                if use_custom and custom:
+                    pl_title = f"[Cmdarr] Artist Essentials: {custom}"
+                elif artists_raw:
+                    from commands.playlist_generator_top_tracks import _build_auto_playlist_suffix
+
+                    suffix = _build_auto_playlist_suffix(artists_raw[:50])
+                    pl_title = f"[Cmdarr] Artist Essentials: {suffix}"
+                else:
+                    pl_title = "[Cmdarr] Artist Essentials: Mix"
+            self._delete_playlist_if_exists(target, pl_title)
+        elif name.startswith("daylist_"):
+            self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist")
+        elif name.startswith("mood_playlist_"):
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                from commands.playlist_generator_mood import _build_auto_playlist_suffix
+
+                moods_raw = cfg.get("moods", [])
+                if isinstance(moods_raw, str):
+                    moods_raw = [m.strip() for m in moods_raw.split(",") if m.strip()]
+                moods = [m for m in moods_raw if m]
+                use_custom = cfg.get("use_custom_playlist_name", False)
+                custom = (cfg.get("custom_playlist_name") or "").strip()
+                # Backward compat: old configs used playlist_name
+                if (
+                    not custom
+                    and cfg.get("playlist_name")
+                    and cfg.get("playlist_name") != "Mood Playlist"
+                ):
+                    custom = (cfg.get("playlist_name") or "").strip()
+                    use_custom = bool(custom)
+                if use_custom and custom:
+                    pl_title = f"[Cmdarr] Mood: {custom}"
+                elif moods:
+                    pl_title = f"[Cmdarr] Mood: {_build_auto_playlist_suffix(moods)}"
+                else:
+                    pl_title = "[Cmdarr] Mood: Mix"
+            self._delete_playlist_if_exists("plex", pl_title)
+        elif name.startswith("local_discovery_"):
+            self._delete_playlist_if_exists("plex", "[Cmdarr] Local Discovery")
+
+    def _delete_playlist_if_exists(self, target: str, playlist_name: str):
+        """Delete playlist from Plex or Jellyfin if it exists."""
+        try:
+            from commands.config_adapter import Config
+
+            config = Config()
+            if target == "plex":
+                from clients.client_plex import PlexClient
+
+                client = PlexClient(config)
+                pl = client.find_playlist_by_name(playlist_name)
+                if pl and pl.get("ratingKey"):
+                    client.delete_playlist(pl["ratingKey"])
+                    logger.info(f"Deleted expired playlist from Plex: {playlist_name}")
+            elif target == "jellyfin":
+                from clients.client_jellyfin import JellyfinClient
+
+                client = JellyfinClient(config)
+                pl = client.find_playlist_by_name(playlist_name)
+                if pl and pl.get("Id"):
+                    if hasattr(client, "delete_playlist_sync"):
+                        client.delete_playlist_sync(pl["Id"])
+                        logger.info(f"Deleted expired playlist from Jellyfin: {playlist_name}")
+        except Exception as e:
+            logger.warning(f"Could not delete playlist {playlist_name}: {e}")
 
     async def cleanup_startup_stuck_commands(self) -> list[str]:
         """
@@ -281,6 +433,43 @@ class CommandCleanupService:
         except Exception as e:
             logger.error(f"Failed to cleanup old executions: {e}")
 
+    async def cleanup_soft_deleted_commands(self):
+        """Permanently delete commands that were soft-deleted more than 7 days ago."""
+        try:
+            from sqlalchemy.exc import OperationalError
+
+            from database.database import get_database_manager
+
+            manager = get_database_manager()
+            db = manager.get_config_session_sync()
+
+            try:
+                cutoff = datetime.utcnow() - timedelta(days=7)
+                to_delete = (
+                    db.query(CommandConfig)
+                    .filter(
+                        CommandConfig.deleted_at.isnot(None),
+                        CommandConfig.deleted_at < cutoff,
+                    )
+                    .all()
+                )
+                for cmd in to_delete:
+                    db.delete(cmd)
+                if to_delete:
+                    db.commit()
+                    logger.info(f"Permanently deleted {len(to_delete)} soft-deleted command(s)")
+            finally:
+                db.close()
+
+        except OperationalError as e:
+            # Column may not exist yet if migration hasn't run (e.g. pre-0.3.7)
+            if "deleted_at" in str(e).lower():
+                logger.debug("Skipping soft-delete cleanup (deleted_at column not yet migrated)")
+            else:
+                logger.error(f"Failed to cleanup soft-deleted commands: {e}")
+        except Exception as e:
+            logger.error(f"Failed to cleanup soft-deleted commands: {e}")
+
     async def force_cleanup_all_running(self):
         """Force cleanup all running commands (emergency function)"""
         try:
@@ -353,7 +542,12 @@ class CommandCleanupService:
                     from database.config_models import CommandConfig
 
                     exists = (
-                        db.query(CommandConfig).filter(CommandConfig.command_name == cmd).first()
+                        db.query(CommandConfig)
+                        .filter(
+                            CommandConfig.command_name == cmd,
+                            CommandConfig.deleted_at.is_(None),
+                        )
+                        .first()
                         is not None
                     )
                 finally:

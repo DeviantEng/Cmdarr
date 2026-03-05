@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-03-05
+
+### 🎵 New Playlist Generators
+- **Artist Essentials** (formerly Top Tracks): Auto-naming from artist list; optional custom name; fuzzy matching
+- **Local Discovery**: Top artists from play history + sonically similar tracks; 90-day lookback; Plex only; single instance
+- **Mood Playlist**: Selected Plex Sonic moods; multi-mood scoring; optional year filter; Plex only
+- **Playlist Naming**: `[Cmdarr]` prefix for all Cmdarr-generated playlists; display name syncs with Plex/Jellyfin
+
+### 🎨 Command UX & Expiration
+- **Unified UI**: Schedule override, expiration, enable artist discovery—checkbox + description always visible; bordered sub-box when enabled
+- **Command Expiration**: `expires_at` disables command (not delete); optional playlist removal; create/edit for playlist sync, Artist Essentials, daylist, Local Discovery, Mood Playlist
+- **Daylist**: `use_primary_mood` option for cover descriptor
+- **ListenBrainz Edit**: Retention (weekly/daily jams) and cleanup toggle now editable
+- **Free Text Inputs**: Replaced restrictive number inputs across create/edit dialogs
+
+### 🗑️ Soft-Delete & Fixes
+- **Soft Delete**: Commands marked `deleted_at`; purged after 7 days; create over deleted restores record (fixes UNIQUE constraint)
+
 ## [0.3.6] - 2026-02-23
 
 ### 🐳 Base Images & Runtime

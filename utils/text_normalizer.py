@@ -33,6 +33,45 @@ def normalize_text(text: str | None) -> str:
     # Convert to lowercase and strip whitespace
     text = text.lower().strip()
 
+    # Normalize common Unicode chars to ASCII equivalents (Motorhead vs Motörhead, etc.)
+    _UNICODE_TO_ASCII = {
+        "ö": "o",
+        "ü": "u",
+        "ä": "a",
+        "ß": "ss",
+        "ø": "o",
+        "œ": "oe",
+        "æ": "ae",
+        "ñ": "n",
+        "é": "e",
+        "è": "e",
+        "ê": "e",
+        "ë": "e",
+        "á": "a",
+        "à": "a",
+        "â": "a",
+        "ã": "a",
+        "å": "a",
+        "í": "i",
+        "ì": "i",
+        "î": "i",
+        "ï": "i",
+        "ó": "o",
+        "ò": "o",
+        "ô": "o",
+        "õ": "o",
+        "ú": "u",
+        "ù": "u",
+        "û": "u",
+        "ý": "y",
+        "ÿ": "y",
+        "ç": "c",
+        "ð": "d",
+        "þ": "th",
+    }
+    for uchar, ascii_char in _UNICODE_TO_ASCII.items():
+        text = text.replace(uchar, ascii_char)
+
     # Normalize apostrophes (use Unicode escapes to ensure correct characters)
     text = text.replace("\u2019", "'").replace("\u2018", "'")
 

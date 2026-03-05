@@ -96,6 +96,7 @@ class CommandConfig(ConfigBase):
     total_execution_count = Column(Integer, default=0, nullable=False)
     total_success_count = Column(Integer, default=0, nullable=False)
     total_failure_count = Column(Integer, default=0, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  # Soft delete: hidden for 7 days
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

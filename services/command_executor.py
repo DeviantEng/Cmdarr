@@ -62,6 +62,12 @@ class CommandExecutor:
             self._load_dynamic_playlist_sync_commands()
             # Load dynamic daylist commands from database
             self._load_dynamic_daylist_commands()
+            # Load dynamic top tracks commands from database
+            self._load_dynamic_top_tracks_commands()
+            # Load dynamic mood playlist commands from database
+            self._load_dynamic_mood_playlist_commands()
+            # Load dynamic local discovery commands from database
+            self._load_dynamic_local_discovery_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -188,15 +194,18 @@ class CommandExecutor:
             return False
 
     async def _command_exists_in_db(self, command_name: str) -> bool:
-        """Check if a command exists in the database"""
+        """Check if a command exists in the database (excludes soft-deleted)"""
         try:
             db_manager = get_database_manager()
             session = db_manager.get_config_session_sync()
             try:
-                # Look for the command configuration
+                # Look for the command configuration (exclude soft-deleted)
                 command_config = (
                     session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == command_name)
+                    .filter(
+                        CommandConfig.command_name == command_name,
+                        CommandConfig.deleted_at.is_(None),
+                    )
                     .first()
                 )
 
@@ -415,6 +424,8 @@ class CommandExecutor:
             return self._build_new_releases_summary(stats, duration)
         elif command_name.startswith("daylist_") and stats:
             return self._build_daylist_summary(stats, duration)
+        elif command_name.startswith("top_tracks_") and stats:
+            return self._build_top_tracks_summary(stats, duration)
 
         return f"Command completed successfully in {duration:.1f}s"
 
@@ -425,6 +436,23 @@ class CommandExecutor:
         period = stats.get("period", "")
         count = stats.get("track_count", 0)
         return f"Daylist updated: {period}, {count} tracks ({duration:.1f}s)"
+
+    def _build_top_tracks_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build top tracks generator summary from command result"""
+        artists_matched = stats.get("artists_processed", 0)
+        artists_total = stats.get("artists_total", artists_matched)
+        found = stats.get("tracks_found", 0)
+        total = stats.get("tracks_total", 0)
+        source = stats.get("source", "")
+        invalid = stats.get("invalid_artists", [])[:5]
+        parts = [f"Artist Essentials completed in {duration:.1f}s"]
+        parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
+        if source:
+            parts.append(f"source: {source}")
+        summary = " • ".join(parts)
+        if invalid:
+            summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
+        return summary
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
@@ -643,7 +671,7 @@ class CommandExecutor:
             db_manager = get_database_manager()
             session = db_manager.get_config_session_sync()
             try:
-                # Get all playlist sync commands from database
+                # Get all playlist sync commands from database (exclude soft-deleted)
                 playlist_sync_commands = (
                     session.query(CommandConfig)
                     .filter(CommandConfig.command_name.like("playlist_sync_%"))
@@ -651,6 +679,7 @@ class CommandExecutor:
                         CommandConfig.command_name
                         != "playlist_sync_discovery_maintenance"  # Exclude maintenance command
                     )
+                    .filter(CommandConfig.deleted_at.is_(None))
                     .all()
                 )
 
@@ -748,6 +777,7 @@ class CommandExecutor:
                 daylist_commands = (
                     session.query(CommandConfig)
                     .filter(CommandConfig.command_name.like("daylist_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
                     .all()
                 )
                 for command_config in daylist_commands:
@@ -758,6 +788,86 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic daylist commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_top_tracks_commands(self):
+        """Load dynamic top tracks commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_top_tracks import PlaylistGeneratorTopTracksCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                top_tracks_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("top_tracks_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in top_tracks_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorTopTracksCommand
+                    self.logger.debug(f"Loaded dynamic top tracks command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic top tracks commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_mood_playlist_commands(self):
+        """Load dynamic mood playlist commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_mood import PlaylistGeneratorMoodCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                mood_playlist_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("mood_playlist_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in mood_playlist_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorMoodCommand
+                    self.logger.debug(f"Loaded dynamic mood playlist command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic mood playlist commands: {e}")
+
+    def _load_dynamic_local_discovery_commands(self):
+        """Load dynamic local discovery commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_local_discovery import (
+                PlaylistGeneratorLocalDiscoveryCommand,
+            )
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                local_discovery_commands = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("local_discovery_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in local_discovery_commands:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorLocalDiscoveryCommand
+                    self.logger.debug(f"Loaded dynamic local discovery command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic local discovery commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

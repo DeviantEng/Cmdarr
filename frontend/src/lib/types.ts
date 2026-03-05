@@ -23,6 +23,7 @@ export interface CommandConfig {
 export interface CommandExecution {
   id: number;
   command_name: string;
+  display_name?: string;
   status: "pending" | "running" | "completed" | "failed" | "timeout" | "cancelled";
   triggered_by: string;
   started_at?: string;

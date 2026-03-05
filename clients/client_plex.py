@@ -738,6 +738,20 @@ class PlexClient(BaseAPIClient):
             processed = 0
 
             for _i, track in enumerate(tracks):
+                # Support pre-resolved rating keys (e.g. from Plex popular tracks)
+                rating_key = track.get("rating_key") or track.get("key")
+                if rating_key:
+                    found_track_keys.append(str(rating_key))
+                    processed += 1
+                    artist = track.get("artist", "")
+                    track_name = track.get("track", "")
+                    progress = f"[{processed}/{len(tracks)}]"
+                    if artist and track_name:
+                        self.logger.info(f"{progress} ✅ {artist} - {track_name}")
+                    else:
+                        self.logger.debug(f"{progress} Using pre-resolved key {rating_key}")
+                    continue
+
                 artist = track.get("artist", "")
                 track_name = track.get("track", "")
 
@@ -1296,6 +1310,127 @@ class PlexClient(BaseAPIClient):
             return metadata
         except Exception as e:
             self.logger.error(f"Error getting sonically similar for {track_rating_key}: {e}")
+            return []
+
+    def get_artist_rating_key_from_track(self, track_rating_key: str | int) -> str | None:
+        """Get artist ratingKey from a track. Fetches track metadata and returns grandparentRatingKey."""
+        try:
+            results = self._get(f"/library/metadata/{track_rating_key}")
+            media_container = results.get("MediaContainer", {})
+            metadata = media_container.get("Metadata", [])
+            if not metadata:
+                track = media_container.get("Metadata")
+                if isinstance(track, dict):
+                    metadata = [track]
+            if not metadata:
+                return None
+            track_obj = metadata[0] if isinstance(metadata, list) else metadata
+            return str(track_obj.get("grandparentRatingKey", "")) or None
+        except Exception as e:
+            self.logger.error(f"Error getting artist from track {track_rating_key}: {e}")
+            return None
+
+    def get_artist_popular_tracks(
+        self,
+        library_key: str,
+        artist_rating_key: str | int,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Get popular tracks for an artist (Plex Popular Tracks equivalent).
+        Uses ratingCount (Last.fm scrobble data) for ordering. Returns library tracks directly.
+        """
+        try:
+            params = {
+                "type": 10,
+                "artist.id": artist_rating_key,
+                "ratingCount>>": 0,
+                "sort": "ratingCount:desc",
+                "X-Plex-Container-Start": 0,
+                "X-Plex-Container-Size": min(limit, 100),
+            }
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            tracks = media_container.get("Metadata", [])
+            if not isinstance(tracks, list):
+                tracks = [tracks] if tracks else []
+
+            out = []
+            for t in tracks:
+                artist = (t.get("grandparentTitle", "") or "").strip()
+                title = (t.get("title", "") or "").strip()
+                album = (t.get("parentTitle", "") or "").strip()
+                key = t.get("ratingKey")
+                if key and title and artist:
+                    out.append(
+                        {
+                            "key": key,
+                            "title": title,
+                            "artist": artist,
+                            "album": album,
+                        }
+                    )
+            return out
+        except Exception as e:
+            self.logger.error(f"Error getting popular tracks for artist {artist_rating_key}: {e}")
+            return []
+
+    def get_tracks_by_mood(
+        self,
+        library_key: str,
+        mood: str,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """
+        Get tracks tagged with a given mood from a music library.
+        Uses Plex mood filter on /library/sections/{id}/all with type=10 (tracks).
+        """
+        if not mood or not str(mood).strip():
+            return []
+        try:
+            params = {
+                "type": 10,
+                "mood": mood.strip(),
+                "X-Plex-Container-Start": offset,
+                "X-Plex-Container-Size": min(limit, 500),
+            }
+            results = self._get(f"/library/sections/{library_key}/all", params=params)
+            media_container = results.get("MediaContainer", {})
+            tracks = media_container.get("Metadata", [])
+            if not isinstance(tracks, list):
+                tracks = [tracks] if tracks else []
+
+            out = []
+            for t in tracks:
+                artist = (t.get("grandparentTitle", "") or "").strip()
+                title = (t.get("title", "") or "").strip()
+                album = (t.get("parentTitle", "") or "").strip()
+                key = t.get("ratingKey")
+                year = t.get("parentYear") or t.get("year")
+                year_val = None
+                if year is not None:
+                    s = str(year).strip()
+                    if s:
+                        try:
+                            year_val = int(s.split("-")[0]) if "-" in s else int(s)
+                        except ValueError, TypeError:
+                            pass
+                if key and title and artist:
+                    out.append(
+                        {
+                            "key": key,
+                            "title": title,
+                            "artist": artist,
+                            "album": album,
+                            "year": year_val,
+                        }
+                    )
+            return out
+        except Exception as e:
+            self.logger.error(
+                f"Error getting tracks by mood '{mood}' for library {library_key}: {e}"
+            )
             return []
 
     def search_tracks_in_library(self, library_key, query=None, artist_name=None, track_name=None):

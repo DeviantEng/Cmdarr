@@ -162,6 +162,22 @@ class CommandScheduler:
                 due_commands: list[tuple[int, str]] = []  # (id, command_name)
 
                 for command in enabled_commands:
+                    # Skip expired commands (expires_at in config_json)
+                    cfg = command.config_json or {}
+                    exp_str = cfg.get("expires_at")
+                    if exp_str:
+                        try:
+                            s = str(exp_str).strip().replace("Z", "+00:00")
+                            exp_dt = datetime.fromisoformat(s)
+                            if exp_dt.tzinfo:
+                                exp_dt = exp_dt.astimezone(UTC)
+                            else:
+                                exp_dt = exp_dt.replace(tzinfo=UTC)
+                            if now_utc >= exp_dt:
+                                continue  # Skip expired
+                        except ValueError, TypeError:
+                            pass
+
                     cron_expr = get_effective_cron(command)
                     if not cron_expr:
                         continue
