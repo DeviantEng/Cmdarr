@@ -30,8 +30,12 @@ flowchart LR
     end
 
     subgraph release [Release]
-        T3 --> RB[release branch + tag]
-        RB --> PR[PR to main]
+        T3 --> RB[release branch]
+        RB --> MR[merge to develop]
+        MR --> TRIVY[develop build + Trivy]
+        TRIVY --> VALID[validate pass]
+        VALID --> TAG[tag]
+        TAG --> PR[PR to main]
         PR --> GATE[gate checks]
         GATE --> APPROVE[approve if clean]
         APPROVE --> MERGE[merge]
@@ -44,9 +48,14 @@ flowchart LR
 2. Work, test, run `make check`; fix any issues with `make fix` or manual changes
 3. Merge to develop (no PR required for solo development)
 4. Test on develop
-5. When ready to release: create release branch from develop, tag, open PR to main
-6. Gate runs on PR to main; all checks must pass
-7. Approve and merge; CI builds prod image; push main back to develop
+5. When ready to release: create release branch from develop
+6. **Merge release branch into develop first** (not main yet)
+7. Let develop image build and **validate Trivy scan passes**
+8. When develop build is green: create tag, open PR from release to main
+9. Gate runs on PR to main; all checks must pass
+10. Approve and merge; CI builds prod image; push main back to develop
+
+Main should only receive changes that have been validated on develop (including Trivy).
 
 ### Dev-Time Commands
 
