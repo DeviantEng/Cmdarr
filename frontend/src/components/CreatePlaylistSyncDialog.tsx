@@ -153,7 +153,8 @@ export function CreatePlaylistSyncDialog({
 
   const [moodPlaylistForm, setMoodPlaylistForm] = useState({
     moods: [] as string[],
-    playlist_name: "Mood Playlist",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
     max_tracks: 50,
     exclude_last_run: true,
     schedule_cron: "0 6 * * *",
@@ -246,7 +247,8 @@ export function CreatePlaylistSyncDialog({
       });
       setMoodPlaylistForm({
         moods: [],
-        playlist_name: "Mood Playlist",
+        use_custom_playlist_name: false,
+        custom_playlist_name: "",
         max_tracks: 50,
         exclude_last_run: true,
         schedule_cron: "0 6 * * *",
@@ -432,7 +434,8 @@ export function CreatePlaylistSyncDialog({
       } else if (playlistType === "mood_playlist") {
         const payload: Record<string, unknown> = {
           moods: moodPlaylistForm.moods,
-          playlist_name: moodPlaylistForm.playlist_name,
+          use_custom_playlist_name: moodPlaylistForm.use_custom_playlist_name,
+          custom_playlist_name: moodPlaylistForm.custom_playlist_name,
           max_tracks: moodPlaylistForm.max_tracks,
           exclude_last_run: moodPlaylistForm.exclude_last_run,
           schedule_cron: moodPlaylistForm.schedule_override ? moodPlaylistForm.schedule_cron : undefined,
@@ -1533,7 +1536,7 @@ export function CreatePlaylistSyncDialog({
                     {moodsList.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Loading moods...</p>
                     ) : (
-                      <div className="grid grid-cols-2 gap-1">
+                      <div className="grid grid-cols-3 gap-1">
                         {moodsList.map((mood) => (
                           <label key={mood} className="flex items-center space-x-2">
                             <input
@@ -1552,16 +1555,43 @@ export function CreatePlaylistSyncDialog({
                     Tracks matching multiple selected moods rank higher. Uses Plex Sonic Analysis.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Playlist name</Label>
-                  <Input
-                    value={moodPlaylistForm.playlist_name}
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={moodPlaylistForm.use_custom_playlist_name}
                     onChange={(e) =>
-                      setMoodPlaylistForm((prev) => ({ ...prev, playlist_name: e.target.value }))
+                      setMoodPlaylistForm((prev) => ({
+                        ...prev,
+                        use_custom_playlist_name: e.target.checked,
+                      }))
                     }
-                    placeholder="Mood Playlist"
+                    className="rounded border-gray-300"
                   />
-                </div>
+                  <span className="text-sm">Use custom playlist name</span>
+                </label>
+                {moodPlaylistForm.use_custom_playlist_name && (
+                  <div className="space-y-2">
+                    <Label>Custom playlist name</Label>
+                    <Input
+                      value={moodPlaylistForm.custom_playlist_name}
+                      onChange={(e) =>
+                        setMoodPlaylistForm((prev) => ({
+                          ...prev,
+                          custom_playlist_name: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Chill Vibes"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Override auto-generated name. Shown as [Cmdarr] Mood: &lt;name&gt;.
+                    </p>
+                  </div>
+                )}
+                {!moodPlaylistForm.use_custom_playlist_name && (
+                  <p className="text-xs text-muted-foreground">
+                    Playlist name is auto-generated from mood names (e.g. Chill · Relaxed + 2 More).
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label>Max tracks</Label>
                   <Input
@@ -1596,7 +1626,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Exclude tracks from last run (freshness)</span>
+                  <span className="text-sm">Force fresh (exclude tracks from previous run)</span>
                 </label>
                 <div className="space-y-2">
                   <Label>Schedule (cron)</Label>
@@ -1636,6 +1666,11 @@ export function CreatePlaylistSyncDialog({
                   value={moodPlaylistForm.expires_at}
                   onValueChange={(v) =>
                     setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={moodPlaylistForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>

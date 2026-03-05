@@ -158,7 +158,12 @@ async def get_plex_accounts():
 @router.get("/daylist/exists")
 async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a daylist command already exists (for New Command UI grey-out)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("daylist_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
     return {"exists": existing is not None}
 
 
@@ -778,9 +783,12 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
     try:
         from database.config_models import CommandConfig
 
-        # Check if daylist already exists
+        # Check if daylist already exists (exclude soft-deleted)
         existing = (
-            db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).first()
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("daylist_%"))
+            .filter(CommandConfig.deleted_at.is_(None))
+            .first()
         )
         if existing:
             raise HTTPException(
@@ -841,7 +849,12 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
 @router.get("/local-discovery/exists")
 async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a local discovery command already exists (for New Command UI grey-out)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("local_discovery_%")).first()
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("local_discovery_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
     return {"exists": existing is not None}
 
 
@@ -852,7 +865,10 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         from database.config_models import CommandConfig
 
         existing = (
-            db.query(CommandConfig).filter(CommandConfig.command_name.like("local_discovery_%")).first()
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("local_discovery_%"))
+            .filter(CommandConfig.deleted_at.is_(None))
+            .first()
         )
         if existing:
             raise HTTPException(
@@ -927,7 +943,12 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
 @router.get("/top-tracks/exists")
 async def top_tracks_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if any top tracks command exists (for New Command UI)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("top_tracks_%")).first()
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("top_tracks_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
     return {"exists": existing is not None}
 
 
@@ -1060,7 +1081,12 @@ async def mood_playlist_moods():
 @router.get("/mood-playlist/exists")
 async def mood_playlist_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if any mood playlist command exists (for New Command UI)."""
-    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like("mood_playlist_%")).first()
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("mood_playlist_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
     return {"exists": existing is not None}
 
 
@@ -1075,7 +1101,12 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         if not moods:
             raise HTTPException(status_code=400, detail="moods is required (list of mood names)")
 
-        playlist_name = (request.get("playlist_name") or "Mood Playlist").strip()
+        use_custom = bool(request.get("use_custom_playlist_name", False))
+        custom_name = (request.get("custom_playlist_name") or "").strip()
+        from commands.playlist_generator_mood import _build_auto_playlist_suffix
+
+        suffix = custom_name if (use_custom and custom_name) else _build_auto_playlist_suffix(moods)
+        display_name = f"[Cmdarr] Mood: {suffix}"
         max_tracks = int(request.get("max_tracks", 50))
         max_tracks = max(1, min(200, max_tracks))
         exclude_last_run = bool(request.get("exclude_last_run", True))
@@ -1121,7 +1152,8 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
 
         config_json = {
             "moods": moods,
-            "playlist_name": playlist_name,
+            "use_custom_playlist_name": use_custom,
+            "custom_playlist_name": custom_name if use_custom else "",
             "max_tracks": max_tracks,
             "exclude_last_run": exclude_last_run,
             "target_library_key": str(library_key),
@@ -1132,7 +1164,7 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
 
         cmd = CommandConfig(
             command_name=command_name,
-            display_name=f"Mood Playlist: {playlist_name}",
+            display_name=display_name,
             description="Generate playlist from selected Plex moods with freshness (exclude last run, date-seeded sampling).",
             enabled=enabled,
             schedule_cron=schedule_cron if schedule_override else None,

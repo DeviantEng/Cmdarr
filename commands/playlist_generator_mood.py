@@ -14,7 +14,19 @@ from utils.library_cache_manager import get_library_cache_manager
 
 from .command_base import BaseCommand
 
-PLAYLIST_TITLE_PREFIX = "[Cmdarr Mood]"
+PLAYLIST_TITLE_PREFIX = "[Cmdarr] Mood"
+SEP = " · "
+MAX_MOOD_LEN = 40
+
+
+def _build_auto_playlist_suffix(mood_names: list[str]) -> str:
+    """Build suffix from mood names: 1-3 moods show all, 4+ show first 2 + N More."""
+    names = [n.strip()[:MAX_MOOD_LEN] for n in mood_names if (n or "").strip()]
+    if not names:
+        return "Mix"
+    if len(names) <= 3:
+        return SEP.join(names)
+    return f"{names[0]}{SEP}{names[1]} + {len(names) - 2} More"
 
 
 class PlaylistGeneratorMoodCommand(BaseCommand):
@@ -60,6 +72,30 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Could not persist last_run_track_ids: {e}")
 
+    def _persist_after_success(self, playlist_title: str) -> None:
+        """Persist last_playlist_title and update display_name to match playlist."""
+        try:
+            from database.config_models import CommandConfig
+            from database.database import get_database_manager
+
+            cmd_name = self.config_json.get("command_name", "")
+            if not cmd_name or not cmd_name.startswith("mood_playlist_"):
+                return
+            db = get_database_manager()
+            session = db.get_config_session_sync()
+            try:
+                cmd = session.query(CommandConfig).filter(CommandConfig.command_name == cmd_name).first()
+                if cmd:
+                    cfg = dict(cmd.config_json or {})
+                    cfg["last_playlist_title"] = playlist_title
+                    cmd.config_json = cfg
+                    cmd.display_name = playlist_title
+                    session.commit()
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.warning(f"Could not persist after success: {e}")
+
     async def execute(self) -> bool:
         try:
             config = self.config_json or {}
@@ -72,7 +108,16 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 self.logger.error("No moods configured")
                 return False
 
-            playlist_name = config.get("playlist_name", "Mood Playlist")
+            use_custom = config.get("use_custom_playlist_name", False)
+            custom_name = (config.get("custom_playlist_name") or "").strip()
+            # Backward compat: old configs used playlist_name for custom names
+            if not custom_name and config.get("playlist_name") and config.get("playlist_name") != "Mood Playlist":
+                custom_name = (config.get("playlist_name") or "").strip()
+                use_custom = bool(custom_name)
+            if use_custom and custom_name:
+                suffix = custom_name
+            else:
+                suffix = _build_auto_playlist_suffix(moods)
             max_tracks = int(config.get("max_tracks", 50))
             max_tracks = max(1, min(200, max_tracks))
             exclude_last_run = config.get("exclude_last_run", True)
@@ -137,7 +182,10 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                     sampled_deduped.append(t)
 
             # 4. Create playlist
-            playlist_title = f"{PLAYLIST_TITLE_PREFIX} {playlist_name}"
+            playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
+            last_playlist_title = config.get("last_playlist_title")
+            if last_playlist_title and last_playlist_title != playlist_title:
+                self._delete_playlist_by_name(playlist_title)
             summary = f"Moods: {', '.join(moods[:5])}{'...' if len(moods) > 5 else ''}"
 
             result = self.plex_client.sync_playlist(
@@ -150,6 +198,7 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             success = result.get("success", False)
             if success:
                 self._persist_last_run_track_ids([t["rating_key"] for t in sampled_deduped])
+                self._persist_after_success(playlist_title)
                 self.logger.info(
                     f"Created playlist '{playlist_title}': {len(sampled_deduped)} tracks from {len(moods)} moods"
                 )

@@ -241,8 +241,27 @@ class CommandCleanupService:
         elif name.startswith("daylist_"):
             self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist")
         elif name.startswith("mood_playlist_"):
-            pl_name = f"[Cmdarr Mood] {cfg.get('playlist_name', 'Mood Playlist')}"
-            self._delete_playlist_if_exists("plex", pl_name)
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                from commands.playlist_generator_mood import _build_auto_playlist_suffix
+
+                moods_raw = cfg.get("moods", [])
+                if isinstance(moods_raw, str):
+                    moods_raw = [m.strip() for m in moods_raw.split(",") if m.strip()]
+                moods = [m for m in moods_raw if m]
+                use_custom = cfg.get("use_custom_playlist_name", False)
+                custom = (cfg.get("custom_playlist_name") or "").strip()
+                # Backward compat: old configs used playlist_name
+                if not custom and cfg.get("playlist_name") and cfg.get("playlist_name") != "Mood Playlist":
+                    custom = (cfg.get("playlist_name") or "").strip()
+                    use_custom = bool(custom)
+                if use_custom and custom:
+                    pl_title = f"[Cmdarr] Mood: {custom}"
+                elif moods:
+                    pl_title = f"[Cmdarr] Mood: {_build_auto_playlist_suffix(moods)}"
+                else:
+                    pl_title = "[Cmdarr] Mood: Mix"
+            self._delete_playlist_if_exists("plex", pl_title)
         elif name.startswith("local_discovery_"):
             self._delete_playlist_if_exists("plex", "[Cmdarr] Local Discovery")
 

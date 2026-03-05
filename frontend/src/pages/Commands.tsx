@@ -160,7 +160,6 @@ export function CommandsPage() {
     use_custom_playlist_name?: boolean;
     custom_playlist_name?: string;
     moods?: string[];
-    playlist_name?: string;
     exclude_last_run?: boolean;
     lookback_days?: number;
     top_artists_count?: number;
@@ -363,10 +362,12 @@ export function CommandsPage() {
       top_x: typeof cfg.top_x === "number" ? cfg.top_x : 5,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
-      use_custom_playlist_name: Boolean(cfg.use_custom_playlist_name ?? cfg.playlist_name),
-      custom_playlist_name: (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
+      use_custom_playlist_name: Boolean(
+        cfg.use_custom_playlist_name ?? (cfg.playlist_name && (cfg.playlist_name as string) !== "Mood Playlist")
+      ),
+      custom_playlist_name:
+        (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
       moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
-      playlist_name: (cfg.playlist_name as string) ?? "Mood Playlist",
       exclude_last_run: cfg.exclude_last_run !== false,
       lookback_days: typeof cfg.lookback_days === "number" ? cfg.lookback_days : 30,
       top_artists_count: typeof cfg.top_artists_count === "number" ? cfg.top_artists_count : 10,
@@ -1135,33 +1136,6 @@ export function CommandsPage() {
                       </div>
                     )}
 
-                    {/* Expiration - playlist sync, Artist Essentials, daylist, Local Discovery, Mood Playlist */}
-                    {(editingCommand.command_name.startsWith("playlist_sync_") ||
-                      editingCommand.command_name.startsWith("top_tracks_") ||
-                      editingCommand.command_name.startsWith("daylist_") ||
-                      editingCommand.command_name.startsWith("local_discovery_") ||
-                      editingCommand.command_name.startsWith("mood_playlist_")) && (
-                      <ExpirationFields
-                        idPrefix="edit-exp"
-                        enabled={editForm.expires_at_enabled ?? false}
-                        onEnabledChange={(v) =>
-                          setEditForm((f) => ({
-                            ...f,
-                            expires_at_enabled: v,
-                            expires_at: v && !f.expires_at ? "" : f.expires_at,
-                          }))
-                        }
-                        value={editForm.expires_at ?? ""}
-                        onValueChange={(v) =>
-                          setEditForm((f) => ({ ...f, expires_at: v }))
-                        }
-                        showDeletePlaylistOption={true}
-                        deletePlaylistOnExpiry={editForm.expires_at_delete_playlist ?? true}
-                        onDeletePlaylistChange={(v) =>
-                          setEditForm((f) => ({ ...f, expires_at_delete_playlist: v }))
-                        }
-                      />
-                    )}
                     {/* Daylist - editable fields */}
                     {editingCommand.command_name.startsWith("daylist_") && (
                       <>
@@ -1665,7 +1639,7 @@ export function CommandsPage() {
                             {moodsList.length === 0 ? (
                               <p className="text-sm text-muted-foreground">Loading moods...</p>
                             ) : (
-                              <div className="grid grid-cols-2 gap-1">
+                              <div className="grid grid-cols-3 gap-1">
                                 {moodsList.map((mood) => (
                                   <label key={mood} className="flex items-center space-x-2">
                                     <input
@@ -1689,16 +1663,41 @@ export function CommandsPage() {
                             )}
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editForm.use_custom_playlist_name ?? false}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                use_custom_playlist_name: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-input"
+                          />
+                          <span className="text-sm">Use custom playlist name</span>
+                        </label>
+                        {editForm.use_custom_playlist_name && (
                           <div className="space-y-2">
-                            <Label>Playlist name</Label>
+                            <Label>Custom playlist name</Label>
                             <Input
-                              value={editForm.playlist_name ?? "Mood Playlist"}
+                              value={editForm.custom_playlist_name ?? ""}
                               onChange={(e) =>
-                                setEditForm((f) => ({ ...f, playlist_name: e.target.value }))
+                                setEditForm((f) => ({ ...f, custom_playlist_name: e.target.value }))
                               }
+                              placeholder="e.g. Chill Vibes"
                             />
+                            <p className="text-xs text-muted-foreground">
+                              Override auto-generated name. Shown as [Cmdarr] Mood: &lt;name&gt;.
+                            </p>
                           </div>
+                        )}
+                        {!editForm.use_custom_playlist_name && (
+                          <p className="text-xs text-muted-foreground">
+                            Playlist name is auto-generated from mood names (e.g. Chill · Relaxed + 2 More).
+                          </p>
+                        )}
+                        <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Max tracks</Label>
                             <Input
@@ -1739,7 +1738,7 @@ export function CommandsPage() {
                             }
                             className="rounded border-input"
                           />
-                          <span className="text-sm">Exclude tracks from last run (freshness)</span>
+                          <span className="text-sm">Force fresh (exclude tracks from previous run)</span>
                         </label>
                       </>
                     )}
@@ -2107,11 +2106,12 @@ export function CommandsPage() {
                       </div>
                     )}
 
-                    {/* Expiration - playlist sync, top tracks, daylist, local discovery (below schedule) */}
+                    {/* Expiration - playlist sync, top tracks, daylist, local discovery, mood playlist (below schedule) */}
                     {(editingCommand.command_name.startsWith("playlist_sync_") ||
                       editingCommand.command_name.startsWith("top_tracks_") ||
                       editingCommand.command_name.startsWith("daylist_") ||
-                      editingCommand.command_name.startsWith("local_discovery_")) && (
+                      editingCommand.command_name.startsWith("local_discovery_") ||
+                      editingCommand.command_name.startsWith("mood_playlist_")) && (
                       <ExpirationFields
                         idPrefix="edit-exp"
                         enabled={editForm.expires_at_enabled ?? false}
@@ -2420,7 +2420,8 @@ export function CommandsPage() {
                       const cfg: Record<string, unknown> = {
                         ...(editingCommand.config_json || {}),
                         moods: editForm.moods ?? [],
-                        playlist_name: editForm.playlist_name ?? "Mood Playlist",
+                        use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
+                        custom_playlist_name: editForm.custom_playlist_name ?? "",
                         max_tracks: editForm.max_tracks ?? 50,
                         exclude_last_run: editForm.exclude_last_run ?? true,
                       };
