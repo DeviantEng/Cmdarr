@@ -349,14 +349,18 @@ class DaylistCommand(BaseCommand):
         most_common_mood = sorted_moods[0] if sorted_moods else "Vibes"
         second_common_mood = sorted_moods[1] if len(sorted_moods) > 1 else None
 
+        # Use primary (most common) or secondary mood for descriptor (Meloday uses secondary)
+        use_primary = bool((self.config_json or {}).get("use_primary_mood", False))
+        mood_for_descriptor = most_common_mood if use_primary else second_common_mood
+
         descriptor = "Vibrant"
-        if second_common_mood and moodmap:
-            variants = moodmap.get(second_common_mood)
+        if mood_for_descriptor and moodmap:
+            variants = moodmap.get(mood_for_descriptor)
             if variants:
                 descriptor = random.choice(variants)
             else:
                 for key in moodmap:
-                    if key.lower() == second_common_mood.lower():
+                    if key.lower() == mood_for_descriptor.lower():
                         variants = moodmap[key]
                         if variants:
                             descriptor = random.choice(variants)

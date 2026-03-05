@@ -160,6 +160,7 @@ export function CommandsPage() {
     playlist_name?: string;
     expires_at_enabled?: boolean;
     expires_at?: string;
+    use_primary_mood?: boolean;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
@@ -345,6 +346,7 @@ export function CommandsPage() {
       historical_ratio: typeof cfg.historical_ratio === "number" ? cfg.historical_ratio : 0.4,
       timezone: (cfg.timezone as string) || "",
       time_periods: timePeriods,
+      use_primary_mood: !!cfg.use_primary_mood,
       artists:
         Array.isArray(cfg.artists)
           ? (cfg.artists as string[]).join("\n")
@@ -1375,6 +1377,27 @@ export function CommandsPage() {
                                 </p>
                               </div>
                             </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id="edit-use-primary-mood"
+                                checked={editForm.use_primary_mood ?? false}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    use_primary_mood: e.target.checked,
+                                  }))
+                                }
+                                className="rounded border-input"
+                              />
+                              <Label htmlFor="edit-use-primary-mood" className="font-normal">
+                                Use primary mood for cover (default: secondary)
+                              </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground -mt-2">
+                              Cover text uses the second-most-common mood by default (Meloday).
+                              Enable to use the most common mood instead.
+                            </p>
                             <div className="space-y-2">
                               <Label>Timezone (optional)</Label>
                               <Input
@@ -1941,6 +1964,7 @@ export function CommandsPage() {
                         historical_ratio: editForm.historical_ratio ?? 0.4,
                         timezone: editForm.timezone || undefined,
                         time_periods,
+                        use_primary_mood: editForm.use_primary_mood ?? false,
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);

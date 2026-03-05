@@ -810,6 +810,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "historical_ratio": float(request.get("historical_ratio", 0.4)),
             "time_periods": request.get("time_periods"),  # Optional custom periods
             "timezone": (request.get("timezone") or "").strip() or None,
+            "use_primary_mood": bool(request.get("use_primary_mood", False)),
         }
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
