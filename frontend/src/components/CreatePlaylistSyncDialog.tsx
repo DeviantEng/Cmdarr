@@ -115,6 +115,7 @@ export function CreatePlaylistSyncDialog({
     expires_at_enabled: false,
     expires_at: "",
     expires_at_delete_playlist: true,
+    use_primary_mood: false,
   });
 
   const [topTracksForm, setTopTracksForm] = useState({
@@ -179,6 +180,7 @@ export function CreatePlaylistSyncDialog({
         expires_at_enabled: false,
         expires_at: "",
         expires_at_delete_playlist: true,
+        use_primary_mood: false,
       });
       setValidation({
         isValidating: false,
@@ -327,6 +329,7 @@ export function CreatePlaylistSyncDialog({
           historical_ratio: daylistForm.historical_ratio,
           timezone: daylistForm.timezone || undefined,
           time_periods,
+          use_primary_mood: daylistForm.use_primary_mood,
         };
         if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
           daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
@@ -809,6 +812,22 @@ export function CreatePlaylistSyncDialog({
                         </p>
                       </div>
                     </div>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={daylistForm.use_primary_mood}
+                        onChange={(e) =>
+                          setDaylistForm((prev) => ({ ...prev, use_primary_mood: e.target.checked }))
+                        }
+                        className="rounded border-input"
+                      />
+                      <span className="text-sm">Use primary mood for cover (default: secondary)</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground -mt-2">
+                      Cover text uses the second-most-common mood by default (Meloday). Enable to use
+                      the most common mood instead.
+                    </p>
 
                     <div className="space-y-2">
                       <Label>Timezone (optional)</Label>
