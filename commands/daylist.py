@@ -571,8 +571,7 @@ class DaylistCommand(BaseCommand):
                 return False
 
             # Resolve library
-            music_libs = self.plex_client.get_music_libraries()
-            chosen = self.plex_client._resolve_music_library(music_libs)
+            chosen = self.plex_client.get_resolved_library()
             if not chosen:
                 self.logger.error("No music library found")
                 return False

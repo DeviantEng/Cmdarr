@@ -80,15 +80,19 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 self.logger.error("plex_history_account_id is required")
                 return False
 
-            # Prefer resolved library (PLEX_LIBRARY_NAME / Music / first) over stored target_library_key
+            # Always use resolved library (PLEX_LIBRARY_NAME / Music / first) - never use stored
+            # target_library_key, which may point to wrong library (e.g. Audiobooks when Music desired)
             library_key = None
-            if hasattr(self.plex_client, "get_resolved_library_key"):
-                library_key = self.plex_client.get_resolved_library_key()
+            resolved_lib = None
+            if hasattr(self.plex_client, "get_resolved_library"):
+                resolved_lib = self.plex_client.get_resolved_library()
+                library_key = resolved_lib["key"] if resolved_lib else None
             if not library_key:
-                library_key = config.get("target_library_key")
-            if not library_key:
-                self.logger.error("No target library configured")
+                self.logger.error(
+                    "No Plex music library found. Configure PLEX_LIBRARY_NAME or ensure a music library exists."
+                )
                 return False
+            self.logger.info(f"Using library: {resolved_lib.get('title', '?')} (key={library_key})")
 
             lookback_days = int(config.get("lookback_days", 90))
             exclude_played_days = int(config.get("exclude_played_days", 3))

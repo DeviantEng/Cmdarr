@@ -221,6 +221,14 @@ class ConfigService:
                 "category": "plex",
                 "description": "Plex music library name to use (e.g. Music). Empty = auto-select (prefers Music over Audiobooks)",
             },
+            {
+                "key": "PLEX_LIBRARY_KEY",
+                "default_value": "",
+                "data_type": "string",
+                "category": "plex",
+                "description": "Resolved Plex library key (auto-managed, do not set manually)",
+                "is_hidden": True,
+            },
             # Jellyfin Configuration
             {
                 "key": "JELLYFIN_CLIENT_ENABLED",
@@ -271,6 +279,14 @@ class ConfigService:
                 "data_type": "string",
                 "category": "jellyfin",
                 "description": "Jellyfin music library name to use. Empty = use default",
+            },
+            {
+                "key": "JELLYFIN_LIBRARY_KEY",
+                "default_value": "",
+                "data_type": "string",
+                "category": "jellyfin",
+                "description": "Resolved Jellyfin library key (auto-managed, do not set manually)",
+                "is_hidden": True,
             },
             # Spotify Configuration
             {

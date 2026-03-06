@@ -140,14 +140,15 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             max_tracks = max(1, min(200, max_tracks))
             exclude_last_run = config.get("exclude_last_run", True)
 
-            # Prefer resolved library (PLEX_LIBRARY_NAME / Music / first) over stored target_library_key
+            # Always use resolved library (PLEX_LIBRARY_NAME / Music / first) - never stored
+            # target_library_key, which may point to wrong library
             library_key = None
             if hasattr(self.plex_client, "get_resolved_library_key"):
                 library_key = self.plex_client.get_resolved_library_key()
             if not library_key:
-                library_key = config.get("target_library_key")
-            if not library_key:
-                self.logger.error("No target library configured")
+                self.logger.error(
+                    "No Plex music library found. Configure PLEX_LIBRARY_NAME or ensure a music library exists."
+                )
                 return False
 
             # 1. Fetch tracks per mood, union and count mood matches per track

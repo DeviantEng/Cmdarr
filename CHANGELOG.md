@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-03-05
+
+### 📚 Library Selector – Single Source of Truth
+- **Shared Utility**: `utils/library_selector.py` – resolution logic for Plex and Jellyfin; used by all commands
+- **Resolution Order**: `PLEX_LIBRARY_NAME` / `JELLYFIN_LIBRARY_NAME` if set; else prefer "Music"; else first by lowest key (type=artist)
+- **Cached Keys**: `PLEX_LIBRARY_KEY` and `JELLYFIN_LIBRARY_KEY` (hidden, auto-managed) – resolved on startup and when library cache builder runs
+- **Consistent Usage**: Library cache, play history, track/artist search, sonic analysis all use the resolved library
+- **No Fallback to Stale**: Commands no longer use stored `target_library_key` from create; always resolve or use cached key
+
+### 🔧 Refactor
+- **Clients**: Plex and Jellyfin clients delegate to `resolve_plex_library()` / `resolve_jellyfin_library()`; removed duplicated `_resolve_music_library` and `_first_by_lowest_key`
+- **Library Cache Builder**: Uses shared utility; re-resolves and updates cached key on each run
+- **Daylist**: Simplified to `get_resolved_library()` instead of direct `_resolve_music_library` call
+
 ## [0.3.7] - 2026-03-05
 
 ### 🎵 New Playlist Generators

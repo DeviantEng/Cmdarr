@@ -145,27 +145,32 @@ class LibraryCacheManager:
         self, client_type: str, library_key: str = None
     ) -> dict[str, Any] | None:
         """
-        Get library cache data directly from database without requiring client registration
-        Used for status reporting and cache inspection
+        Get library cache data directly from database without triggering a build.
+        Uses resolved library (PLEX_LIBRARY_NAME / Music / first) when client is registered.
 
         Returns:
             Dictionary with cache data or None if not found
         """
         try:
+            cache_key_filter = None
+            if client_type in self.registered_clients:
+                client = self.registered_clients[client_type]
+                resolved_key = library_key
+                if resolved_key is None and hasattr(client, "get_resolved_library_key"):
+                    resolved_key = client.get_resolved_library_key()
+                if resolved_key is not None:
+                    cache_key_filter = client.get_cache_key(resolved_key)
+
             with self.db_manager.get_cache_session_context() as session:
-                # Find the most recent cache entry for this client type
-                cache_entry = (
-                    session.query(LibraryCache)
-                    .filter(
-                        LibraryCache.client_type == client_type,
-                        LibraryCache.expires_at > datetime.utcnow(),
-                    )
-                    .order_by(LibraryCache.created_at.desc())
-                    .first()
+                query = session.query(LibraryCache).filter(
+                    LibraryCache.client_type == client_type,
+                    LibraryCache.expires_at > datetime.utcnow(),
                 )
+                if cache_key_filter:
+                    query = query.filter(LibraryCache.cache_key == cache_key_filter)
+                cache_entry = query.order_by(LibraryCache.created_at.desc()).first()
 
                 if cache_entry:
-                    # Return raw cache data without client processing
                     return cache_entry.cache_data
 
                 return None
