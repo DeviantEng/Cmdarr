@@ -140,9 +140,12 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             max_tracks = max(1, min(200, max_tracks))
             exclude_last_run = config.get("exclude_last_run", True)
 
-            library_key = config.get("target_library_key")
-            if not library_key and hasattr(self.plex_client, "get_resolved_library_key"):
+            # Prefer resolved library (PLEX_LIBRARY_NAME / Music / first) over stored target_library_key
+            library_key = None
+            if hasattr(self.plex_client, "get_resolved_library_key"):
                 library_key = self.plex_client.get_resolved_library_key()
+            if not library_key:
+                library_key = config.get("target_library_key")
             if not library_key:
                 self.logger.error("No target library configured")
                 return False

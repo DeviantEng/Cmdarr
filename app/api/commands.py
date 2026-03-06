@@ -910,18 +910,14 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         from commands.config_adapter import Config
 
         config = Config()
-        library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key:
-            from clients.client_plex import PlexClient
+        from clients.client_plex import PlexClient
 
-            pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
+        pc = PlexClient(config)
+        library_key = pc.get_resolved_library_key()
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY.",
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_NAME or add a music library.",
             )
 
         config_json = {
@@ -1032,28 +1028,21 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
 
         config = Config()
         library_key = None
-        if target == "plex" and hasattr(config, "PLEX_LIBRARY_KEY"):
-            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key and target == "plex":
+        if target == "plex":
             from clients.client_plex import PlexClient
 
             pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
-
-        if target == "jellyfin":
+            library_key = pc.get_resolved_library_key()
+        elif target == "jellyfin":
             from clients.client_jellyfin import JellyfinClient
 
             jc = JellyfinClient(config)
-            libs = jc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("Id") or libs[0].get("key")
+            library_key = jc.get_resolved_library_key()
 
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve target library. Configure PLEX_LIBRARY_KEY or add a music library.",
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_NAME or JELLYFIN_LIBRARY_NAME, or add a music library.",
             )
 
         existing = (
@@ -1171,21 +1160,14 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         from commands.config_adapter import Config
 
         config = Config()
-        library_key = None
-        if hasattr(config, "PLEX_LIBRARY_KEY"):
-            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key:
-            from clients.client_plex import PlexClient
+        from clients.client_plex import PlexClient
 
-            pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
-
+        pc = PlexClient(config)
+        library_key = pc.get_resolved_library_key()
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY or add a music library.",
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_NAME or add a music library.",
             )
 
         existing = (

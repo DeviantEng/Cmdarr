@@ -1294,9 +1294,12 @@ class PlexClient(BaseAPIClient):
         track_rating_key: str | int,
         limit: int = 50,
         max_distance: float = 0.25,
+        library_key: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Get sonically similar tracks for a given track. Used by daylist.
-        Returns list of track metadata dicts with ratingKey, distance, etc."""
+        """Get sonically similar tracks for a given track. Used by daylist, local discovery.
+        Returns list of track metadata dicts with ratingKey, distance, etc.
+        If library_key is provided, filters results to only tracks from that library
+        (avoids mixing Music and Audiobook when multiple music-type libraries exist)."""
         try:
             params = {"limit": limit, "maxDistance": max_distance}
             results = self._get(
@@ -1307,6 +1310,12 @@ class PlexClient(BaseAPIClient):
             metadata = media_container.get("Metadata", [])
             if not isinstance(metadata, list):
                 metadata = [metadata] if metadata else []
+            if library_key:
+                # Filter to only tracks from the target library (avoids mixing Music + Audiobook)
+                lib_key_str = str(library_key)
+                metadata = [
+                    m for m in metadata if str(m.get("librarySectionID", "")) == lib_key_str
+                ]
             return metadata
         except Exception as e:
             self.logger.error(f"Error getting sonically similar for {track_rating_key}: {e}")

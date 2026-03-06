@@ -80,9 +80,12 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 self.logger.error("plex_history_account_id is required")
                 return False
 
-            library_key = config.get("target_library_key")
-            if not library_key and hasattr(self.plex_client, "get_resolved_library_key"):
+            # Prefer resolved library (PLEX_LIBRARY_NAME / Music / first) over stored target_library_key
+            library_key = None
+            if hasattr(self.plex_client, "get_resolved_library_key"):
                 library_key = self.plex_client.get_resolved_library_key()
+            if not library_key:
+                library_key = config.get("target_library_key")
             if not library_key:
                 self.logger.error("No target library configured")
                 return False
@@ -178,7 +181,10 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 if not rk:
                     continue
                 sims = self.plex_client.get_sonically_similar(
-                    str(rk), limit=sonic_limit, max_distance=sonic_distance
+                    str(rk),
+                    limit=sonic_limit,
+                    max_distance=sonic_distance,
+                    library_key=library_key,
                 )
                 for s in sims:
                     sk = str(s.get("ratingKey", ""))

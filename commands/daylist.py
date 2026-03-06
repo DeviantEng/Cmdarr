@@ -298,10 +298,14 @@ class DaylistCommand(BaseCommand):
         candidate_rk: str | int,
         limit: int = 20,
         max_distance: float = 1.0,
+        library_key: str | None = None,
     ) -> int:
         """Score: index in sonically similar list (lower = more similar). 100 if not found."""
         similars = self.plex_client.get_sonically_similar(
-            str(current_rk), limit=limit, max_distance=max_distance
+            str(current_rk),
+            limit=limit,
+            max_distance=max_distance,
+            library_key=library_key,
         )
         for i, s in enumerate(similars):
             if str(s.get("ratingKey")) == str(candidate_rk):
@@ -313,6 +317,7 @@ class DaylistCommand(BaseCommand):
         tracks: list[dict],
         limit: int = 20,
         max_distance: float = 1.0,
+        library_key: str | None = None,
     ) -> list[dict]:
         """Greedy sonic sort: chain tracks by similarity."""
         if len(tracks) < 2:
@@ -327,7 +332,7 @@ class DaylistCommand(BaseCommand):
             next_track = min(
                 remaining,
                 key=lambda c: self._similarity_score(
-                    current_rk, c.get("ratingKey"), limit, max_distance
+                    current_rk, c.get("ratingKey"), limit, max_distance, library_key
                 ),
             )
             sorted_list.append(next_track)
@@ -655,7 +660,10 @@ class DaylistCommand(BaseCommand):
                 if not rk:
                     continue
                 sims = self.plex_client.get_sonically_similar(
-                    str(rk), limit=sonic_limit, max_distance=sonic_similarity_distance
+                    str(rk),
+                    limit=sonic_limit,
+                    max_distance=sonic_similarity_distance,
+                    library_key=library_key,
                 )
                 for s in sims:
                     if str(s.get("ratingKey")) in excluded_keys:
@@ -678,6 +686,7 @@ class DaylistCommand(BaseCommand):
                         str(t.get("ratingKey")),
                         limit=sonic_limit,
                         max_distance=sonic_similarity_distance,
+                        library_key=library_key,
                     )
                     more_sim.extend(sims)
                 candidates = [
@@ -716,7 +725,10 @@ class DaylistCommand(BaseCommand):
 
             if middle:
                 middle = self._sort_by_sonic_similarity(
-                    middle, limit=sonic_similarity_limit, max_distance=sonic_similarity_distance
+                    middle,
+                    limit=sonic_similarity_limit,
+                    max_distance=sonic_similarity_distance,
+                    library_key=library_key,
                 )
             ordered = []
             if first_track:

@@ -155,11 +155,12 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             top_x = max(1, min(20, top_x))
             source = str(config.get("source", "plex")).lower()
             target_client, target_name = self._get_target_client()
-            library_key = config.get("target_library_key")
-
-            if not library_key and hasattr(target_client, "get_resolved_library_key"):
+            # Prefer resolved library (PLEX/JELLYFIN_LIBRARY_NAME / Music / first) over stored target_library_key
+            library_key = None
+            if hasattr(target_client, "get_resolved_library_key"):
                 library_key = target_client.get_resolved_library_key()
-
+            if not library_key:
+                library_key = config.get("target_library_key")
             if not library_key:
                 self.logger.error("No target library configured")
                 return False
