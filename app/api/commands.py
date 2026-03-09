@@ -1703,6 +1703,38 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         raise HTTPException(status_code=500, detail="Failed to delete command")
 
 
+@router.get("/new-releases-sources")
+async def get_new_releases_sources():
+    """Get available New Releases Discovery sources and their configuration status"""
+    try:
+        from commands.config_adapter import Config
+
+        config = Config()
+
+        sources = [
+            {
+                "id": "deezer",
+                "name": "Deezer",
+                "configured": True,
+                "config_help": "No account required—uses public data",
+            },
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
+                "config_help": "Requires credentials in Config → Music Sources",
+            },
+        ]
+
+        return {"sources": sources}
+
+    except Exception as e:
+        get_commands_logger().error(f"Failed to get new releases sources: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to get new releases sources"
+        )
+
+
 @router.get("/playlist-sync/sources")
 async def get_playlist_sync_sources():
     """Get available playlist sync sources and their configuration status"""
@@ -1718,7 +1750,7 @@ async def get_playlist_sync_sources():
                 "requires_url": True,
                 "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
                 "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
-                "config_help": "Add Spotify Client ID and Secret in Settings",
+                "config_help": "For public playlists; optional—scraper used when not configured",
             },
             {
                 "id": "deezer",

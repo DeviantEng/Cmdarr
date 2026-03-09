@@ -342,9 +342,18 @@ class CommandExecutor:
                 command_name, success, duration, command=cmd_obj
             )
 
-            # Update execution record
+            error_message = None
+            if not success and cmd_obj:
+                stats = getattr(cmd_obj, "last_run_stats", None)
+                if stats:
+                    error_message = stats.get("error") or stats.get("message")
+
             await self._update_execution_record(
-                execution_id, success=success, duration=duration, output_summary=output_summary
+                execution_id,
+                success=success,
+                duration=duration,
+                output_summary=output_summary,
+                error_message=error_message,
             )
 
             self.logger.info(
@@ -416,10 +425,12 @@ class CommandExecutor:
         self, command_name: str, success: bool, duration: float, command: Any = None
     ) -> str:
         """Generate a summary from command result (no log parsing)"""
-        if not success:
-            return f"Command failed after {duration:.1f}s"
-
         stats = getattr(command, "last_run_stats", None) if command else None
+        if not success:
+            err = (stats or {}).get("error") or (stats or {}).get("message")
+            if err:
+                return f"Command failed after {duration:.1f}s: {err}"
+            return f"Command failed after {duration:.1f}s"
 
         if command_name == "discovery_lastfm" and stats:
             return self._build_lastfm_summary(stats, duration)

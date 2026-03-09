@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
 Spotify API Client
-Handles authentication and playlist operations for Spotify
+Handles authentication and playlist operations for Spotify.
+Uses API when credentials configured; falls back to SpotifyScraper when not configured or API fails.
 """
 
+import asyncio
 import base64
 import time
 from typing import Any
@@ -13,6 +15,56 @@ import aiohttp
 from utils.playlist_parser import parse_playlist_url
 
 from .client_base import BaseAPIClient
+
+
+def _scraper_get_playlist(url: str) -> dict[str, Any]:
+    """Sync helper: fetch playlist via SpotifyScraper (no auth). Returns normalized dict."""
+    from utils.text_normalizer import normalize_text
+
+    try:
+        from spotify_scraper import SpotifyClient as ScraperClient
+
+        client = ScraperClient(browser_type="requests")
+        try:
+            data = client.get_playlist_info(url)
+            tracks = []
+            for t in data.get("tracks", []):
+                artists = t.get("artists", [])
+                artist_name = (
+                    artists[0].get("name", "Unknown Artist") if artists else "Unknown Artist"
+                )
+                album = t.get("album", {}) or {}
+                album_name = (
+                    album.get("name", "Unknown Album")
+                    if isinstance(album, dict)
+                    else "Unknown Album"
+                )
+                tracks.append(
+                    {
+                        "artist": normalize_text(artist_name),
+                        "track": normalize_text(t.get("name", "Unknown Track")),
+                        "album": normalize_text(album_name),
+                    }
+                )
+            owner = data.get("owner", {}) or {}
+            owner_name = (
+                owner.get("display_name", owner.get("id", "Unknown"))
+                if isinstance(owner, dict)
+                else "Unknown"
+            )
+            return {
+                "success": True,
+                "name": data.get("name", "Unknown Playlist"),
+                "description": data.get("description", ""),
+                "owner": owner_name,
+                "track_count": len(tracks),
+                "tracks": tracks,
+                "total_tracks": len(tracks),
+            }
+        finally:
+            client.close()
+    except Exception as e:
+        return {"success": False, "error": f"Scraper failed: {str(e)}"}
 
 
 class SpotifyClient(BaseAPIClient):
@@ -34,6 +86,15 @@ class SpotifyClient(BaseAPIClient):
 
         if not self.client_id or not self.client_secret:
             self.logger.warning("Spotify credentials not configured")
+
+    def _has_credentials(self) -> bool:
+        """True if Client ID and Secret are configured."""
+        return bool(self.client_id and self.client_secret)
+
+    async def _get_playlist_via_scraper(self, url: str) -> dict[str, Any]:
+        """Run sync scraper in executor."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _scraper_get_playlist, url)
 
     async def _get_access_token(self) -> bool:
         """Get Spotify access token using Client Credentials flow"""
@@ -103,47 +164,77 @@ class SpotifyClient(BaseAPIClient):
 
     async def get_playlist_info(self, url: str) -> dict[str, Any]:
         """
-        Get playlist metadata from Spotify URL
-
-        Args:
-            url: Spotify playlist URL
-
-        Returns:
-            Dict with playlist metadata or error info
+        Get playlist metadata from Spotify URL.
+        Uses API when credentials configured; falls back to scraper when not or on API failure.
         """
         try:
-            # Parse URL to get playlist ID
             parsed = parse_playlist_url(url)
             if not parsed["valid"]:
                 return {"success": False, "error": parsed["error"]}
 
-            playlist_id = parsed["playlist_id"]
+            if not self._has_credentials():
+                scraper_result = await self._get_playlist_via_scraper(url)
+                if scraper_result.get("success"):
+                    return {
+                        "success": True,
+                        "name": scraper_result.get("name", "Unknown Playlist"),
+                        "description": scraper_result.get("description", ""),
+                        "owner": scraper_result.get("owner", "Unknown"),
+                        "track_count": scraper_result.get("track_count", 0),
+                        "playlist_id": parsed["playlist_id"],
+                        "public": True,
+                        "collaborative": False,
+                    }
+                return scraper_result
 
-            # Fetch playlist info from Spotify
-            return await self._get_playlist_info_async(playlist_id)
+            api_result = await self._get_playlist_info_async(parsed["playlist_id"])
+            if api_result.get("success"):
+                return api_result
+            self.logger.info("API failed, falling back to scraper")
+            scraper_result = await self._get_playlist_via_scraper(url)
+            if scraper_result.get("success"):
+                return {
+                    "success": True,
+                    "name": scraper_result.get("name", "Unknown Playlist"),
+                    "description": scraper_result.get("description", ""),
+                    "owner": scraper_result.get("owner", "Unknown"),
+                    "track_count": scraper_result.get("track_count", 0),
+                    "playlist_id": parsed["playlist_id"],
+                    "public": True,
+                    "collaborative": False,
+                }
+            return scraper_result
 
         except Exception as e:
             self.logger.error(f"Error getting playlist info: {e}")
             return {"success": False, "error": "Failed to fetch playlist info"}
 
     async def _get_playlist_info_async(self, playlist_id: str) -> dict[str, Any]:
-        """Async helper to get playlist info"""
+        """Async helper to get playlist info via API."""
         try:
             result = await self._get(f"/playlists/{playlist_id}")
 
             if result:
+                items_or_tracks = result.get("items", result.get("tracks", {}))
+                track_count = (
+                    items_or_tracks.get("total", 0)
+                    if isinstance(items_or_tracks, dict)
+                    else 0
+                )
                 return {
                     "success": True,
                     "name": result.get("name", "Unknown Playlist"),
                     "description": result.get("description", ""),
                     "owner": result.get("owner", {}).get("display_name", "Unknown"),
-                    "track_count": result.get("tracks", {}).get("total", 0),
+                    "track_count": track_count,
                     "playlist_id": playlist_id,
                     "public": result.get("public", False),
                     "collaborative": result.get("collaborative", False),
                 }
-            else:
-                return {"success": False, "error": "Failed to fetch playlist from Spotify"}
+            return {
+                "success": False,
+                "error": "Spotify API request failed (check credentials or Premium status for Development Mode)",
+            }
 
         except Exception as e:
             self.logger.error(f"Error fetching playlist info: {e}")
@@ -151,90 +242,83 @@ class SpotifyClient(BaseAPIClient):
 
     async def get_playlist_tracks(self, url: str) -> dict[str, Any]:
         """
-        Get all tracks from a Spotify playlist
-
-        Args:
-            url: Spotify playlist URL
-
-        Returns:
-            Dict with tracks list or error info
+        Get all tracks from a Spotify playlist.
+        Uses API when credentials configured; falls back to scraper when not or on API failure.
         """
         try:
-            # Parse URL to get playlist ID
             parsed = parse_playlist_url(url)
             if not parsed["valid"]:
                 return {"success": False, "error": parsed["error"]}
 
-            playlist_id = parsed["playlist_id"]
+            if not self._has_credentials():
+                scraper_result = await self._get_playlist_via_scraper(url)
+                return scraper_result
 
-            # Fetch tracks from Spotify using the async method
-            return await self._get_playlist_tracks_async(playlist_id)
+            api_result = await self._get_playlist_tracks_async(parsed["playlist_id"])
+            if api_result.get("success"):
+                return api_result
+            self.logger.info("API failed, falling back to scraper")
+            return await self._get_playlist_via_scraper(url)
 
         except Exception as e:
             self.logger.error(f"Error getting playlist tracks: {e}")
             return {"success": False, "error": f"Failed to fetch playlist tracks: {str(e)}"}
 
     async def _get_playlist_tracks_async(self, playlist_id: str) -> dict[str, Any]:
-        """Async helper to get all playlist tracks with pagination"""
+        """Async helper to get all playlist tracks with pagination. Feb 2026: uses /items."""
         try:
             all_tracks = []
             offset = 0
-            limit = 100  # Spotify's max per request
+            limit = 100
 
             while True:
                 params = {
                     "limit": limit,
                     "offset": offset,
-                    "fields": "items(track(name,artists(name),album(name)))",
+                    "fields": "items(item(name,artists(name),album(name)),track(name,artists(name),album(name)))",
                 }
 
-                result = await self._get(f"/playlists/{playlist_id}/tracks", params=params)
+                result = await self._get(f"/playlists/{playlist_id}/items", params=params)
 
                 if not result:
+                    if offset == 0:
+                        return {
+                            "success": False,
+                            "error": "Spotify API request failed (check credentials or Premium status for Development Mode)",
+                            "tracks": [],
+                            "total_tracks": 0,
+                        }
                     break
 
                 tracks = result.get("items", [])
                 if not tracks:
                     break
 
-                # Process tracks
+                from utils.text_normalizer import normalize_text
+
                 for item in tracks:
-                    track = item.get("track", {})
-                    if track and track.get("name"):  # Skip null tracks
+                    track = item.get("item", item.get("track", {}))
+                    if track and track.get("name"):
                         artists = track.get("artists", [])
                         artist_name = (
                             artists[0].get("name", "Unknown Artist")
                             if artists
                             else "Unknown Artist"
                         )
-
-                        # Extract album name before normalization
                         raw_album_name = track.get("album", {}).get("name", "Unknown Album")
-
-                        # Normalize text for consistent matching
-                        from utils.text_normalizer import normalize_text
-
-                        artist_name = normalize_text(artist_name)
-                        track_name = normalize_text(track.get("name", "Unknown Track"))
-                        album_name = normalize_text(raw_album_name)
-
-                        # Debug log album extraction
-                        self.logger.debug(
-                            f"🎵 SPOTIFY EXTRACT: '{track_name}' by '{artist_name}' from album '{album_name}' (raw: '{raw_album_name}')"
-                        )
-
                         all_tracks.append(
-                            {"artist": artist_name, "track": track_name, "album": album_name}
+                            {
+                                "artist": normalize_text(artist_name),
+                                "track": normalize_text(track.get("name", "Unknown Track")),
+                                "album": normalize_text(raw_album_name),
+                            }
                         )
 
-                # Check if we got less than requested (end of results)
                 if len(tracks) < limit:
                     break
 
                 offset += limit
-
-                # Safety check to prevent infinite loops
-                if offset > 10000:  # Spotify playlist limit
+                if offset > 10000:
                     self.logger.warning("Reached safety limit for playlist tracks")
                     break
 
@@ -290,34 +374,49 @@ class SpotifyClient(BaseAPIClient):
     async def search_artists(self, name: str, limit: int = 5) -> dict[str, Any]:
         """
         Search for artists by name on Spotify.
-
-        Args:
-            name: Artist name to search for
-            limit: Maximum number of results (default 5, max 50)
-
-        Returns:
-            Dict with success, artists list (id, name, uri) or error info
+        Feb 2026: search limit max 10 per request; paginate if more needed.
         """
         try:
-            params = {"q": f'artist:"{name}"', "type": "artist", "limit": min(limit, 50)}
-            result = await self._get("/search", params=params)
+            page_limit = min(limit, 10)
+            all_artists = []
+            offset = 0
 
-            if not result:
-                return {"success": False, "error": "No response from Spotify", "artists": []}
+            while len(all_artists) < limit:
+                params = {
+                    "q": f'artist:"{name}"',
+                    "type": "artist",
+                    "limit": page_limit,
+                    "offset": offset,
+                }
+                result = await self._get("/search", params=params)
 
-            artists_data = result.get("artists", {}).get("items", [])
-            artists = []
-            for artist in artists_data:
-                artists.append(
-                    {
-                        "id": artist.get("id"),
-                        "name": artist.get("name"),
-                        "uri": artist.get("uri"),
-                        "external_url": artist.get("external_urls", {}).get("spotify"),
-                    }
-                )
+                if not result:
+                    if offset == 0:
+                        return {
+                            "success": False,
+                            "error": "No response from Spotify",
+                            "artists": [],
+                        }
+                    break
 
-            return {"success": True, "artists": artists}
+                artists_data = result.get("artists", {}).get("items", [])
+                for artist in artists_data:
+                    all_artists.append(
+                        {
+                            "id": artist.get("id"),
+                            "name": artist.get("name"),
+                            "uri": artist.get("uri"),
+                            "external_url": artist.get("external_urls", {}).get("spotify"),
+                        }
+                    )
+
+                if len(artists_data) < page_limit:
+                    break
+                offset += page_limit
+                if offset >= 50:
+                    break
+
+            return {"success": True, "artists": all_artists[:limit]}
 
         except Exception as e:
             self.logger.error(f"Error searching for artist '{name}': {e}")
@@ -401,33 +500,34 @@ class SpotifyClient(BaseAPIClient):
             return {"success": False, "error": str(e), "albums": []}
 
     async def test_connection(self) -> bool:
-        """Test connection to Spotify API"""
+        """Test connection: API when credentials configured, scraper when not."""
         try:
-            self.logger.info("Testing connection to Spotify API...")
-
-            # Try to get access token
-            if not await self._ensure_valid_token():
-                self.logger.error("Failed to obtain Spotify access token")
-                return False
-
-            # Test with a public endpoint that works with Client Credentials
-            # Using a well-known track ID to test API access
-            result = await self._get(
-                "/tracks/4iV5W9uYEdYUVa79Axb7Rh"
-            )  # "Never Gonna Give You Up" by Rick Astley
-
-            if result:
-                self.logger.info("Successfully connected to Spotify API")
-                return True
-            else:
+            if self._has_credentials():
+                self.logger.info("Testing connection to Spotify API...")
+                if not await self._ensure_valid_token():
+                    self.logger.error("Failed to obtain Spotify access token")
+                    return False
+                result = await self._get("/tracks/4iV5W9uYEdYUVa79Axb7Rh")
+                if result:
+                    self.logger.info("Successfully connected to Spotify API")
+                    return True
                 self.logger.error("Spotify API test failed - no valid response")
                 return False
+
+            self.logger.info("Testing Spotify scraper (no credentials)...")
+            scraper_result = await self._get_playlist_via_scraper(
+                "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+            )
+            if scraper_result.get("success"):
+                self.logger.info("Spotify scraper test passed")
+                return True
+            self.logger.error(f"Spotify scraper test failed: {scraper_result.get('error')}")
+            return False
 
         except Exception as e:
             self.logger.error(f"Failed to connect to Spotify: {e}")
             return False
         finally:
-            # Ensure session is closed
             if self.session:
                 await self.session.close()
                 self.session = None
