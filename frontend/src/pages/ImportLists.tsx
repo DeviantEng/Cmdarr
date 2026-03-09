@@ -236,8 +236,8 @@ export function ImportListsPage() {
             </div>
             <p className="text-muted-foreground mb-4">
               Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when
-              tracks fail to match in your library. Requires &quot;Enable artist discovery&quot; to
-              be checked in the playlist sync command settings (Commands → Edit).
+              tracks fail to match in your library. Requires &quot;Add new artists&quot; to be
+              checked in the playlist sync command settings (Commands → Edit).
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Endpoint URL</label>

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8-dev] - Unreleased
+
+### 🎵 Artist Discovery Guardrail
+- **Max per run**: Per-command limit (default 2) for how many new artists are added to the Playlist Sync Discovery import list per sync run; configurable in create/edit when "Add new artists" is enabled
+- **First run**: No artists added on first run—only reports count in execution history; subsequent runs add per limit
+- **Always report**: Discovery runs on every successful sync; execution history shows "X new artists detected" regardless of whether adding is enabled
+- **UI rename**: Checkbox renamed from "Enable artist discovery" to "Add new artists" with clearer description—discovery always runs to report counts; checkbox controls whether to add to import list
+
 ## [0.3.8] - 2026-03-05
 
 ### 📚 Library Selector – Single Source of Truth

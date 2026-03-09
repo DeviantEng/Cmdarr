@@ -143,12 +143,10 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
             if success:
                 await self._cleanup_old_playlists()
 
-            # Universal artist discovery (if enabled)
-            if self.config_json.get("enable_artist_discovery", False):
-                self.logger.info("Artist discovery is enabled, proceeding with discovery...")
-                await self._discover_missing_artists(sync_results)
-            else:
-                self.logger.info("Artist discovery is disabled, skipping discovery...")
+            # Artist discovery: always run to count new artists; conditionally add to import list
+            artist_discovery_stats = await self._discover_missing_artists(sync_results)
+            if artist_discovery_stats is not None:
+                self.last_run_stats["artist_discovery"] = artist_discovery_stats
 
             # Determine overall success
             if success:
@@ -1112,7 +1110,12 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
 
             if not unmatched_artists:
                 self.logger.info("No unmatched artists found for discovery")
-                return
+                return {
+                    "artists_discovered": 0,
+                    "artists_added": 0,
+                    "artists_failed": 0,
+                    "artists_deferred": 0,
+                }
 
             # Use existing discovery utilities for MBID lookup and filtering
             from clients.client_lidarr import LidarrClient
@@ -1128,7 +1131,12 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 self.logger.error(
                     "MusicBrainz is disabled - cannot discover artists without MBID lookup"
                 )
-                return
+                return {
+                    "artists_discovered": 0,
+                    "artists_added": 0,
+                    "artists_failed": 0,
+                    "artists_deferred": 0,
+                }
 
             try:
                 discovery_utils = DiscoveryUtils(self.config, lidarr_client, musicbrainz_client)
@@ -1158,26 +1166,54 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                     f"listenbrainz_playlist_sync_{self.config_json.get('unique_id', 'unknown')}",
                 )
 
+                artists_discovered = len(discovered_artists) if discovered_artists else 0
                 self.logger.info(
-                    f"MusicBrainz processing returned {len(discovered_artists) if discovered_artists else 0} discovered artists"
+                    f"MusicBrainz processing returned {artists_discovered} discovered artists"
                 )
 
-                if discovered_artists:
-                    # Save to unified discovery file
-                    await self._save_discovered_artists(discovered_artists)
+                is_first_run = self.config_json.get("is_first_run", False)
+                enable_artist_discovery = self.config_json.get("enable_artist_discovery", False)
+                to_save = []
+                artists_deferred = 0
+
+                if discovered_artists and not is_first_run and enable_artist_discovery:
+                    limit = self.config_json.get("artist_discovery_max_per_run", 2)
+                    if limit == 0:
+                        to_save = discovered_artists
+                    else:
+                        to_save = discovered_artists[:limit]
+                        artists_deferred = len(discovered_artists) - len(to_save)
+                        if artists_deferred > 0:
+                            self.logger.info(
+                                f"Limiting to {limit} new artists per run; {artists_deferred} deferred to next run"
+                            )
+
+                if to_save:
+                    await self._save_discovered_artists(to_save)
+                    self.logger.info(f"Saved {len(to_save)} new artists to Lidarr import list")
+                elif is_first_run and artists_discovered > 0:
                     self.logger.info(
-                        f"Discovered {len(discovered_artists)} new artists for Lidarr import"
+                        f"Artist discovery (first run): {artists_discovered} detected, none added"
                     )
-                else:
-                    self.logger.info(
-                        "No new artists discovered (all were already in Lidarr or excluded)"
-                    )
+                return {
+                    "artists_discovered": artists_discovered,
+                    "artists_added": len(to_save),
+                    "artists_failed": 0,
+                    "artists_deferred": artists_deferred,
+                    "first_run_preview": is_first_run and artists_discovered > 0,
+                }
             finally:
                 if musicbrainz_client and hasattr(musicbrainz_client, "close"):
                     await musicbrainz_client.close()
 
         except Exception as e:
             self.logger.error(f"Error during artist discovery: {e}", exc_info=True)
+            return {
+                "artists_discovered": 0,
+                "artists_added": 0,
+                "artists_failed": 0,
+                "artists_deferred": 0,
+            }
 
     async def _save_discovered_artists(self, discovered_artists: list[dict[str, Any]]):
         """Save discovered artists to playlist sync discovery file"""

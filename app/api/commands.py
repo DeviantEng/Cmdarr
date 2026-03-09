@@ -1392,6 +1392,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
 
         # Create command config
         try:
+            enable_artist_discovery = request.get("enable_artist_discovery", False)
             config_json = {
                 "source": source,
                 "unique_id": f"{next_id:05d}",
@@ -1399,7 +1400,10 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 "playlist_name": playlist_name,
                 "target": target,
                 "sync_mode": sync_mode,
-                "enable_artist_discovery": request.get("enable_artist_discovery", False),
+                "enable_artist_discovery": enable_artist_discovery,
+                "artist_discovery_max_per_run": request.get("artist_discovery_max_per_run", 2)
+                if enable_artist_discovery
+                else 0,
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
@@ -1563,6 +1567,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
 
         # Create command config
         try:
+            enable_artist_discovery = request.get("enable_artist_discovery", False)
             config_json = {
                 "source": "listenbrainz",
                 "unique_id": f"{next_id:05d}",
@@ -1573,7 +1578,10 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 "weekly_jams_keep": weekly_jams_keep,
                 "daily_jams_keep": daily_jams_keep,
                 "cleanup_enabled": cleanup_enabled,
-                "enable_artist_discovery": request.get("enable_artist_discovery", False),
+                "enable_artist_discovery": enable_artist_discovery,
+                "artist_discovery_max_per_run": request.get("artist_discovery_max_per_run", 2)
+                if enable_artist_discovery
+                else 0,
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")

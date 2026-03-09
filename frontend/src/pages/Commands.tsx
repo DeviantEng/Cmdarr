@@ -139,6 +139,7 @@ export function CommandsPage() {
     limit?: number;
     min_match_score?: number;
     enable_artist_discovery?: boolean;
+    artist_discovery_max_per_run?: number;
     schedule_minute?: number;
     plex_history_account_id?: string;
     exclude_played_days?: number;
@@ -350,6 +351,8 @@ export function CommandsPage() {
       limit: typeof cfg.limit === "number" ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === "number" ? cfg.min_match_score : 0.9,
       enable_artist_discovery: !!cfg.enable_artist_discovery,
+      artist_discovery_max_per_run:
+        typeof cfg.artist_discovery_max_per_run === "number" ? cfg.artist_discovery_max_per_run : 2,
       schedule_minute: typeof cfg.schedule_minute === "number" ? cfg.schedule_minute : 0,
       plex_history_account_id: (cfg.plex_history_account_id ?? "") as string,
       exclude_played_days:
@@ -1161,13 +1164,40 @@ export function CommandsPage() {
                             htmlFor="edit-enable-artist-discovery"
                             className="cursor-pointer font-normal"
                           >
-                            Enable artist discovery
+                            Add new artists
                           </Label>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          When tracks fail to match in your library, discover and add artists from
-                          those tracks.
+                          Artists discovered missing from Lidarr are added to the Playlist Sync
+                          Discovery import list. Discovery always runs to report counts; this
+                          controls whether to add.
                         </p>
+                        {editForm.enable_artist_discovery && (
+                          <div className="space-y-2 rounded-lg border p-4">
+                            <Label htmlFor="edit-artist-discovery-max">
+                              Max artists to add per run
+                            </Label>
+                            <Input
+                              id="edit-artist-discovery-max"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="2"
+                              value={editForm.artist_discovery_max_per_run ?? 2}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setEditForm((f) => ({
+                                  ...f,
+                                  artist_discovery_max_per_run: isNaN(v)
+                                    ? (f.artist_discovery_max_per_run ?? 2)
+                                    : v,
+                                }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              0 = no limit. First run adds none—only reports count.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2380,6 +2410,9 @@ export function CommandsPage() {
                       const cfg: Record<string, unknown> = {
                         ...(editingCommand.config_json || {}),
                         enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                        artist_discovery_max_per_run:
+                          editForm.artist_discovery_max_per_run ??
+                          (editForm.enable_artist_discovery ? 2 : 0),
                       };
                       if ((editingCommand.config_json?.source as string) === "listenbrainz") {
                         cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 2;
