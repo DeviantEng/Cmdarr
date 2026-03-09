@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.8-dev] - TBD
 
+### 🧪 Unit Tests & CI
+- **Unit Tests**: pytest-based tests in `tests/`; start with `parse_playlist_url` (Spotify, Deezer, invalid URLs)
+- **CI Gate**: `docker-publish` workflow runs unit tests before Docker build; build fails if tests fail
+- **Dev Dependencies**: `requirements-dev.txt` adds pytest and pytest-asyncio
+
+### 🎵 Spotify Scraper Fallback
+- **Credential-Based Logic**: Use API when credentials configured; fall back to SpotifyScraper when not configured or API fails (e.g. 403 Premium required)
+- **Public Playlists Only**: Scraper and API both support public playlists; no OAuth/private playlist support
+- **Feb 2026 API Migration**: Playlist `/items` endpoint, search limit 10, field renames for Development Mode compatibility
+- **Execution Failure Fix**: API errors (403, etc.) now correctly mark execution as failed with error message in UI
+- **NRD**: Grey out Spotify source when credentials not configured; `new-releases-sources` endpoint for UI
+
 ### 📚 Library Selector – Single Source of Truth
 - **Shared Utility**: `utils/library_selector.py` – resolution logic for Plex and Jellyfin; used by all commands
 - **Resolution Order**: `PLEX_LIBRARY_NAME` / `JELLYFIN_LIBRARY_NAME` if set; else prefer "Music"; else first by lowest key (type=artist)
