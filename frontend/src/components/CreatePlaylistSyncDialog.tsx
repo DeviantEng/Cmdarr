@@ -222,6 +222,7 @@ export function CreatePlaylistSyncDialog({
         daily_jams_keep: 3,
         cleanup_enabled: true,
         enable_artist_discovery: false,
+        artist_discovery_max_per_run: 2,
         schedule_cron: "0 6 * * *",
         schedule_override: false,
         expires_at_enabled: false,
