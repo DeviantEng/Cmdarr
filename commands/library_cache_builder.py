@@ -11,7 +11,9 @@ from typing import Any
 
 from clients.client_jellyfin import JellyfinClient
 from clients.client_plex import PlexClient
+from services.config_service import config_service
 from utils.library_cache_manager import get_library_cache_manager
+from utils.library_selector import resolve_plex_library
 
 from .command_base import BaseCommand
 
@@ -264,7 +266,16 @@ class LibraryCacheBuilderCommand(BaseCommand):
             if force_rebuild or not existing_cache:
                 # Full rebuild - use existing method
                 self.logger.info(f"Performing full cache rebuild for {target}")
-                return client.build_library_cache()
+                cache_data = client.build_library_cache()
+                if cache_data and target == "plex":
+                    lib_key = cache_data.get("library_key")
+                    if lib_key:
+                        config_service.set("PLEX_LIBRARY_KEY", str(lib_key))
+                elif cache_data and target == "jellyfin":
+                    lib_key = cache_data.get("library_key")
+                    if lib_key:
+                        config_service.set("JELLYFIN_LIBRARY_KEY", str(lib_key))
+                return cache_data
 
             # Smart incremental rebuild
             self.logger.info(
@@ -288,8 +299,9 @@ class LibraryCacheBuilderCommand(BaseCommand):
 
             if target == "plex":
                 # Use resolved library (same as full build - respects PLEX_LIBRARY_NAME)
-                music_libraries = client.get_music_libraries()
-                chosen = client._resolve_music_library(music_libraries)
+                chosen = resolve_plex_library(client)
+                if chosen:
+                    config_service.set("PLEX_LIBRARY_KEY", str(chosen.get("key", "")))
                 libraries = [chosen] if chosen else []
 
                 for library in libraries:

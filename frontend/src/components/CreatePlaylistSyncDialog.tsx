@@ -97,6 +97,7 @@ export function CreatePlaylistSyncDialog({
     daily_jams_keep: 3,
     cleanup_enabled: true,
     enable_artist_discovery: false,
+    artist_discovery_max_per_run: 2,
     schedule_cron: "0 6 * * *",
     schedule_override: false,
     expires_at_enabled: false,
@@ -221,6 +222,7 @@ export function CreatePlaylistSyncDialog({
         daily_jams_keep: 3,
         cleanup_enabled: true,
         enable_artist_discovery: false,
+        artist_discovery_max_per_run: 2,
         schedule_cron: "0 6 * * *",
         schedule_override: false,
         expires_at_enabled: false,
@@ -1984,13 +1986,45 @@ export function CreatePlaylistSyncDialog({
                         htmlFor="create-enable-artist-discovery"
                         className="cursor-pointer font-normal"
                       >
-                        Enable artist discovery
+                        Add new artists
                       </Label>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      When tracks fail to match in your library, discover and add artists from those
-                      tracks.
+                      Artists discovered missing from Lidarr are added to the Playlist Sync
+                      Discovery import list. Discovery always runs to report counts; this controls
+                      whether to add.
                     </p>
+                    {formData.enable_artist_discovery && (
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Label htmlFor="create-artist-discovery-max">
+                          Max artists to add per run
+                        </Label>
+                        <Input
+                          id="create-artist-discovery-max"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="2"
+                          value={
+                            formData.artist_discovery_max_per_run ??
+                            (formData.enable_artist_discovery ? 2 : 0)
+                          }
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            setFormData((prev) => ({
+                              ...prev,
+                              artist_discovery_max_per_run: isNaN(v)
+                                ? (prev.artist_discovery_max_per_run ?? 2)
+                                : v,
+                            }));
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          0 = no limit. Limits how many new artists are added per sync run;
+                          remaining artists are added on subsequent runs. First run adds none—only
+                          reports count.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <ExpirationFields

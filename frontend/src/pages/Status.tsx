@@ -205,10 +205,7 @@ export function StatusPage() {
               <p className="text-xs text-muted-foreground">
                 {status.version}
                 {status.runtime_mode && (
-                  <> · {status.runtime_mode === "docker" ? "Docker" : "Standalone"}</>
-                )}
-                {status.runtime_mode === "docker" && status.docker_image_tag && (
-                  <> · :{status.docker_image_tag}</>
+                  <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
                 )}
               </p>
             </CardContent>

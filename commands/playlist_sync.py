@@ -117,6 +117,7 @@ class PlaylistSyncCommand(BaseCommand):
             if not tracks_result.get("success"):
                 error_msg = tracks_result.get("error", "Unknown error")
                 self.logger.error(f"Failed to fetch tracks: {error_msg}")
+                self.last_run_stats = {"success": False, "error": error_msg}
                 return False
 
             tracks = tracks_result.get("tracks", [])
@@ -174,41 +175,27 @@ class PlaylistSyncCommand(BaseCommand):
             if success:
                 self.logger.info(f"Successfully synced playlist '{playlist_title}'")
 
-                # Artist discovery (if enabled)
-                artist_discovery_stats = None
-                self.logger.info("Checking if artist discovery is enabled...")
-                if config.get("enable_artist_discovery", False):
-                    self.logger.info("Artist discovery is enabled, proceeding...")
-                    # Extract unmatched tracks from sync result
-                    unmatched_tracks = sync_stats.get("unmatched_tracks", [])
-                    self.logger.info(f"Sync stats: {sync_stats}")
-                    self.logger.info(f"Unmatched tracks from sync: {unmatched_tracks}")
-                    if unmatched_tracks:
-                        self.logger.info(
-                            f"Found {len(unmatched_tracks)} unmatched tracks for artist discovery"
-                        )
-                        # Convert unmatched track strings back to track objects for artist discovery
-                        unmatched_track_objects = []
-                        for track_string in unmatched_tracks:
-                            if " - " in track_string:
-                                artist, track_name = track_string.split(" - ", 1)
-                                unmatched_track_objects.append(
-                                    {"artist": artist.strip(), "track": track_name.strip()}
-                                )
-                        artist_discovery_stats = await self._discover_and_add_artists(
-                            unmatched_track_objects, cached_data
-                        )
-                    else:
-                        self.logger.info("No unmatched tracks found - skipping artist discovery")
-                        artist_discovery_stats = {
-                            "total_artists": 0,
-                            "artists_added": 0,
-                            "artists_skipped": 0,
-                            "artists_failed": 0,
-                            "added_artists": [],
-                            "skipped_artists": [],
-                            "failed_artists": [],
-                        }
+                # Artist discovery: always run to count new artists; conditionally add to import list
+                unmatched_tracks = sync_stats.get("unmatched_tracks", [])
+                if unmatched_tracks:
+                    unmatched_track_objects = []
+                    for track_string in unmatched_tracks:
+                        if " - " in track_string:
+                            artist, track_name = track_string.split(" - ", 1)
+                            unmatched_track_objects.append(
+                                {"artist": artist.strip(), "track": track_name.strip()}
+                            )
+                    artist_discovery_stats = await self._discover_and_add_artists(
+                        unmatched_track_objects, cached_data
+                    )
+                else:
+                    artist_discovery_stats = {
+                        "artists_discovered": 0,
+                        "artists_added": 0,
+                        "artists_skipped": 0,
+                        "artists_failed": 0,
+                        "artists_deferred": 0,
+                    }
 
                 # Get sync statistics from target client
                 # sync_stats already contains the result from sync operation
@@ -261,10 +248,12 @@ class PlaylistSyncCommand(BaseCommand):
             if not unique_artists:
                 self.logger.info("No artists found in tracks for discovery")
                 return {
+                    "artists_discovered": 0,
                     "total_artists": 0,
                     "artists_added": 0,
                     "artists_skipped": 0,
                     "artists_failed": 0,
+                    "artists_deferred": 0,
                     "added_artists": [],
                     "skipped_artists": [],
                     "failed_artists": [],
@@ -287,10 +276,12 @@ class PlaylistSyncCommand(BaseCommand):
                     "MusicBrainz is disabled - cannot discover artists without MBID lookup"
                 )
                 return {
+                    "artists_discovered": 0,
                     "total_artists": len(unique_artists),
                     "artists_added": 0,
                     "artists_skipped": len(unique_artists),
                     "artists_failed": 0,
+                    "artists_deferred": 0,
                     "added_artists": [],
                     "skipped_artists": list(unique_artists),
                     "failed_artists": [],
@@ -375,22 +366,48 @@ class PlaylistSyncCommand(BaseCommand):
                         self.logger.warning(f"Error processing artist {artist_name}: {e}")
                         continue
 
-                # Save discovered artists to import list
-                if new_discoveries:
-                    await self._save_discovered_artists(new_discoveries)
+                artists_discovered = len(new_discoveries)
+                to_save = []
+                artists_deferred = 0
+                is_first_run = self.config_json.get("is_first_run", False)
+                enable_artist_discovery = self.config_json.get("enable_artist_discovery", False)
+
+                if new_discoveries and not is_first_run and enable_artist_discovery:
+                    limit = self.config_json.get("artist_discovery_max_per_run", 2)
+                    if limit == 0:
+                        to_save = new_discoveries
+                    else:
+                        to_save = new_discoveries[:limit]
+                        artists_deferred = len(new_discoveries) - len(to_save)
+                        if artists_deferred > 0:
+                            self.logger.info(
+                                f"Limiting to {limit} new artists per run; {artists_deferred} deferred to next run"
+                            )
+
+                if to_save:
+                    await self._save_discovered_artists(to_save)
 
                 # Log summary
-                self.logger.info(
-                    f"Artist discovery completed: {artists_added} added to import list, {artists_skipped} skipped, {artists_failed} failed"
-                )
+                if is_first_run:
+                    self.logger.info(
+                        f"Artist discovery (first run): {artists_discovered} detected, none added"
+                    )
+                else:
+                    self.logger.info(
+                        f"Artist discovery completed: {len(to_save)} added to import list, "
+                        f"{artists_skipped} skipped, {artists_failed} failed"
+                    )
 
                 # Return detailed statistics
                 return {
+                    "artists_discovered": artists_discovered,
                     "total_artists": len(unique_artists),
-                    "artists_added": artists_added,
+                    "artists_added": len(to_save),
                     "artists_skipped": artists_skipped,
                     "artists_failed": artists_failed,
-                    "added_artists": added_artists,
+                    "artists_deferred": artists_deferred,
+                    "first_run_preview": is_first_run and artists_discovered > 0,
+                    "added_artists": added_artists[: len(to_save)] if to_save else [],
                     "skipped_artists": skipped_artists,
                     "failed_artists": failed_artists,
                 }
@@ -401,10 +418,12 @@ class PlaylistSyncCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error during artist discovery: {e}")
             return {
+                "artists_discovered": 0,
                 "total_artists": len(unique_artists) if "unique_artists" in locals() else 0,
                 "artists_added": 0,
                 "artists_skipped": 0,
                 "artists_failed": 0,
+                "artists_deferred": 0,
                 "added_artists": [],
                 "skipped_artists": [],
                 "failed_artists": [],

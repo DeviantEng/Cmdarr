@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-03-09
+
+### 🧪 Unit Tests & CI
+- **Unit Tests**: pytest-based tests in `tests/`; start with `parse_playlist_url` (Spotify, Deezer, invalid URLs)
+- **CI Gate**: `docker-publish` workflow runs unit tests before Docker build; build fails if tests fail
+- **Dev Dependencies**: `requirements-dev.txt` adds pytest and pytest-asyncio
+
+### 🎵 Spotify Scraper Fallback
+- **Credential-Based Logic**: Use API when credentials configured; fall back to SpotifyScraper when not configured or API fails (e.g. 403 Premium required)
+- **Public Playlists Only**: Scraper and API both support public playlists; no OAuth/private playlist support
+- **Feb 2026 API Migration**: Playlist `/items` endpoint, search limit 10, field renames for Development Mode compatibility
+- **Execution Failure Fix**: API errors (403, etc.) now correctly mark execution as failed with error message in UI
+- **NRD**: Grey out Spotify source when credentials not configured; `new-releases-sources` endpoint for UI
+- **NRD Save Validation**: When saving with Spotify source, test API connectivity; reject save if 403 Premium required (prompts use Deezer instead)
+- **Test Connectivity**: Spotify "Not configured" shows as warning (orange) instead of error (red)
+
+### 📚 Library Selector – Single Source of Truth
+- **Shared Utility**: `utils/library_selector.py` – resolution logic for Plex and Jellyfin; used by all commands
+- **Resolution Order**: `PLEX_LIBRARY_NAME` / `JELLYFIN_LIBRARY_NAME` if set; else prefer "Music"; else first by lowest key (type=artist)
+- **Cached Keys**: `PLEX_LIBRARY_KEY` and `JELLYFIN_LIBRARY_KEY` (hidden, auto-managed) – resolved on startup and when library cache builder runs
+- **Consistent Usage**: Library cache, play history, track/artist search, sonic analysis all use the resolved library
+- **No Fallback to Stale**: Commands no longer use stored `target_library_key` from create; always resolve or use cached key
+
+### 🔧 Refactor
+- **Clients**: Plex and Jellyfin clients delegate to `resolve_plex_library()` / `resolve_jellyfin_library()`; removed duplicated `_resolve_music_library` and `_first_by_lowest_key`
+- **Library Cache Builder**: Uses shared utility; re-resolves and updates cached key on each run
+- **Daylist**: Simplified to `get_resolved_library()` instead of direct `_resolve_music_library` call
+
+### 🎵 Artist Discovery Guardrail
+- **Max per run**: Per-command limit (default 2) for how many new artists are added to the Playlist Sync Discovery import list per sync run; configurable in create/edit when "Add new artists" is enabled
+- **First run**: No artists added on first run—only reports count in execution history; subsequent runs add per limit
+- **Always report**: Discovery runs on every successful sync; execution history shows "X new artists detected" regardless of whether adding is enabled
+- **UI rename**: Checkbox renamed from "Enable artist discovery" to "Add new artists" with clearer description—discovery always runs to report counts; checkbox controls whether to add to import list
+
 ## [0.3.7] - 2026-03-05
 
 ### 🎵 New Playlist Generators

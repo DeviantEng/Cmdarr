@@ -317,10 +317,11 @@ async def update_command(
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
-            # Validate Spotify credentials when switching NRD to Spotify source
+            # Validate Spotify credentials and API access when switching NRD to Spotify source
             if command_name == "new_releases_discovery":
                 src = (request.config_json.get("new_releases_source") or "deezer").strip().lower()
                 if src == "spotify":
+                    from clients.client_spotify import SpotifyClient
                     from commands.config_adapter import ConfigAdapter
 
                     config = ConfigAdapter()
@@ -329,6 +330,17 @@ async def update_command(
                             status_code=400,
                             detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
                         )
+                    # Verify API actually works (e.g. not 403 Premium required)
+                    client = SpotifyClient(config)
+                    try:
+                        connected = await client.test_connection()
+                        if not connected:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Spotify API requires Premium for Development Mode. Use Deezer as the release source instead.",
+                            )
+                    finally:
+                        await client.close()
             command.config_json = request.config_json
             # display_name for top_tracks is updated by the command when it runs (matches playlist title)
 
@@ -910,18 +922,14 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         from commands.config_adapter import Config
 
         config = Config()
-        library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key:
-            from clients.client_plex import PlexClient
+        from clients.client_plex import PlexClient
 
-            pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
+        pc = PlexClient(config)
+        library_key = pc.get_resolved_library_key()
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY.",
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_NAME or add a music library.",
             )
 
         config_json = {
@@ -1032,28 +1040,21 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
 
         config = Config()
         library_key = None
-        if target == "plex" and hasattr(config, "PLEX_LIBRARY_KEY"):
-            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key and target == "plex":
+        if target == "plex":
             from clients.client_plex import PlexClient
 
             pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
-
-        if target == "jellyfin":
+            library_key = pc.get_resolved_library_key()
+        elif target == "jellyfin":
             from clients.client_jellyfin import JellyfinClient
 
             jc = JellyfinClient(config)
-            libs = jc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("Id") or libs[0].get("key")
+            library_key = jc.get_resolved_library_key()
 
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve target library. Configure PLEX_LIBRARY_KEY or add a music library.",
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_NAME or JELLYFIN_LIBRARY_NAME, or add a music library.",
             )
 
         existing = (
@@ -1171,21 +1172,14 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         from commands.config_adapter import Config
 
         config = Config()
-        library_key = None
-        if hasattr(config, "PLEX_LIBRARY_KEY"):
-            library_key = getattr(config, "PLEX_LIBRARY_KEY", None)
-        if not library_key:
-            from clients.client_plex import PlexClient
+        from clients.client_plex import PlexClient
 
-            pc = PlexClient(config)
-            libs = pc.get_music_libraries()
-            if libs:
-                library_key = libs[0].get("key")
-
+        pc = PlexClient(config)
+        library_key = pc.get_resolved_library_key()
         if not library_key:
             raise HTTPException(
                 status_code=400,
-                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_KEY or add a music library.",
+                detail="Could not resolve Plex library. Configure PLEX_LIBRARY_NAME or add a music library.",
             )
 
         existing = (
@@ -1410,6 +1404,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
 
         # Create command config
         try:
+            enable_artist_discovery = request.get("enable_artist_discovery", False)
             config_json = {
                 "source": source,
                 "unique_id": f"{next_id:05d}",
@@ -1417,7 +1412,10 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 "playlist_name": playlist_name,
                 "target": target,
                 "sync_mode": sync_mode,
-                "enable_artist_discovery": request.get("enable_artist_discovery", False),
+                "enable_artist_discovery": enable_artist_discovery,
+                "artist_discovery_max_per_run": request.get("artist_discovery_max_per_run", 2)
+                if enable_artist_discovery
+                else 0,
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
@@ -1581,6 +1579,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
 
         # Create command config
         try:
+            enable_artist_discovery = request.get("enable_artist_discovery", False)
             config_json = {
                 "source": "listenbrainz",
                 "unique_id": f"{next_id:05d}",
@@ -1591,7 +1590,10 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 "weekly_jams_keep": weekly_jams_keep,
                 "daily_jams_keep": daily_jams_keep,
                 "cleanup_enabled": cleanup_enabled,
-                "enable_artist_discovery": request.get("enable_artist_discovery", False),
+                "enable_artist_discovery": enable_artist_discovery,
+                "artist_discovery_max_per_run": request.get("artist_discovery_max_per_run", 2)
+                if enable_artist_discovery
+                else 0,
             }
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
@@ -1713,6 +1715,36 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
         raise HTTPException(status_code=500, detail="Failed to delete command")
 
 
+@router.get("/new-releases-sources")
+async def get_new_releases_sources():
+    """Get available New Releases Discovery sources and their configuration status"""
+    try:
+        from commands.config_adapter import Config
+
+        config = Config()
+
+        sources = [
+            {
+                "id": "deezer",
+                "name": "Deezer",
+                "configured": True,
+                "config_help": "No account required—uses public data",
+            },
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
+                "config_help": "Requires credentials in Config → Music Sources",
+            },
+        ]
+
+        return {"sources": sources}
+
+    except Exception as e:
+        get_commands_logger().error(f"Failed to get new releases sources: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get new releases sources")
+
+
 @router.get("/playlist-sync/sources")
 async def get_playlist_sync_sources():
     """Get available playlist sync sources and their configuration status"""
@@ -1728,7 +1760,7 @@ async def get_playlist_sync_sources():
                 "requires_url": True,
                 "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
                 "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
-                "config_help": "Add Spotify Client ID and Secret in Settings",
+                "config_help": "For public playlists; optional—scraper used when not configured",
             },
             {
                 "id": "deezer",

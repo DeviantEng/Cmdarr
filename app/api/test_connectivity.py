@@ -407,7 +407,7 @@ async def _test_spotify() -> ConnectivityTestResult:
                 success=False,
                 message="Not configured",
                 error="Spotify Client ID or Client Secret not set",
-                status="error",
+                status="warning",
             )
 
         # Test connection

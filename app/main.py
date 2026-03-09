@@ -130,6 +130,55 @@ def auto_enable_library_cache():
         # Non-fatal, continue startup
 
 
+def resolve_library_keys_on_startup():
+    """Resolve and cache PLEX_LIBRARY_KEY and JELLYFIN_LIBRARY_KEY for enabled clients."""
+    try:
+        from commands.config_adapter import Config
+
+        config = Config()
+        # Plex
+        if (
+            config.get("PLEX_CLIENT_ENABLED", False)
+            and config.get("PLEX_URL")
+            and config.get("PLEX_TOKEN")
+        ):
+            try:
+                from clients.client_plex import PlexClient
+                from utils.library_selector import resolve_plex_library
+
+                pc = PlexClient(config)
+                chosen = resolve_plex_library(pc)
+                if chosen and chosen.get("key"):
+                    config_service.set("PLEX_LIBRARY_KEY", str(chosen["key"]))
+                    get_app_logger().info(
+                        f"Resolved Plex library: {chosen.get('title', '?')} (key={chosen['key']})"
+                    )
+            except Exception as e:
+                get_app_logger().warning(f"Could not resolve Plex library on startup: {e}")
+        # Jellyfin
+        if (
+            config.get("JELLYFIN_CLIENT_ENABLED", False)
+            and config.get("JELLYFIN_URL")
+            and config.get("JELLYFIN_TOKEN")
+            and config.get("JELLYFIN_USER_ID")
+        ):
+            try:
+                from clients.client_jellyfin import JellyfinClient
+                from utils.library_selector import resolve_jellyfin_library
+
+                jc = JellyfinClient(config)
+                chosen = resolve_jellyfin_library(jc)
+                if chosen and chosen.get("key"):
+                    config_service.set("JELLYFIN_LIBRARY_KEY", str(chosen["key"]))
+                    get_app_logger().info(
+                        f"Resolved Jellyfin library: {chosen.get('title', '?')} (key={chosen['key']})"
+                    )
+            except Exception as e:
+                get_app_logger().warning(f"Could not resolve Jellyfin library on startup: {e}")
+    except Exception as e:
+        get_app_logger().warning(f"Library key resolution on startup failed: {e}")
+
+
 def trigger_immediate_cache_build():
     """Trigger immediate cache build when auto-enabled"""
     try:
@@ -188,6 +237,14 @@ async def lifespan(app: FastAPI):
         get_app_logger().info("Auto-enable library cache check completed")
     except Exception as e:
         get_app_logger().error(f"Failed to auto-enable library cache: {e}")
+        # Don't raise here as the app can still work
+
+    # Resolve and cache library keys for Plex/Jellyfin (PLEX_LIBRARY_KEY, JELLYFIN_LIBRARY_KEY)
+    try:
+        resolve_library_keys_on_startup()
+        get_app_logger().info("Library key resolution completed")
+    except Exception as e:
+        get_app_logger().error(f"Failed to resolve library keys: {e}")
         # Don't raise here as the app can still work
 
     # Clean up stuck commands from previous runs and queue retries for interrupted commands

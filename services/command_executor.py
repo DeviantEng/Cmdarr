@@ -313,6 +313,13 @@ class CommandExecutor:
                 command.config_json["command_name"] = command_name
                 if config_override:
                     command.config_json.update(config_override)
+                # Pass is_first_run for playlist sync (used for artist discovery: skip add on first run)
+                if (
+                    command_config
+                    and command_name.startswith("playlist_sync_")
+                    and command_name != "playlist_sync_discovery_maintenance"
+                ):
+                    command.config_json["is_first_run"] = command_config.last_run is None
                 self.logger.info(
                     f"Set config_json for {command_name}: {list(command.config_json.keys())}"
                 )
@@ -335,9 +342,18 @@ class CommandExecutor:
                 command_name, success, duration, command=cmd_obj
             )
 
-            # Update execution record
+            error_message = None
+            if not success and cmd_obj:
+                stats = getattr(cmd_obj, "last_run_stats", None)
+                if stats:
+                    error_message = stats.get("error") or stats.get("message")
+
             await self._update_execution_record(
-                execution_id, success=success, duration=duration, output_summary=output_summary
+                execution_id,
+                success=success,
+                duration=duration,
+                output_summary=output_summary,
+                error_message=error_message,
             )
 
             self.logger.info(
@@ -409,10 +425,12 @@ class CommandExecutor:
         self, command_name: str, success: bool, duration: float, command: Any = None
     ) -> str:
         """Generate a summary from command result (no log parsing)"""
-        if not success:
-            return f"Command failed after {duration:.1f}s"
-
         stats = getattr(command, "last_run_stats", None) if command else None
+        if not success:
+            err = (stats or {}).get("error") or (stats or {}).get("message")
+            if err:
+                return f"Command failed after {duration:.1f}s: {err}"
+            return f"Command failed after {duration:.1f}s"
 
         if command_name == "discovery_lastfm" and stats:
             return self._build_lastfm_summary(stats, duration)
@@ -533,13 +551,25 @@ class CommandExecutor:
             if total_playlists > 0:
                 parts.append(f"{playlists}/{total_playlists} playlists synced in {sync_time:.1f}s")
 
-        # Artist discovery
+        # Artist discovery (always show artists_discovered when present)
         artist_disc = stats.get("artist_discovery", {})
         if artist_disc:
+            discovered = artist_disc.get("artists_discovered", 0)
             added = artist_disc.get("artists_added", 0)
             failed_count = artist_disc.get("artists_failed", 0)
+            deferred = artist_disc.get("artists_deferred", 0)
+            first_run = artist_disc.get("first_run_preview", False)
+            if discovered is not None and discovered >= 0:
+                if first_run:
+                    parts.append(
+                        f"{discovered} new artists detected (first run—none added; will add on next run)"
+                    )
+                else:
+                    parts.append(f"{discovered} new artists detected")
             if added > 0:
                 parts.append(f"{added} artists added to Lidarr")
+            if deferred > 0:
+                parts.append(f"{deferred} deferred to next run")
             if failed_count > 0:
                 parts.append(f"{failed_count} artists failed")
 
