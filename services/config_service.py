@@ -294,7 +294,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "spotify",
-                "description": "Spotify API Client ID",
+                "description": "Spotify API Client ID (public playlists, New Releases)",
                 "is_sensitive": True,
             },
             {
@@ -302,7 +302,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "spotify",
-                "description": "Spotify API Client Secret",
+                "description": "Spotify API Client Secret (public playlists, New Releases)",
                 "is_sensitive": True,
             },
             {

@@ -31,6 +31,9 @@ Pillow>=10.0.0
 # IANA timezone database (required for zoneinfo on minimal Linux/Docker; optional on macOS/Windows)
 tzdata>=2024.1
 
+# Spotify playlist scraping (no credentials required for public playlists)
+spotifyscraper>=2.1.0
+
 # For enhanced logging and formatting
 # colorlog>=6.7.0
 

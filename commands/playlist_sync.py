@@ -117,6 +117,7 @@ class PlaylistSyncCommand(BaseCommand):
             if not tracks_result.get("success"):
                 error_msg = tracks_result.get("error", "Unknown error")
                 self.logger.error(f"Failed to fetch tracks: {error_msg}")
+                self.last_run_stats = {"success": False, "error": error_msg}
                 return False
 
             tracks = tracks_result.get("tracks", [])

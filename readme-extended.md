@@ -155,7 +155,7 @@ Create via Commands → New. All use `[Cmdarr]` prefix; display name syncs with 
 **What it does**: Create unlimited playlist sync commands through the web interface  
 **Benefits**:
 - **ListenBrainz Curated Playlists**: Sync Weekly Exploration, Weekly Jams, Daily Jams
-- **External Playlist Support**: Sync playlists from Spotify, Deezer, and other sources
+- **External Playlist Support**: Sync **public** playlists from Spotify, Deezer, and other sources
 - **Multi-Target Support**: Sync to Plex, Jellyfin, or both simultaneously
 - **Library Cache Optimization**: 3+ minutes → 30 seconds sync time
 - **Smart Playlist Management**: Automatic cleanup, retention policies, and duplicate prevention
@@ -204,7 +204,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 - **Plex Token**: Get from [Plex Support Guide](https://support.plex.tv/articles/204059436/) (for playlist sync)
 - **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
 - **Jellyfin User ID**: Found in Jellyfin Dashboard → Users → Select User → User ID
-- **Spotify Client ID & Secret**: Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (for playlist sync)
+- **Spotify Client ID & Secret**: Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (for playlist sync, public playlists only)
 
 ### Lidarr Integration
 

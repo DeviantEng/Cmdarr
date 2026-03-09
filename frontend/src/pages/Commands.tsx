@@ -180,11 +180,40 @@ export function CommandsPage() {
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
+  const [nrdSources, setNrdSources] = useState<
+    { id: string; name: string; configured: boolean }[]
+  >([]);
 
   useEffect(() => {
     loadCommands();
     loadExecutions();
   }, []);
+
+  useEffect(() => {
+    if (editingCommand?.command_name === "new_releases_discovery") {
+      api
+        .request<{ sources: { id: string; name: string; configured: boolean }[] }>(
+          "/api/commands/new-releases-sources"
+        )
+        .then((r) => setNrdSources(r.sources || []))
+        .catch(() => setNrdSources([]));
+    } else {
+      setNrdSources([]);
+    }
+  }, [editingCommand?.command_name]);
+
+  useEffect(() => {
+    if (
+      editingCommand?.command_name === "new_releases_discovery" &&
+      nrdSources.length > 0 &&
+      editForm.new_releases_source === "spotify"
+    ) {
+      const spotifySrc = nrdSources.find((s) => s.id === "spotify");
+      if (spotifySrc && !spotifySrc.configured) {
+        setEditForm((f) => ({ ...f, new_releases_source: "deezer" }));
+      }
+    }
+  }, [editingCommand?.command_name, nrdSources, editForm.new_releases_source]);
 
   useEffect(() => {
     try {
@@ -2294,7 +2323,18 @@ export function CommandsPage() {
                             <option value="deezer">
                               Deezer (no account configuration required)
                             </option>
-                            <option value="spotify">Spotify (set credentials in Config)</option>
+                            <option
+                              value="spotify"
+                              disabled={
+                                !!nrdSources.find((s) => s.id === "spotify" && !s.configured)
+                              }
+                            >
+                              Spotify (
+                              {nrdSources.find((s) => s.id === "spotify")?.configured
+                                ? "credentials configured"
+                                : "set credentials in Config"}
+                              )
+                            </option>
                           </select>
                           <p className="text-xs text-muted-foreground">
                             Deezer uses public data; Spotify requires credentials in Config → Music
