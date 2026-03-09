@@ -217,9 +217,7 @@ class SpotifyClient(BaseAPIClient):
             if result:
                 items_or_tracks = result.get("items", result.get("tracks", {}))
                 track_count = (
-                    items_or_tracks.get("total", 0)
-                    if isinstance(items_or_tracks, dict)
-                    else 0
+                    items_or_tracks.get("total", 0) if isinstance(items_or_tracks, dict) else 0
                 )
                 return {
                     "success": True,

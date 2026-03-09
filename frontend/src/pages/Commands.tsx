@@ -180,9 +180,9 @@ export function CommandsPage() {
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
-  const [nrdSources, setNrdSources] = useState<
-    { id: string; name: string; configured: boolean }[]
-  >([]);
+  const [nrdSources, setNrdSources] = useState<{ id: string; name: string; configured: boolean }[]>(
+    []
+  );
 
   useEffect(() => {
     loadCommands();

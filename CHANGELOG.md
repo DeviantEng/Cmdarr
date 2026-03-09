@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.8-dev] - TBD
+## [0.3.8] - 2026-03-09
 
 ### 🧪 Unit Tests & CI
 - **Unit Tests**: pytest-based tests in `tests/`; start with `parse_playlist_url` (Spotify, Deezer, invalid URLs)
@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Feb 2026 API Migration**: Playlist `/items` endpoint, search limit 10, field renames for Development Mode compatibility
 - **Execution Failure Fix**: API errors (403, etc.) now correctly mark execution as failed with error message in UI
 - **NRD**: Grey out Spotify source when credentials not configured; `new-releases-sources` endpoint for UI
+- **NRD Save Validation**: When saving with Spotify source, test API connectivity; reject save if 403 Premium required (prompts use Deezer instead)
+- **Test Connectivity**: Spotify "Not configured" shows as warning (orange) instead of error (red)
 
 ### 📚 Library Selector – Single Source of Truth
 - **Shared Utility**: `utils/library_selector.py` – resolution logic for Plex and Jellyfin; used by all commands

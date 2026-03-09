@@ -1,12 +1,10 @@
 """Unit tests for playlist URL parser"""
-import pytest
+
 from utils.playlist_parser import parse_playlist_url
 
 
 def test_parse_spotify_url_valid():
-    result = parse_playlist_url(
-        "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF"
-    )
+    result = parse_playlist_url("https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF")
     assert result["valid"] is True
     assert result["source"] == "spotify"
     assert result["playlist_id"] == "4NDXWHwYWjFmgVPkNy4YlF"

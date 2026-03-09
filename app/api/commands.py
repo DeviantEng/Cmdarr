@@ -317,10 +317,11 @@ async def update_command(
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
-            # Validate Spotify credentials when switching NRD to Spotify source
+            # Validate Spotify credentials and API access when switching NRD to Spotify source
             if command_name == "new_releases_discovery":
                 src = (request.config_json.get("new_releases_source") or "deezer").strip().lower()
                 if src == "spotify":
+                    from clients.client_spotify import SpotifyClient
                     from commands.config_adapter import ConfigAdapter
 
                     config = ConfigAdapter()
@@ -329,6 +330,17 @@ async def update_command(
                             status_code=400,
                             detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
                         )
+                    # Verify API actually works (e.g. not 403 Premium required)
+                    client = SpotifyClient(config)
+                    try:
+                        connected = await client.test_connection()
+                        if not connected:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Spotify API requires Premium for Development Mode. Use Deezer as the release source instead.",
+                            )
+                    finally:
+                        await client.close()
             command.config_json = request.config_json
             # display_name for top_tracks is updated by the command when it runs (matches playlist title)
 
@@ -1730,9 +1742,7 @@ async def get_new_releases_sources():
 
     except Exception as e:
         get_commands_logger().error(f"Failed to get new releases sources: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to get new releases sources"
-        )
+        raise HTTPException(status_code=500, detail="Failed to get new releases sources")
 
 
 @router.get("/playlist-sync/sources")
