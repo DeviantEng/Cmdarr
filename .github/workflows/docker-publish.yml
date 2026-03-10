@@ -155,7 +155,8 @@ jobs:
 
       - name: Run container for ZAP
         run: |
-          docker run -d --name cmdarr-zap-target -p 8080:8080 \
+          docker network create zap-net || true
+          docker run -d --name cmdarr-zap-target --network zap-net -p 8080:8080 \
             -v cmdarr-zap-data:/app/data \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
 
@@ -166,13 +167,14 @@ jobs:
             [ "$code" = "200" ] || [ "$code" = "503" ] && break
             sleep 2
           done
+          sleep 5
 
       - name: ZAP baseline scan
         run: |
           mkdir -p zap-wrk
           chmod 777 zap-wrk
-          docker run --rm --network host -v ${{ github.workspace }}/zap-wrk:/zap/wrk:rw -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:8080 -I
+          docker run --rm --network zap-net -v ${{ github.workspace }}/zap-wrk:/zap/wrk:rw -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://cmdarr-zap-target:8080 -I
 
       - name: Stop container
         if: always()
