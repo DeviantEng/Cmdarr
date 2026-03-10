@@ -169,7 +169,8 @@ jobs:
 
       - name: ZAP baseline scan
         run: |
-          docker run --rm --network host -t ghcr.io/zaproxy/zaproxy:stable \
+          mkdir -p zap-wrk
+          docker run --rm --network host -v ${{ github.workspace }}/zap-wrk:/zap/wrk:rw -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:8080 -I
 
       - name: Stop container
