@@ -12,13 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config Validation**: `config_service.set()` now enforces `validation_regex`, `min_value`, `max_value` from ConfigSetting
 - **URL Length Limits**: playlist_parser and _parse_scan_url reject URLs > 2048 chars; validate-url endpoint uses Query(max_length=2048)
 - **Single-User Access Control**: First-run setup (username/password), session-based login, API key for external calls; env override (CMDARR_AUTH_USERNAME, CMDARR_AUTH_PASSWORD, CMDARR_API_KEY) overwrites DB for password reset
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy middleware on all responses
 - **ZAP DAST**: OWASP ZAP baseline scan in docker-publish pipeline (run container before push; fail blocks image push)
+  - Auth hook: POST /api/auth/setup before spider so ZAP gets session cookie and can scan authenticated routes
+  - AJAX spider for SPA coverage
+  - Findings table (failures/warnings) in job summary like Trivy
+  - Baseline config to IGNORE acceptable rules (10049, 10109, 90004)
 
 ### 🧪 PR Gate & Unit Tests
 - **PR Checks**: Unit tests run on PR to main (in addition to docker-publish for develop coverage)
 - **Frontend Typecheck**: TypeScript `tsc --noEmit` job in PR checks
 - **pytest-cov**: Coverage reporting in unit test runs
-- **Additional Tests**: playlist_parser (get_supported_sources, get_example_url, edge cases), text_normalizer, discovery utils (filter_artist_candidate, apply_random_sampling, deduplicate_by_mbid, create_artist_entry), library_selector (_first_by_lowest_key, _resolve_from_libraries)
+- **Additional Tests**: playlist_parser (get_supported_sources, get_example_url, URL length limit, edge cases), text_normalizer, discovery utils (filter_artist_candidate, apply_random_sampling, deduplicate_by_mbid, create_artist_entry), library_selector (_first_by_lowest_key, _resolve_from_libraries), auth (API key hash, is_setup_required), security_headers (middleware adds headers)
+- **uv.lock**: Lock file for reproducible Python installs via uv
 
 ## [0.3.8] - 2026-03-09
 
