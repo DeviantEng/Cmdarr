@@ -18,17 +18,21 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _hash_password(password: str) -> str:
-    from passlib.context import CryptContext
+    import bcrypt
 
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.hash(password)
+    # bcrypt limit: 72 bytes; truncate to avoid ValueError
+    pwd_bytes = password.encode("utf-8")[:72]
+    return bcrypt.hashpw(pwd_bytes, bcrypt.gensalt()).decode("utf-8")
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    from passlib.context import CryptContext
+    import bcrypt
 
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.verify(plain, hashed)
+    try:
+        pwd_bytes = plain.encode("utf-8")[:72]
+        return bcrypt.checkpw(pwd_bytes, hashed.encode("utf-8"))
+    except ValueError, TypeError:
+        return False
 
 
 def _hash_api_key(key: str) -> str:
