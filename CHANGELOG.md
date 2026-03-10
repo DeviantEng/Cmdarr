@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9-dev] - TBD
+
+### 🧪 PR Gate & Unit Tests
+- **PR Checks**: Unit tests run on PR to main (in addition to docker-publish for develop coverage)
+- **Frontend Typecheck**: TypeScript `tsc --noEmit` job in PR checks
+- **pytest-cov**: Coverage reporting in unit test runs
+- **Additional Tests**: playlist_parser (get_supported_sources, get_example_url, edge cases), text_normalizer, discovery utils (filter_artist_candidate, apply_random_sampling, deduplicate_by_mbid, create_artist_entry), library_selector (_first_by_lowest_key, _resolve_from_libraries)
+
 ## [0.3.8] - 2026-03-09
 
 ### 🧪 Unit Tests & CI

@@ -34,7 +34,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest tests/ -v
+        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
 
   build-and-push:
     needs: [unit-tests]
