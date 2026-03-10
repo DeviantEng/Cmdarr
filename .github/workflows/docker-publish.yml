@@ -170,6 +170,7 @@ jobs:
       - name: ZAP baseline scan
         run: |
           mkdir -p zap-wrk
+          chmod 777 zap-wrk
           docker run --rm --network host -v ${{ github.workspace }}/zap-wrk:/zap/wrk:rw -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:8080 -I
 
