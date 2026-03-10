@@ -3,15 +3,19 @@
 Spotify API Client
 Handles authentication and playlist operations for Spotify.
 Uses API when credentials configured; falls back to SpotifyScraper when not configured or API fails.
+Caches API usability (403 Premium required) to avoid repeated token fetch + 403 on every playlist sync.
 """
 
 import asyncio
 import base64
+import hashlib
+import json
 import time
 from typing import Any
 
 import aiohttp
 
+from services.config_service import config_service
 from utils.playlist_parser import parse_playlist_url
 
 from .client_base import BaseAPIClient
@@ -91,6 +95,84 @@ class SpotifyClient(BaseAPIClient):
         """True if Client ID and Secret are configured."""
         return bool(self.client_id and self.client_secret)
 
+    def _get_cred_hash(self) -> str:
+        """Hash of credentials for cache invalidation when they change."""
+        raw = f"{self.client_id or ''}:{self.client_secret or ''}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def _get_api_usable_cached(self) -> bool | None:
+        """
+        Get cached API usability. Returns True/False if valid cache, None if needs evaluation.
+        Cache is invalid when credentials have changed.
+        """
+        cache = config_service.get("SPOTIFY_API_CACHE") or {}
+        if not isinstance(cache, dict):
+            return None
+        cred_hash = cache.get("cred_hash")
+        if cred_hash != self._get_cred_hash():
+            return None
+        if "usable" not in cache:
+            return None
+        return bool(cache["usable"])
+
+    def _update_api_cache(self, usable: bool):
+        """Persist API usability to hidden config."""
+        cache = {"usable": usable, "cred_hash": self._get_cred_hash()}
+        config_service.set("SPOTIFY_API_CACHE", json.dumps(cache), "json")
+
+    async def _probe_api_usable(self) -> bool:
+        """
+        Make one lightweight API call to determine if API works (not 403 Premium required).
+        Does not log at ERROR level - used for cache evaluation.
+        """
+        if not await self._ensure_valid_token():
+            return False
+        url = "https://api.spotify.com/v1/tracks/4iV5W9uYEdYUVa79Axb7Rh"
+        try:
+            if not self.session:
+                self.session = aiohttp.ClientSession(headers=self.headers)
+            self.headers["Authorization"] = f"Bearer {self.access_token}"
+            async with self.session.get(url) as resp:
+                if resp.status == 200:
+                    return True
+                if resp.status == 403:
+                    self.logger.debug(
+                        "Spotify API returned 403 (Premium required) - caching as unusable"
+                    )
+                    return False
+                return False
+        except Exception as e:
+            self.logger.debug(f"Spotify API probe failed: {e}")
+            return False
+
+    def _should_skip_api(self) -> bool:
+        """
+        True if we should skip the API and go straight to scraper (avoids token fetch + 403).
+        Evaluates and caches on first use when credentials present.
+        """
+        if not self._has_credentials():
+            return True
+        cached = self._get_api_usable_cached()
+        if cached is False:
+            return True
+        if cached is True:
+            return False
+        # Need to evaluate - will be done in get_playlist_info/get_playlist_tracks
+        return False
+
+    async def _ensure_api_evaluated(self) -> bool:
+        """
+        Ensure API usability is evaluated and cached. Returns True if API is usable.
+        Call when cache is None (first use or credentials changed).
+        """
+        usable = await self._probe_api_usable()
+        self._update_api_cache(usable)
+        if not usable:
+            self.logger.info(
+                "Spotify API cached as unusable (403 Premium required) - using scraper for playlist sync"
+            )
+        return usable
+
     async def _get_playlist_via_scraper(self, url: str) -> dict[str, Any]:
         """Run sync scraper in executor."""
         loop = asyncio.get_event_loop()
@@ -166,6 +248,7 @@ class SpotifyClient(BaseAPIClient):
         """
         Get playlist metadata from Spotify URL.
         Uses API when credentials configured; falls back to scraper when not or on API failure.
+        Skips API entirely when cached as unusable (403 Premium) to avoid repeated token fetch.
         """
         try:
             parsed = parse_playlist_url(url)
@@ -173,6 +256,38 @@ class SpotifyClient(BaseAPIClient):
                 return {"success": False, "error": parsed["error"]}
 
             if not self._has_credentials():
+                scraper_result = await self._get_playlist_via_scraper(url)
+                if scraper_result.get("success"):
+                    return {
+                        "success": True,
+                        "name": scraper_result.get("name", "Unknown Playlist"),
+                        "description": scraper_result.get("description", ""),
+                        "owner": scraper_result.get("owner", "Unknown"),
+                        "track_count": scraper_result.get("track_count", 0),
+                        "playlist_id": parsed["playlist_id"],
+                        "public": True,
+                        "collaborative": False,
+                    }
+                return scraper_result
+
+            # Skip API when cached as unusable (403 Premium) - avoids token fetch + 403 every sync
+            if self._should_skip_api():
+                scraper_result = await self._get_playlist_via_scraper(url)
+                if scraper_result.get("success"):
+                    return {
+                        "success": True,
+                        "name": scraper_result.get("name", "Unknown Playlist"),
+                        "description": scraper_result.get("description", ""),
+                        "owner": scraper_result.get("owner", "Unknown"),
+                        "track_count": scraper_result.get("track_count", 0),
+                        "playlist_id": parsed["playlist_id"],
+                        "public": True,
+                        "collaborative": False,
+                    }
+                return scraper_result
+
+            # Evaluate API usability on first use or when credentials changed
+            if self._get_api_usable_cached() is None and not await self._ensure_api_evaluated():
                 scraper_result = await self._get_playlist_via_scraper(url)
                 if scraper_result.get("success"):
                     return {
@@ -242,6 +357,7 @@ class SpotifyClient(BaseAPIClient):
         """
         Get all tracks from a Spotify playlist.
         Uses API when credentials configured; falls back to scraper when not or on API failure.
+        Skips API entirely when cached as unusable (403 Premium) to avoid repeated token fetch.
         """
         try:
             parsed = parse_playlist_url(url)
@@ -249,8 +365,15 @@ class SpotifyClient(BaseAPIClient):
                 return {"success": False, "error": parsed["error"]}
 
             if not self._has_credentials():
-                scraper_result = await self._get_playlist_via_scraper(url)
-                return scraper_result
+                return await self._get_playlist_via_scraper(url)
+
+            # Skip API when cached as unusable (403 Premium) - avoids token fetch + 403 every sync
+            if self._should_skip_api():
+                return await self._get_playlist_via_scraper(url)
+
+            # Evaluate API usability on first use or when credentials changed
+            if self._get_api_usable_cached() is None and not await self._ensure_api_evaluated():
+                return await self._get_playlist_via_scraper(url)
 
             api_result = await self._get_playlist_tracks_async(parsed["playlist_id"])
             if api_result.get("success"):

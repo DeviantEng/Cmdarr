@@ -46,6 +46,7 @@ class ApiClient {
       const response = await fetch(url, {
         ...fetchOptions,
         signal: fetchOptions.signal ?? controller.signal,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...fetchOptions.headers,
@@ -204,6 +205,37 @@ class ApiClient {
     timestamp: string;
   }> {
     return await this.request("/health");
+  }
+
+  // Auth API
+  async getAuthStatus(): Promise<{
+    setup_required: boolean;
+    authenticated: boolean;
+    username: string | null;
+  }> {
+    return await this.request("/api/auth/status");
+  }
+
+  async setup(username: string, password: string): Promise<{ message: string; username: string }> {
+    return this.request("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async login(username: string, password: string): Promise<{ message: string; username: string }> {
+    return this.request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async logout(): Promise<{ message: string }> {
+    return this.request("/api/auth/logout", { method: "POST" });
+  }
+
+  async generateApiKey(): Promise<{ api_key: string; message: string }> {
+    return this.request("/api/auth/generate-api-key", { method: "POST" });
   }
 
   async getCacheStatus(): Promise<{

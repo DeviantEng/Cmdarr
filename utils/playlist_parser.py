@@ -30,6 +30,13 @@ def parse_playlist_url(url: str) -> dict[str, any]:
         }
 
     url = url.strip()
+    if len(url) > 2048:
+        return {
+            "source": "unknown",
+            "playlist_id": None,
+            "valid": False,
+            "error": "URL exceeds maximum length",
+        }
 
     # Spotify pattern: open.spotify.com/playlist/{id} or open.spotify.com/playlist/{id}?si=...
     spotify_pattern = r"open\.spotify\.com/playlist/([a-zA-Z0-9]+)"

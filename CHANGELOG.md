@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.9-dev] - TBD
 
+### 🔒 Secure Coding & Access Control
+- **Error Exposure Fix**: Replaced all `detail=str(e)` with generic messages; added `from None` to break exception chains (commands.py, import_lists.py)
+- **Config Validation**: `config_service.set()` now enforces `validation_regex`, `min_value`, `max_value` from ConfigSetting
+- **URL Length Limits**: playlist_parser and _parse_scan_url reject URLs > 2048 chars; validate-url endpoint uses Query(max_length=2048)
+- **Single-User Access Control**: First-run setup (username/password), session-based login, API key for external calls; env override (CMDARR_AUTH_USERNAME, CMDARR_AUTH_PASSWORD, CMDARR_API_KEY) overwrites DB for password reset
+- **ZAP DAST**: OWASP ZAP baseline scan in docker-publish pipeline (run container before push; fail blocks image push)
+
 ### 🧪 PR Gate & Unit Tests
 - **PR Checks**: Unit tests run on PR to main (in addition to docker-publish for develop coverage)
 - **Frontend Typecheck**: TypeScript `tsc --noEmit` job in PR checks

@@ -340,7 +340,7 @@ async def get_new_releases(
         raise
     except Exception as e:
         logger.exception(f"New releases scan failed: {e}")
-        raise HTTPException(status_code=500, detail="New releases scan failed")
+        raise HTTPException(status_code=500, detail="New releases scan failed") from None
 
 
 # --- DB-backed endpoints ---
@@ -660,7 +660,7 @@ def _parse_scan_url(url: str) -> tuple[str | None, str | None, str | None]:
     import re
 
     url = (url or "").strip()
-    if not url:
+    if not url or len(url) > 2048:
         return None, None, None
     if not url.startswith("http"):
         url = "https://" + url
@@ -793,7 +793,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             raise
         except Exception:
             logger.exception("Scan album URL failed")
-            raise HTTPException(status_code=500, detail="Scan album URL failed")
+            raise HTTPException(status_code=500, detail="Scan album URL failed") from None
 
     # --- Artist URL: full scan ---
     cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
@@ -816,7 +816,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
-        raise HTTPException(status_code=500, detail="Scan artist URL failed")
+        raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
 
     async def _do_mb_scan() -> dict:
         """Run MusicBrainz scan; returns result dict. Raises HTTPException on error."""
@@ -898,7 +898,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
-        raise HTTPException(status_code=500, detail="Scan artist URL failed")
+        raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
 
 
 @router.post("/new-releases/sync-lidarr-artists")

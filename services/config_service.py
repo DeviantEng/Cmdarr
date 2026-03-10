@@ -312,6 +312,14 @@ class ConfigService:
                 "category": "spotify",
                 "description": "Cache TTL in days for New Releases data (Lidarr, Spotify, MusicBrainz)",
             },
+            {
+                "key": "SPOTIFY_API_CACHE",
+                "default_value": "{}",
+                "data_type": "json",
+                "category": "spotify",
+                "description": "Cached API usability - usable (bool), cred_hash (str). Re-evaluated when credentials change.",
+                "is_hidden": True,
+            },
             # Web Server Configuration
             {
                 "key": "WEB_PORT",
@@ -514,6 +522,34 @@ class ConfigService:
                 "category": "output",
                 "description": "Pretty print JSON output",
             },
+            # Access control (single user)
+            {
+                "key": "CMDARR_AUTH_USERNAME",
+                "default_value": "",
+                "data_type": "string",
+                "category": "auth",
+                "description": "Admin username (set on first run or via CMDARR_AUTH_USERNAME env)",
+                "is_sensitive": True,
+                "is_hidden": True,
+            },
+            {
+                "key": "CMDARR_AUTH_PASSWORD_HASH",
+                "default_value": "",
+                "data_type": "string",
+                "category": "auth",
+                "description": "Password hash (set on first run or via CMDARR_AUTH_PASSWORD env)",
+                "is_sensitive": True,
+                "is_hidden": True,
+            },
+            {
+                "key": "CMDARR_API_KEY_HASH",
+                "default_value": "",
+                "data_type": "string",
+                "category": "auth",
+                "description": "API key hash for external API calls (generate in Config)",
+                "is_sensitive": True,
+                "is_hidden": True,
+            },
         ]
 
         # Initialize database with defaults
@@ -627,13 +663,44 @@ class ConfigService:
 
     def set(self, key: str, value: Any, data_type: str = None) -> bool:
         """Set configuration value in database"""
+        import re
+
         try:
             manager = get_database_manager()
             session = manager.get_session_sync()
             try:
                 setting = session.query(ConfigSetting).filter(ConfigSetting.key == key).first()
                 if setting:
-                    setting.value = str(value)
+                    str_value = str(value)
+                    if setting.validation_regex and not re.match(
+                        setting.validation_regex, str_value
+                    ):
+                        self.logger.warning(
+                            f"Config {key} failed validation_regex: {setting.validation_regex}"
+                        )
+                        return False
+                    if setting.min_value is not None or setting.max_value is not None:
+                        try:
+                            if setting.data_type in ("int", "float"):
+                                num = (
+                                    float(str_value)
+                                    if setting.data_type == "float"
+                                    else int(str_value)
+                                )
+                                if setting.min_value is not None and num < setting.min_value:
+                                    self.logger.warning(
+                                        f"Config {key} value {num} below min {setting.min_value}"
+                                    )
+                                    return False
+                                if setting.max_value is not None and num > setting.max_value:
+                                    self.logger.warning(
+                                        f"Config {key} value {num} above max {setting.max_value}"
+                                    )
+                                    return False
+                        except ValueError, TypeError:
+                            self.logger.warning(f"Config {key} invalid numeric value: {str_value}")
+                            return False
+                    setting.value = str_value
                     if data_type:
                         setting.data_type = data_type
                 else:
@@ -842,6 +909,14 @@ class ConfigService:
     def refresh_cache(self):
         """Force refresh of configuration cache"""
         self._clear_cache()
+
+    def invalidate_spotify_api_cache(self):
+        """
+        Clear the Spotify API usability cache so it will be re-evaluated on next use.
+        Call when SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET is updated.
+        """
+        self.set("SPOTIFY_API_CACHE", "{}", "json")
+        self.logger.info("Spotify API cache invalidated (credentials may have changed)")
 
 
 # Global configuration service instance

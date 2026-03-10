@@ -76,3 +76,11 @@ def test_get_example_url_deezer():
 
 def test_get_example_url_unknown():
     assert get_example_url("unknown") is None
+
+
+def test_parse_playlist_url_exceeds_max_length():
+    long_url = "https://open.spotify.com/playlist/" + "x" * 2100
+    result = parse_playlist_url(long_url)
+    assert result["valid"] is False
+    assert result["source"] == "unknown"
+    assert "length" in result.get("error", "").lower()

@@ -17,6 +17,9 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: devianteng/cmdarr
 
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
@@ -149,6 +152,29 @@ jobs:
           echo "$output" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           exit $exitcode
+
+      - name: Run container for ZAP
+        run: |
+          docker run -d --name cmdarr-zap-target -p 8080:8080 \
+            -v cmdarr-zap-data:/app/data \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+
+      - name: Wait for app health
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || true)
+            [ "$code" = "200" ] || [ "$code" = "503" ] && break
+            sleep 2
+          done
+
+      - name: ZAP baseline scan
+        run: |
+          docker run --rm --network host -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:8080 -I
+
+      - name: Stop container
+        if: always()
+        run: docker stop cmdarr-zap-target 2>/dev/null || true
 
       - name: Build and push Docker image
         if: success()

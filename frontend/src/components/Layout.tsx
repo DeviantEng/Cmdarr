@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { Moon, Sun, Menu, X } from "lucide-react";
+import { Moon, Sun, Menu, X, LogOut } from "lucide-react";
 import { useTheme } from "@/lib/use-theme";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Right side controls */}
             <div className="flex items-center space-x-4">
+              {/* Logout */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  await api.logout();
+                  window.location.href = "/";
+                }}
+                title="Log out"
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
               {/* Theme Toggle */}
               <Button
                 variant="ghost"

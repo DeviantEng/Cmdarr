@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/lib/theme";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthGuard } from "@/components/AuthGuard";
 import { Layout } from "@/components/Layout";
 import { CommandsPage } from "@/pages/Commands";
 import { ConfigPage } from "@/pages/Config";
@@ -12,15 +13,17 @@ function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="cmdarr-ui-theme">
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<CommandsPage />} />
-            <Route path="/config" element={<ConfigPage />} />
-            <Route path="/status" element={<StatusPage />} />
-            <Route path="/import-lists" element={<ImportListsPage />} />
-            <Route path="/new-releases" element={<NewReleasesPage />} />
-          </Routes>
-        </Layout>
+        <AuthGuard>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<CommandsPage />} />
+              <Route path="/config" element={<ConfigPage />} />
+              <Route path="/status" element={<StatusPage />} />
+              <Route path="/import-lists" element={<ImportListsPage />} />
+              <Route path="/new-releases" element={<NewReleasesPage />} />
+            </Routes>
+          </Layout>
+        </AuthGuard>
       </Router>
       <Toaster />
     </ThemeProvider>
