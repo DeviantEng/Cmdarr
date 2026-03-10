@@ -363,7 +363,9 @@ app = FastAPI(
 # In production with same origin, this won't be needed
 # Auth middleware: protect /api/* and /import_lists/* when auth is configured
 from app.auth_middleware import AuthMiddleware
+from app.security_headers import SecurityHeadersMiddleware
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthMiddleware)
 
 app.add_middleware(
