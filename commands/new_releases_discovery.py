@@ -31,7 +31,7 @@ from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
 from database.config_models import ArtistScanLog, DismissedArtistAlbum, NewReleasePending
 from database.database import get_database_manager
-from utils.text_normalizer import normalize_text
+from utils.text_normalizer import normalize_text, strip_edition_suffix
 
 from .command_base import BaseCommand
 from .config_adapter import ConfigAdapter
@@ -94,21 +94,33 @@ def _artist_names_match(name1: str, name2: str, min_similarity: float = 0.9) -> 
 def _title_matches_mb(
     spotify_title: str, mb_titles: list[str], min_similarity: float = 0.7
 ) -> bool:
+    """Check if Spotify album title matches any MB release group (fuzzy).
+    Strips edition suffixes (Deluxe, Remaster, Live, etc.) so special editions
+    match the base release and are not treated as new."""
     from difflib import SequenceMatcher
 
     norm_spotify = normalize_text(spotify_title)
     if not norm_spotify:
         return False
+    base_spotify = normalize_text(strip_edition_suffix(spotify_title))
     for mb_title in mb_titles:
         norm_mb = normalize_text(mb_title)
         if not norm_mb:
             continue
+        base_mb = normalize_text(strip_edition_suffix(mb_title))
         if norm_spotify == norm_mb:
             return True
         if norm_spotify in norm_mb or norm_mb in norm_spotify:
             return True
         if SequenceMatcher(None, norm_spotify, norm_mb).ratio() >= min_similarity:
             return True
+        if base_spotify and base_mb:
+            if base_spotify == base_mb:
+                return True
+            if base_spotify in base_mb or base_mb in base_spotify:
+                return True
+            if SequenceMatcher(None, base_spotify, base_mb).ratio() >= min_similarity:
+                return True
     return False
 
 

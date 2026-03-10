@@ -28,7 +28,7 @@ from commands.config_adapter import ConfigAdapter
 from database.config_models import DismissedArtistAlbum, NewReleasePending
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
-from utils.text_normalizer import normalize_text
+from utils.text_normalizer import normalize_text, strip_edition_suffix
 
 router = APIRouter()
 HARMONY_BASE_URL = "https://harmony.pulsewidth.org.uk/release"
@@ -123,24 +123,35 @@ def _get_new_releases_source_from_db() -> str:
 def _title_matches_mb(
     spotify_title: str, mb_titles: list[str], min_similarity: float = 0.7
 ) -> bool:
-    """Check if Spotify album title matches any MB release group (fuzzy)."""
+    """Check if Spotify album title matches any MB release group (fuzzy).
+    Strips edition suffixes (Deluxe, Remaster, Live, etc.) so special editions
+    match the base release and are not treated as new."""
+    from difflib import SequenceMatcher
+
     norm_spotify = normalize_text(spotify_title)
     if not norm_spotify:
         return False
+    base_spotify = normalize_text(strip_edition_suffix(spotify_title))
     for mb_title in mb_titles:
         norm_mb = normalize_text(mb_title)
         if not norm_mb:
             continue
-        # Exact or containment
+        base_mb = normalize_text(strip_edition_suffix(mb_title))
+        # Compare full titles
         if norm_spotify == norm_mb:
             return True
         if norm_spotify in norm_mb or norm_mb in norm_spotify:
             return True
-        # Similarity (catches "Deconstructed" vs "Deconstructed (Live)")
-        from difflib import SequenceMatcher
-
         if SequenceMatcher(None, norm_spotify, norm_mb).ratio() >= min_similarity:
             return True
+        # Compare base titles (stripped of Deluxe, Remaster, Live, etc.)
+        if base_spotify and base_mb:
+            if base_spotify == base_mb:
+                return True
+            if base_spotify in base_mb or base_mb in base_spotify:
+                return True
+            if SequenceMatcher(None, base_spotify, base_mb).ratio() >= min_similarity:
+                return True
     return False
 
 
@@ -495,6 +506,26 @@ async def restore_dismissed(dismissed_id: int, db: Annotated[Session, Depends(ge
     db.delete(row)
     db.commit()
     return {"success": True, "message": "Restored - will reappear on next scan"}
+
+
+@router.post("/new-releases/restore-all")
+async def restore_all_dismissed(db: Annotated[Session, Depends(get_config_db)]):
+    """Restore all dismissed items - removes from dismissed table so they reappear on next scan."""
+    from database.config_models import DismissedArtistAlbum
+
+    deleted = db.query(DismissedArtistAlbum).delete()
+    db.commit()
+    return {"success": True, "message": f"Restored {deleted} items", "restored_count": deleted}
+
+
+@router.post("/new-releases/reset-scan-history")
+async def reset_nrd_scan_history(db: Annotated[Session, Depends(get_config_db)]):
+    """Clear artist scan log so NRD treats all artists as not yet scanned. Start fresh."""
+    from database.config_models import ArtistScanLog
+
+    deleted = db.query(ArtistScanLog).delete()
+    db.commit()
+    return {"success": True, "message": f"Cleared {deleted} scan records", "deleted_count": deleted}
 
 
 @router.post("/new-releases/recheck/{item_id}")

@@ -90,6 +90,16 @@ export interface ConnectivityTestResult {
   error?: string;
 }
 
+export interface NrdMetrics {
+  available: boolean;
+  error?: string;
+  total_lidarr_artists: number | null;
+  artists_scanned_fresh: number | null;
+  artists_not_scanned: number | null;
+  cache_ttl_days: number | null;
+  timestamp?: string;
+}
+
 export interface StatusInfo {
   app_name: string;
   version: string;

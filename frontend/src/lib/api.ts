@@ -7,6 +7,7 @@ import type {
   ConfigUpdateRequest,
   ConnectivityTestResult,
   StatusInfo,
+  NrdMetrics,
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
@@ -238,6 +239,10 @@ class ApiClient {
     return this.request("/api/auth/generate-api-key", { method: "POST" });
   }
 
+  async getNrdMetrics(): Promise<NrdMetrics> {
+    return await this.request("/api/status/nrd-metrics");
+  }
+
   async getCacheStatus(): Promise<{
     plex: LibraryCacheStatus;
     jellyfin: LibraryCacheStatus;
@@ -339,6 +344,22 @@ class ApiClient {
 
   async restoreDismissed(dismissedId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/restore/${dismissedId}`, { method: "POST" });
+  }
+
+  async restoreAllDismissed(): Promise<{
+    success: boolean;
+    message?: string;
+    restored_count?: number;
+  }> {
+    return this.request(`/api/new-releases/restore-all`, { method: "POST" });
+  }
+
+  async resetNrdScanHistory(): Promise<{
+    success: boolean;
+    message?: string;
+    deleted_count?: number;
+  }> {
+    return this.request(`/api/new-releases/reset-scan-history`, { method: "POST" });
   }
 
   async getNewReleasesCommandStatus(): Promise<{

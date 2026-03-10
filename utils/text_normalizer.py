@@ -111,6 +111,48 @@ def normalize_for_search(text: str | None) -> str:
     return normalize_text(text)
 
 
+# Substrings that indicate an edition suffix (Deluxe, Remaster, Live, etc.)
+# Used to strip parenthesized suffixes when matching release titles to avoid
+# treating special editions as "new" when the base release exists in MusicBrainz.
+# Conservative list to avoid false positives (e.g. "At the Drive-In" band name).
+_EDITION_KEYWORDS = frozenset(
+    {
+        "deluxe",
+        "remaster",
+        "remastered",
+        "live",
+        "expanded",
+        "anniversary",
+        "reissue",
+        "bonus",
+        "special edition",
+    }
+)
+
+
+def strip_edition_suffix(title: str | None) -> str:
+    """
+    Strip trailing parenthesized edition suffixes for matching purposes.
+    E.g. "Album (Deluxe Edition)" -> "Album", "Album (2021 Remaster)" -> "Album".
+    Only strips when the parenthesized content contains known edition keywords,
+    to avoid false positives (e.g. "Album (At the Drive-In)" is not stripped).
+    Returns the original string if no edition suffix is found.
+    """
+    if not title or not title.strip():
+        return title or ""
+    text = title.strip()
+    while True:
+        match = re.search(r"\s*\(([^)]+)\)\s*$", text)
+        if not match:
+            break
+        inner = match.group(1).lower()
+        if any(kw in inner for kw in _EDITION_KEYWORDS):
+            text = text[: match.start()].rstrip()
+        else:
+            break
+    return text
+
+
 def normalize_for_indexing(text: str | None) -> str:
     """
     Normalize text specifically for indexing operations.

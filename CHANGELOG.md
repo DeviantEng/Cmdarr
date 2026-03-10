@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.9-dev] - TBD
 
+### 🎵 New Releases Discovery
+- **Unified New Releases Card**: NRD metrics (Lidarr artists, scanned fresh, not yet scanned) moved into the New Releases card alongside "View / Restore Dismissed"
+- **Dismissed Popup Actions**: Restore All (restore all dismissed items) and Reset (wipe artist scan history to start NRD fresh) with confirmation dialogs
+- **API Endpoints**: `POST /api/new-releases/restore-all`, `POST /api/new-releases/reset-scan-history`
+- **Special Edition Filtering**: Strip parenthesized edition suffixes (Deluxe, Remaster, Live, etc.) when matching release titles so special editions match the base release in MusicBrainz and are not treated as new
+
 ### 🔒 Secure Coding & Access Control
 - **Error Exposure Fix**: Replaced all `detail=str(e)` with generic messages; added `from None` to break exception chains (commands.py, import_lists.py)
 - **Config Validation**: `config_service.set()` now enforces `validation_regex`, `min_value`, `max_value` from ConfigSetting
