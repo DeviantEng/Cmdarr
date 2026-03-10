@@ -541,17 +541,16 @@ export function StatusPage() {
           <DialogHeader>
             <DialogTitle>Restore All Dismissed</DialogTitle>
             <DialogDescription>
-              This will restore all {dismissedTotal} dismissed release{dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan. Continue?
+              This will restore all {dismissedTotal} dismissed release
+              {dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan.
+              Continue?
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setConfirmRestoreAllOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={handleRestoreAll}
-              disabled={confirmActionLoading === "restore-all"}
-            >
+            <Button onClick={handleRestoreAll} disabled={confirmActionLoading === "restore-all"}>
               {confirmActionLoading === "restore-all" ? "Restoring…" : "Restore All"}
             </Button>
           </div>
@@ -567,7 +566,9 @@ export function StatusPage() {
               Reset New Releases Discovery
             </DialogTitle>
             <DialogDescription>
-              This will wipe all artist scan history from the database. Every Lidarr artist will be treated as "not yet scanned" and NRD will start fresh on the next run. This cannot be undone. Continue?
+              This will wipe all artist scan history from the database. Every Lidarr artist will be
+              treated as "not yet scanned" and NRD will start fresh on the next run. This cannot be
+              undone. Continue?
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
