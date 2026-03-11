@@ -352,8 +352,8 @@ async def get_new_releases(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception(f"New releases scan failed: {e}")
+    except Exception:
+        logger.exception("New releases scan failed")
         raise HTTPException(status_code=500, detail="New releases scan failed") from None
 
 
@@ -794,7 +794,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         try:
             async with client_class(config) as release_client:
                 album_info = await release_client.get_album(album_id)
-            if not album_info.get("success"):
+            if not album_info.get("success") or album_info.get("error"):
                 raise HTTPException(status_code=404, detail="Album not found")
             artist_name = album_info.get("artist_name", "Unknown")
             album_url = album_info.get("album_url", "")
@@ -834,7 +834,11 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
     try:
         async with client_class(config) as release_client:
             artist_info = await release_client.get_artist(artist_id)
-            if not artist_info.get("success") or not artist_info.get("name"):
+            if (
+                not artist_info.get("success")
+                or artist_info.get("error")
+                or not artist_info.get("name")
+            ):
                 raise HTTPException(status_code=404, detail="Artist not found")
             artist_name = artist_info.get("name", "Unknown")
             albums_result = await release_client.get_artist_albums(
@@ -843,7 +847,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 include_groups="album,single,compilation,appears_on",
                 fetch_all=True,
             )
-            if not albums_result.get("success"):
+            if not albums_result.get("success") or albums_result.get("error"):
                 raise HTTPException(status_code=500, detail="Failed to fetch albums")
             albums = albums_result.get("albums", [])
     except HTTPException:
@@ -932,12 +936,13 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             }
 
     try:
-        return await _do_mb_scan()
+        result = await _do_mb_scan()
     except HTTPException:
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
+    return result
 
 
 @router.post("/new-releases/sync-lidarr-artists")
