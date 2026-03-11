@@ -19,11 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **URL Length Limits**: playlist_parser and _parse_scan_url reject URLs > 2048 chars; validate-url endpoint uses Query(max_length=2048)
 - **Single-User Access Control**: First-run setup (username/password), session-based login, API key for external calls; env override (CMDARR_AUTH_USERNAME, CMDARR_AUTH_PASSWORD, CMDARR_API_KEY) overwrites DB for password reset
 - **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy middleware on all responses
-- **ZAP DAST**: OWASP ZAP baseline scan in docker-publish pipeline (run container before push; fail blocks image push)
-  - Auth hook: POST /api/auth/setup before spider so ZAP gets session cookie and can scan authenticated routes
-  - AJAX spider for SPA coverage
-  - Findings table (failures/warnings) in job summary like Trivy
-  - Baseline config to IGNORE acceptable rules (10049, 10109, 90004)
+- **ZAP DAST**: Baseline scan in docker-publish (fast); full scan (spider + active) in PR checks as merge gate
+  - Scripts: `.github/scripts/zap-scan.sh` (baseline), `zap-full-scan.sh` (full); shared auth hook and IGNORE rules
+  - Auth fix: Root `/` and SPA routes public so unauthenticated users reach login screen (was 401)
 
 ### 🧪 PR Gate & Unit Tests
 - **PR Checks**: Unit tests run on PR to main (in addition to docker-publish for develop coverage)

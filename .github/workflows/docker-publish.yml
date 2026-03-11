@@ -154,51 +154,8 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           exit $exitcode
 
-      - name: Run container for ZAP
-        run: |
-          docker network create zap-net || true
-          docker run -d --name cmdarr-zap-target --network zap-net -p 8080:8080 \
-            -v cmdarr-zap-data:/app/data \
-            -e LIDARR_API_KEY=zap-scan-dummy -e LASTFM_API_KEY=zap-scan-dummy \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
-
-      - name: Wait for app health
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || true)
-            [ "$code" = "200" ] || [ "$code" = "503" ] && break
-            sleep 2
-          done
-          [ "$code" = "200" ] || [ "$code" = "503" ] || (echo "App did not become ready"; exit 1)
-          sleep 5
-
       - name: ZAP baseline scan
-        id: zap
-        run: |
-          mkdir -p zap-wrk
-          cp .github/zap/zap_auth_hook.py .github/zap/zap-baseline.conf zap-wrk/
-          chmod 777 zap-wrk
-          set +e
-          docker run --rm --network zap-net -v ${{ github.workspace }}/zap-wrk:/zap/wrk:rw -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://cmdarr-zap-target:8080 -I -j -c /zap/wrk/zap-baseline.conf -J /zap/wrk/zap-report.json --hook=/zap/wrk/zap_auth_hook.py
-          exitcode=$?
-          set -e
-
-          echo "## ZAP Baseline Scan Findings" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f zap-wrk/zap-report.json ]; then
-            count=$(jq -r '[.site[]?.alerts[]? | select((.riskcode | tonumber) > 0)] | length' zap-wrk/zap-report.json 2>/dev/null || echo "0")
-            if [ "$count" != "0" ] && [ "$count" != "null" ]; then
-              echo "| Severity | Rule ID | Finding | URL |" >> $GITHUB_STEP_SUMMARY
-              echo "|----------|---------|---------|-----|" >> $GITHUB_STEP_SUMMARY
-              jq -r '.site[]?.alerts[]? | select((.riskcode | tonumber) > 0) | "| \(.riskdesc) | \(.pluginid) | \(.alert | gsub("\\|"; "&#124;") | .[0:50]) | \((.instances[0].uri // "N/A") | .[0:50]) |"' zap-wrk/zap-report.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
-            else
-              echo "No failures or warnings." >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "Report not generated." >> $GITHUB_STEP_SUMMARY
-          fi
-          exit $exitcode
+        run: .github/scripts/zap-scan.sh ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan ${{ github.workspace }}
 
       - name: Stop container
         if: always()
