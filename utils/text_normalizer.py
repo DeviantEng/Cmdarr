@@ -151,8 +151,8 @@ def strip_edition_suffix(title: str | None) -> str:
     if len(text) > _EDITION_STRIP_MAX_LEN:
         text = text[:_EDITION_STRIP_MAX_LEN]
     while True:
-        # Limit inner group to 200 chars to avoid ReDoS (CodeQL: polynomial regex)
-        match = re.search(r"\s*\(([^)]{0,200})\)\s*$", text)
+        # Bounded quantifiers to avoid ReDoS (CodeQL: polynomial regex on \s*)
+        match = re.search(r"[ \t]{0,20}\(([^)]{0,200})\)[ \t]{0,20}$", text)
         if not match:
             break
         inner = match.group(1).lower()

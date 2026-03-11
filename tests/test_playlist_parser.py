@@ -74,7 +74,7 @@ def test_get_example_url_deezer():
     url = get_example_url("deezer")
     assert url is not None
     parsed = urlparse(url)
-    assert parsed.netloc.endswith("deezer.com")
+    assert parsed.netloc == "www.deezer.com"
     assert "playlist" in parsed.path
 
 
