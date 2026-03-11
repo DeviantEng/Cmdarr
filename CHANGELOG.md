@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy on all responses
 - **ZAP DAST**: Baseline scan in docker-publish; full scan (spider + active) in PR checks as merge gate; auth fix for public root/SPA routes
 
+### 🎵 Daylist & Local Discovery
+- **Server Owner Play History**: Fix play history for server owner; resolve Plex.tv ID to server account ID via token owner name matching (plex.tv/api/v2/user)
+
 ### 🧪 PR Gate & Unit Tests
 - **PR Checks**: Unit tests, frontend typecheck, pytest-cov; tests for playlist_parser, text_normalizer, discovery utils, auth, security_headers
 - **uv.lock**: Lock file for reproducible Python installs via uv
