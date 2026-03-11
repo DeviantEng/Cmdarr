@@ -508,7 +508,7 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
         get_status_logger().error(f"Failed to get NRD metrics: {e}")
         return {
             "available": False,
-            "error": str(e),
+            "error": "Failed to retrieve NRD metrics",
             "total_lidarr_artists": None,
             "artists_scanned_fresh": None,
             "artists_not_scanned": None,

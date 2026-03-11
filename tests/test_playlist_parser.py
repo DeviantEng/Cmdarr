@@ -1,5 +1,7 @@
 """Unit tests for playlist URL parser"""
 
+from urllib.parse import urlparse
+
 from utils.playlist_parser import (
     get_example_url,
     get_supported_sources,
@@ -63,15 +65,17 @@ def test_get_supported_sources():
 def test_get_example_url_spotify():
     url = get_example_url("spotify")
     assert url is not None
-    assert "open.spotify.com" in url
-    assert "playlist" in url
+    parsed = urlparse(url)
+    assert parsed.netloc == "open.spotify.com"
+    assert "playlist" in parsed.path
 
 
 def test_get_example_url_deezer():
     url = get_example_url("deezer")
     assert url is not None
-    assert "deezer.com" in url
-    assert "playlist" in url
+    parsed = urlparse(url)
+    assert parsed.netloc.endswith("deezer.com")
+    assert "playlist" in parsed.path
 
 
 def test_get_example_url_unknown():

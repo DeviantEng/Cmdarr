@@ -132,6 +132,10 @@ _EDITION_KEYWORDS = frozenset(
 )
 
 
+# Max chars for edition-suffix regex (ReDoS mitigation: avoid polynomial backtracking)
+_EDITION_STRIP_MAX_LEN = 500
+
+
 def strip_edition_suffix(title: str | None) -> str:
     """
     Strip trailing parenthesized edition suffixes for matching purposes.
@@ -139,12 +143,16 @@ def strip_edition_suffix(title: str | None) -> str:
     Only strips when the parenthesized content contains known edition keywords,
     to avoid false positives (e.g. "Album (At the Drive-In)" is not stripped).
     Returns the original string if no edition suffix is found.
+    Input is truncated to _EDITION_STRIP_MAX_LEN to mitigate ReDoS.
     """
     if not title or not title.strip():
         return title or ""
     text = title.strip()
+    if len(text) > _EDITION_STRIP_MAX_LEN:
+        text = text[:_EDITION_STRIP_MAX_LEN]
     while True:
-        match = re.search(r"\s*\(([^)]+)\)\s*$", text)
+        # Limit inner group to 200 chars to avoid ReDoS (CodeQL: polynomial regex)
+        match = re.search(r"\s*\(([^)]{0,200})\)\s*$", text)
         if not match:
             break
         inner = match.group(1).lower()

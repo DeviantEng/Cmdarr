@@ -149,7 +149,7 @@ jobs:
         run: pip-audit
 
   zap-full-scan:
-    name: ZAP Full Scan (security gate)
+    name: ZAP Full Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
