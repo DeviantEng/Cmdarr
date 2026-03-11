@@ -111,6 +111,104 @@ def normalize_for_search(text: str | None) -> str:
     return normalize_text(text)
 
 
+# Substrings that indicate an edition suffix (Deluxe, Remaster, Live, etc.)
+# Used to strip parenthesized suffixes when matching release titles to avoid
+# treating special editions as "new" when the base release exists in MusicBrainz.
+# Conservative list to avoid false positives (e.g. "At the Drive-In" band name).
+_EDITION_KEYWORDS = frozenset(
+    {
+        "deluxe",
+        "remaster",
+        "remastered",
+        "re-recorded",
+        "live",
+        "expanded",
+        "extended",
+        "anniversary",
+        "reissue",
+        "bonus",
+        "special edition",
+    }
+)
+
+
+# Max chars for edition-suffix regex (ReDoS mitigation: avoid polynomial backtracking)
+_EDITION_STRIP_MAX_LEN = 500
+
+
+def strip_edition_suffix(title: str | None) -> str:
+    """
+    Strip trailing parenthesized edition suffixes for matching purposes.
+    E.g. "Album (Deluxe Edition)" -> "Album", "Album (2021 Remaster)" -> "Album".
+    Only strips when the parenthesized content contains known edition keywords,
+    to avoid false positives (e.g. "Album (At the Drive-In)" is not stripped).
+    Returns the original string if no edition suffix is found.
+    Input is truncated to _EDITION_STRIP_MAX_LEN to mitigate ReDoS.
+    """
+    if not title or not title.strip():
+        return title or ""
+    text = title.strip()
+    if len(text) > _EDITION_STRIP_MAX_LEN:
+        text = text[:_EDITION_STRIP_MAX_LEN]
+    while True:
+        # Bounded quantifiers to avoid ReDoS (CodeQL: polynomial regex on \s*)
+        match = re.search(r"[ \t]{0,20}\(([^)]{0,200})\)[ \t]{0,20}$", text)
+        if not match:
+            break
+        inner = match.group(1).lower()
+        if any(kw in inner for kw in _EDITION_KEYWORDS):
+            text = text[: match.start()].rstrip()
+        else:
+            break
+    return text
+
+
+def has_edition_suffix(title: str | None) -> bool:
+    """
+    Return True if the title has a trailing parenthesized edition suffix
+    (Deluxe, Extended, Remaster, etc.). Used to identify the "base" release
+    when multiple variants exist (e.g. "Album" vs "Album (Extended)").
+    """
+    if not title or not title.strip():
+        return False
+    stripped = strip_edition_suffix(title)
+    return stripped != title.strip()
+
+
+def prefer_base_releases(
+    albums: list[dict],
+    title_key: str = "name",
+    date_key: str = "release_date",
+) -> list[dict]:
+    """
+    When multiple albums strip to the same base title (e.g. "Album" and
+    "Album (Extended)"), keep only the base release. The base is the one
+    without an edition suffix—this is the preferred URL for adding to MB;
+    extended/deluxe variants can be added later in the same release group.
+    """
+    from collections import defaultdict
+
+    # Group by (normalized base title, release_date)
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for a in albums:
+        title = a.get(title_key) or ""
+        date = a.get(date_key) or ""
+        base = normalize_text(strip_edition_suffix(title))
+        key = (base, date)
+        groups[key].append(a)
+
+    result = []
+    for _key, group in groups.items():
+        if len(group) == 1:
+            result.append(group[0])
+            continue
+        # Multiple variants: prefer the base (no edition suffix)
+        base_albums = [a for a in group if not has_edition_suffix(a.get(title_key))]
+        winner = base_albums[0] if base_albums else group[0]
+        result.append(winner)
+    return result
+
+
 def normalize_for_indexing(text: str | None) -> str:
     """
     Normalize text specifically for indexing operations.

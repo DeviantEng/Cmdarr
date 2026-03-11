@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-03-11
+
+### 🎵 New Releases Discovery
+- **Album Type Filter**: Trust API album_type/record_type only (Deezer, Spotify); no track-count heuristic; fixes albums not appearing when only "Album" selected
+- **Unified Card & Dismissed Actions**: NRD metrics in New Releases card; Restore All and Reset scan history with confirmation dialogs
+- **Edition Matching**: Strip parenthesized suffixes (Deluxe, Remaster, Extended, etc.) when matching MB; prefer base release over variants (e.g. "Album" over "Album (Extended)") for Harmony URL when both missing from MB
+
+### 🔒 Secure Coding & Access Control
+- **Single-User Auth**: First-run setup (username/password), session-based login, API key; env override for password reset
+- **Error Exposure Fix**: Generic API messages instead of raw exceptions; URL length limits (2048); config validation (regex, min/max)
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy on all responses
+- **ZAP DAST**: Baseline scan in docker-publish; full scan (spider + active) in PR checks as merge gate; auth fix for public root/SPA routes
+
+### 🎵 Daylist & Local Discovery
+- **Server Owner Play History**: Fix play history for server owner; resolve Plex.tv ID to server account ID via token owner name matching (plex.tv/api/v2/user)
+
+### 🧪 PR Gate & Unit Tests
+- **PR Checks**: Unit tests, frontend typecheck, pytest-cov; tests for playlist_parser, text_normalizer, discovery utils, auth, security_headers
+- **uv.lock**: Lock file for reproducible Python installs via uv
+
 ## [0.3.8] - 2026-03-09
 
 ### 🧪 Unit Tests & CI

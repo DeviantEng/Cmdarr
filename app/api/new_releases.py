@@ -28,7 +28,7 @@ from commands.config_adapter import ConfigAdapter
 from database.config_models import DismissedArtistAlbum, NewReleasePending
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
-from utils.text_normalizer import normalize_text
+from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 router = APIRouter()
 HARMONY_BASE_URL = "https://harmony.pulsewidth.org.uk/release"
@@ -70,19 +70,17 @@ def _album_matches_filter(
     total_tracks: int,
     selected_types: set[str],
 ) -> bool:
-    """Check if album matches selected type filter."""
+    """Match by API's album_type only. Deezer: record_type; Spotify: album_type. No track-count heuristic."""
     if not selected_types:
         return True
-    if "album" in selected_types and album_type == "album" and total_tracks > 6:
+    t = (album_type or "").lower()
+    if "album" in selected_types and t == "album":
         return True
-    # EP: Spotify uses album_type "album" + track count; Deezer uses album_type "ep"
-    if "ep" in selected_types and (
-        (album_type == "album" and total_tracks <= 6) or album_type == "ep"
-    ):
+    if "ep" in selected_types and t == "ep":
         return True
-    if "single" in selected_types and album_type == "single":
+    if "single" in selected_types and t == "single":
         return True
-    if "other" in selected_types and album_type in ("compilation", "appears_on"):
+    if "other" in selected_types and t in ("compilation", "appears_on"):
         return True
     return False
 
@@ -123,24 +121,35 @@ def _get_new_releases_source_from_db() -> str:
 def _title_matches_mb(
     spotify_title: str, mb_titles: list[str], min_similarity: float = 0.7
 ) -> bool:
-    """Check if Spotify album title matches any MB release group (fuzzy)."""
+    """Check if Spotify album title matches any MB release group (fuzzy).
+    Strips edition suffixes (Deluxe, Remaster, Live, etc.) so special editions
+    match the base release and are not treated as new."""
+    from difflib import SequenceMatcher
+
     norm_spotify = normalize_text(spotify_title)
     if not norm_spotify:
         return False
+    base_spotify = normalize_text(strip_edition_suffix(spotify_title))
     for mb_title in mb_titles:
         norm_mb = normalize_text(mb_title)
         if not norm_mb:
             continue
-        # Exact or containment
+        base_mb = normalize_text(strip_edition_suffix(mb_title))
+        # Compare full titles
         if norm_spotify == norm_mb:
             return True
         if norm_spotify in norm_mb or norm_mb in norm_spotify:
             return True
-        # Similarity (catches "Deconstructed" vs "Deconstructed (Live)")
-        from difflib import SequenceMatcher
-
         if SequenceMatcher(None, norm_spotify, norm_mb).ratio() >= min_similarity:
             return True
+        # Compare base titles (stripped of Deluxe, Remaster, Live, etc.)
+        if base_spotify and base_mb:
+            if base_spotify == base_mb:
+                return True
+            if base_spotify in base_mb or base_mb in base_spotify:
+                return True
+            if SequenceMatcher(None, base_spotify, base_mb).ratio() >= min_similarity:
+                return True
     return False
 
 
@@ -307,6 +316,11 @@ async def get_new_releases(
                         }
                     )
 
+                # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+                new_albums = prefer_base_releases(
+                    new_albums, title_key="name", date_key="release_date"
+                )
+
                 if new_albums:
                     artists_with_releases += 1
                     lidarr_id = artist.get("id")
@@ -340,7 +354,7 @@ async def get_new_releases(
         raise
     except Exception as e:
         logger.exception(f"New releases scan failed: {e}")
-        raise HTTPException(status_code=500, detail="New releases scan failed")
+        raise HTTPException(status_code=500, detail="New releases scan failed") from None
 
 
 # --- DB-backed endpoints ---
@@ -495,6 +509,26 @@ async def restore_dismissed(dismissed_id: int, db: Annotated[Session, Depends(ge
     db.delete(row)
     db.commit()
     return {"success": True, "message": "Restored - will reappear on next scan"}
+
+
+@router.post("/new-releases/restore-all")
+async def restore_all_dismissed(db: Annotated[Session, Depends(get_config_db)]):
+    """Restore all dismissed items - removes from dismissed table so they reappear on next scan."""
+    from database.config_models import DismissedArtistAlbum
+
+    deleted = db.query(DismissedArtistAlbum).delete()
+    db.commit()
+    return {"success": True, "message": f"Restored {deleted} items", "restored_count": deleted}
+
+
+@router.post("/new-releases/reset-scan-history")
+async def reset_nrd_scan_history(db: Annotated[Session, Depends(get_config_db)]):
+    """Clear artist scan log so NRD treats all artists as not yet scanned. Start fresh."""
+    from database.config_models import ArtistScanLog
+
+    deleted = db.query(ArtistScanLog).delete()
+    db.commit()
+    return {"success": True, "message": f"Cleared {deleted} scan records", "deleted_count": deleted}
 
 
 @router.post("/new-releases/recheck/{item_id}")
@@ -660,7 +694,7 @@ def _parse_scan_url(url: str) -> tuple[str | None, str | None, str | None]:
     import re
 
     url = (url or "").strip()
-    if not url:
+    if not url or len(url) > 2048:
         return None, None, None
     if not url.startswith("http"):
         url = "https://" + url
@@ -793,7 +827,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
             raise
         except Exception:
             logger.exception("Scan album URL failed")
-            raise HTTPException(status_code=500, detail="Scan album URL failed")
+            raise HTTPException(status_code=500, detail="Scan album URL failed") from None
 
     # --- Artist URL: full scan ---
     cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
@@ -816,7 +850,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
-        raise HTTPException(status_code=500, detail="Scan artist URL failed")
+        raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
 
     async def _do_mb_scan() -> dict:
         """Run MusicBrainz scan; returns result dict. Raises HTTPException on error."""
@@ -880,6 +914,11 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                     if item:
                         best_missing.append(item)
 
+            # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+            best_missing = prefer_base_releases(
+                best_missing, title_key="name", date_key="release_date"
+            )
+
             return {
                 "success": True,
                 "artist_name": artist_name,
@@ -898,7 +937,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
-        raise HTTPException(status_code=500, detail="Scan artist URL failed")
+        raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
 
 
 @router.post("/new-releases/sync-lidarr-artists")

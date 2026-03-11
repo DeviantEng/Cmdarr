@@ -193,6 +193,10 @@ async def update_config_setting(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update configuration")
 
+        # Invalidate Spotify API cache when credentials change (triggers re-evaluation)
+        if key in ("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"):
+            config_service.invalidate_spotify_api_cache()
+
         # Special handling for LOG_LEVEL changes
         if key == "LOG_LEVEL":
             try:

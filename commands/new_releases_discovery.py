@@ -31,7 +31,7 @@ from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
 from database.config_models import ArtistScanLog, DismissedArtistAlbum, NewReleasePending
 from database.database import get_database_manager
-from utils.text_normalizer import normalize_text
+from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 from .command_base import BaseCommand
 from .config_adapter import ConfigAdapter
@@ -63,18 +63,17 @@ def _is_live_release(title: str) -> bool:
 
 
 def _album_matches_filter(album_type: str, total_tracks: int, selected_types: set[str]) -> bool:
+    """Match by API's album_type only. Deezer: record_type; Spotify: album_type. No track-count heuristic."""
     if not selected_types:
         return True
-    if "album" in selected_types and album_type == "album" and total_tracks > 6:
+    t = (album_type or "").lower()
+    if "album" in selected_types and t == "album":
         return True
-    # EP: Spotify uses album_type "album" + track count; Deezer uses album_type "ep"
-    if "ep" in selected_types and (
-        (album_type == "album" and total_tracks <= 6) or album_type == "ep"
-    ):
+    if "ep" in selected_types and t == "ep":
         return True
-    if "single" in selected_types and album_type == "single":
+    if "single" in selected_types and t == "single":
         return True
-    if "other" in selected_types and album_type in ("compilation", "appears_on"):
+    if "other" in selected_types and t in ("compilation", "appears_on"):
         return True
     return False
 
@@ -94,21 +93,33 @@ def _artist_names_match(name1: str, name2: str, min_similarity: float = 0.9) -> 
 def _title_matches_mb(
     spotify_title: str, mb_titles: list[str], min_similarity: float = 0.7
 ) -> bool:
+    """Check if Spotify album title matches any MB release group (fuzzy).
+    Strips edition suffixes (Deluxe, Remaster, Live, etc.) so special editions
+    match the base release and are not treated as new."""
     from difflib import SequenceMatcher
 
     norm_spotify = normalize_text(spotify_title)
     if not norm_spotify:
         return False
+    base_spotify = normalize_text(strip_edition_suffix(spotify_title))
     for mb_title in mb_titles:
         norm_mb = normalize_text(mb_title)
         if not norm_mb:
             continue
+        base_mb = normalize_text(strip_edition_suffix(mb_title))
         if norm_spotify == norm_mb:
             return True
         if norm_spotify in norm_mb or norm_mb in norm_spotify:
             return True
         if SequenceMatcher(None, norm_spotify, norm_mb).ratio() >= min_similarity:
             return True
+        if base_spotify and base_mb:
+            if base_spotify == base_mb:
+                return True
+            if base_spotify in base_mb or base_mb in base_spotify:
+                return True
+            if SequenceMatcher(None, base_spotify, base_mb).ratio() >= min_similarity:
+                return True
     return False
 
 
@@ -288,6 +299,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                         continue
 
                                 had_pending = False
+                                candidates = []
                                 for album in albums_result["albums"]:
                                     if album.get("primary_artist_id") != artist_id:
                                         continue
@@ -317,18 +329,36 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                     ):
                                         continue
 
-                                    harmony_url = (
-                                        f"{HARMONY_BASE_URL}?url={quote(spotify_url, safe='')}"
+                                    candidates.append(
+                                        {
+                                            "album": album,
+                                            "album_title": album_title,
+                                            "release_date": release_date,
+                                            "album_type": album_type,
+                                            "total_tracks": total_tracks,
+                                            "spotify_url": spotify_url,
+                                        }
                                     )
+
+                                # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+                                filtered = prefer_base_releases(
+                                    candidates,
+                                    title_key="album_title",
+                                    date_key="release_date",
+                                )
+
+                                for item in filtered:
+                                    album = item["album"]
+                                    harmony_url = f"{HARMONY_BASE_URL}?url={quote(item['spotify_url'], safe='')}"
                                     rec = NewReleasePending(
                                         artist_mbid=mbid,
                                         artist_name=artist_name,
                                         spotify_artist_id=artist_id,
-                                        album_title=album_title,
-                                        album_type=album_type,
-                                        release_date=release_date,
-                                        total_tracks=total_tracks,
-                                        spotify_url=spotify_url,
+                                        album_title=item["album_title"],
+                                        album_type=item["album_type"],
+                                        release_date=item["release_date"],
+                                        total_tracks=item["total_tracks"],
+                                        spotify_url=item["spotify_url"],
                                         harmony_url=harmony_url,
                                         lidarr_artist_id=lidarr_id,
                                         lidarr_artist_url=lidarr_artist_url,

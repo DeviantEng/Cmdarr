@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Activity,
+  AlertTriangle,
+  BarChart3,
   CheckCircle2,
   XCircle,
   Clock,
@@ -9,9 +11,10 @@ import {
   Database,
   RefreshCw,
   RotateCw,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { StatusInfo, LibraryCacheStatus } from "@/lib/types";
+import type { StatusInfo, LibraryCacheStatus, NrdMetrics } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +38,7 @@ export function StatusPage() {
     plex: LibraryCacheStatus;
     jellyfin: LibraryCacheStatus;
   } | null>(null);
+  const [nrdMetrics, setNrdMetrics] = useState<NrdMetrics | null>(null);
   const [cacheActionLoading, setCacheActionLoading] = useState<"refresh" | "rebuild" | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissedOpen, setDismissedOpen] = useState(false);
@@ -42,6 +46,11 @@ export function StatusPage() {
     { id: number; artist_name: string; album_title: string; release_date?: string }[]
   >([]);
   const [dismissedTotal, setDismissedTotal] = useState(0);
+  const [confirmRestoreAllOpen, setConfirmRestoreAllOpen] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [confirmActionLoading, setConfirmActionLoading] = useState<"restore-all" | "reset" | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,17 +80,48 @@ export function StatusPage() {
     }
   };
 
+  const handleRestoreAll = async () => {
+    setConfirmActionLoading("restore-all");
+    try {
+      const res = await api.restoreAllDismissed();
+      toast.success(res.message ?? `Restored ${res.restored_count ?? 0} items`);
+      setConfirmRestoreAllOpen(false);
+      loadDismissed();
+    } catch {
+      toast.error("Failed to restore all");
+    } finally {
+      setConfirmActionLoading(null);
+    }
+  };
+
+  const handleReset = async () => {
+    setConfirmActionLoading("reset");
+    try {
+      const res = await api.resetNrdScanHistory();
+      toast.success(res.message ?? `Cleared ${res.deleted_count ?? 0} scan records`);
+      setConfirmResetOpen(false);
+      loadStatus();
+      loadDismissed();
+    } catch {
+      toast.error("Failed to reset scan history");
+    } finally {
+      setConfirmActionLoading(null);
+    }
+  };
+
   const loadStatus = async () => {
     setError(null);
     try {
-      const [statusData, healthData, cacheData] = await Promise.all([
+      const [statusData, healthData, cacheData, nrdData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
         api.getCacheStatus().catch(() => null),
+        api.getNrdMetrics().catch(() => null),
       ]);
       setStatus(statusData);
       setHealth(healthData);
       setCacheStatus(cacheData);
+      setNrdMetrics(nrdData);
     } catch {
       setError("Failed to load status");
       toast.error("Failed to load status");
@@ -375,15 +415,53 @@ export function StatusPage() {
         </Card>
       )}
 
-      {/* Dismissed Releases */}
+      {/* New Releases */}
       <Card>
         <CardHeader>
-          <CardTitle>New Releases</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            New Releases
+          </CardTitle>
           <CardDescription>
-            Dismissed releases from New Releases can be restored here
+            {nrdMetrics?.available
+              ? `Lidarr artist scan coverage (within ${nrdMetrics.cache_ttl_days ?? 14}-day TTL). Dismissed releases can be restored below.`
+              : "Dismissed releases from New Releases can be restored here"}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {nrdMetrics?.available && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border p-4">
+                <div className="text-2xl font-bold">
+                  {nrdMetrics.total_lidarr_artists?.toLocaleString() ?? "—"}
+                </div>
+                <p className="text-sm text-muted-foreground">Lidarr artists</p>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-2xl font-bold">
+                  {nrdMetrics.artists_scanned_fresh?.toLocaleString() ?? "—"}
+                </div>
+                <p className="text-sm text-muted-foreground">Scanned (fresh)</p>
+                {nrdMetrics.total_lidarr_artists != null &&
+                  nrdMetrics.total_lidarr_artists > 0 &&
+                  nrdMetrics.artists_scanned_fresh != null && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {(
+                        (nrdMetrics.artists_scanned_fresh / nrdMetrics.total_lidarr_artists) *
+                        100
+                      ).toFixed(1)}
+                      % coverage
+                    </p>
+                  )}
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-2xl font-bold">
+                  {nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
+                </div>
+                <p className="text-sm text-muted-foreground">Not yet scanned</p>
+              </div>
+            </div>
+          )}
           <Button variant="outline" onClick={openDismissed}>
             <RotateCcw className="mr-2 h-4 w-4" />
             View / Restore Dismissed
@@ -400,37 +478,110 @@ export function StatusPage() {
               Restore to allow them to reappear on the next New Releases scan.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto space-y-2 py-4">
-            {dismissed.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No dismissed releases.</p>
-            ) : (
-              dismissed.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium">{item.artist_name}</span>
-                    <span className="mx-2 text-muted-foreground">—</span>
-                    <span>{item.album_title}</span>
-                    {item.release_date && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {item.release_date}
-                      </span>
-                    )}
+          <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmRestoreAllOpen(true)}
+                disabled={dismissedTotal === 0}
+              >
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                Restore All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmResetOpen(true)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Reset
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {dismissed.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No dismissed releases.</p>
+              ) : (
+                dismissed.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{item.artist_name}</span>
+                      <span className="mx-2 text-muted-foreground">—</span>
+                      <span>{item.album_title}</span>
+                      {item.release_date && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {item.release_date}
+                        </span>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      Restore
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                    Restore
-                  </Button>
-                </div>
-              ))
-            )}
-            {dismissedTotal > dismissed.length && (
-              <p className="text-xs text-muted-foreground">
-                Showing {dismissed.length} of {dismissedTotal}
-              </p>
-            )}
+                ))
+              )}
+              {dismissedTotal > dismissed.length && (
+                <p className="text-xs text-muted-foreground">
+                  Showing {dismissed.length} of {dismissedTotal}
+                </p>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore All confirmation */}
+      <Dialog open={confirmRestoreAllOpen} onOpenChange={setConfirmRestoreAllOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore All Dismissed</DialogTitle>
+            <DialogDescription>
+              This will restore all {dismissedTotal} dismissed release
+              {dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan.
+              Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setConfirmRestoreAllOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRestoreAll} disabled={confirmActionLoading === "restore-all"}>
+              {confirmActionLoading === "restore-all" ? "Restoring…" : "Restore All"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset scan history confirmation */}
+      <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Reset New Releases Discovery
+            </DialogTitle>
+            <DialogDescription>
+              This will wipe all artist scan history from the database. Every Lidarr artist will be
+              treated as "not yet scanned" and NRD will start fresh on the next run. This cannot be
+              undone. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setConfirmResetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReset}
+              disabled={confirmActionLoading === "reset"}
+            >
+              {confirmActionLoading === "reset" ? "Resetting…" : "Reset"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

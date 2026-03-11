@@ -1,4 +1,4 @@
-name: PR Checks (release gate)
+name: PR Checks
 
 on:
   pull_request:
@@ -7,9 +7,14 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +24,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install Ruff
-        run: pip install ruff
+        run: pip install ruff==0.15.4
 
       - name: Lint
         run: ruff check .
@@ -27,8 +32,30 @@ jobs:
       - name: Format check
         run: ruff format --check .
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
+
   frontend-lint:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -50,6 +77,8 @@ jobs:
 
   frontend-format:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -69,8 +98,33 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
   npm-audit:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -92,6 +146,8 @@ jobs:
 
   pip-audit:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -105,3 +161,34 @@ jobs:
 
       - name: Audit
         run: pip-audit
+
+  zap-full-scan:
+    name: ZAP Full Scan
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for scan
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ghcr.io/devianteng/cmdarr:scan
+          build-args: |
+            IMAGE_TAG=pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: ZAP full scan
+        run: .github/scripts/zap-full-scan.sh ghcr.io/devianteng/cmdarr:scan ${{ github.workspace }}
+
+      - name: Stop container
+        if: always()
+        run: docker stop cmdarr-zap-target 2>/dev/null || true

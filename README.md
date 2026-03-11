@@ -88,6 +88,10 @@ python run_fastapi.py
 
 Visit `http://localhost:8080`. For frontend dev with hot reload: `npm run dev` in `frontend/` and use `http://localhost:5173`.
 
+### Environment Options
+
+All configuration can be set via environment variables. For the full list—including access control (`CMDARR_AUTH_USERNAME`, `CMDARR_AUTH_PASSWORD`, `CMDARR_API_KEY`), optional services, library cache, and scheduler—see [Environment Variables](readme-extended.md#environment-variables) in the extended documentation.
+
 ## Web Interface
 
 Access `http://localhost:8080` for:

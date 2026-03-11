@@ -1164,7 +1164,7 @@ class PlexClient(BaseAPIClient):
             return []
 
     def get_accounts(self) -> list[dict[str, Any]]:
-        """Get Plex Home users only (excludes friends/shared library users).
+        """Get Plex Home users (and token owner if not in home users).
         Uses Plex.tv API /home/users. Returns list of {id, name} for dropdown."""
         try:
             url = "https://plex.tv/api/v2/home/users"
@@ -1176,23 +1176,55 @@ class PlexClient(BaseAPIClient):
             resp.raise_for_status()
             root = ET.fromstring(resp.text)
             accounts = []
+            seen_ids = set()
             for user in root.findall(".//user"):
                 acc_id = user.get("id")
                 if acc_id is None:
                     continue
+                acc_id_str = str(acc_id)
+                if acc_id_str in seen_ids:
+                    continue
+                seen_ids.add(acc_id_str)
                 name = (
                     user.get("title") or user.get("username") or user.get("friendlyName") or ""
                 ).strip()
-                accounts.append({"id": str(acc_id), "name": name or f"Account {acc_id}"})
+                accounts.append({"id": acc_id_str, "name": name or f"Account {acc_id_str}"})
+            # Include token owner if not in home users (server owner may be absent)
+            token_owner = self._get_token_owner()
+            if token_owner and token_owner["id"] not in seen_ids:
+                accounts.insert(0, {"id": token_owner["id"], "name": token_owner["name"]})
             return accounts
         except Exception as e:
             self.logger.error(f"Error getting Plex home users: {e}")
             return []
 
+    def _get_token_owner(self) -> dict[str, str] | None:
+        """Get token owner's Plex.tv ID and name from plex.tv/api/v2/user.
+        Returns {'id': str, 'name': str} (name for display; use name.lower() for matching)."""
+        try:
+            url = "https://plex.tv/api/v2/user"
+            params = {
+                "X-Plex-Token": self.token,
+                "X-Plex-Client-Identifier": "cmdarr-daylist",
+            }
+            resp = self._session.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            uid = root.get("id")
+            name = (
+                root.get("title") or root.get("username") or root.get("friendlyName") or ""
+            ).strip()
+            if uid:
+                return {"id": str(uid), "name": name or f"Account {uid}"}
+            return None
+        except Exception as e:
+            self.logger.debug(f"Could not get token owner: {e}")
+            return None
+
     def resolve_account_id_for_history(self, plex_tv_account_id: str | int) -> str | None:
         """Resolve Plex.tv account ID to server account ID for session history.
-        Server owner uses id=1; shared users use their Plex.tv ID. Returns the ID
-        to pass to get_play_history, or None on failure."""
+        Server owner uses local id (e.g. 1); shared users use their Plex.tv ID.
+        Returns the ID to pass to get_play_history, or None on failure."""
         try:
             plex_tv_id = str(plex_tv_account_id)
             # Get server accounts (id + name) - session history uses these IDs
@@ -1210,12 +1242,19 @@ class PlexClient(BaseAPIClient):
             # If plex_tv_id exists in server accounts, use it (shared users)
             if plex_tv_id in by_id:
                 return plex_tv_id
-            # Server owner: Plex.tv ID != server id (owner uses 1). Match by name.
+            # Server owner: Plex.tv ID != server id. Match by name from home users.
             home_users = self.get_accounts()
             home_by_id = {a["id"]: a["name"] for a in home_users}
             owner_name = (home_by_id.get(plex_tv_id) or "").strip().lower()
             if owner_name and owner_name in by_name:
                 return by_name[owner_name]
+            # Fallback: requested account is token owner (may not be in home users).
+            # Token owner = server owner; match by name from plex.tv to server accounts.
+            token_owner = self._get_token_owner()
+            if token_owner and token_owner["id"] == plex_tv_id:
+                name_lower = token_owner["name"].lower() if token_owner["name"] else ""
+                if name_lower and name_lower in by_name:
+                    return by_name[name_lower]
             return None
         except Exception as e:
             self.logger.error(f"Error resolving account ID for history: {e}")

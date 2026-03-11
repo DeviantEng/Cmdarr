@@ -216,24 +216,50 @@ Add Cmdarr as a Custom List in Lidarr:
 
 ### Environment Variables
 
-All configuration can be set via environment variables:
+All configuration can be set via environment variables. See Config in the web UI for the full list.
+
+#### Access Control (Single-User Auth)
+
+First run prompts for username and password. These env vars **overwrite** the database (useful for Docker secrets or password reset):
+
+| Variable | Description |
+|----------|-------------|
+| `CMDARR_AUTH_USERNAME` | Admin username |
+| `CMDARR_AUTH_PASSWORD` | Admin password (plain text; hashed on write) |
+| `CMDARR_API_KEY` | API key for external calls (e.g. `X-API-Key` header, `Authorization: Bearer`) |
+
+**API key:** Generate and rotate from Config → Access Control in the UI. Use `CMDARR_API_KEY` only when you need to set it via env (e.g. Docker secrets); the UI is simpler for normal use.
+
+#### Full Reference
 
 ```bash
+# Access control (overwrites DB; first run or password reset)
+CMDARR_AUTH_USERNAME=admin
+CMDARR_AUTH_PASSWORD=your_password
+CMDARR_API_KEY=your_api_key_for_external_calls
+
 # Required API Configuration
 LIDARR_URL=http://lidarr:8686
 LIDARR_API_KEY=your_lidarr_api_key
 LASTFM_API_KEY=your_lastfm_api_key
 
 # Optional Services
-LISTENBRAINZ_TOKEN=your_listenbrainz_token
-LISTENBRAINZ_USERNAME=your_username
+PLEX_CLIENT_ENABLED=true
 PLEX_URL=http://plex:32400
 PLEX_TOKEN=your_plex_token
+PLEX_LIBRARY_NAME=Music
+JELLYFIN_CLIENT_ENABLED=false
 JELLYFIN_URL=http://jellyfin:8096
 JELLYFIN_TOKEN=your_jellyfin_token
 JELLYFIN_USER_ID=your_jellyfin_user_id
+LISTENBRAINZ_TOKEN=your_listenbrainz_token
+LISTENBRAINZ_USERNAME=your_username
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+
+# MusicBrainz (New Releases Discovery)
+MUSICBRAINZ_ENABLED=true
+NEW_RELEASES_CACHE_DAYS=14
 
 # Library cache optimization
 LIBRARY_CACHE_PLEX_TTL_DAYS=30
@@ -244,6 +270,7 @@ LIBRARY_CACHE_JELLYFIN_ENABLED=true
 # Scheduler (cron-based; TZ also used for schedule interpretation)
 DEFAULT_SCHEDULE_CRON="0 3 * * *"
 SCHEDULER_TIMEZONE=America/New_York
+MAX_PARALLEL_COMMANDS=1
 
 # Restart retry: auto-retry commands interrupted by restart (default: true)
 RESTART_RETRY_ENABLED=true
@@ -251,17 +278,17 @@ RESTART_RETRY_ENABLED=true
 # Graceful shutdown (wait for running commands before exit)
 SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
 
-# Rate limiting optimization
+# Rate limiting
 LASTFM_RATE_LIMIT=8.0
 MUSICBRAINZ_RATE_LIMIT=1.5
 MUSICBRAINZ_MAX_RETRIES=3
 MUSICBRAINZ_RETRY_DELAY=2.0
 
-# Web Server Configuration
+# Web Server
 WEB_HOST=0.0.0.0
 WEB_PORT=8080
 
-# Logging Configuration
+# Logging
 LOG_LEVEL=INFO
 LOG_RETENTION_DAYS=7
 ```

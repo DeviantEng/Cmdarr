@@ -2,7 +2,7 @@
 
 check: check-python check-frontend check-audit
 check-python:
-	ruff check . && ruff format --check .
+	uv run ruff check . && uv run ruff format --check .
 check-frontend:
 	cd frontend && npm run lint && npm run format:check
 check-audit:
@@ -11,6 +11,6 @@ check-audit:
 
 fix: fix-python fix-frontend
 fix-python:
-	ruff check . --fix && ruff format .
+	uv run ruff check . --fix && uv run ruff format .
 fix-frontend:
 	cd frontend && npm run lint:fix && npm run format

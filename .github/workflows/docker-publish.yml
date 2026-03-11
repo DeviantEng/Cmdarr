@@ -16,10 +16,16 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: devianteng/cmdarr
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
 
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +40,13 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest tests/ -v
+        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
 
   build-and-push:
     needs: [unit-tests]
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: read
       packages: write
@@ -149,6 +157,13 @@ jobs:
           echo "$output" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           exit $exitcode
+
+      - name: ZAP baseline scan
+        run: .github/scripts/zap-scan.sh ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan ${{ github.workspace }}
+
+      - name: Stop container
+        if: always()
+        run: docker stop cmdarr-zap-target 2>/dev/null || true
 
       - name: Build and push Docker image
         if: success()

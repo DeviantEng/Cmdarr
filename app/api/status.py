@@ -457,6 +457,65 @@ async def get_cache_status(target: str = None):
         raise HTTPException(status_code=500, detail="Failed to retrieve cache status")
 
 
+@router.get("/nrd-metrics")
+async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
+    """
+    New Releases Discovery metrics: Lidarr artist count, artists scanned (fresh within TTL),
+    and artists not yet scanned. Helps diagnose why NRD may show nothing.
+    """
+    try:
+        from commands.config_adapter import ConfigAdapter
+        from database.config_models import ArtistScanLog
+
+        config = ConfigAdapter()
+        if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+            return {
+                "available": False,
+                "error": "Lidarr not configured",
+                "total_lidarr_artists": None,
+                "artists_scanned_fresh": None,
+                "artists_not_scanned": None,
+                "cache_ttl_days": None,
+            }
+
+        from clients.client_lidarr import LidarrClient
+
+        cache_ttl_days = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
+        cutoff = datetime.utcnow() - timedelta(days=cache_ttl_days)
+
+        async with LidarrClient(config) as lidarr_client:
+            artists = await lidarr_client.get_all_artists()
+
+        lidarr_mbids = {a.get("musicBrainzId") for a in artists if a.get("musicBrainzId")}
+        total = len(lidarr_mbids)
+
+        scan_logs = db.query(ArtistScanLog).filter(ArtistScanLog.last_scanned_at >= cutoff).all()
+        scanned_fresh_mbids = {log.artist_mbid for log in scan_logs}
+        artists_scanned_fresh = len(lidarr_mbids & scanned_fresh_mbids)
+
+        all_scanned_mbids = {row.artist_mbid for row in db.query(ArtistScanLog.artist_mbid).all()}
+        artists_not_scanned = len(lidarr_mbids - all_scanned_mbids)
+
+        return {
+            "available": True,
+            "total_lidarr_artists": total,
+            "artists_scanned_fresh": artists_scanned_fresh,
+            "artists_not_scanned": artists_not_scanned,
+            "cache_ttl_days": cache_ttl_days,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        }
+    except Exception as e:
+        get_status_logger().error(f"Failed to get NRD metrics: {e}")
+        return {
+            "available": False,
+            "error": "Failed to retrieve NRD metrics",
+            "total_lidarr_artists": None,
+            "artists_scanned_fresh": None,
+            "artists_not_scanned": None,
+            "cache_ttl_days": None,
+        }
+
+
 @router.post("/cache/reset")
 async def reset_cache_stats():
     """Reset cache statistics for all clients (for testing)"""

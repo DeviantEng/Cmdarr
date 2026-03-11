@@ -6,7 +6,7 @@ Commands API endpoints
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -148,7 +148,7 @@ async def get_plex_accounts():
         raise
     except Exception as e:
         get_commands_logger().error(f"Failed to get Plex accounts: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get Plex accounts") from None
 
 
 @router.get("/daylist/exists")
@@ -184,7 +184,7 @@ async def get_scheduler_status():
 
 
 @router.get("/playlist-sync/validate-url")
-async def validate_playlist_url(url: str):
+async def validate_playlist_url(url: str = Query(..., max_length=2048)):
     """Validate playlist URL and fetch metadata"""
     try:
         from clients.client_deezer import DeezerClient
@@ -874,7 +874,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
     except Exception as e:
         get_commands_logger().error(f"Failed to create daylist: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create daylist") from None
 
 
 @router.get("/local-discovery/exists")
@@ -992,7 +992,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
     except Exception as e:
         get_commands_logger().error(f"Failed to create local discovery: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create local discovery") from None
 
 
 @router.get("/top-tracks/exists")
@@ -1108,7 +1108,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
     except Exception as e:
         get_commands_logger().error(f"Failed to create top tracks: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create top tracks") from None
 
 
 @router.get("/mood-playlist/moods")
@@ -1250,7 +1250,7 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
     except Exception as e:
         get_commands_logger().error(f"Failed to create mood playlist: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create mood playlist") from None
 
 
 @router.post("/playlist-sync/create")

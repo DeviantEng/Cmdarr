@@ -7,6 +7,7 @@ import type {
   ConfigUpdateRequest,
   ConnectivityTestResult,
   StatusInfo,
+  NrdMetrics,
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
@@ -46,6 +47,7 @@ class ApiClient {
       const response = await fetch(url, {
         ...fetchOptions,
         signal: fetchOptions.signal ?? controller.signal,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...fetchOptions.headers,
@@ -206,6 +208,41 @@ class ApiClient {
     return await this.request("/health");
   }
 
+  // Auth API
+  async getAuthStatus(): Promise<{
+    setup_required: boolean;
+    authenticated: boolean;
+    username: string | null;
+  }> {
+    return await this.request("/api/auth/status");
+  }
+
+  async setup(username: string, password: string): Promise<{ message: string; username: string }> {
+    return this.request("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async login(username: string, password: string): Promise<{ message: string; username: string }> {
+    return this.request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async logout(): Promise<{ message: string }> {
+    return this.request("/api/auth/logout", { method: "POST" });
+  }
+
+  async generateApiKey(): Promise<{ api_key: string; message: string }> {
+    return this.request("/api/auth/generate-api-key", { method: "POST" });
+  }
+
+  async getNrdMetrics(): Promise<NrdMetrics> {
+    return await this.request("/api/status/nrd-metrics");
+  }
+
   async getCacheStatus(): Promise<{
     plex: LibraryCacheStatus;
     jellyfin: LibraryCacheStatus;
@@ -307,6 +344,22 @@ class ApiClient {
 
   async restoreDismissed(dismissedId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/restore/${dismissedId}`, { method: "POST" });
+  }
+
+  async restoreAllDismissed(): Promise<{
+    success: boolean;
+    message?: string;
+    restored_count?: number;
+  }> {
+    return this.request(`/api/new-releases/restore-all`, { method: "POST" });
+  }
+
+  async resetNrdScanHistory(): Promise<{
+    success: boolean;
+    message?: string;
+    deleted_count?: number;
+  }> {
+    return this.request(`/api/new-releases/reset-scan-history`, { method: "POST" });
   }
 
   async getNewReleasesCommandStatus(): Promise<{

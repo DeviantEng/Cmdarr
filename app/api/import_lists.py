@@ -160,7 +160,7 @@ async def reset_discovery_lastfm():
         return {"success": True, "entry_count": 0}
     except Exception as e:
         logger.error(f"Failed to reset Last.fm import list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to reset Last.fm import list") from None
 
 
 @router.post("/discovery_playlistsync/reset")
@@ -180,7 +180,9 @@ async def reset_discovery_playlistsync():
         return {"success": True, "entry_count": 0}
     except Exception as e:
         logger.error(f"Failed to reset Playlist Sync import list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail="Failed to reset Playlist Sync import list"
+        ) from None
 
 
 @router.get("/discovery_playlistsync")

@@ -287,6 +287,18 @@ async def lifespan(app: FastAPI):
     if missing_config:
         get_app_logger().warning(f"Missing required configuration: {missing_config}")
 
+    # Apply auth env override (CMDARR_AUTH_USERNAME, CMDARR_AUTH_PASSWORD, CMDARR_API_KEY)
+    try:
+        from app.auth import apply_env_override
+
+        apply_env_override()
+        get_app_logger().info("Auth env override applied")
+    except Exception as e:
+        get_app_logger().warning(f"Auth env override failed: {e}")
+
+    # Initialize session store for auth
+    app.state.sessions = {}
+
     # Import and include commands router after logging is configured
     try:
         from app.api import commands
@@ -295,6 +307,15 @@ async def lifespan(app: FastAPI):
         get_app_logger().info("Commands API router loaded successfully")
     except Exception as e:
         get_app_logger().error(f"Failed to load commands API router: {e}")
+        # Don't raise here as other APIs still work
+
+    try:
+        from app.api import auth_routes
+
+        app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
+        get_app_logger().info("Auth API router loaded successfully")
+    except Exception as e:
+        get_app_logger().error(f"Failed to load auth API router: {e}")
         # Don't raise here as other APIs still work
 
     yield
@@ -340,6 +361,13 @@ app = FastAPI(
 
 # Add CORS middleware for development
 # In production with same origin, this won't be needed
+# Auth middleware: protect /api/* and /import_lists/* when auth is configured
+from app.auth_middleware import AuthMiddleware
+from app.security_headers import SecurityHeadersMiddleware
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AuthMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

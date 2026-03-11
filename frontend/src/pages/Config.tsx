@@ -58,6 +58,8 @@ export function ConfigPage() {
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [apiKeyGenerated, setApiKeyGenerated] = useState<string | null>(null);
+  const [generatingApiKey, setGeneratingApiKey] = useState(false);
 
   useEffect(() => {
     loadConfiguration();
@@ -342,6 +344,48 @@ export function ConfigPage() {
         <h1 className="text-3xl font-bold">Configuration</h1>
         <p className="mt-2 text-muted-foreground">Manage your Cmdarr configuration settings</p>
       </div>
+
+      {/* API Key */}
+      <Card className="p-4">
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">API Key</Label>
+          <p className="text-muted-foreground text-sm">
+            Use this key for external API calls (e.g. scripts, automation). Pass via{" "}
+            <code className="rounded bg-muted px-1">X-API-Key</code> header or{" "}
+            <code className="rounded bg-muted px-1">Authorization: Bearer &lt;key&gt;</code>.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setGeneratingApiKey(true);
+                setApiKeyGenerated(null);
+                try {
+                  const res = await api.generateApiKey();
+                  setApiKeyGenerated(res.api_key);
+                  toast.success("API key generated. Store it securely.");
+                } catch {
+                  toast.error("Failed to generate API key");
+                } finally {
+                  setGeneratingApiKey(false);
+                }
+              }}
+              disabled={generatingApiKey}
+            >
+              {generatingApiKey ? "Generating..." : "Generate API Key"}
+            </Button>
+            {apiKeyGenerated && (
+              <div className="flex-1 rounded bg-muted p-2 font-mono text-sm">{apiKeyGenerated}</div>
+            )}
+          </div>
+          {apiKeyGenerated && (
+            <p className="text-destructive text-xs">
+              Store this key now. It will not be shown again.
+            </p>
+          )}
+        </div>
+      </Card>
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
