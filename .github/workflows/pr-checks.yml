@@ -1,4 +1,4 @@
-name: PR Checks (release gate)
+name: PR Checks
 
 on:
   pull_request:
@@ -8,11 +8,13 @@ permissions:
   contents: read
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +34,8 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +54,8 @@ jobs:
 
   frontend-lint:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -71,6 +77,8 @@ jobs:
 
   frontend-format:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -92,6 +100,8 @@ jobs:
 
   frontend-typecheck:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -113,6 +123,8 @@ jobs:
 
   npm-audit:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: frontend
@@ -134,6 +146,8 @@ jobs:
 
   pip-audit:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -151,6 +165,8 @@ jobs:
   zap-full-scan:
     name: ZAP Full Scan
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
