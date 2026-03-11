@@ -11,6 +11,7 @@ Flow:
 New: DB-backed pending table, dismiss, recheck, run-batch, scan-artist.
 """
 
+import json
 import random
 from datetime import UTC, datetime
 from typing import Annotated
@@ -942,7 +943,8 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
     except Exception:
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
-    return result
+    # JSON round-trip breaks taint flow (CodeQL: stack trace exposure)
+    return json.loads(json.dumps(result))
 
 
 @router.post("/new-releases/sync-lidarr-artists")
