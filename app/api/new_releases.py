@@ -317,7 +317,9 @@ async def get_new_releases(
                     )
 
                 # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
-                new_albums = prefer_base_releases(new_albums, title_key="name", date_key="release_date")
+                new_albums = prefer_base_releases(
+                    new_albums, title_key="name", date_key="release_date"
+                )
 
                 if new_albums:
                     artists_with_releases += 1

@@ -349,9 +349,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
 
                                 for item in filtered:
                                     album = item["album"]
-                                    harmony_url = (
-                                        f"{HARMONY_BASE_URL}?url={quote(item['spotify_url'], safe='')}"
-                                    )
+                                    harmony_url = f"{HARMONY_BASE_URL}?url={quote(item['spotify_url'], safe='')}"
                                     rec = NewReleasePending(
                                         artist_mbid=mbid,
                                         artist_name=artist_name,

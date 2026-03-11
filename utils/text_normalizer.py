@@ -190,7 +190,7 @@ def prefer_base_releases(
         groups[key].append(a)
 
     result = []
-    for key, group in groups.items():
+    for _key, group in groups.items():
         if len(group) == 1:
             result.append(group[0])
             continue

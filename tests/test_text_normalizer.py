@@ -76,7 +76,11 @@ def test_prefer_base_releases_single():
 def test_prefer_base_releases_base_wins():
     albums = [
         {"name": "Album", "release_date": "2024-01-01", "spotify_url": "https://spotify.com/base"},
-        {"name": "Album (Extended)", "release_date": "2024-01-01", "spotify_url": "https://spotify.com/ext"},
+        {
+            "name": "Album (Extended)",
+            "release_date": "2024-01-01",
+            "spotify_url": "https://spotify.com/ext",
+        },
     ]
     result = prefer_base_releases(albums)
     assert len(result) == 1
