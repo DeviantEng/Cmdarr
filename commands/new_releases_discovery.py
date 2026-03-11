@@ -31,7 +31,7 @@ from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
 from database.config_models import ArtistScanLog, DismissedArtistAlbum, NewReleasePending
 from database.database import get_database_manager
-from utils.text_normalizer import normalize_text, strip_edition_suffix
+from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 from .command_base import BaseCommand
 from .config_adapter import ConfigAdapter
@@ -299,6 +299,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                         continue
 
                                 had_pending = False
+                                candidates = []
                                 for album in albums_result["albums"]:
                                     if album.get("primary_artist_id") != artist_id:
                                         continue
@@ -328,18 +329,38 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                     ):
                                         continue
 
+                                    candidates.append(
+                                        {
+                                            "album": album,
+                                            "album_title": album_title,
+                                            "release_date": release_date,
+                                            "album_type": album_type,
+                                            "total_tracks": total_tracks,
+                                            "spotify_url": spotify_url,
+                                        }
+                                    )
+
+                                # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+                                filtered = prefer_base_releases(
+                                    candidates,
+                                    title_key="album_title",
+                                    date_key="release_date",
+                                )
+
+                                for item in filtered:
+                                    album = item["album"]
                                     harmony_url = (
-                                        f"{HARMONY_BASE_URL}?url={quote(spotify_url, safe='')}"
+                                        f"{HARMONY_BASE_URL}?url={quote(item['spotify_url'], safe='')}"
                                     )
                                     rec = NewReleasePending(
                                         artist_mbid=mbid,
                                         artist_name=artist_name,
                                         spotify_artist_id=artist_id,
-                                        album_title=album_title,
-                                        album_type=album_type,
-                                        release_date=release_date,
-                                        total_tracks=total_tracks,
-                                        spotify_url=spotify_url,
+                                        album_title=item["album_title"],
+                                        album_type=item["album_type"],
+                                        release_date=item["release_date"],
+                                        total_tracks=item["total_tracks"],
+                                        spotify_url=item["spotify_url"],
                                         harmony_url=harmony_url,
                                         lidarr_artist_id=lidarr_id,
                                         lidarr_artist_url=lidarr_artist_url,

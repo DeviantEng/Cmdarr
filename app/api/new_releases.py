@@ -28,7 +28,7 @@ from commands.config_adapter import ConfigAdapter
 from database.config_models import DismissedArtistAlbum, NewReleasePending
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
-from utils.text_normalizer import normalize_text, strip_edition_suffix
+from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 router = APIRouter()
 HARMONY_BASE_URL = "https://harmony.pulsewidth.org.uk/release"
@@ -315,6 +315,9 @@ async def get_new_releases(
                             "harmony_url": harmony_url,
                         }
                     )
+
+                # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+                new_albums = prefer_base_releases(new_albums, title_key="name", date_key="release_date")
 
                 if new_albums:
                     artists_with_releases += 1
@@ -908,6 +911,11 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                     item = _build_missing_album(album, artist_id, selected)
                     if item:
                         best_missing.append(item)
+
+            # Prefer base release when variants exist (e.g. "Album" over "Album (Extended)")
+            best_missing = prefer_base_releases(
+                best_missing, title_key="name", date_key="release_date"
+            )
 
             return {
                 "success": True,

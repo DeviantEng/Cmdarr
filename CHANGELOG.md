@@ -9,26 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎵 New Releases Discovery
 - **Album Type Filter**: Trust API album_type/record_type only (Deezer, Spotify); no track-count heuristic; fixes albums not appearing when only "Album" selected
-- **Unified New Releases Card**: NRD metrics (Lidarr artists, scanned fresh, not yet scanned) moved into the New Releases card alongside "View / Restore Dismissed"
-- **Dismissed Popup Actions**: Restore All (restore all dismissed items) and Reset (wipe artist scan history to start NRD fresh) with confirmation dialogs
-- **API Endpoints**: `POST /api/new-releases/restore-all`, `POST /api/new-releases/reset-scan-history`
-- **Special Edition Filtering**: Strip parenthesized edition suffixes (Deluxe, Remaster, Live, etc.) when matching release titles so special editions match the base release in MusicBrainz and are not treated as new
+- **Unified Card & Dismissed Actions**: NRD metrics in New Releases card; Restore All and Reset scan history with confirmation dialogs
+- **Edition Matching**: Strip parenthesized suffixes (Deluxe, Remaster, Extended, etc.) when matching MB; prefer base release over variants (e.g. "Album" over "Album (Extended)") for Harmony URL when both missing from MB
 
 ### 🔒 Secure Coding & Access Control
-- **Error Exposure Fix**: Replaced all `detail=str(e)` with generic messages; added `from None` to break exception chains (commands.py, import_lists.py)
-- **Config Validation**: `config_service.set()` now enforces `validation_regex`, `min_value`, `max_value` from ConfigSetting
-- **URL Length Limits**: playlist_parser and _parse_scan_url reject URLs > 2048 chars; validate-url endpoint uses Query(max_length=2048)
-- **Single-User Access Control**: First-run setup (username/password), session-based login, API key for external calls; env override (CMDARR_AUTH_USERNAME, CMDARR_AUTH_PASSWORD, CMDARR_API_KEY) overwrites DB for password reset
-- **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy middleware on all responses
-- **ZAP DAST**: Baseline scan in docker-publish (fast); full scan (spider + active) in PR checks as merge gate
-  - Scripts: `.github/scripts/zap-scan.sh` (baseline), `zap-full-scan.sh` (full); shared auth hook and IGNORE rules
-  - Auth fix: Root `/` and SPA routes public so unauthenticated users reach login screen (was 401)
+- **Single-User Auth**: First-run setup (username/password), session-based login, API key; env override for password reset
+- **Error Exposure Fix**: Generic API messages instead of raw exceptions; URL length limits (2048); config validation (regex, min/max)
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, Permissions-Policy, Content-Security-Policy on all responses
+- **ZAP DAST**: Baseline scan in docker-publish; full scan (spider + active) in PR checks as merge gate; auth fix for public root/SPA routes
 
 ### 🧪 PR Gate & Unit Tests
-- **PR Checks**: Unit tests run on PR to main (in addition to docker-publish for develop coverage)
-- **Frontend Typecheck**: TypeScript `tsc --noEmit` job in PR checks
-- **pytest-cov**: Coverage reporting in unit test runs
-- **Additional Tests**: playlist_parser (get_supported_sources, get_example_url, URL length limit, edge cases), text_normalizer, discovery utils (filter_artist_candidate, apply_random_sampling, deduplicate_by_mbid, create_artist_entry), library_selector (_first_by_lowest_key, _resolve_from_libraries), auth (API key hash, is_setup_required), security_headers (middleware adds headers)
+- **PR Checks**: Unit tests, frontend typecheck, pytest-cov; tests for playlist_parser, text_normalizer, discovery utils, auth, security_headers
 - **uv.lock**: Lock file for reproducible Python installs via uv
 
 ## [0.3.8] - 2026-03-09
