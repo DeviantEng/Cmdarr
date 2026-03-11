@@ -31,7 +31,7 @@ def _verify_password(plain: str, hashed: str) -> bool:
     try:
         pwd_bytes = plain.encode("utf-8")[:72]
         return bcrypt.checkpw(pwd_bytes, hashed.encode("utf-8"))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError):  # fmt: skip
         return False
 
 
@@ -41,9 +41,7 @@ _API_KEY_SALT = b"cmdarr-api-key-v1"
 
 def _hash_api_key(key: str) -> str:
     """Hash API key with PBKDF2-HMAC-SHA256 (CodeQL: avoid fast hash for sensitive data)."""
-    return hashlib.pbkdf2_hmac(
-        "sha256", key.encode(), _API_KEY_SALT, iterations=100_000
-    ).hex()
+    return hashlib.pbkdf2_hmac("sha256", key.encode(), _API_KEY_SALT, iterations=100_000).hex()
 
 
 def _verify_api_key(plain: str, hashed: str) -> bool:
