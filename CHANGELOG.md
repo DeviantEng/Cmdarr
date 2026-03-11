@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.9-dev] - TBD
 
 ### 🎵 New Releases Discovery
+- **Album Type Filter**: Trust API album_type/record_type only (Deezer, Spotify); no track-count heuristic; fixes albums not appearing when only "Album" selected
 - **Unified New Releases Card**: NRD metrics (Lidarr artists, scanned fresh, not yet scanned) moved into the New Releases card alongside "View / Restore Dismissed"
 - **Dismissed Popup Actions**: Restore All (restore all dismissed items) and Reset (wipe artist scan history to start NRD fresh) with confirmation dialogs
 - **API Endpoints**: `POST /api/new-releases/restore-all`, `POST /api/new-releases/reset-scan-history`

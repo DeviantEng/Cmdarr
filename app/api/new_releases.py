@@ -70,19 +70,17 @@ def _album_matches_filter(
     total_tracks: int,
     selected_types: set[str],
 ) -> bool:
-    """Check if album matches selected type filter."""
+    """Match by API's album_type only. Deezer: record_type; Spotify: album_type. No track-count heuristic."""
     if not selected_types:
         return True
-    if "album" in selected_types and album_type == "album" and total_tracks > 6:
+    t = (album_type or "").lower()
+    if "album" in selected_types and t == "album":
         return True
-    # EP: Spotify uses album_type "album" + track count; Deezer uses album_type "ep"
-    if "ep" in selected_types and (
-        (album_type == "album" and total_tracks <= 6) or album_type == "ep"
-    ):
+    if "ep" in selected_types and t == "ep":
         return True
-    if "single" in selected_types and album_type == "single":
+    if "single" in selected_types and t == "single":
         return True
-    if "other" in selected_types and album_type in ("compilation", "appears_on"):
+    if "other" in selected_types and t in ("compilation", "appears_on"):
         return True
     return False
 
