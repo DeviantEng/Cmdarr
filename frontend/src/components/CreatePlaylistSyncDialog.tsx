@@ -631,7 +631,8 @@ export function CreatePlaylistSyncDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">Local Discovery</h3>
                 <p className="text-xs text-muted-foreground">
-                  Top artists from play history + sonically similar tracks. Fresh each run. Plex only.
+                  Top artists from play history + sonically similar tracks. Fresh each run. Plex
+                  only.
                 </p>
               </div>
             </button>

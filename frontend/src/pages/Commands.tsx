@@ -1279,7 +1279,9 @@ export function CommandsPage() {
                                 setEditForm((f) => ({
                                   ...f,
                                   sync_to_multiple_plex_users: e.target.checked,
-                                  plex_account_ids: e.target.checked ? f.plex_account_ids ?? [] : [],
+                                  plex_account_ids: e.target.checked
+                                    ? (f.plex_account_ids ?? [])
+                                    : [],
                                 }))
                               }
                               className="rounded border-input"
@@ -1301,7 +1303,9 @@ export function CommandsPage() {
                                         ...f,
                                         plex_account_ids: e.target.checked
                                           ? [...(f.plex_account_ids ?? []), acc.id]
-                                          : (f.plex_account_ids ?? []).filter((id) => id !== acc.id),
+                                          : (f.plex_account_ids ?? []).filter(
+                                              (id) => id !== acc.id
+                                            ),
                                       }))
                                     }
                                     className="rounded border-input"
