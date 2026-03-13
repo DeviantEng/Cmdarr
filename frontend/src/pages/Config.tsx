@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import type { ConfigSetting, ConnectivityTestResult } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/NumericInput";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -250,11 +251,15 @@ export function ConfigPage() {
       case "int":
       case "float":
         return (
-          <Input
-            type="number"
-            step={setting.data_type === "float" ? "0.1" : "1"}
-            value={String(setting.value ?? "")}
-            onChange={(e) => handleSettingChange(setting.key, e.target.value)}
+          <NumericInput
+            value={
+              setting.value !== null && setting.value !== undefined && setting.value !== ""
+                ? Number(setting.value)
+                : Number(setting.default_value) || 0
+            }
+            onChange={(v) => handleSettingChange(setting.key, v)}
+            numericType={setting.data_type === "float" ? "float" : "int"}
+            defaultValue={Number(setting.default_value) || 0}
             placeholder={setting.default_value}
             className={cn(setting.is_sensitive && "font-mono")}
           />

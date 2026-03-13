@@ -242,7 +242,8 @@ class CommandCleanupService:
                     pl_title = "[Cmdarr] Artist Essentials: Mix"
             self._delete_playlist_if_exists(target, pl_title)
         elif name.startswith("daylist_"):
-            self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist")
+            token = self._get_user_token_for_playlist_delete(cfg)
+            self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist", token_override=token)
         elif name.startswith("mood_playlist_"):
             pl_title = cfg.get("last_playlist_title")
             if not pl_title:
@@ -270,9 +271,38 @@ class CommandCleanupService:
                     pl_title = "[Cmdarr] Mood: Mix"
             self._delete_playlist_if_exists("plex", pl_title)
         elif name.startswith("local_discovery_"):
-            self._delete_playlist_if_exists("plex", "[Cmdarr] Local Discovery")
+            token = self._get_user_token_for_playlist_delete(cfg)
+            self._delete_playlist_if_exists(
+                "plex", "[Cmdarr] Local Discovery", token_override=token
+            )
 
-    def _delete_playlist_if_exists(self, target: str, playlist_name: str):
+    def _get_user_token_for_playlist_delete(self, cfg: dict) -> str | None:
+        """Resolve user token for daylist/local_discovery playlist deletion.
+        Returns token for plex_history_account_id, or None to use admin token (fallback)."""
+        plex_account_id = cfg.get("plex_history_account_id")
+        if not plex_account_id:
+            return None
+        try:
+            from commands.config_adapter import Config
+
+            config = Config()
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            token = pc.get_token_for_user(str(plex_account_id))
+            if not token:
+                logger.warning(
+                    f"Could not resolve token for plex_history_account_id={plex_account_id}, "
+                    "using admin token for playlist deletion"
+                )
+            return token
+        except Exception as e:
+            logger.warning(f"Error resolving user token for playlist delete: {e}")
+            return None
+
+    def _delete_playlist_if_exists(
+        self, target: str, playlist_name: str, token_override: str | None = None
+    ):
         """Delete playlist from Plex or Jellyfin if it exists."""
         try:
             from commands.config_adapter import Config
@@ -281,7 +311,7 @@ class CommandCleanupService:
             if target == "plex":
                 from clients.client_plex import PlexClient
 
-                client = PlexClient(config)
+                client = PlexClient(config, token_override=token_override)
                 pl = client.find_playlist_by_name(playlist_name)
                 if pl and pl.get("ratingKey"):
                     client.delete_playlist(pl["ratingKey"])

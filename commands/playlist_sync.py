@@ -12,6 +12,7 @@ from clients.client_jellyfin import JellyfinClient
 from clients.client_plex import PlexClient
 from clients.client_spotify import SpotifyClient
 from utils.library_cache_manager import get_library_cache_manager
+from utils.plex_user import get_account_name, get_accounts, get_token_for_user
 
 from .command_base import BaseCommand
 
@@ -129,8 +130,7 @@ class PlaylistSyncCommand(BaseCommand):
 
             self.logger.info(f"Found {total_tracks} tracks in source playlist")
 
-            # Prepare playlist title and summary
-            playlist_title = f"[{config.get('source', 'Unknown').title()}] {playlist_name}"
+            source_label = config.get("source", "Unknown").title()
             playlist_summary = (
                 f"Synced from {config.get('source', 'unknown')} playlist: {playlist_name}"
             )
@@ -153,27 +153,48 @@ class PlaylistSyncCommand(BaseCommand):
                         "Playlist sync will use live API (slower performance expected)."
                     )
 
-            # Sync playlist based on mode
-            sync_result = None
-            if sync_mode == "additive":
-                sync_result = await self._sync_additive(
-                    playlist_title, tracks, playlist_summary, cached_data, library_key
+            # Multi-user Plex sync: sync to each selected account
+            plex_account_ids = config.get("plex_account_ids") or []
+            multi_user = (
+                self.target_name == "Plex"
+                and isinstance(plex_account_ids, list)
+                and len(plex_account_ids) > 0
+            )
+            if multi_user:
+                success, sync_stats = await self._sync_multi_user_plex(
+                    source_label=source_label,
+                    playlist_name=playlist_name,
+                    playlist_summary=playlist_summary,
+                    tracks=tracks,
+                    sync_mode=sync_mode,
+                    cached_data=cached_data,
+                    library_key=library_key,
                 )
-            else:  # full sync
-                sync_result = await self._sync_full(
-                    playlist_title, tracks, playlist_summary, cached_data, library_key
-                )
-
-            # Extract success and stats from sync result
-            if isinstance(sync_result, dict):
-                success = sync_result.get("success", False)
-                sync_stats = sync_result
             else:
-                success = bool(sync_result)
-                sync_stats = {"success": success}
+                # Single sync (admin token or Jellyfin)
+                playlist_title = f"[{source_label}] {playlist_name}"
+                if sync_mode == "additive":
+                    sync_result = await self._sync_additive(
+                        playlist_title, tracks, playlist_summary, cached_data, library_key
+                    )
+                else:
+                    sync_result = await self._sync_full(
+                        playlist_title, tracks, playlist_summary, cached_data, library_key
+                    )
+                if isinstance(sync_result, dict):
+                    success = sync_result.get("success", False)
+                    sync_stats = sync_result
+                else:
+                    success = bool(sync_result)
+                    sync_stats = {"success": success}
 
             if success:
-                self.logger.info(f"Successfully synced playlist '{playlist_title}'")
+                if multi_user:
+                    self.logger.info(
+                        f"Successfully synced playlist to {len(plex_account_ids)} Plex users"
+                    )
+                else:
+                    self.logger.info(f"Successfully synced playlist '{playlist_title}'")
 
                 # Artist discovery: always run to count new artists; conditionally add to import list
                 unmatched_tracks = sync_stats.get("unmatched_tracks", [])
@@ -472,6 +493,117 @@ class PlaylistSyncCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error saving discovered artists: {e}")
             raise
+
+    def _resolve_tracks_for_plex(
+        self,
+        tracks: list[dict[str, Any]],
+        cached_data: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        """Resolve source tracks to Plex rating keys using target_client. Returns only
+        tracks that were found (with rating_key set). Reuse this list for multi-user sync
+        to avoid re-searching for each user."""
+        resolved: list[dict[str, Any]] = []
+        for track in tracks:
+            rating_key = track.get("rating_key") or track.get("key")
+            if rating_key:
+                resolved.append({**track, "rating_key": str(rating_key)})
+                continue
+            artist = track.get("artist", "")
+            track_name = track.get("track", "")
+            if not artist or not track_name:
+                continue
+            album = track.get("album", "")
+            key = self.target_client.search_for_track(
+                track_name, artist, cached_data=cached_data, album_name=album
+            )
+            if key:
+                resolved.append({**track, "rating_key": key})
+        return resolved
+
+    async def _sync_multi_user_plex(
+        self,
+        source_label: str,
+        playlist_name: str,
+        playlist_summary: str,
+        tracks: list[dict[str, Any]],
+        sync_mode: str,
+        cached_data: dict[str, Any] | None,
+        library_key: str | None,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Sync playlist to multiple Plex users. Resolves tracks once, then reuses the
+        same resolved list for each user. Playlist title is the same for all users
+        (no [User] suffix). Returns (success, sync_stats)."""
+        accounts = get_accounts(self.config)
+        per_user_results: list[dict[str, Any]] = []
+        all_success = True
+
+        # Resolve tracks once (first user / admin context). Subsequent users get
+        # only the found tracks, no re-search.
+        self.logger.info("Resolving tracks for multi-user sync (single pass)...")
+        resolved_tracks = self._resolve_tracks_for_plex(tracks, cached_data)
+        self.logger.info(
+            f"Resolved {len(resolved_tracks)}/{len(tracks)} tracks for {len(self.config_json.get('plex_account_ids', []))} users"
+        )
+
+        playlist_title = f"[{source_label}] {playlist_name}"
+
+        for user_id in self.config_json.get("plex_account_ids", []):
+            user_id_str = str(user_id)
+            token = get_token_for_user(self.config, user_id_str)
+            if not token:
+                self.logger.error(
+                    f"Could not resolve token for Plex user {user_id_str}. "
+                    "User must be admin or in shared_servers. Skipping."
+                )
+                per_user_results.append(
+                    {"user_id": user_id_str, "success": False, "error": "Token not found"}
+                )
+                all_success = False
+                continue
+
+            account_name = get_account_name(accounts, user_id_str)
+            plex_client = PlexClient(self.config, token_override=token)
+            if cached_data and self.config.get("LIBRARY_CACHE_PLEX_ENABLED", False):
+                plex_client._cached_library = cached_data
+
+            orig_client = self.target_client
+            self.target_client = plex_client
+            try:
+                if sync_mode == "additive":
+                    sync_result = await self._sync_additive(
+                        playlist_title, resolved_tracks, playlist_summary, cached_data, library_key
+                    )
+                else:
+                    sync_result = await self._sync_full(
+                        playlist_title, resolved_tracks, playlist_summary, cached_data, library_key
+                    )
+                if isinstance(sync_result, dict):
+                    ok = sync_result.get("success", False)
+                else:
+                    ok = bool(sync_result)
+                per_user_results.append(
+                    {
+                        "user_id": user_id_str,
+                        "name": account_name,
+                        "success": ok,
+                        "stats": sync_result,
+                    }
+                )
+                if not ok:
+                    all_success = False
+            finally:
+                self.target_client = orig_client
+
+        sync_stats: dict[str, Any] = {
+            "success": all_success,
+            "per_user": per_user_results,
+            "total_tracks": len(tracks),
+        }
+        if per_user_results:
+            last = per_user_results[-1]
+            if isinstance(last.get("stats"), dict):
+                sync_stats["unmatched_tracks"] = last["stats"].get("unmatched_tracks", [])
+        return all_success, sync_stats
 
     async def _sync_full(
         self,

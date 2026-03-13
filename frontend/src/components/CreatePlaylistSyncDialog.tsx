@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/NumericInput";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -30,7 +31,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { toExpiresAtIso } from "@/lib/expiration";
@@ -90,6 +90,8 @@ export function CreatePlaylistSyncDialog({
     playlist_url: "",
     playlist_types: [] as string[],
     target: "plex",
+    sync_to_multiple_plex_users: false,
+    plex_account_ids: [] as string[],
     sync_mode: "full",
     enabled: true,
     weekly_exploration_keep: 3,
@@ -111,9 +113,9 @@ export function CreatePlaylistSyncDialog({
     metadata: null,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [daylistExists, setDaylistExists] = useState(false);
-  const [localDiscoveryExists, setLocalDiscoveryExists] = useState(false);
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
+  const [daylistUsedIds, setDaylistUsedIds] = useState<Set<string>>(new Set());
+  const [localDiscoveryUsedIds, setLocalDiscoveryUsedIds] = useState<Set<string>>(new Set());
   const [daylistForm, setDaylistForm] = useState({
     plex_history_account_id: "",
     schedule_minute: 0,
@@ -187,24 +189,41 @@ export function CreatePlaylistSyncDialog({
   });
   const [moodsList, setMoodsList] = useState<string[]>([]);
 
-  // Fetch daylist exists, local discovery exists, mood playlist moods, and plex accounts when dialog opens
+  const fetchPlexAccounts = () =>
+    api
+      .request<{
+        accounts: { id: string; name: string }[];
+        daylist_used_ids?: string[];
+        local_discovery_used_ids?: string[];
+      }>("/api/commands/plex-accounts")
+      .then((r) => {
+        setPlexAccounts(r.accounts || []);
+        setDaylistUsedIds(new Set(r.daylist_used_ids || []));
+        setLocalDiscoveryUsedIds(new Set(r.local_discovery_used_ids || []));
+      })
+      .catch(() => {
+        setPlexAccounts([]);
+        setDaylistUsedIds(new Set());
+        setLocalDiscoveryUsedIds(new Set());
+      });
+
+  // Fetch mood playlist moods and plex accounts when dialog opens
   useEffect(() => {
     if (!open) return;
-    api
-      .request<{ exists: boolean }>("/api/commands/daylist/exists")
-      .then((r) => setDaylistExists(r.exists));
-    api
-      .request<{ exists: boolean }>("/api/commands/local-discovery/exists")
-      .then((r) => setLocalDiscoveryExists(r.exists));
     api
       .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
       .then((r) => setMoodsList(r.moods || []))
       .catch(() => setMoodsList([]));
-    api
-      .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
-      .then((r) => setPlexAccounts(r.accounts || []))
-      .catch(() => setPlexAccounts([]));
+    fetchPlexAccounts();
   }, [open]);
+
+  // Refetch plex accounts when showing Daylist or Local Discovery form (ensures used_ids are current)
+  useEffect(() => {
+    if (!open) return;
+    if (step === "form" && (playlistType === "daylist" || playlistType === "local_discovery")) {
+      fetchPlexAccounts();
+    }
+  }, [open, step, playlistType]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -215,6 +234,8 @@ export function CreatePlaylistSyncDialog({
         playlist_url: "",
         playlist_types: [],
         target: "plex",
+        sync_to_multiple_plex_users: false,
+        plex_account_ids: [],
         sync_mode: "full",
         enabled: true,
         weekly_exploration_keep: 3,
@@ -339,8 +360,6 @@ export function CreatePlaylistSyncDialog({
   }, [formData.playlist_url, playlistType, validatePlaylistUrl]);
 
   const handleSelectType = (type: PlaylistType) => {
-    if (type === "daylist" && daylistExists) return;
-    if (type === "local_discovery" && localDiscoveryExists) return;
     setPlaylistType(type);
     setStep("form");
     if (type === "listenbrainz") {
@@ -523,7 +542,9 @@ export function CreatePlaylistSyncDialog({
           ...formData,
           playlist_type: playlistType,
           schedule_cron: formData.schedule_override ? formData.schedule_cron : undefined,
+          plex_account_ids: formData.sync_to_multiple_plex_users ? formData.plex_account_ids : [],
         };
+        delete payload.sync_to_multiple_plex_users;
         if (formData.expires_at_enabled && formData.expires_at) {
           payload.expires_at = toExpiresAtIso(formData.expires_at);
           payload.expires_at_delete_playlist = formData.expires_at_delete_playlist ?? true;
@@ -582,115 +603,99 @@ export function CreatePlaylistSyncDialog({
         </DialogHeader>
 
         {step === "type" ? (
-          <div className="grid gap-4 py-4">
-            {/* ListenBrainz Option */}
+          <div className="grid gap-3 py-4">
+            {/* Daylist */}
+            <button
+              onClick={() => handleSelectType("daylist")}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900">
+                <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold">Daylist</h3>
+                <p className="text-xs text-muted-foreground">
+                  Time-of-day playlists from Plex listening history and Sonic Analysis. Plex only.
+                </p>
+              </div>
+            </button>
+
+            {/* Local Discovery */}
+            <button
+              onClick={() => handleSelectType("local_discovery")}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900">
+                <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold">Local Discovery</h3>
+                <p className="text-xs text-muted-foreground">
+                  Top artists from play history + sonically similar tracks. Fresh each run. Plex only.
+                </p>
+              </div>
+            </button>
+
+            {/* ListenBrainz Curated */}
             <button
               onClick={() => handleSelectType("listenbrainz")}
-              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
-                <Music className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
+                <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">ListenBrainz Curated</h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Sync Weekly Exploration, Weekly Jams, or Daily Jams playlists
                 </p>
               </div>
             </button>
 
-            {/* External Playlist Option */}
+            {/* External Playlist */}
             <button
               onClick={() => handleSelectType("other")}
-              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
-                <Globe className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+                <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">External Playlist</h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Sync public playlists from Spotify, Deezer, or other sources
                 </p>
               </div>
             </button>
 
-            {/* Daylist Option */}
-            <button
-              onClick={() => handleSelectType("daylist")}
-              disabled={daylistExists}
-              className={cn(
-                "flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors",
-                daylistExists
-                  ? "cursor-not-allowed opacity-50"
-                  : "hover:border-primary hover:bg-accent"
-              )}
-              title={daylistExists ? "Daylist command already exists" : undefined}
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900">
-                <Sun className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold">Daylist</h3>
-                <p className="text-sm text-muted-foreground">
-                  Time-of-day playlists from Plex listening history and Sonic Analysis. Plex only.
-                  Inspired by Meloday.
-                </p>
-              </div>
-            </button>
-
-            {/* Artist Essentials Option */}
+            {/* Top Tracks / Artist Essentials */}
             <button
               onClick={() => handleSelectType("top_tracks")}
-              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
-                <ListMusic className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
+                <ListMusic className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">Artist Essentials</h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
                 </p>
               </div>
             </button>
 
-            {/* Mood Playlist Option */}
+            {/* Mood Playlist */}
             <button
               onClick={() => handleSelectType("mood_playlist")}
-              className="flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900">
-                <Sparkles className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900">
+                <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">Mood Playlist</h3>
-                <p className="text-sm text-muted-foreground">
-                  Generate playlist from selected Plex moods. Fresh each run with exclude-last-run
-                  and date-seeded sampling.
-                </p>
-              </div>
-            </button>
-            {/* Local Discovery Option */}
-            <button
-              onClick={() => handleSelectType("local_discovery")}
-              disabled={localDiscoveryExists}
-              className={cn(
-                "flex items-start gap-4 rounded-lg border-2 border-border p-4 text-left transition-colors",
-                localDiscoveryExists
-                  ? "cursor-not-allowed opacity-50"
-                  : "hover:border-primary hover:bg-accent"
-              )}
-              title={localDiscoveryExists ? "Local Discovery command already exists" : undefined}
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900">
-                <Compass className="h-6 w-6 text-teal-600 dark:text-teal-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold">Local Discovery</h3>
-                <p className="text-sm text-muted-foreground">
-                  Top artists from play history + sonically similar tracks. Fresh each run. Plex
-                  only.
+                <p className="text-xs text-muted-foreground">
+                  Generate from selected Plex moods. Fresh each run with exclude-last-run.
                 </p>
               </div>
             </button>
@@ -728,47 +733,38 @@ export function CreatePlaylistSyncDialog({
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label className="text-xs">Weekly Exploration</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         value={formData.weekly_exploration_keep}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setFormData((prev) => ({
-                            ...prev,
-                            weekly_exploration_keep: isNaN(v) ? prev.weekly_exploration_keep : v,
-                          }));
-                        }}
+                        onChange={(v) =>
+                          setFormData((prev) => ({ ...prev, weekly_exploration_keep: v ?? 3 }))
+                        }
+                        min={1}
+                        max={20}
+                        defaultValue={3}
                       />
                     </div>
                     <div>
                       <Label className="text-xs">Weekly Jams</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         value={formData.weekly_jams_keep}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setFormData((prev) => ({
-                            ...prev,
-                            weekly_jams_keep: isNaN(v) ? prev.weekly_jams_keep : v,
-                          }));
-                        }}
+                        onChange={(v) =>
+                          setFormData((prev) => ({ ...prev, weekly_jams_keep: v ?? 3 }))
+                        }
+                        min={1}
+                        max={20}
+                        defaultValue={3}
                       />
                     </div>
                     <div>
                       <Label className="text-xs">Daily Jams</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         value={formData.daily_jams_keep}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setFormData((prev) => ({
-                            ...prev,
-                            daily_jams_keep: isNaN(v) ? prev.daily_jams_keep : v,
-                          }));
-                        }}
+                        onChange={(v) =>
+                          setFormData((prev) => ({ ...prev, daily_jams_keep: v ?? 3 }))
+                        }
+                        min={1}
+                        max={20}
+                        defaultValue={3}
                       />
                     </div>
                   </div>
@@ -810,30 +806,33 @@ export function CreatePlaylistSyncDialog({
                       </SelectTrigger>
                       <SelectContent>
                         {plexAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id}>
+                          <SelectItem
+                            key={acc.id}
+                            value={acc.id}
+                            disabled={daylistUsedIds.has(acc.id)}
+                          >
                             {acc.name || `Account ${acc.id}`}
+                            {daylistUsedIds.has(acc.id) ? " (already has Daylist)" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Plex Home users only. Daylist uses this account&apos;s play history.
+                      Plex Home users only. Daylist uses this account&apos;s play history. One
+                      Daylist per user.
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Run at minute of hour (0–59)</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={daylistForm.schedule_minute}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        setDaylistForm((prev) => ({
-                          ...prev,
-                          schedule_minute: isNaN(v) ? prev.schedule_minute : v,
-                        }));
-                      }}
+                      onChange={(v) =>
+                        setDaylistForm((prev) => ({ ...prev, schedule_minute: v ?? 0 }))
+                      }
+                      min={0}
+                      max={59}
+                      defaultValue={0}
                     />
                     <p className="text-xs text-muted-foreground">
                       Daylist runs hourly at this minute. Runs only when the day period changes
@@ -844,17 +843,14 @@ export function CreatePlaylistSyncDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Exclude played (days)</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         value={daylistForm.exclude_played_days}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            exclude_played_days: isNaN(v) ? prev.exclude_played_days : v,
-                          }));
-                        }}
+                        onChange={(v) =>
+                          setDaylistForm((prev) => ({ ...prev, exclude_played_days: v ?? 3 }))
+                        }
+                        min={1}
+                        max={30}
+                        defaultValue={3}
                       />
                       <p className="text-xs text-muted-foreground">
                         Skip tracks played in last N days. Min: 1, max: 30.
@@ -862,17 +858,14 @@ export function CreatePlaylistSyncDialog({
                     </div>
                     <div className="space-y-2">
                       <Label>History lookback (days)</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         value={daylistForm.history_lookback_days}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setDaylistForm((prev) => ({
-                            ...prev,
-                            history_lookback_days: isNaN(v) ? prev.history_lookback_days : v,
-                          }));
-                        }}
+                        onChange={(v) =>
+                          setDaylistForm((prev) => ({ ...prev, history_lookback_days: v ?? 45 }))
+                        }
+                        min={7}
+                        max={365}
+                        defaultValue={45}
                       />
                       <p className="text-xs text-muted-foreground">
                         Days of play history to analyze. Min: 7, max: 365.
@@ -880,24 +873,14 @@ export function CreatePlaylistSyncDialog({
                     </div>
                     <div className="space-y-2">
                       <Label>Max tracks</Label>
-                      <Input
-                        type="number"
+                      <NumericInput
+                        value={daylistForm.max_tracks}
+                        onChange={(v) =>
+                          setDaylistForm((prev) => ({ ...prev, max_tracks: v ?? 50 }))
+                        }
                         min={10}
                         max={200}
-                        value={daylistForm.max_tracks}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setDaylistForm((prev) => ({ ...prev, max_tracks: isNaN(v) ? 50 : v }));
-                        }}
-                        onBlur={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          if (!isNaN(v))
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              max_tracks: Math.max(10, Math.min(200, v)),
-                            }));
-                          else setDaylistForm((prev) => ({ ...prev, max_tracks: 50 }));
-                        }}
+                        defaultValue={50}
                       />
                       <p className="text-xs text-muted-foreground">
                         Target playlist size. Min: 10, max: 200.
@@ -935,17 +918,14 @@ export function CreatePlaylistSyncDialog({
                       </div>
                       <div className="space-y-2">
                         <Label>Sonically similar limit</Label>
-                        <Input
-                          type="text"
-                          inputMode="numeric"
+                        <NumericInput
                           value={daylistForm.sonic_similar_limit}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value, 10);
-                            setDaylistForm((prev) => ({
-                              ...prev,
-                              sonic_similar_limit: isNaN(v) ? prev.sonic_similar_limit : v,
-                            }));
-                          }}
+                          onChange={(v) =>
+                            setDaylistForm((prev) => ({ ...prev, sonic_similar_limit: v ?? 10 }))
+                          }
+                          min={1}
+                          max={30}
+                          defaultValue={10}
                         />
                         <p className="text-xs text-muted-foreground">
                           Max similar tracks per seed. Min: 1, max: 30.
@@ -953,17 +933,17 @@ export function CreatePlaylistSyncDialog({
                       </div>
                       <div className="space-y-2">
                         <Label>Sonically similar playlist limit</Label>
-                        <Input
-                          type="text"
-                          inputMode="numeric"
+                        <NumericInput
                           value={daylistForm.sonic_similarity_limit}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value, 10);
+                          onChange={(v) =>
                             setDaylistForm((prev) => ({
                               ...prev,
-                              sonic_similarity_limit: isNaN(v) ? prev.sonic_similarity_limit : v,
-                            }));
-                          }}
+                              sonic_similarity_limit: v ?? 50,
+                            }))
+                          }
+                          min={10}
+                          max={200}
+                          defaultValue={50}
                         />
                         <p className="text-xs text-muted-foreground">
                           Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.
@@ -1132,30 +1112,35 @@ export function CreatePlaylistSyncDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {plexAccounts.map((acc) => (
-                        <SelectItem key={acc.id} value={acc.id}>
+                        <SelectItem
+                          key={acc.id}
+                          value={acc.id}
+                          disabled={localDiscoveryUsedIds.has(acc.id)}
+                        >
                           {acc.name || acc.id}
+                          {localDiscoveryUsedIds.has(acc.id)
+                            ? " (already has Local Discovery)"
+                            : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Plex Home users only. Local Discovery uses this account&apos;s play history.
+                    Plex Home users only. Local Discovery uses this account&apos;s play history. One
+                    Local Discovery per user.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Lookback days</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={localDiscoveryForm.lookback_days}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        setLocalDiscoveryForm((prev) => ({
-                          ...prev,
-                          lookback_days: isNaN(v) ? 90 : v,
-                        }));
-                      }}
+                      onChange={(v) =>
+                        setLocalDiscoveryForm((prev) => ({ ...prev, lookback_days: v ?? 90 }))
+                      }
+                      min={7}
+                      max={365}
+                      defaultValue={90}
                     />
                     <p className="text-xs text-muted-foreground">
                       How far back to count plays. Shorter = more day-to-day variety. Min: 7, max:
@@ -1164,17 +1149,14 @@ export function CreatePlaylistSyncDialog({
                   </div>
                   <div className="space-y-2">
                     <Label>Exclude played days</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={localDiscoveryForm.exclude_played_days}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        setLocalDiscoveryForm((prev) => ({
-                          ...prev,
-                          exclude_played_days: isNaN(v) ? 3 : Math.max(0, Math.min(30, v)),
-                        }));
-                      }}
+                      onChange={(v) =>
+                        setLocalDiscoveryForm((prev) => ({ ...prev, exclude_played_days: v ?? 3 }))
+                      }
+                      min={0}
+                      max={30}
+                      defaultValue={3}
                     />
                     <p className="text-xs text-muted-foreground">
                       Skip tracks played in last N days. Reduces repetition. Min: 0, max: 30.
@@ -1184,17 +1166,17 @@ export function CreatePlaylistSyncDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Top artists count</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={localDiscoveryForm.top_artists_count}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
+                      onChange={(v) =>
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          top_artists_count: isNaN(v) ? 10 : Math.max(1, Math.min(20, v)),
-                        }));
-                      }}
+                          top_artists_count: v ?? 10,
+                        }))
+                      }
+                      min={1}
+                      max={20}
+                      defaultValue={10}
                     />
                     <p className="text-xs text-muted-foreground">
                       How many top artists to randomly pick each run. Min: 1, max: 20.
@@ -1202,18 +1184,17 @@ export function CreatePlaylistSyncDialog({
                   </div>
                   <div className="space-y-2">
                     <Label>Artist pool size</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={localDiscoveryForm.artist_pool_size}
-                      onChange={(e) => {
-                        const raw = e.target.value.trim();
-                        const v = parseInt(raw, 10);
+                      onChange={(v) =>
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          artist_pool_size: raw === "" ? 20 : isNaN(v) ? prev.artist_pool_size : v,
-                        }));
-                      }}
+                          artist_pool_size: v ?? 20,
+                        }))
+                      }
+                      min={1}
+                      max={50}
+                      defaultValue={20}
                     />
                     <p className="text-xs text-muted-foreground">
                       Size of artist pool to sample from (must be ≥ top artists count).
@@ -1222,17 +1203,14 @@ export function CreatePlaylistSyncDialog({
                 </div>
                 <div className="space-y-2">
                   <Label>Max tracks</Label>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
+                  <NumericInput
                     value={localDiscoveryForm.max_tracks}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value, 10);
-                      setLocalDiscoveryForm((prev) => ({
-                        ...prev,
-                        max_tracks: isNaN(v) ? 50 : Math.max(1, Math.min(200, v)),
-                      }));
-                    }}
+                    onChange={(v) =>
+                      setLocalDiscoveryForm((prev) => ({ ...prev, max_tracks: v ?? 50 }))
+                    }
+                    min={1}
+                    max={200}
+                    defaultValue={50}
                   />
                   <p className="text-xs text-muted-foreground">
                     Target playlist size. Min: 1, max: 200.
@@ -1241,17 +1219,17 @@ export function CreatePlaylistSyncDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Sonic similar limit</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       value={localDiscoveryForm.sonic_similar_limit}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
+                      onChange={(v) =>
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          sonic_similar_limit: isNaN(v) ? 15 : Math.max(5, Math.min(50, v)),
-                        }));
-                      }}
+                          sonic_similar_limit: v ?? 10,
+                        }))
+                      }
+                      min={5}
+                      max={50}
+                      defaultValue={15}
                     />
                     <p className="text-xs text-muted-foreground">
                       Max sonically similar tracks per seed. Min: 5, max: 50.
@@ -1282,19 +1260,18 @@ export function CreatePlaylistSyncDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Sonic similarity distance</Label>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
+                    <NumericInput
                       value={localDiscoveryForm.sonic_similarity_distance}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
+                      onChange={(v) =>
                         setLocalDiscoveryForm((prev) => ({
                           ...prev,
-                          sonic_similarity_distance: isNaN(v)
-                            ? 0.25
-                            : Math.max(0.1, Math.min(1, v)),
-                        }));
-                      }}
+                          sonic_similarity_distance: v ?? 0.25,
+                        }))
+                      }
+                      min={0.1}
+                      max={1}
+                      defaultValue={0.25}
+                      numericType="float"
                     />
                     <p className="text-xs text-muted-foreground">
                       Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.
@@ -1393,27 +1370,13 @@ export function CreatePlaylistSyncDialog({
                 </div>
                 <div className="space-y-2">
                   <Label>Top X tracks per artist</Label>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
+                  <NumericInput
                     placeholder="5"
                     value={topTracksForm.top_x}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      const v = parseInt(raw, 10);
-                      setTopTracksForm((prev) => ({
-                        ...prev,
-                        top_x:
-                          raw === "" ? 5 : isNaN(v) ? prev.top_x : Math.max(1, Math.min(20, v)),
-                      }));
-                    }}
-                    onBlur={(e) => {
-                      const raw = e.target.value.trim();
-                      const v = parseInt(raw, 10);
-                      if (raw === "" || isNaN(v) || v < 1 || v > 20) {
-                        setTopTracksForm((prev) => ({ ...prev, top_x: 5 }));
-                      }
-                    }}
+                    onChange={(v) => setTopTracksForm((prev) => ({ ...prev, top_x: v ?? 5 }))}
+                    min={1}
+                    max={20}
+                    defaultValue={5}
                   />
                   <p className="text-xs text-muted-foreground">
                     Number of top tracks per artist. Min: 1, max: 20.
@@ -1636,31 +1599,15 @@ export function CreatePlaylistSyncDialog({
                 )}
                 <div className="space-y-2">
                   <Label>Max tracks</Label>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
+                  <NumericInput
                     placeholder="50"
                     value={moodPlaylistForm.max_tracks}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      const v = parseInt(raw, 10);
-                      setMoodPlaylistForm((prev) => ({
-                        ...prev,
-                        max_tracks:
-                          raw === ""
-                            ? 50
-                            : isNaN(v)
-                              ? prev.max_tracks
-                              : Math.max(1, Math.min(200, v)),
-                      }));
-                    }}
-                    onBlur={(e) => {
-                      const raw = e.target.value.trim();
-                      const v = parseInt(raw, 10);
-                      if (raw === "" || isNaN(v) || v < 1 || v > 200) {
-                        setMoodPlaylistForm((prev) => ({ ...prev, max_tracks: 50 }));
-                      }
-                    }}
+                    onChange={(v) =>
+                      setMoodPlaylistForm((prev) => ({ ...prev, max_tracks: v ?? 50 }))
+                    }
+                    min={1}
+                    max={200}
+                    defaultValue={50}
                   />
                   <p className="text-xs text-muted-foreground">Min 1, max 200</p>
                 </div>
@@ -1696,36 +1643,26 @@ export function CreatePlaylistSyncDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Min year</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         placeholder="e.g. 1990"
-                        value={moodPlaylistForm.min_year ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          const v = raw === "" ? undefined : parseInt(raw, 10);
-                          setMoodPlaylistForm((prev) => ({
-                            ...prev,
-                            min_year: v === undefined ? undefined : isNaN(v) ? prev.min_year : v,
-                          }));
-                        }}
+                        value={moodPlaylistForm.min_year}
+                        onChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, min_year: v }))}
+                        min={1800}
+                        max={2100}
+                        defaultValue={1800}
+                        allowEmpty
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Max year</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         placeholder="e.g. 2010"
-                        value={moodPlaylistForm.max_year ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          const v = raw === "" ? undefined : parseInt(raw, 10);
-                          setMoodPlaylistForm((prev) => ({
-                            ...prev,
-                            max_year: v === undefined ? undefined : isNaN(v) ? prev.max_year : v,
-                          }));
-                        }}
+                        value={moodPlaylistForm.max_year}
+                        onChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, max_year: v }))}
+                        min={1800}
+                        max={2100}
+                        defaultValue={2100}
+                        allowEmpty
                       />
                     </div>
                   </div>
@@ -1879,7 +1816,15 @@ export function CreatePlaylistSyncDialog({
                     <Label>Target</Label>
                     <Select
                       value={formData.target}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, target: value }))}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          target: value,
+                          sync_to_multiple_plex_users:
+                            value === "jellyfin" ? false : prev.sync_to_multiple_plex_users,
+                          plex_account_ids: value === "jellyfin" ? [] : prev.plex_account_ids,
+                        }))
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -1890,6 +1835,56 @@ export function CreatePlaylistSyncDialog({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {formData.target === "plex" && playlistType === "other" && (
+                    <div className="space-y-2">
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.sync_to_multiple_plex_users}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              sync_to_multiple_plex_users: e.target.checked,
+                              plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
+                            }))
+                          }
+                          className="rounded border-input"
+                        />
+                        <span className="text-sm font-medium">Sync to multiple Plex users</span>
+                      </label>
+                      {formData.sync_to_multiple_plex_users && (
+                        <div className="flex flex-wrap gap-3 rounded-lg border p-3">
+                          {plexAccounts.map((acc) => (
+                            <label
+                              key={acc.id}
+                              className="flex cursor-pointer items-center gap-2 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.plex_account_ids.includes(acc.id)}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    plex_account_ids: e.target.checked
+                                      ? [...prev.plex_account_ids, acc.id]
+                                      : prev.plex_account_ids.filter((id) => id !== acc.id),
+                                  }))
+                                }
+                                className="rounded border-input"
+                              />
+                              {acc.name || `Account ${acc.id}`}
+                            </label>
+                          ))}
+                          {plexAccounts.length === 0 && (
+                            <span className="text-sm text-muted-foreground">
+                              No Plex accounts available
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label>Sync Mode</Label>
@@ -1999,24 +1994,22 @@ export function CreatePlaylistSyncDialog({
                         <Label htmlFor="create-artist-discovery-max">
                           Max artists to add per run
                         </Label>
-                        <Input
+                        <NumericInput
                           id="create-artist-discovery-max"
-                          type="text"
-                          inputMode="numeric"
                           placeholder="2"
                           value={
                             formData.artist_discovery_max_per_run ??
                             (formData.enable_artist_discovery ? 2 : 0)
                           }
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value, 10);
+                          onChange={(v) =>
                             setFormData((prev) => ({
                               ...prev,
-                              artist_discovery_max_per_run: isNaN(v)
-                                ? (prev.artist_discovery_max_per_run ?? 2)
-                                : v,
-                            }));
-                          }}
+                              artist_discovery_max_per_run: v ?? 2,
+                            }))
+                          }
+                          min={0}
+                          max={50}
+                          defaultValue={2}
                         />
                         <p className="text-xs text-muted-foreground">
                           0 = no limit. Limits how many new artists are added per sync run;

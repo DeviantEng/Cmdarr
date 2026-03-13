@@ -267,8 +267,10 @@ class CommandExecutor:
 
             command_class = self.command_classes[command_name]
 
-            # Create config with overrides if provided
-            config = self.config
+            # Create fresh config per execution so PLEX_TOKEN etc. reflect current config_service state
+            from commands.config_adapter import Config
+
+            config = Config()
             # Clear previous run-specific overrides so they don't persist (e.g. artists from scan-artist)
             for key in ("artists", "source", "album_types"):
                 if hasattr(config, key):
@@ -785,7 +787,9 @@ class CommandExecutor:
                 )
                 if not command_config or not command_config.config_json:
                     return False, ""
-                config = self.config
+                from commands.config_adapter import Config
+
+                config = Config()
                 command = DaylistCommand(config)
                 command.config_json = dict(command_config.config_json)
                 return command._should_skip(triggered_by=triggered_by)

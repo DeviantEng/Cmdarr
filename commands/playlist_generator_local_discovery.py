@@ -74,10 +74,24 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
     async def execute(self) -> bool:
         try:
             config = self.config_json or {}
-            self._ensure_display_name("[Cmdarr] Local Discovery")
             account_id = config.get("plex_history_account_id")
             if not account_id:
                 self.logger.error("plex_history_account_id is required")
+                return False
+
+            accounts = self.plex_client.get_accounts()
+            account_name = next(
+                (a["name"] for a in accounts if a["id"] == str(account_id)),
+                str(account_id),
+            )
+            self.logger.info(f"Starting Local Discovery command for user: {account_name}")
+
+            user_token = self.plex_client.get_token_for_user(str(account_id))
+            if not user_token:
+                self.logger.error(
+                    f"Could not resolve token for user {account_id}. "
+                    "User must be admin or in shared_servers."
+                )
                 return False
 
             # Always use resolved library (PLEX_LIBRARY_NAME / Music / first) - never use stored
@@ -263,7 +277,8 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 f"Top {top_artists_count} artists from {lookback_days}d history + sonic expansion"
             )
 
-            result = self.plex_client.sync_playlist(
+            plex_for_playlist = PlexClient(self.config, token_override=user_token)
+            result = plex_for_playlist.sync_playlist(
                 title=playlist_title,
                 tracks=tracks_for_playlist,
                 summary=summary,
@@ -273,7 +288,8 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
             success = result.get("success", False)
             if success:
                 self.logger.info(
-                    f"Created playlist '{playlist_title}': {len(tracks_for_playlist)} tracks"
+                    f"Created playlist for {account_name}: '{playlist_title}' with "
+                    f"{len(tracks_for_playlist)} tracks"
                 )
             return success
 

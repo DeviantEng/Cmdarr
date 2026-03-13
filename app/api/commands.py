@@ -131,19 +131,45 @@ async def get_all_commands(db: Annotated[Session, Depends(get_config_db)]):
 
 
 @router.get("/plex-accounts")
-async def get_plex_accounts():
-    """Get Plex Home managed accounts for daylist user selection dropdown.
-    Returns empty list when Plex client is not enabled (allows UI to render)."""
+async def get_plex_accounts(
+    db: Annotated[Session, Depends(get_config_db)],
+    editing_command: str | None = None,
+):
+    """Get Plex Home managed accounts for daylist/local discovery user selection dropdown.
+    Returns empty list when Plex client is not enabled (allows UI to render).
+    daylist_used_ids and local_discovery_used_ids exclude users who already have a command.
+    When editing_command is provided, that command's user is excluded from the used lists."""
     try:
         from clients.client_plex import PlexClient
         from commands.config_adapter import Config
 
         config = Config()
         if not config.get("PLEX_CLIENT_ENABLED", False):
-            return {"accounts": []}
+            return {"accounts": [], "daylist_used_ids": [], "local_discovery_used_ids": []}
+
         plex = PlexClient(config)
         accounts = plex.get_accounts()
-        return {"accounts": accounts}
+
+        daylist_used_ids: list[str] = []
+        local_discovery_used_ids: list[str] = []
+        for cmd in db.query(CommandConfig).filter(CommandConfig.deleted_at.is_(None)).all():
+            cfg = cmd.config_json or {}
+            aid = cfg.get("plex_history_account_id")
+            if not aid:
+                continue
+            aid_str = str(aid)
+            if cmd.command_name.startswith("daylist_"):
+                if cmd.command_name != editing_command:
+                    daylist_used_ids.append(aid_str)
+            elif cmd.command_name.startswith("local_discovery_"):
+                if cmd.command_name != editing_command:
+                    local_discovery_used_ids.append(aid_str)
+
+        return {
+            "accounts": accounts,
+            "daylist_used_ids": daylist_used_ids,
+            "local_discovery_used_ids": local_discovery_used_ids,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -343,6 +369,52 @@ async def update_command(
                         await client.close()
             command.config_json = request.config_json
             # display_name for top_tracks is updated by the command when it runs (matches playlist title)
+            # display_name for daylist/local_discovery: sync when plex_history_account_id changes
+            if command_name.startswith("daylist_") or command_name.startswith("local_discovery_"):
+                plex_account_id = request.config_json.get("plex_history_account_id")
+                if plex_account_id:
+                    from commands.config_adapter import Config
+
+                    config = Config()
+                    from clients.client_plex import PlexClient
+
+                    pc = PlexClient(config)
+                    accounts = pc.get_accounts()
+                    account_name = next(
+                        (a["name"] for a in accounts if a["id"] == str(plex_account_id)),
+                        str(plex_account_id),
+                    )
+                    account_name = account_name or str(plex_account_id)
+                    if command_name.startswith("daylist_"):
+                        command.display_name = f"[Cmdarr] Daylist - {account_name}"
+                    else:
+                        command.display_name = f"[Cmdarr] Local Discovery - {account_name}"
+            elif (
+                command_name.startswith("playlist_sync_")
+                and (request.config_json.get("source") or "") != "listenbrainz"
+                and (request.config_json.get("target") or "").lower() == "plex"
+            ):
+                plex_account_ids = request.config_json.get("plex_account_ids") or []
+                if isinstance(plex_account_ids, list) and len(plex_account_ids) > 0:
+                    from commands.config_adapter import Config
+
+                    config = Config()
+                    from clients.client_plex import PlexClient
+
+                    pc = PlexClient(config)
+                    accounts = pc.get_accounts()
+                    source = (request.config_json.get("source") or "unknown").title()
+                    playlist_name = request.config_json.get("playlist_name") or "playlist"
+                    names = []
+                    for aid in plex_account_ids:
+                        acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
+                        names.append(acc["name"] if acc else str(aid))
+                    user_suffix = f" ({', '.join(names)})"
+                else:
+                    source = (request.config_json.get("source") or "unknown").title()
+                    playlist_name = request.config_json.get("playlist_name") or "playlist"
+                    user_suffix = ""
+                command.display_name = f"[{source}] {playlist_name} → Plex{user_suffix}"
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -787,41 +859,46 @@ async def execute_cache_builder(request: Request):
 
 @router.post("/daylist/create")
 async def create_daylist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new daylist command (single instance)."""
+    """Create a new daylist command (supports multiple instances per user)."""
     try:
         from database.config_models import CommandConfig
-
-        # Check if daylist already exists (exclude soft-deleted)
-        existing = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name.like("daylist_%"))
-            .filter(CommandConfig.deleted_at.is_(None))
-            .first()
-        )
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail="Daylist command already exists. Only one daylist is supported.",
-            )
-
-        # If a deleted daylist exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
-        deleted_cmd = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name == "daylist_00001")
-            .filter(CommandConfig.deleted_at.isnot(None))
-            .first()
-        )
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
             raise HTTPException(status_code=400, detail="plex_history_account_id is required")
 
-        schedule_minute = int(request.get("schedule_minute", 0))
-        schedule_minute = max(0, min(59, schedule_minute))
+        # Get account name for display
+        from clients.client_plex import PlexClient
+        from commands.config_adapter import Config
 
+        config = Config()
+        pc = PlexClient(config)
+        accounts = pc.get_accounts()
+        account_name = next(
+            (a["name"] for a in accounts if a["id"] == str(plex_account_id)),
+            str(plex_account_id),
+        )
+        account_name = account_name or str(plex_account_id)
+        display_name = f"[Cmdarr] Daylist - {account_name}"
+
+        # Dynamic command naming
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("daylist_%")).all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"daylist_{next_id:05d}"
         config_json = {
             "plex_history_account_id": str(plex_account_id),
-            "schedule_minute": schedule_minute,
+            "command_name": command_name,
+            "schedule_minute": int(request.get("schedule_minute", 0)),
             "exclude_played_days": int(request.get("exclude_played_days", 3)),
             "history_lookback_days": int(request.get("history_lookback_days", 45)),
             "max_tracks": int(request.get("max_tracks", 50)),
@@ -829,46 +906,33 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "sonic_similarity_limit": int(request.get("sonic_similarity_limit", 50)),
             "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.8)),
             "historical_ratio": float(request.get("historical_ratio", 0.4)),
-            "time_periods": request.get("time_periods"),  # Optional custom periods
+            "time_periods": request.get("time_periods"),
             "timezone": (request.get("timezone") or "").strip() or None,
             "use_primary_mood": bool(request.get("use_primary_mood", False)),
         }
+        config_json["schedule_minute"] = max(0, min(59, config_json["schedule_minute"]))
         if request.get("expires_at"):
             config_json["expires_at"] = request.get("expires_at")
             config_json["expires_at_delete_playlist"] = request.get(
                 "expires_at_delete_playlist", True
             )
 
-        if deleted_cmd:
-            # Restore and overwrite the deleted record (preserves execution history)
-            deleted_cmd.display_name = "[Cmdarr] Daylist"
-            deleted_cmd.description = "Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday."
-            deleted_cmd.enabled = bool(request.get("enabled", True))
-            deleted_cmd.schedule_cron = None
-            deleted_cmd.config_json = config_json
-            deleted_cmd.command_type = "playlist_generator"
-            deleted_cmd.deleted_at = None
-            db.commit()
-            db.refresh(deleted_cmd)
-            cmd = deleted_cmd
-        else:
-            cmd = CommandConfig(
-                command_name="daylist_00001",
-                display_name="[Cmdarr] Daylist",
-                description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
-                enabled=bool(request.get("enabled", True)),
-                schedule_cron=None,  # Daylist uses config_json schedule_minute
-                config_json=config_json,
-                command_type="playlist_generator",
-            )
-            db.add(cmd)
-            db.commit()
-            db.refresh(cmd)
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description="Builds playlists that evolve throughout the day using Plex Sonic Analysis and listening history. Plex only. Inspired by Meloday.",
+            enabled=bool(request.get("enabled", True)),
+            schedule_cron=None,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
 
-        # Reload dynamic commands
         command_executor._load_dynamic_daylist_commands()
 
-        return {"message": "Daylist command created successfully", "command_name": "daylist_00001"}
+        return {"message": "Daylist command created successfully", "command_name": command_name}
     except HTTPException:
         raise
     except Exception as e:
@@ -891,29 +955,9 @@ async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)])
 
 @router.post("/local-discovery/create")
 async def create_local_discovery(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new Local Discovery command (single instance)."""
+    """Create a new Local Discovery command (supports multiple instances per user)."""
     try:
         from database.config_models import CommandConfig
-
-        existing = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name.like("local_discovery_%"))
-            .filter(CommandConfig.deleted_at.is_(None))
-            .first()
-        )
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail="Local Discovery command already exists. Only one is supported.",
-            )
-
-        # If a deleted local_discovery exists, restore/overwrite it instead of inserting (avoids UNIQUE violation)
-        deleted_cmd = (
-            db.query(CommandConfig)
-            .filter(CommandConfig.command_name == "local_discovery_00001")
-            .filter(CommandConfig.deleted_at.isnot(None))
-            .first()
-        )
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -932,8 +976,36 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
                 detail="Could not resolve Plex library. Configure PLEX_LIBRARY_NAME or add a music library.",
             )
 
+        accounts = pc.get_accounts()
+        account_name = next(
+            (a["name"] for a in accounts if a["id"] == str(plex_account_id)),
+            str(plex_account_id),
+        )
+        account_name = account_name or str(plex_account_id)
+        display_name = f"[Cmdarr] Local Discovery - {account_name}"
+
+        existing = (
+            db.query(CommandConfig)
+            .filter(CommandConfig.command_name.like("local_discovery_%"))
+            .all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"local_discovery_{next_id:05d}"
+
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+
         config_json = {
             "plex_history_account_id": str(plex_account_id),
+            "command_name": command_name,
             "lookback_days": int(request.get("lookback_days", 90)),
             "exclude_played_days": int(request.get("exclude_played_days", 3)),
             "top_artists_count": int(request.get("top_artists_count", 10)),
@@ -950,42 +1022,25 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
                 "expires_at_delete_playlist", True
             )
 
-        schedule_cron = (request.get("schedule_cron") or "").strip() or None
-        schedule_override = bool(schedule_cron)
-
-        if deleted_cmd:
-            # Restore and overwrite the deleted record (preserves execution history)
-            deleted_cmd.display_name = "[Cmdarr] Local Discovery"
-            deleted_cmd.description = "Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only."
-            deleted_cmd.enabled = bool(request.get("enabled", True))
-            deleted_cmd.schedule_cron = schedule_cron if schedule_override else None
-            deleted_cmd.timeout_minutes = 30
-            deleted_cmd.config_json = config_json
-            deleted_cmd.command_type = "playlist_generator"
-            deleted_cmd.deleted_at = None
-            db.commit()
-            db.refresh(deleted_cmd)
-            cmd = deleted_cmd
-        else:
-            cmd = CommandConfig(
-                command_name="local_discovery_00001",
-                display_name="[Cmdarr] Local Discovery",
-                description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
-                enabled=bool(request.get("enabled", True)),
-                schedule_cron=schedule_cron if schedule_override else None,
-                timeout_minutes=30,
-                config_json=config_json,
-                command_type="playlist_generator",
-            )
-            db.add(cmd)
-            db.commit()
-            db.refresh(cmd)
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description="Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only.",
+            enabled=bool(request.get("enabled", True)),
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
 
         command_executor._load_dynamic_local_discovery_commands()
 
         return {
             "message": "Local Discovery command created",
-            "command_name": "local_discovery_00001",
+            "command_name": command_name,
         }
     except HTTPException:
         raise
@@ -1399,8 +1454,21 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             get_commands_logger().error(f"Failed to generate unique command ID: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
 
-        # Generate display name
-        display_name = f"[{source.title()}] {playlist_name} → {target.title()}"
+        # Multi-user Plex: build display name with user suffix
+        plex_account_ids = request.get("plex_account_ids") or []
+        if target == "plex" and isinstance(plex_account_ids, list) and len(plex_account_ids) > 0:
+            from clients.client_plex import PlexClient
+
+            plex = PlexClient(config)
+            accounts = plex.get_accounts()
+            names = []
+            for aid in plex_account_ids:
+                acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
+                names.append(acc["name"] if acc else str(aid))
+            user_suffix = f" ({', '.join(names)})"
+        else:
+            user_suffix = ""
+        display_name = f"[{source.title()}] {playlist_name} → {target.title()}{user_suffix}"
 
         # Create command config
         try:
@@ -1417,6 +1485,8 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 if enable_artist_discovery
                 else 0,
             }
+            if target == "plex" and isinstance(plex_account_ids, list) and plex_account_ids:
+                config_json["plex_account_ids"] = [str(aid) for aid in plex_account_ids]
             if request.get("expires_at"):
                 config_json["expires_at"] = request.get("expires_at")
                 config_json["expires_at_delete_playlist"] = request.get(

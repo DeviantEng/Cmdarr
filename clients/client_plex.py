@@ -25,7 +25,7 @@ from .client_base import BaseAPIClient
 class PlexClient(BaseAPIClient):
     """Client for Plex Media Server operations with optimized library cache"""
 
-    def __init__(self, config):
+    def __init__(self, config, token_override: str | None = None):
         # Plex uses synchronous requests, so we'll override the async behavior
         super().__init__(
             config=config,
@@ -35,7 +35,7 @@ class PlexClient(BaseAPIClient):
             headers={},
         )
 
-        self.token = config.PLEX_TOKEN
+        self.token = token_override if token_override else config.PLEX_TOKEN
 
         # Initialize cache - enable based on library cache setting
         self.cache_enabled = config.get("LIBRARY_CACHE_PLEX_ENABLED", False)
@@ -1250,6 +1250,52 @@ class PlexClient(BaseAPIClient):
             return plex_tv_id
         except Exception as e:
             self.logger.error(f"Error resolving account ID for history: {e}")
+            return None
+
+    def get_shared_user_tokens(self) -> dict[str, str]:
+        """Fetch shared user access tokens for the owned server.
+        Uses admin token. Returns {user_id: access_token} for users in shared_servers."""
+        try:
+            admin_token = self.config.PLEX_TOKEN
+            url = "https://plex.tv/api/resources"
+            resp = self._session.get(url, params={"X-Plex-Token": admin_token}, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            client_identifier = None
+            for device in root.findall(".//Device"):
+                if device.get("provides") == "server" and device.get("owned") == "1":
+                    client_identifier = device.get("clientIdentifier")
+                    break
+            if not client_identifier:
+                self.logger.warning("No owned server found in resources")
+                return {}
+            shared_url = f"https://plex.tv/api/servers/{client_identifier}/shared_servers"
+            resp = self._session.get(shared_url, params={"X-Plex-Token": admin_token}, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            token_map: dict[str, str] = {}
+            for shared in root.findall(".//SharedServer"):
+                uid = shared.get("userID")
+                token = shared.get("accessToken")
+                if uid and token:
+                    token_map[str(uid)] = str(token)
+            return token_map
+        except Exception as e:
+            self.logger.error(f"Error fetching shared user tokens: {e}")
+            return {}
+
+    def get_token_for_user(self, plex_tv_user_id: str) -> str | None:
+        """Resolve Plex.tv user ID to token for playlist operations.
+        Admin (server owner) uses config token; others use shared_servers accessToken."""
+        try:
+            accounts = self.get_accounts()
+            account = next((a for a in accounts if a["id"] == plex_tv_user_id), None)
+            if account and account.get("admin"):
+                return self.config.PLEX_TOKEN
+            token_map = self.get_shared_user_tokens()
+            return token_map.get(str(plex_tv_user_id))
+        except Exception as e:
+            self.logger.error(f"Error resolving token for user {plex_tv_user_id}: {e}")
             return None
 
     def get_play_history(
