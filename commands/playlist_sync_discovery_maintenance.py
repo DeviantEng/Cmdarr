@@ -31,6 +31,7 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
             current_entries = await self._load_discovery_file()
             if not current_entries:
                 self.logger.info("No entries found in discovery file")
+                self.last_run_stats = {"removed_count": 0, "remaining_count": 0, "empty": True}
                 return True
 
             self.logger.info(f"Loaded {len(current_entries)} entries from discovery file")
@@ -61,6 +62,11 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
                 f"{cleanup_stats['remaining_count']} remaining"
             )
 
+            self.last_run_stats = {
+                "removed_count": cleanup_stats["removed_count"],
+                "remaining_count": cleanup_stats["remaining_count"],
+                "empty": False,
+            }
             return True
 
         except Exception as e:
@@ -223,7 +229,7 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
 
     def get_description(self) -> str:
         """Return command description"""
-        return "Maintain the unified discovery import list by removing stale entries"
+        return "Remove stale entries from the playlist sync discovery import list. Empty file is normal when playlists have no new artists to add."
 
     def get_logger_name(self) -> str:
         """Return logger name"""

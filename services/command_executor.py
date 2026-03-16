@@ -436,6 +436,8 @@ class CommandExecutor:
 
         if command_name == "discovery_lastfm" and stats:
             return self._build_lastfm_summary(stats, duration)
+        elif command_name == "playlist_sync_discovery_maintenance" and stats:
+            return self._build_maintenance_summary(stats, duration)
         elif command_name == "library_cache_builder" and stats:
             return self._build_library_cache_summary(stats, duration)
         elif command_name.startswith("playlist_sync_") and stats:
@@ -473,6 +475,20 @@ class CommandExecutor:
         if invalid:
             summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
         return summary
+
+    def _build_maintenance_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build playlist sync discovery maintenance summary from command result"""
+        if stats.get("empty"):
+            return (
+                f"Maintenance completed in {duration:.1f}s. Discovery file was empty. "
+                "This is normal when playlist sync has no new artists to add, or maintenance "
+                "has already cleaned up."
+            )
+        removed = stats.get("removed_count", 0)
+        remaining = stats.get("remaining_count", 0)
+        return (
+            f"Maintenance completed in {duration:.1f}s: {removed} removed, {remaining} remaining"
+        )
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
