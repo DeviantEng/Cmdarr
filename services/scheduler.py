@@ -175,7 +175,7 @@ class CommandScheduler:
                                 exp_dt = exp_dt.replace(tzinfo=UTC)
                             if now_utc >= exp_dt:
                                 continue  # Skip expired
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             pass
 
                     cron_expr = get_effective_cron(command)

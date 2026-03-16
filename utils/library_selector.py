@@ -19,7 +19,7 @@ def _first_by_lowest_key(libraries: list[dict[str, Any]]) -> dict[str, Any] | No
         k = lib.get("key") or ""
         try:
             return (0, int(k))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return (1, str(k))
 
     return min(libraries, key=sort_key)

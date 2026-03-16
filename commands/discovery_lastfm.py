@@ -251,7 +251,7 @@ class DiscoveryLastfmCommand(BaseCommand):
                 if match_score < min_match_score:
                     stats.filtered_low_score += 1
                     continue
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 stats.filtered_low_score += 1
                 continue
 

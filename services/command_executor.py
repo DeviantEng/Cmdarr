@@ -486,9 +486,7 @@ class CommandExecutor:
             )
         removed = stats.get("removed_count", 0)
         remaining = stats.get("remaining_count", 0)
-        return (
-            f"Maintenance completed in {duration:.1f}s: {removed} removed, {remaining} remaining"
-        )
+        return f"Maintenance completed in {duration:.1f}s: {removed} removed, {remaining} remaining"
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""

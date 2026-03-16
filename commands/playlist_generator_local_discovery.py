@@ -27,7 +27,7 @@ def _parse_viewed_at(item: dict, tz=None) -> datetime | None:
         if tz:
             return datetime.fromtimestamp(ts, tz=tz)
         return datetime.fromtimestamp(ts)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 

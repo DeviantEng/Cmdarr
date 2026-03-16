@@ -351,7 +351,7 @@ class DaylistCommand(BaseCommand):
             if tz:
                 return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def _generate_playlist_title_and_description(

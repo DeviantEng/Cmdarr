@@ -909,7 +909,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 # Ensure retention_count is an integer (config values might be strings)
                 try:
                     retention_count = int(retention_count_raw)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     self.logger.warning(
                         f"Invalid retention count '{retention_count_raw}' for {playlist_type}, using default 3"
                     )
