@@ -9,7 +9,6 @@ A modular music automation platform that bridges services for your self-hosted m
 - **Automatic Music Discovery** – Similar artists (Last.fm), playlist-based discovery, new releases from Deezer/Spotify missing in MusicBrainz, scan artist by URL
 - **Playlist Management** – Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin; add discovered artists to Lidarr
 - **Playlist Generators** – Daylist (time-of-day), Local Discovery (top artists + sonic similar), Artist Essentials (top tracks per artist), Mood Playlist (Plex Sonic moods)
-- **Performance** – Library cache (6x faster syncs), rate limiting, cron scheduling, Docker-native deployment
 
 For detailed command descriptions, configuration, architecture, and troubleshooting, see **[readme-extended.md](readme-extended.md)**.
 
@@ -18,13 +17,17 @@ For detailed command descriptions, configuration, architecture, and troubleshoot
 ### Docker Compose (Recommended)
 
 ```yaml
-version: '3.8'
 services:
   cmdarr:
     image: ghcr.io/devianteng/cmdarr:latest
     container_name: cmdarr
     ports:
       - "8080:8080"
+    # OWASP Docker: limit capabilities, prevent privilege escalation
+    cap_drop:
+      - ALL
+    security_opt:
+      - no_new_privileges: true
     volumes:
       - ./cmdarr-data:/app/data
     environment:
@@ -61,6 +64,10 @@ docker run -d \
   ghcr.io/devianteng/cmdarr:latest
 ```
 
+### Environment Options
+
+All configuration can be set via environment variables. For the full list—including access control (`CMDARR_AUTH_USERNAME`, `CMDARR_AUTH_PASSWORD`, `CMDARR_API_KEY`), optional services, library cache, and scheduler—see [Environment Variables](readme-extended.md#environment-variables) in the extended documentation.
+
 ### Local Python Environment
 
 For development or running without Docker:
@@ -87,10 +94,6 @@ python run_fastapi.py
 ```
 
 Visit `http://localhost:8080`. For frontend dev with hot reload: `npm run dev` in `frontend/` and use `http://localhost:5173`.
-
-### Environment Options
-
-All configuration can be set via environment variables. For the full list—including access control (`CMDARR_AUTH_USERNAME`, `CMDARR_AUTH_PASSWORD`, `CMDARR_API_KEY`), optional services, library cache, and scheduler—see [Environment Variables](readme-extended.md#environment-variables) in the extended documentation.
 
 ## Web Interface
 

@@ -1,3 +1,5 @@
 # Ignored CVEs - revisit when upstream ships a fix
 # CVE-2026-0861: glibc memalign integer overflow - no fix in Debian stable yet (2026-02)
 CVE-2026-0861
+# CVE-2026-4105: systemd RegisterMachine D-Bus privilege escalation (libsystemd0, libudev1) - no fix in Debian stable yet
+CVE-2026-4105

@@ -162,7 +162,8 @@ export function ImportListsPage() {
               )}
             </div>
             <p className="text-muted-foreground mb-4">
-              Similar artists discovered via Last.fm and MusicBrainz fuzzy matching
+              Similar artists discovered via Last.fm and MusicBrainz fuzzy matching. When enabled,
+              typically adds new artists daily.
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Endpoint URL</label>
@@ -237,7 +238,8 @@ export function ImportListsPage() {
             <p className="text-muted-foreground mb-4">
               Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when
               tracks fail to match in your library. Requires &quot;Add new artists&quot; to be
-              checked in the playlist sync command settings (Commands → Edit).
+              checked in the playlist sync command settings (Commands → Edit). Empty is normal when
+              playlists have no new artists to add, or maintenance has already cleaned up.
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Endpoint URL</label>
@@ -267,6 +269,13 @@ export function ImportListsPage() {
                 </Button>
               </div>
             </div>
+            {(!metrics?.unified?.exists || metrics.unified.entry_count === 0) && (
+              <div className="mt-4 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+                Empty is normal when no playlist sync commands have added artists, or maintenance
+                has already cleaned up. This list is populated when playlist sync runs find new
+                artists not in your library.
+              </div>
+            )}
             {metrics?.unified?.exists && (
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-medium mb-3">File Statistics</h4>

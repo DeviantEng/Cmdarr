@@ -25,7 +25,7 @@ from .client_base import BaseAPIClient
 class PlexClient(BaseAPIClient):
     """Client for Plex Media Server operations with optimized library cache"""
 
-    def __init__(self, config):
+    def __init__(self, config, token_override: str | None = None):
         # Plex uses synchronous requests, so we'll override the async behavior
         super().__init__(
             config=config,
@@ -35,7 +35,7 @@ class PlexClient(BaseAPIClient):
             headers={},
         )
 
-        self.token = config.PLEX_TOKEN
+        self.token = token_override if token_override else config.PLEX_TOKEN
 
         # Initialize cache - enable based on library cache setting
         self.cache_enabled = config.get("LIBRARY_CACHE_PLEX_ENABLED", False)
@@ -1165,7 +1165,8 @@ class PlexClient(BaseAPIClient):
 
     def get_accounts(self) -> list[dict[str, Any]]:
         """Get Plex Home users (and token owner if not in home users).
-        Uses Plex.tv API /home/users. Returns list of {id, name} for dropdown."""
+        Uses Plex.tv API /home/users. Returns list of {id, name, admin} for dropdown.
+        admin=True indicates server owner (resolves to account id 1 for play history)."""
         try:
             url = "https://plex.tv/api/v2/home/users"
             params = {
@@ -1188,11 +1189,17 @@ class PlexClient(BaseAPIClient):
                 name = (
                     user.get("title") or user.get("username") or user.get("friendlyName") or ""
                 ).strip()
-                accounts.append({"id": acc_id_str, "name": name or f"Account {acc_id_str}"})
+                admin = user.get("admin") == "1"
+                accounts.append(
+                    {"id": acc_id_str, "name": name or f"Account {acc_id_str}", "admin": admin}
+                )
             # Include token owner if not in home users (server owner may be absent)
             token_owner = self._get_token_owner()
             if token_owner and token_owner["id"] not in seen_ids:
-                accounts.insert(0, {"id": token_owner["id"], "name": token_owner["name"]})
+                accounts.insert(
+                    0,
+                    {"id": token_owner["id"], "name": token_owner["name"], "admin": True},
+                )
             return accounts
         except Exception as e:
             self.logger.error(f"Error getting Plex home users: {e}")
@@ -1223,41 +1230,72 @@ class PlexClient(BaseAPIClient):
 
     def resolve_account_id_for_history(self, plex_tv_account_id: str | int) -> str | None:
         """Resolve Plex.tv account ID to server account ID for session history.
-        Server owner uses local id (e.g. 1); shared users use their Plex.tv ID.
+        Server owner (admin=1) uses local id 1; shared users use their Plex.tv ID.
         Returns the ID to pass to get_play_history, or None on failure."""
         try:
             plex_tv_id = str(plex_tv_account_id)
-            # Get server accounts (id + name) - session history uses these IDs
-            results = self._get("/accounts")
-            mc = results.get("MediaContainer", {})
-            raw = mc.get("Account", [])
-            server_accounts = raw if isinstance(raw, list) else ([raw] if raw else [])
-            # Build id->name and name->id maps
-            by_id = {
-                str(a.get("id")): (a.get("name") or "").strip()
-                for a in server_accounts
-                if a.get("id") is not None
-            }
-            by_name = {v.lower(): k for k, v in by_id.items() if v}
-            # If plex_tv_id exists in server accounts, use it (shared users)
-            if plex_tv_id in by_id:
-                return plex_tv_id
-            # Server owner: Plex.tv ID != server id. Match by name from home users.
             home_users = self.get_accounts()
-            home_by_id = {a["id"]: a["name"] for a in home_users}
-            owner_name = (home_by_id.get(plex_tv_id) or "").strip().lower()
-            if owner_name and owner_name in by_name:
-                return by_name[owner_name]
-            # Fallback: requested account is token owner (may not be in home users).
-            # Token owner = server owner; match by name from plex.tv to server accounts.
-            token_owner = self._get_token_owner()
-            if token_owner and token_owner["id"] == plex_tv_id:
-                name_lower = token_owner["name"].lower() if token_owner["name"] else ""
-                if name_lower and name_lower in by_name:
-                    return by_name[name_lower]
-            return None
+            if not home_users:
+                # No home users: fall back to token owner = server owner = account 1
+                token_owner = self._get_token_owner()
+                if token_owner and token_owner["id"] == plex_tv_id:
+                    return "1"
+                return None
+            # Find the selected user in home users
+            account = next((a for a in home_users if a["id"] == plex_tv_id), None)
+            if account is None:
+                return None
+            if account.get("admin"):
+                return "1"
+            return plex_tv_id
         except Exception as e:
             self.logger.error(f"Error resolving account ID for history: {e}")
+            return None
+
+    def get_shared_user_tokens(self) -> dict[str, str]:
+        """Fetch shared user access tokens for the owned server.
+        Uses admin token. Returns {user_id: access_token} for users in shared_servers."""
+        try:
+            admin_token = self.config.PLEX_TOKEN
+            url = "https://plex.tv/api/resources"
+            resp = self._session.get(url, params={"X-Plex-Token": admin_token}, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            client_identifier = None
+            for device in root.findall(".//Device"):
+                if device.get("provides") == "server" and device.get("owned") == "1":
+                    client_identifier = device.get("clientIdentifier")
+                    break
+            if not client_identifier:
+                self.logger.warning("No owned server found in resources")
+                return {}
+            shared_url = f"https://plex.tv/api/servers/{client_identifier}/shared_servers"
+            resp = self._session.get(shared_url, params={"X-Plex-Token": admin_token}, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            token_map: dict[str, str] = {}
+            for shared in root.findall(".//SharedServer"):
+                uid = shared.get("userID")
+                token = shared.get("accessToken")
+                if uid and token:
+                    token_map[str(uid)] = str(token)
+            return token_map
+        except Exception as e:
+            self.logger.error(f"Error fetching shared user tokens: {e}")
+            return {}
+
+    def get_token_for_user(self, plex_tv_user_id: str) -> str | None:
+        """Resolve Plex.tv user ID to token for playlist operations.
+        Admin (server owner) uses config token; others use shared_servers accessToken."""
+        try:
+            accounts = self.get_accounts()
+            account = next((a for a in accounts if a["id"] == plex_tv_user_id), None)
+            if account and account.get("admin"):
+                return self.config.PLEX_TOKEN
+            token_map = self.get_shared_user_tokens()
+            return token_map.get(str(plex_tv_user_id))
+        except Exception as e:
+            self.logger.error(f"Error resolving token for user {plex_tv_user_id}: {e}")
             return None
 
     def get_play_history(

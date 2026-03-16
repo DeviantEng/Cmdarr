@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-03-16
+
+### 🎵 Daylist & Local Discovery
+- **Multiple Instances per User**: Daylist and Local Discovery support multiple instances, each targeting a different Plex account; playlists are created in each user's context using shared user tokens
+- **Server Owner in Account List**: Plex account selector now includes the server owner when absent from home users (token owner matching)
+- **Display Name Sync**: Editing Daylist or Local Discovery and changing the Plex account updates the command display name (e.g. `[Cmdarr] [Andrea] Daylist`)
+- **Expiry Cleanup**: Playlist deletion on command expiry uses the target user's token (admin token only sees admin playlists)
+
+### 🎵 Playlist Sync (External)
+- **Multi-User Plex Sync**: One command can sync to multiple Plex users; "Sync to multiple Plex users" checkbox reveals account selection (default: server owner only)
+- **Efficient Track Resolution**: Tracks resolved once and reused for all users (e.g. 53/84 found → same 53 for each user, no re-search)
+- **Playlist Title**: Same name in Plex for all users (no user suffix); Cmdarr display name shows users (e.g. `[Spotify] [Alice, Bob] Playlist → Plex`)
+- **Plex Only**: Multi-user option hidden when target is Jellyfin
+- **Expiry Cleanup**: Playlist deletion on expiry uses each user's token (admin token only sees admin playlists)
+
+### 🎨 Create New Command & Inputs
+- **Compact Type Selection**: Reordered (Daylist, Local Discovery, ListenBrainz, External, Top Tracks, Mood); smaller cards, single column
+- **NumericInput Component**: Blur-only validation so values like "20" can be typed without intermediate clamping; used across create/edit for Daylist, Local Discovery, ListenBrainz, Top Tracks, Mood, Config
+
+### 🔧 Fixes
+- **Exception Syntax**: Python 3 `except (X, Y)` syntax across codebase (was invalid `except X, Y`)
+
+### 🔒 Secure Development
+- **CI pip-audit**: Install requirements before audit so project dependencies are scanned for vulnerabilities
+- **Docker & Logging**: Compose example adds cap_drop and no_new_privileges (OWASP); SensitiveDataFilter redacts tokens/passwords from logs
+
 ## [0.3.9] - 2026-03-11
 
 ### 🎵 New Releases Discovery

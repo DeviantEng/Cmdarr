@@ -561,13 +561,25 @@ class DaylistCommand(BaseCommand):
     async def execute(self) -> bool:
         """Execute daylist command."""
         try:
-            self.logger.info("Starting Daylist command")
-
             config = self.config_json or {}
-            self._ensure_display_name("[Cmdarr] Daylist")
             account_id = config.get("plex_history_account_id")
             if not account_id:
                 self.logger.error("No plex_history_account_id configured")
+                return False
+
+            accounts = self.plex_client.get_accounts()
+            account_name = next(
+                (a["name"] for a in accounts if a["id"] == str(account_id)),
+                str(account_id),
+            )
+            self.logger.info(f"Starting Daylist command for user: {account_name}")
+
+            user_token = self.plex_client.get_token_for_user(str(account_id))
+            if not user_token:
+                self.logger.error(
+                    f"Could not resolve token for user {account_id}. "
+                    "User must be admin or in shared_servers."
+                )
                 return False
 
             # Resolve library
@@ -628,12 +640,13 @@ class DaylistCommand(BaseCommand):
                     history_items.append(h)
 
             self.logger.info(
-                f"History: {len(history_raw)} raw, {len(history_items)} tracks (excluded {len(excluded_keys)} recent)"
+                f"History for {account_name}: {len(history_raw)} raw, {len(history_items)} tracks "
+                f"(excluded {len(excluded_keys)} recent)"
             )
             if not history_items:
                 self.logger.warning(
-                    "No play history in lookback window. Check plex_history_account_id and that "
-                    "tracks (not albums/videos) were played in the music library."
+                    f"No play history for {account_name} in lookback window. Check plex_history_account_id "
+                    "and that tracks (not albums/videos) were played in the music library."
                 )
 
             # Balance popular/rare
@@ -747,7 +760,8 @@ class DaylistCommand(BaseCommand):
 
             rating_keys = [str(t.get("ratingKey")) for t in ordered if t.get("ratingKey")]
 
-            success = self.plex_client.create_or_update_playlist(
+            plex_for_playlist = PlexClient(self.config, token_override=user_token)
+            success = plex_for_playlist.create_or_update_playlist(
                 playlist_title,
                 rating_keys,
                 description,
@@ -759,11 +773,11 @@ class DaylistCommand(BaseCommand):
                 return False
 
             # Upload dynamic cover (Meloday-style: period-specific image with title overlay)
-            playlist = self.plex_client.find_playlist_by_prefix("[Cmdarr] Daylist")
+            playlist = plex_for_playlist.find_playlist_by_prefix("[Cmdarr] Daylist")
             if playlist:
                 cover_bytes = self._generate_cover_image(current_period, cover_text)
                 if cover_bytes:
-                    if self.plex_client.upload_playlist_poster(playlist["ratingKey"], cover_bytes):
+                    if plex_for_playlist.upload_playlist_poster(playlist["ratingKey"], cover_bytes):
                         self.logger.info("Daylist cover uploaded")
                     else:
                         self.logger.warning("Failed to upload daylist cover")
@@ -799,7 +813,9 @@ class DaylistCommand(BaseCommand):
                 "period": current_period,
                 "track_count": len(rating_keys),
             }
-            self.logger.info(f"Daylist updated: {current_period}, {len(rating_keys)} tracks")
+            self.logger.info(
+                f"Daylist updated for {account_name}: {current_period}, {len(rating_keys)} tracks"
+            )
             return True
 
         except Exception as e:

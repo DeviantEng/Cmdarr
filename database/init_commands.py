@@ -31,7 +31,7 @@ def init_default_commands():
         {
             "command_name": "playlist_sync_discovery_maintenance",
             "display_name": "Playlist Sync Discovery Maintenance",
-            "description": "Maintains the unified discovery import list by removing stale entries",
+            "description": "Removes stale entries from the playlist sync discovery import list. Empty file is normal when playlists have no new artists to add.",
             "enabled": True,
             "timeout_minutes": 30,
             "command_type": "discovery",
