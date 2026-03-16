@@ -697,7 +697,7 @@ class ConfigService:
                                         f"Config {key} value {num} above max {setting.max_value}"
                                     )
                                     return False
-                        except ValueError, TypeError:
+                        except (ValueError, TypeError):
                             self.logger.warning(f"Config {key} invalid numeric value: {str_value}")
                             return False
                     setting.value = str_value
@@ -815,7 +815,7 @@ class ConfigService:
             if value is None:
                 return default
             return int(value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             self.logger.warning(f"Failed to convert {key} to int, using default: {default}")
             return default
 

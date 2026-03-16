@@ -155,7 +155,7 @@ class LastFMClient(BaseAPIClient):
                 match_score = artist.get("match", "0")
                 try:
                     float(match_score)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     skipped_artists.append(
                         {
                             "name": artist.get("name", ""),

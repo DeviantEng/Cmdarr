@@ -253,7 +253,7 @@ class DiscoveryUtils:
                     existing_score = float(seen_mbids[mbid].get(score_field, 0))
                     if current_score > existing_score:
                         seen_mbids[mbid] = artist
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     # If scores can't be compared, keep the first one
                     pass
 

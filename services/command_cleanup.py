@@ -175,7 +175,7 @@ class CommandCleanupService:
                             exp_dt = exp_dt.astimezone(UTC).replace(tzinfo=None)
                         if exp_dt <= now:
                             expired.append(cmd)
-                    except ValueError, TypeError:
+                    except (ValueError, TypeError):
                         continue
 
                 if not expired:
@@ -220,7 +220,18 @@ class CommandCleanupService:
             playlist_name = (
                 f"[{str(cfg.get('source', 'unknown')).title()}] {cfg.get('playlist_name', '')}"
             )
-            self._delete_playlist_if_exists(target, playlist_name)
+            plex_account_ids = cfg.get("plex_account_ids") or []
+            if target == "plex" and isinstance(plex_account_ids, list) and plex_account_ids:
+                # Multi-user: delete playlist for each user (each has own copy)
+                for user_id in plex_account_ids:
+                    token = self._get_user_token_for_playlist_delete(
+                        {"plex_history_account_id": user_id}
+                    )
+                    self._delete_playlist_if_exists(
+                        target, playlist_name, token_override=token
+                    )
+            else:
+                self._delete_playlist_if_exists(target, playlist_name)
         elif name.startswith("top_tracks_"):
             target = str(cfg.get("target", "plex")).lower()
             # Use last run's playlist title; fallback to recompute from config

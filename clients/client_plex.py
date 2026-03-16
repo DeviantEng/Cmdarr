@@ -1469,7 +1469,7 @@ class PlexClient(BaseAPIClient):
                     if s:
                         try:
                             year_val = int(s.split("-")[0]) if "-" in s else int(s)
-                        except ValueError, TypeError:
+                        except (ValueError, TypeError):
                             pass
                 if key and title and artist:
                     out.append(
@@ -1584,7 +1584,7 @@ class PlexClient(BaseAPIClient):
                                     a = tr.get("addedAt") or 0
                                     try:
                                         a = int(a) if a else 0
-                                    except TypeError, ValueError:
+                                    except (TypeError, ValueError):
                                         a = 0
                                     if a >= cutoff_ts:
                                         all_tracks.append(tr)
@@ -1594,7 +1594,7 @@ class PlexClient(BaseAPIClient):
                         added = t.get("addedAt") or 0
                         try:
                             added = int(added) if added else 0
-                        except TypeError, ValueError:
+                        except (TypeError, ValueError):
                             added = 0
                         if added < cutoff_ts:
                             self.logger.debug(f"Reached cutoff at {len(all_tracks)} tracks (album)")
@@ -1605,7 +1605,7 @@ class PlexClient(BaseAPIClient):
                     added = t.get("addedAt") or 0
                     try:
                         added = int(added) if added else 0
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         added = 0
                     if added >= cutoff_ts:
                         all_tracks.append(t)

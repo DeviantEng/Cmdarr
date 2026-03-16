@@ -386,9 +386,9 @@ async def update_command(
                     )
                     account_name = account_name or str(plex_account_id)
                     if command_name.startswith("daylist_"):
-                        command.display_name = f"[Cmdarr] Daylist - {account_name}"
+                        command.display_name = f"[Cmdarr] [{account_name}] Daylist"
                     else:
-                        command.display_name = f"[Cmdarr] Local Discovery - {account_name}"
+                        command.display_name = f"[Cmdarr] [{account_name}] Local Discovery"
             elif (
                 command_name.startswith("playlist_sync_")
                 and (request.config_json.get("source") or "") != "listenbrainz"
@@ -409,12 +409,12 @@ async def update_command(
                     for aid in plex_account_ids:
                         acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
                         names.append(acc["name"] if acc else str(aid))
-                    user_suffix = f" ({', '.join(names)})"
+                    user_bracket = f" [{', '.join(names)}] "
                 else:
                     source = (request.config_json.get("source") or "unknown").title()
                     playlist_name = request.config_json.get("playlist_name") or "playlist"
-                    user_suffix = ""
-                command.display_name = f"[{source}] {playlist_name} → Plex{user_suffix}"
+                    user_bracket = " "
+                command.display_name = f"[{source}]{user_bracket}{playlist_name} → Plex"
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -879,7 +879,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             str(plex_account_id),
         )
         account_name = account_name or str(plex_account_id)
-        display_name = f"[Cmdarr] Daylist - {account_name}"
+        display_name = f"[Cmdarr] [{account_name}] Daylist"
 
         # Dynamic command naming
         existing = (
@@ -889,7 +889,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -982,7 +982,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
             str(plex_account_id),
         )
         account_name = account_name or str(plex_account_id)
-        display_name = f"[Cmdarr] Local Discovery - {account_name}"
+        display_name = f"[Cmdarr] [{account_name}] Local Discovery"
 
         existing = (
             db.query(CommandConfig)
@@ -993,7 +993,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1119,7 +1119,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1244,7 +1244,7 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1257,11 +1257,11 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         if limit_by_year:
             try:
                 min_year = max(1800, min(2100, int(min_year))) if min_year is not None else None
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 min_year = None
             try:
                 max_year = max(1800, min(2100, int(max_year))) if max_year is not None else None
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 max_year = None
         else:
             min_year = max_year = None
@@ -1424,7 +1424,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1440,7 +1440,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID
@@ -1454,7 +1454,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             get_commands_logger().error(f"Failed to generate unique command ID: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
 
-        # Multi-user Plex: build display name with user suffix
+        # Multi-user Plex: build display name with [USER] format
         plex_account_ids = request.get("plex_account_ids") or []
         if target == "plex" and isinstance(plex_account_ids, list) and len(plex_account_ids) > 0:
             from clients.client_plex import PlexClient
@@ -1465,10 +1465,10 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             for aid in plex_account_ids:
                 acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
                 names.append(acc["name"] if acc else str(aid))
-            user_suffix = f" ({', '.join(names)})"
+            user_bracket = f" [{', '.join(names)}] "
         else:
-            user_suffix = ""
-        display_name = f"[{source.title()}] {playlist_name} → {target.title()}{user_suffix}"
+            user_bracket = " "
+        display_name = f"[{source.title()}]{user_bracket}{playlist_name} → {target.title()}"
 
         # Create command config
         try:
@@ -1607,7 +1607,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1623,7 +1623,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID

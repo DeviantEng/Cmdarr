@@ -162,13 +162,13 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                     min_year = int(min_year) if min_year is not None else None
                     if min_year is not None:
                         min_year = max(1800, min(2100, min_year))
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     min_year = None
                 try:
                     max_year = int(max_year) if max_year is not None else None
                     if max_year is not None:
                         max_year = max(1800, min(2100, max_year))
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     max_year = None
             else:
                 min_year = max_year = None
