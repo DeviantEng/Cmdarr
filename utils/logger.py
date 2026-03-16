@@ -11,6 +11,30 @@ import re
 from datetime import datetime, timedelta
 
 
+# Patterns for sensitive data redaction (keys commonly used for tokens, passwords, API keys)
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"((?:token|password|api_key|secret|passwd|auth)"
+    r"[\w_-]*\s*[:=]\s*)([^\s,}\]]+)",
+    re.IGNORECASE,
+)
+
+
+class SensitiveDataFilter(logging.Filter):
+    """Redact sensitive values from log messages before they reach handlers.
+    Attach to root logger so all loggers inherit. Centralizes redaction in one place."""
+
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+            redacted = _SENSITIVE_KEY_PATTERN.sub(r"\1[REDACTED]", msg)
+            if redacted != msg:
+                record.msg = redacted
+                record.args = ()
+        except Exception:
+            pass
+        return True
+
+
 class HealthCheckFilter(logging.Filter):
     """Filter to suppress routine requests from access logs"""
 
@@ -203,6 +227,11 @@ class CmdarrLogger:
         root_logger.setLevel(logging.DEBUG)  # Root accepts all levels, handlers filter
         root_logger.addHandler(file_handler)
         root_logger.addHandler(console_handler)
+
+        # Redact sensitive data from all log output
+        sensitive_filter = SensitiveDataFilter()
+        for handler in root_logger.handlers:
+            handler.addFilter(sensitive_filter)
 
         # Configure aiohttp access logger specifically
         aiohttp_access_logger = logging.getLogger("aiohttp.access")

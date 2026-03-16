@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔧 Fixes
 - **Exception Syntax**: Python 3 `except (X, Y)` syntax across codebase (was invalid `except X, Y`)
 
+### 🔒 Secure Development
+- **CI pip-audit**: Install requirements before audit so project dependencies are scanned for vulnerabilities
+- **Docker & Logging**: Compose example adds cap_drop and no_new_privileges (OWASP); SensitiveDataFilter redacts tokens/passwords from logs
+
 ## [0.3.9] - 2026-03-11
 
 ### 🎵 New Releases Discovery

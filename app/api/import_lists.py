@@ -51,7 +51,7 @@ def _get_file_metrics(file_path: str) -> dict[str, Any]:
             entry_count = len(data)
             # Get first few entries as samples for debugging
             sample_entries = data[:3] if len(data) > 0 else []
-    except json.JSONDecodeError, Exception:
+    except (json.JSONDecodeError, Exception):
         pass
 
     # Determine status based on age and content
