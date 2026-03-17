@@ -1,5 +1,5 @@
 # Stage 1: Build React frontend
-FROM node:24-trixie-slim AS frontend-builder
+FROM node:24-trixie-slim@sha256:8c8f12cedb96c3b59642cf30d713943c2b223990c9919b96a141681f62e6e292 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python application
-FROM python:3.14-slim-trixie
+FROM python:3.14-slim-trixie@sha256:584e89d31009a79ae4d9e3ab2fba078524a6c0921cb2711d05e8bb5f628fc9b9
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
@@ -16,21 +16,21 @@ ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
 WORKDIR /app
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Default PUID/PGID (can be overridden at runtime)
-ENV PUID=1000
-ENV PGID=1000
+ENV PUID=1000 \
+    PGID=1000
 
 # Default application settings
-ENV WEB_HOST=0.0.0.0
-ENV WEB_PORT=8080
-ENV LOG_LEVEL=INFO
-ENV LOG_RETENTION_DAYS=7
+ENV WEB_HOST=0.0.0.0 \
+    WEB_PORT=8080 \
+    LOG_LEVEL=INFO \
+    LOG_RETENTION_DAYS=7
 
 # Install system dependencies
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gosu \
     && rm -rf /var/lib/apt/lists/*
