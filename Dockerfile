@@ -30,7 +30,7 @@ ENV LOG_LEVEL=INFO
 ENV LOG_RETENTION_DAYS=7
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     curl \
     gosu \
     && rm -rf /var/lib/apt/lists/*
@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
