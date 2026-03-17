@@ -2,4 +2,4 @@
 Cmdarr version information
 """
 
-__version__ = "0.3.11-dev"
+__version__ = "0.3.11"

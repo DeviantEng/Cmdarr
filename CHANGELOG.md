@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.11-dev] - TBD
+## [0.3.11] - 2026-03-17
 
 ### Housekeeping
 - **Security updates**: Debian 13.4 released on Mar-14, has fix for CVE-2026-0861, and addresses some other lower severity CVEs
+- **Base image pinning**: Dockerfile updates to pin base image to digest; enablement of dependabot to monitor for digest changes and open PRs
 
 ## [0.3.10] - 2026-03-16
 
