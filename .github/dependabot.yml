@@ -12,3 +12,10 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(docker)"
+    # Only digest updates (same tag, new SHA). Ignore version bumps (e.g. node 24→25).
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
