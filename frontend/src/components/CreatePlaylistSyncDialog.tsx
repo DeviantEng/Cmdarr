@@ -2076,5 +2076,3 @@ export function CreatePlaylistSyncDialog({
     </Dialog>
   );
 }
-
-}
