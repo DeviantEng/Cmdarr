@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.12-dev] - TBD
 
 ### Housekeeping
-- **Security updates**: Bump python base digest; update npm flatted to address CVE-2026-33228; addressed codeql finding in new_release.py
+- **Security updates**: Bump python base digest; update npm flatted to address CVE-2026-33228; addressed codeql finding in new_release.py; Bump trivy scanner version (migrate to SHA instead of version tag due to recent supply chain attack)
+- **CICD cleanup**: Dependabot tracking for trivy image; Additions to .dockerignore to decrease image size
 
 ## [0.3.11] - 2026-03-17
 
