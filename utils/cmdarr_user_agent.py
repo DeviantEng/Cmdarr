@@ -1,5 +1,5 @@
 """
-Shared User-Agent for outbound HTTP APIs (MusicBrainz, ListenBrainz, …).
+Shared User-Agent for outbound HTTP APIs (MusicBrainz, ListenBrainz, xmplaylist, …).
 
 Override via config key CMDARR_USER_AGENT in the database / Config UI (not via OS environment —
 see services.config_service._CONFIG_KEYS_SKIP_ENV). Empty / unset uses MusicBrainz-style default:

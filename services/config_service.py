@@ -73,7 +73,7 @@ class ConfigService:
                 "data_type": "string",
                 "category": "application",
                 "description": (
-                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, …). "
+                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, …). "
                     "Empty = Cmdarr/<version> (https://github.com/DeviantEng/Cmdarr). "
                     "Not overridable via Docker/environment variables (use this UI only). "
                     "Set a fixed string here if an operator whitelists by UA without a version suffix."

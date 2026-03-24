@@ -415,6 +415,10 @@ async def update_command(
                     playlist_name = request.config_json.get("playlist_name") or "playlist"
                     user_bracket = " "
                 command.display_name = f"[{source}]{user_bracket}{playlist_name} → Plex"
+            elif command_name.startswith("xmplaylist_"):
+                from commands.playlist_generator_xmplaylist import _build_playlist_title
+
+                command.display_name = _build_playlist_title(dict(command.config_json or {}))
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -1306,6 +1310,187 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         get_commands_logger().error(f"Failed to create mood playlist: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create mood playlist") from None
+
+
+def _normalize_xmplaylist_station_row(s: dict) -> dict | None:
+    """Map raw API station object to UI row (deeplink, label, sort key)."""
+    name = (s.get("name") or s.get("title") or "").strip()
+    raw_link = (s.get("deeplink") or s.get("slug") or "").strip()
+    deeplink = raw_link.lower().replace(" ", "") if raw_link else ""
+    if not deeplink and s.get("id") is not None:
+        deeplink = str(s.get("id")).strip().lower().replace(" ", "")
+    if not deeplink or not name:
+        return None
+    num_raw = s.get("number")
+    if num_raw is None:
+        num_raw = s.get("channel")
+    try:
+        num = int(num_raw)
+    except TypeError, ValueError:
+        num = None
+    label = f"Ch. {num} - {name}" if num is not None else f"{name} ({deeplink})"
+    return {
+        "name": name,
+        "deeplink": deeplink,
+        "number": num,
+        "label": label,
+    }
+
+
+@router.get("/xmplaylist/stations")
+async def xmplaylist_stations():
+    """List SiriusXM stations from xmplaylist.com (sorted by channel number)."""
+    try:
+        from clients.client_xmplaylist import XmplaylistClient
+        from commands.config_adapter import Config
+
+        config = Config()
+        async with XmplaylistClient(config) as client:
+            raw = await client.list_stations()
+        rows: list[dict] = []
+        for s in raw:
+            if not isinstance(s, dict):
+                continue
+            row = _normalize_xmplaylist_station_row(s)
+            if row:
+                rows.append(row)
+        rows.sort(
+            key=lambda r: (
+                r["number"] if r["number"] is not None else 10**9,
+                r["name"].lower(),
+            )
+        )
+        return {"stations": rows}
+    except Exception as e:
+        get_commands_logger().error(f"Failed to fetch xmplaylist stations: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not load stations from xmplaylist.com (network or API error).",
+        ) from None
+
+
+@router.post("/xmplaylist/create")
+async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create XM Playlist (xmplaylist.com) generator command."""
+    try:
+        from clients.client_xmplaylist import MOST_HEARD_DAYS
+        from commands.config_adapter import Config
+        from commands.playlist_generator_xmplaylist import _build_playlist_title
+        from database.config_models import CommandConfig
+
+        deeplink = (request.get("station_deeplink") or "").strip().lower().replace(" ", "")
+        if not deeplink:
+            raise HTTPException(status_code=400, detail="station_deeplink is required")
+
+        station_name = (request.get("station_display_name") or deeplink).strip()
+        playlist_kind = str(request.get("playlist_kind", "newest")).lower()
+        if playlist_kind not in ("newest", "most_heard"):
+            playlist_kind = "newest"
+
+        most_heard_days = int(request.get("most_heard_days", 30))
+        if most_heard_days not in MOST_HEARD_DAYS:
+            most_heard_days = 30
+
+        max_tracks = int(request.get("max_tracks", 50))
+        max_tracks = max(1, min(50, max_tracks))
+
+        target = str(request.get("target", "plex")).lower()
+        if target not in ("plex", "jellyfin"):
+            target = "plex"
+
+        config = Config()
+        library_key = None
+        if target == "plex":
+            from clients.client_plex import PlexClient
+
+            library_key = PlexClient(config).get_resolved_library_key()
+        else:
+            from clients.client_jellyfin import JellyfinClient
+
+            library_key = JellyfinClient(config).get_resolved_library_key()
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_NAME or JELLYFIN_LIBRARY_NAME.",
+            )
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("xmplaylist_%")).all()
+        )
+        used_ids: set[int] = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"xmplaylist_{next_id:05d}"
+
+        plex_account = request.get("plex_playlist_account_id")
+        if plex_account is not None:
+            plex_account = str(plex_account).strip() or None
+
+        cfg_for_title = {
+            "station_display_name": station_name,
+            "station_deeplink": deeplink,
+            "playlist_kind": playlist_kind,
+            "most_heard_days": most_heard_days,
+            "target": target,
+            "plex_playlist_account_id": plex_account,
+        }
+        display_name = _build_playlist_title(cfg_for_title)
+
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        config_json: dict = {
+            "command_name": command_name,
+            "station_deeplink": deeplink,
+            "station_display_name": station_name,
+            "playlist_kind": playlist_kind,
+            "most_heard_days": most_heard_days,
+            "max_tracks": max_tracks,
+            "target": target,
+            "target_library_key": str(library_key),
+            "enable_artist_discovery": bool(request.get("enable_artist_discovery", False)),
+            "artist_discovery_max_per_run": int(request.get("artist_discovery_max_per_run", 2)),
+        }
+        if plex_account:
+            config_json["plex_playlist_account_id"] = plex_account
+
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description="SiriusXM station playlist via xmplaylist.com (newest or most played).",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_xmplaylist_commands()
+
+        return {"message": "XM Playlist command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create xmplaylist command: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create xmplaylist command") from None
 
 
 @router.post("/playlist-sync/create")

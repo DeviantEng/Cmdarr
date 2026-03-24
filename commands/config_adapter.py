@@ -76,6 +76,10 @@ class ConfigAdapter:
         self.JELLYFIN_TIMEOUT = config_service.get("JELLYFIN_TIMEOUT", 30)
         self.JELLYFIN_IGNORE_TLS = config_service.get("JELLYFIN_IGNORE_TLS", False)
 
+        # XMPlaylist (xmplaylist.com)
+        self.XMPLAYLIST_USE_CURL_CFFI = config_service.get("XMPLAYLIST_USE_CURL_CFFI", True)
+        self.XMPLAYLIST_CURL_IMPERSONATE = config_service.get("XMPLAYLIST_CURL_IMPERSONATE", "")
+
         # Spotify Configuration
         self.SPOTIFY_CLIENT_ID = config_service.get("SPOTIFY_CLIENT_ID", "")
         self.SPOTIFY_CLIENT_SECRET = config_service.get("SPOTIFY_CLIENT_SECRET", "")

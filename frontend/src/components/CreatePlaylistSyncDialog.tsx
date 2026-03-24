@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ import {
   ListMusic,
   Compass,
   Sparkles,
+  Radio,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -41,7 +42,15 @@ type PlaylistType =
   | "daylist"
   | "top_tracks"
   | "local_discovery"
-  | "mood_playlist";
+  | "mood_playlist"
+  | "xmplaylist";
+
+type XmplaylistStationRow = {
+  name: string;
+  deeplink: string;
+  number: number | null;
+  label: string;
+};
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -189,6 +198,39 @@ export function CreatePlaylistSyncDialog({
   });
   const [moodsList, setMoodsList] = useState<string[]>([]);
 
+  const [xmplaylistForm, setXmplaylistForm] = useState({
+    station_deeplink: "",
+    station_display_name: "",
+    station_label: "",
+    playlist_kind: "newest" as "newest" | "most_heard",
+    most_heard_days: 30 as 1 | 7 | 14 | 30 | 60,
+    max_tracks: 50,
+    target: "plex" as "plex" | "jellyfin",
+    plex_playlist_account_id: "",
+    enable_artist_discovery: false,
+    artist_discovery_max_per_run: 2,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+  const [xmplaylistStations, setXmplaylistStations] = useState<XmplaylistStationRow[]>([]);
+  const [xmplaylistStationsLoading, setXmplaylistStationsLoading] = useState(false);
+  const [xmplaylistStationFilter, setXmplaylistStationFilter] = useState("");
+
+  const filteredXmStations = useMemo(() => {
+    const q = xmplaylistStationFilter.trim().toLowerCase();
+    if (!q) return xmplaylistStations;
+    return xmplaylistStations.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.deeplink.includes(q) ||
+        (s.number != null && String(s.number).includes(q))
+    );
+  }, [xmplaylistStations, xmplaylistStationFilter]);
+
   const fetchPlexAccounts = () =>
     api
       .request<{
@@ -223,6 +265,19 @@ export function CreatePlaylistSyncDialog({
     if (step === "form" && (playlistType === "daylist" || playlistType === "local_discovery")) {
       fetchPlexAccounts();
     }
+  }, [open, step, playlistType]);
+
+  useEffect(() => {
+    if (!open || step !== "form" || playlistType !== "xmplaylist") return;
+    setXmplaylistStationsLoading(true);
+    api
+      .request<{ stations: XmplaylistStationRow[] }>("/api/commands/xmplaylist/stations")
+      .then((r) => setXmplaylistStations(r.stations || []))
+      .catch(() => {
+        setXmplaylistStations([]);
+        toast.error("Could not load stations from xmplaylist.com");
+      })
+      .finally(() => setXmplaylistStationsLoading(false));
   }, [open, step, playlistType]);
 
   // Reset form when dialog closes
@@ -307,6 +362,26 @@ export function CreatePlaylistSyncDialog({
         expires_at: "",
         expires_at_delete_playlist: true,
       });
+      setXmplaylistForm({
+        station_deeplink: "",
+        station_display_name: "",
+        station_label: "",
+        playlist_kind: "newest",
+        most_heard_days: 30,
+        max_tracks: 50,
+        target: "plex",
+        plex_playlist_account_id: "",
+        enable_artist_discovery: false,
+        artist_discovery_max_per_run: 2,
+        schedule_cron: "0 6 * * *",
+        schedule_override: false,
+        enabled: true,
+        expires_at_enabled: false,
+        expires_at: "",
+        expires_at_delete_playlist: true,
+      });
+      setXmplaylistStationFilter("");
+      setXmplaylistStations([]);
     }
   }, [open]);
 
@@ -418,6 +493,11 @@ export function CreatePlaylistSyncDialog({
     if (playlistType === "local_discovery") {
       if (!localDiscoveryForm.plex_history_account_id) return false;
       if (localDiscoveryForm.expires_at_enabled && !localDiscoveryForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "xmplaylist") {
+      if (!xmplaylistForm.station_deeplink.trim()) return false;
+      if (xmplaylistForm.expires_at_enabled && !xmplaylistForm.expires_at) return false;
       return true;
     }
     if (!validation.isValid) return false;
@@ -537,6 +617,35 @@ export function CreatePlaylistSyncDialog({
           { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "Local Discovery command created");
+      } else if (playlistType === "xmplaylist") {
+        const payload: Record<string, unknown> = {
+          station_deeplink: xmplaylistForm.station_deeplink.trim(),
+          station_display_name:
+            xmplaylistForm.station_display_name.trim() || xmplaylistForm.station_deeplink.trim(),
+          playlist_kind: xmplaylistForm.playlist_kind,
+          most_heard_days:
+            xmplaylistForm.playlist_kind === "most_heard" ? xmplaylistForm.most_heard_days : 30,
+          max_tracks: xmplaylistForm.max_tracks,
+          target: xmplaylistForm.target,
+          enable_artist_discovery: xmplaylistForm.enable_artist_discovery,
+          artist_discovery_max_per_run: xmplaylistForm.artist_discovery_max_per_run,
+          schedule_cron: xmplaylistForm.schedule_override
+            ? xmplaylistForm.schedule_cron
+            : undefined,
+          enabled: xmplaylistForm.enabled,
+        };
+        if (xmplaylistForm.target === "plex" && xmplaylistForm.plex_playlist_account_id.trim()) {
+          payload.plex_playlist_account_id = xmplaylistForm.plex_playlist_account_id.trim();
+        }
+        if (xmplaylistForm.expires_at_enabled && xmplaylistForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(xmplaylistForm.expires_at);
+          payload.expires_at_delete_playlist = xmplaylistForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/xmplaylist/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "XM Playlist command created");
       } else {
         const payload: Record<string, unknown> = {
           ...formData,
@@ -585,7 +694,9 @@ export function CreatePlaylistSyncDialog({
                     ? "Configure Local Discovery"
                     : playlistType === "mood_playlist"
                       ? "Configure Mood Playlist"
-                      : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
+                      : playlistType === "xmplaylist"
+                        ? "Configure XMPlaylist (SiriusXM History)"
+                        : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
@@ -598,7 +709,9 @@ export function CreatePlaylistSyncDialog({
                     ? "Top artists from play history + sonically similar tracks. Fresh each run."
                     : playlistType === "mood_playlist"
                       ? "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher."
-                      : "Configure your playlist sync settings"}
+                      : playlistType === "xmplaylist"
+                        ? "Data from xmplaylist.com. Tracks are matched to your Plex or Jellyfin library."
+                        : "Configure your playlist sync settings"}
           </DialogDescription>
         </DialogHeader>
 
@@ -681,6 +794,22 @@ export function CreatePlaylistSyncDialog({
                 <h3 className="font-semibold">Artist Essentials</h3>
                 <p className="text-xs text-muted-foreground">
                   Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
+                </p>
+              </div>
+            </button>
+
+            {/* XMPlaylist (SiriusXM History) */}
+            <button
+              onClick={() => handleSelectType("xmplaylist")}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900">
+                <Radio className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold">XMPlaylist (SiriusXM History)</h3>
+                <p className="text-xs text-muted-foreground">
+                  Newest or most-played tracks per station via xmplaylist.com → Plex or Jellyfin.
                 </p>
               </div>
             </button>
@@ -1745,6 +1874,260 @@ export function CreatePlaylistSyncDialog({
                   }
                 />
               </>
+            ) : playlistType === "xmplaylist" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Station</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Search by channel number or name. Sorted by channel number.
+                  </p>
+                  {xmplaylistForm.station_label ? (
+                    <p className="text-sm font-medium">Selected: {xmplaylistForm.station_label}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No station selected</p>
+                  )}
+                  <Input
+                    placeholder="Filter stations…"
+                    value={xmplaylistStationFilter}
+                    onChange={(e) => setXmplaylistStationFilter(e.target.value)}
+                    disabled={xmplaylistStationsLoading}
+                  />
+                  <div className="max-h-52 overflow-y-auto rounded-md border border-input">
+                    {xmplaylistStationsLoading ? (
+                      <p className="p-3 text-sm text-muted-foreground">Loading stations…</p>
+                    ) : filteredXmStations.length === 0 ? (
+                      <p className="p-3 text-sm text-muted-foreground">No stations match.</p>
+                    ) : (
+                      filteredXmStations.map((s) => (
+                        <button
+                          key={s.deeplink}
+                          type="button"
+                          className="block w-full border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+                          onClick={() =>
+                            setXmplaylistForm((prev) => ({
+                              ...prev,
+                              station_deeplink: s.deeplink,
+                              station_display_name: s.name,
+                              station_label: s.label,
+                            }))
+                          }
+                        >
+                          {s.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Playlist source</Label>
+                  <Select
+                    value={xmplaylistForm.playlist_kind}
+                    onValueChange={(v: "newest" | "most_heard") =>
+                      setXmplaylistForm((prev) => ({ ...prev, playlist_kind: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest tracks</SelectItem>
+                      <SelectItem value="most_heard">Most played</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {xmplaylistForm.playlist_kind === "most_heard" && (
+                  <div className="space-y-2">
+                    <Label>Time period</Label>
+                    <Select
+                      value={String(xmplaylistForm.most_heard_days)}
+                      onValueChange={(v) =>
+                        setXmplaylistForm((prev) => ({
+                          ...prev,
+                          most_heard_days: parseInt(v, 10) as 1 | 7 | 14 | 30 | 60,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 day</SelectItem>
+                        <SelectItem value="7">7 days</SelectItem>
+                        <SelectItem value="14">14 days</SelectItem>
+                        <SelectItem value="30">30 days</SelectItem>
+                        <SelectItem value="60">60 days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Max tracks in playlist</Label>
+                  <NumericInput
+                    value={xmplaylistForm.max_tracks}
+                    onChange={(v) =>
+                      setXmplaylistForm((prev) => ({ ...prev, max_tracks: v ?? 50 }))
+                    }
+                    min={1}
+                    max={50}
+                    defaultValue={50}
+                  />
+                  <p className="text-xs text-muted-foreground">Between 1 and 50.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Target</Label>
+                  <Select
+                    value={xmplaylistForm.target}
+                    onValueChange={(v: "plex" | "jellyfin") =>
+                      setXmplaylistForm((prev) => ({ ...prev, target: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex</SelectItem>
+                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {xmplaylistForm.target === "plex" && plexAccounts.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Plex playlist user (optional)</Label>
+                    <Select
+                      value={xmplaylistForm.plex_playlist_account_id || "__default__"}
+                      onValueChange={(v) =>
+                        setXmplaylistForm((prev) => ({
+                          ...prev,
+                          plex_playlist_account_id: v === "__default__" ? "" : v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Server default" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">Server default</SelectItem>
+                        {plexAccounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name || acc.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Use a Plex Home user token when creating playlists in their library.
+                    </p>
+                  </div>
+                )}
+                <div className="space-y-2 rounded-lg border p-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-xm-artist-discovery"
+                      checked={xmplaylistForm.enable_artist_discovery}
+                      onChange={(e) =>
+                        setXmplaylistForm((prev) => ({
+                          ...prev,
+                          enable_artist_discovery: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label
+                      htmlFor="create-xm-artist-discovery"
+                      className="cursor-pointer font-normal"
+                    >
+                      Artist discovery (Lidarr import list)
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Unmatched artists can be added to the Playlist Sync Discovery import list
+                    (MusicBrainz + Lidarr). First run previews only.
+                  </p>
+                  {xmplaylistForm.enable_artist_discovery && (
+                    <div className="space-y-2 pt-2">
+                      <Label>Max artists to add per run</Label>
+                      <NumericInput
+                        value={xmplaylistForm.artist_discovery_max_per_run}
+                        onChange={(v) =>
+                          setXmplaylistForm((prev) => ({
+                            ...prev,
+                            artist_discovery_max_per_run: v ?? 2,
+                          }))
+                        }
+                        min={0}
+                        max={50}
+                        defaultValue={2}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-xm-schedule-override"
+                      checked={xmplaylistForm.schedule_override}
+                      onChange={(e) =>
+                        setXmplaylistForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-xm-schedule-override">Override default schedule</Label>
+                  </div>
+                  {xmplaylistForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder="0 6 * * *"
+                          value={xmplaylistForm.schedule_cron}
+                          onChange={(e) =>
+                            setXmplaylistForm((prev) => ({
+                              ...prev,
+                              schedule_cron: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Cron: minute hour day month weekday (e.g. 0 6 * * * = daily 6am)
+                      </p>
+                    </>
+                  )}
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={xmplaylistForm.enabled}
+                    onChange={(e) =>
+                      setXmplaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+                <ExpirationFields
+                  idPrefix="create-xm"
+                  enabled={xmplaylistForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setXmplaylistForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={xmplaylistForm.expires_at}
+                  onValueChange={(v) => setXmplaylistForm((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={xmplaylistForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setXmplaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
+                />
+              </>
             ) : (
               <>
                 {/* Playlist URL */}
@@ -2066,6 +2449,8 @@ export function CreatePlaylistSyncDialog({
                 "Create Artist Essentials"
               ) : playlistType === "local_discovery" ? (
                 "Create Local Discovery"
+              ) : playlistType === "xmplaylist" ? (
+                "Create XMPlaylist"
               ) : (
                 "Create Playlist Sync"
               )}
@@ -2075,4 +2460,6 @@ export function CreatePlaylistSyncDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
 }

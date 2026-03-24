@@ -68,6 +68,8 @@ class CommandExecutor:
             self._load_dynamic_mood_playlist_commands()
             # Load dynamic local discovery commands from database
             self._load_dynamic_local_discovery_commands()
+            # Load dynamic xmplaylist commands from database
+            self._load_dynamic_xmplaylist_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -322,6 +324,8 @@ class CommandExecutor:
                     and command_name != "playlist_sync_discovery_maintenance"
                 ):
                     command.config_json["is_first_run"] = command_config.last_run is None
+                if command_config and command_name.startswith("xmplaylist_"):
+                    command.config_json["is_first_run"] = command_config.last_run is None
                 self.logger.info(
                     f"Set config_json for {command_name}: {list(command.config_json.keys())}"
                 )
@@ -448,8 +452,44 @@ class CommandExecutor:
             return self._build_daylist_summary(stats, duration)
         elif command_name.startswith("top_tracks_") and stats:
             return self._build_top_tracks_summary(stats, duration)
+        elif command_name.startswith("xmplaylist_") and stats:
+            return self._build_xmplaylist_summary(stats, duration)
 
         return f"Command completed successfully in {duration:.1f}s"
+
+    def _build_xmplaylist_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Human-readable summary for XM Playlist (xmplaylist.com) generator."""
+        parts = [f"XM Playlist completed in {duration:.1f}s"]
+        src = stats.get("source_tracks")
+        if src is not None:
+            matched = stats.get("matched_tracks", 0)
+            missing = stats.get("missing_tracks", 0)
+            parts.append(f"{matched}/{src} tracks matched to library ({missing} missing)")
+        station = stats.get("station_display_name") or stats.get("station_deeplink")
+        if station:
+            parts.append(f"station: {station}")
+        kind = stats.get("playlist_kind")
+        if kind == "most_heard" and stats.get("most_heard_days") is not None:
+            parts.append(f"mode: most played ({stats['most_heard_days']}d)")
+        elif kind:
+            parts.append(f"mode: {kind}")
+        tgt = stats.get("target")
+        if tgt:
+            parts.append(f"target: {tgt}")
+        summary = " • ".join(parts)
+        miss_sample = stats.get("missing_sample") or []
+        if miss_sample:
+            summary += "\n\nMissing (sample):\n• " + "\n• ".join(str(x) for x in miss_sample[:10])
+        disc_n = stats.get("artists_sent_to_import_list", 0)
+        if disc_n:
+            summary += f"\n\nArtist discovery: {disc_n} added to Lidarr import list"
+            dsample = stats.get("discovery_sample") or []
+            if dsample:
+                summary += "\n• " + "\n• ".join(str(x) for x in dsample[:10])
+        err = stats.get("error")
+        if err and "error" not in summary.lower():
+            summary += f"\n\nNote: {err}"
+        return summary
 
     def _build_daylist_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build daylist summary from command result"""
@@ -916,6 +956,33 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic local discovery commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_xmplaylist_commands(self):
+        """Load dynamic xmplaylist commands from database"""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_xmplaylist import PlaylistGeneratorXmplaylistCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                rows = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("xmplaylist_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in rows:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorXmplaylistCommand
+                    self.logger.debug(f"Loaded dynamic xmplaylist command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic xmplaylist commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

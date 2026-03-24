@@ -12,7 +12,7 @@ This document defines conventions for **Phase 6a**; feature-specific tests shoul
 ## Commands (`commands/`)
 
 - **Scope:** Orchestration, `last_run_stats`, config validation branches.
-- **Mock:** External clients (`PlexClient`, `JellyfinClient`, etc.) and `sync_playlist` results.
+- **Mock:** External clients (`PlexClient`, `JellyfinClient`, `XmplaylistClient`, etc.) and `sync_playlist` results.
 - **Assert:** Success/failure, keys in `last_run_stats` used by `CommandExecutor._generate_output_summary`, and that `sync_playlist` receives the expected track list shape.
 
 ## Optional later (separate initiative)

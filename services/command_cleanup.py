@@ -284,6 +284,19 @@ class CommandCleanupService:
             self._delete_playlist_if_exists(
                 "plex", "[Cmdarr] Local Discovery", token_override=token
             )
+        elif name.startswith("xmplaylist_"):
+            target = str(cfg.get("target", "plex")).lower()
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                from commands.playlist_generator_xmplaylist import _build_playlist_title
+
+                pl_title = _build_playlist_title(cfg)
+            token_override = None
+            if target == "plex":
+                token_override = self._get_user_token_for_playlist_delete(
+                    {"plex_history_account_id": cfg.get("plex_playlist_account_id")}
+                )
+            self._delete_playlist_if_exists(target, pl_title, token_override=token_override)
 
     def _get_user_token_for_playlist_delete(self, cfg: dict) -> str | None:
         """Resolve user token for daylist/local_discovery playlist deletion.

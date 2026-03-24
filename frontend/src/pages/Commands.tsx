@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LayoutGrid,
   List,
@@ -177,11 +177,35 @@ export function CommandsPage() {
     playlist_types?: string[];
     plex_account_ids?: string[];
     sync_to_multiple_plex_users?: boolean;
+    xm_station_deeplink?: string;
+    xm_station_display_name?: string;
+    xm_playlist_kind?: "newest" | "most_heard";
+    xm_most_heard_days?: number;
+    plex_playlist_account_id?: string;
   }>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
   const [daylistUsedIds, setDaylistUsedIds] = useState<Set<string>>(new Set());
   const [localDiscoveryUsedIds, setLocalDiscoveryUsedIds] = useState<Set<string>>(new Set());
   const [moodsList, setMoodsList] = useState<string[]>([]);
+  type XmplaylistStationRow = {
+    name: string;
+    deeplink: string;
+    number: number | null;
+    label: string;
+  };
+  const [xmplaylistEditStations, setXmplaylistEditStations] = useState<XmplaylistStationRow[]>([]);
+  const [xmplaylistEditLoading, setXmplaylistEditLoading] = useState(false);
+  const [xmplaylistEditFilter, setXmplaylistEditFilter] = useState("");
+  const filteredXmEditStations = useMemo(() => {
+    const q = xmplaylistEditFilter.trim().toLowerCase();
+    if (!q) return xmplaylistEditStations;
+    return xmplaylistEditStations.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.deeplink.includes(q) ||
+        (s.number != null && String(s.number).includes(q))
+    );
+  }, [xmplaylistEditStations, xmplaylistEditFilter]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
@@ -446,6 +470,11 @@ export function CommandsPage() {
       sync_to_multiple_plex_users:
         Array.isArray(cfg.plex_account_ids) && cfg.plex_account_ids.length > 0,
       plex_account_ids: Array.isArray(cfg.plex_account_ids) ? cfg.plex_account_ids.map(String) : [],
+      xm_station_deeplink: (cfg.station_deeplink as string) || "",
+      xm_station_display_name: (cfg.station_display_name as string) || "",
+      xm_playlist_kind: (cfg.playlist_kind as string) === "most_heard" ? "most_heard" : "newest",
+      xm_most_heard_days: typeof cfg.most_heard_days === "number" ? cfg.most_heard_days : 30,
+      plex_playlist_account_id: (cfg.plex_playlist_account_id as string) || "",
     });
     if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       const editingParam = `editing_command=${encodeURIComponent(command.command_name)}`;
@@ -466,6 +495,8 @@ export function CommandsPage() {
           setLocalDiscoveryUsedIds(new Set());
         });
       setMoodsList([]);
+      setXmplaylistEditStations([]);
+      setXmplaylistEditFilter("");
     } else if (command.command_name.startsWith("mood_playlist_")) {
       api
         .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
@@ -474,6 +505,23 @@ export function CommandsPage() {
       setPlexAccounts([]);
       setDaylistUsedIds(new Set());
       setLocalDiscoveryUsedIds(new Set());
+      setXmplaylistEditStations([]);
+      setXmplaylistEditFilter("");
+    } else if (command.command_name.startsWith("xmplaylist_")) {
+      setMoodsList([]);
+      setDaylistUsedIds(new Set());
+      setLocalDiscoveryUsedIds(new Set());
+      setXmplaylistEditFilter("");
+      setXmplaylistEditLoading(true);
+      api
+        .request<{ stations: XmplaylistStationRow[] }>("/api/commands/xmplaylist/stations")
+        .then((r) => setXmplaylistEditStations(r.stations || []))
+        .catch(() => setXmplaylistEditStations([]))
+        .finally(() => setXmplaylistEditLoading(false));
+      api
+        .request<{ accounts: { id: string; name: string }[] }>("/api/commands/plex-accounts")
+        .then((r) => setPlexAccounts(r.accounts || []))
+        .catch(() => setPlexAccounts([]));
     } else if (
       command.command_name.startsWith("playlist_sync_") &&
       cfg.playlist_url != null &&
@@ -486,11 +534,15 @@ export function CommandsPage() {
       setDaylistUsedIds(new Set());
       setLocalDiscoveryUsedIds(new Set());
       setMoodsList([]);
+      setXmplaylistEditStations([]);
+      setXmplaylistEditFilter("");
     } else {
       setPlexAccounts([]);
       setDaylistUsedIds(new Set());
       setLocalDiscoveryUsedIds(new Set());
       setMoodsList([]);
+      setXmplaylistEditStations([]);
+      setXmplaylistEditFilter("");
     }
   };
 
@@ -2206,6 +2258,174 @@ export function CommandsPage() {
                       </>
                     )}
 
+                    {editingCommand.command_name.startsWith("xmplaylist_") && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Station</Label>
+                          <Input
+                            placeholder="Filter stations…"
+                            value={xmplaylistEditFilter}
+                            onChange={(e) => setXmplaylistEditFilter(e.target.value)}
+                            disabled={xmplaylistEditLoading}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Current:{" "}
+                            {editForm.xm_station_display_name ||
+                              editForm.xm_station_deeplink ||
+                              "—"}
+                          </p>
+                          <div className="max-h-40 overflow-y-auto rounded-md border border-input">
+                            {xmplaylistEditLoading ? (
+                              <p className="p-2 text-sm text-muted-foreground">Loading…</p>
+                            ) : (
+                              filteredXmEditStations.map((s) => (
+                                <button
+                                  key={s.deeplink}
+                                  type="button"
+                                  className="block w-full border-b border-border px-2 py-1.5 text-left text-sm last:border-b-0 hover:bg-accent"
+                                  onClick={() =>
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      xm_station_deeplink: s.deeplink,
+                                      xm_station_display_name: s.name,
+                                    }))
+                                  }
+                                >
+                                  {s.label}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Source</Label>
+                            <Select
+                              value={editForm.xm_playlist_kind ?? "newest"}
+                              onValueChange={(v: "newest" | "most_heard") =>
+                                setEditForm((f) => ({ ...f, xm_playlist_kind: v }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="newest">Newest</SelectItem>
+                                <SelectItem value="most_heard">Most played</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {editForm.xm_playlist_kind === "most_heard" && (
+                            <div className="space-y-2">
+                              <Label>Days</Label>
+                              <Select
+                                value={String(editForm.xm_most_heard_days ?? 30)}
+                                onValueChange={(v) =>
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    xm_most_heard_days: parseInt(v, 10),
+                                  }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">1</SelectItem>
+                                  <SelectItem value="7">7</SelectItem>
+                                  <SelectItem value="14">14</SelectItem>
+                                  <SelectItem value="30">30</SelectItem>
+                                  <SelectItem value="60">60</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max tracks</Label>
+                          <NumericInput
+                            value={editForm.max_tracks ?? 50}
+                            onChange={(v) => setEditForm((f) => ({ ...f, max_tracks: v ?? 50 }))}
+                            min={1}
+                            max={50}
+                            defaultValue={50}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Target</Label>
+                          <Select
+                            value={editForm.target ?? "plex"}
+                            onValueChange={(v) => setEditForm((f) => ({ ...f, target: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="plex">Plex</SelectItem>
+                              <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {editForm.target === "plex" && plexAccounts.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>Plex user (optional)</Label>
+                            <Select
+                              value={editForm.plex_playlist_account_id || "__default__"}
+                              onValueChange={(v) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  plex_playlist_account_id: v === "__default__" ? "" : v,
+                                }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__default__">Server default</SelectItem>
+                                {plexAccounts.map((acc) => (
+                                  <SelectItem key={acc.id} value={acc.id}>
+                                    {acc.name || acc.id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editForm.enable_artist_discovery ?? false}
+                            onChange={(e) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                enable_artist_discovery: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-input"
+                          />
+                          <span className="text-sm">Artist discovery</span>
+                        </label>
+                        {editForm.enable_artist_discovery && (
+                          <div className="space-y-2">
+                            <Label>Max artists per run</Label>
+                            <NumericInput
+                              value={editForm.artist_discovery_max_per_run ?? 2}
+                              onChange={(v) =>
+                                setEditForm((f) => ({
+                                  ...f,
+                                  artist_discovery_max_per_run: v ?? 2,
+                                }))
+                              }
+                              min={0}
+                              max={50}
+                              defaultValue={2}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+
                     {/* Schedule - all commands except daylist (override default cron) */}
                     {!editingCommand.command_name.startsWith("daylist_") && (
                       <div className="space-y-2">
@@ -2252,7 +2472,8 @@ export function CommandsPage() {
                       editingCommand.command_name.startsWith("top_tracks_") ||
                       editingCommand.command_name.startsWith("daylist_") ||
                       editingCommand.command_name.startsWith("local_discovery_") ||
-                      editingCommand.command_name.startsWith("mood_playlist_")) && (
+                      editingCommand.command_name.startsWith("mood_playlist_") ||
+                      editingCommand.command_name.startsWith("xmplaylist_")) && (
                       <ExpirationFields
                         idPrefix="edit-exp"
                         enabled={editForm.expires_at_enabled ?? false}
@@ -2615,12 +2836,57 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith("xmplaylist_") && (
+                  <Button
+                    onClick={() => {
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        station_deeplink: (editForm.xm_station_deeplink ?? "").trim(),
+                        station_display_name: (
+                          editForm.xm_station_display_name ??
+                          editForm.xm_station_deeplink ??
+                          ""
+                        ).trim(),
+                        playlist_kind: editForm.xm_playlist_kind ?? "newest",
+                        most_heard_days: editForm.xm_most_heard_days ?? 30,
+                        max_tracks: Math.max(1, Math.min(50, editForm.max_tracks ?? 50)),
+                        target: editForm.target ?? "plex",
+                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                        artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
+                      };
+                      const pid = (editForm.plex_playlist_account_id ?? "").trim();
+                      if (pid) {
+                        cfg.plex_playlist_account_id = pid;
+                      } else {
+                        delete cfg.plex_playlist_account_id;
+                      }
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist =
+                          editForm.expires_at_delete_playlist ?? true;
+                      } else {
+                        delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
+                      }
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: cfg,
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name !== "new_releases_discovery" &&
                   editingCommand.command_name !== "discovery_lastfm" &&
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
                   !editingCommand.command_name.startsWith("top_tracks_") &&
                   !editingCommand.command_name.startsWith("mood_playlist_") &&
+                  !editingCommand.command_name.startsWith("xmplaylist_") &&
                   !editingCommand.command_name.startsWith("local_discovery_") && (
                     <Button
                       onClick={() =>
