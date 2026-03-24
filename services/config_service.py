@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Configuration service with environment variable priority
-Handles: Environment Variables > Database > Defaults
+Handles: Environment Variables > Database > Defaults (some keys skip env — see _CONFIG_KEYS_SKIP_ENV)
 """
 
 import json
@@ -11,6 +11,9 @@ from typing import Any
 from database.config_models import ConfigSetting
 from database.database import get_database_manager
 from utils.logger import get_logger
+
+# Keys not read from OS environment so Docker/host env cannot fragment outbound identity (e.g. UA).
+_CONFIG_KEYS_SKIP_ENV = frozenset({"CMDARR_USER_AGENT"})
 
 
 class ConfigService:
@@ -63,6 +66,18 @@ class ConfigService:
                 "data_type": "int",
                 "category": "logging",
                 "description": "Number of daily log files to keep",
+            },
+            {
+                "key": "CMDARR_USER_AGENT",
+                "default_value": "",
+                "data_type": "string",
+                "category": "application",
+                "description": (
+                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, …). "
+                    "Empty = Cmdarr/<version> (https://github.com/DeviantEng/Cmdarr). "
+                    "Not overridable via Docker/environment variables (use this UI only). "
+                    "Set a fixed string here if an operator whitelists by UA without a version suffix."
+                ),
             },
             # Lidarr Configuration
             {
@@ -630,15 +645,15 @@ class ConfigService:
             raise
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value with priority: Environment > Database > Default"""
+        """Get configuration value with priority: Environment > Database > Default (unless key skips env)."""
         # Check cache first
         if self._is_cache_valid():
             if key in self._cache:
                 return self._cache[key]
 
-        # Check environment variable first
+        # Check environment variable first (not for keys in _CONFIG_KEYS_SKIP_ENV)
         env_key = key.upper()
-        if env_value := os.getenv(env_key):
+        if key not in _CONFIG_KEYS_SKIP_ENV and (env_value := os.getenv(env_key)):
             value = self._convert_value(env_value, self._get_data_type(key))
             self._cache[key] = value
             return value

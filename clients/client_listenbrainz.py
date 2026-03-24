@@ -8,6 +8,8 @@ from typing import Any
 
 import aiohttp
 
+from utils.cmdarr_user_agent import resolve_cmdarr_user_agent
+
 from .client_base import BaseAPIClient
 
 
@@ -19,6 +21,7 @@ class ListenBrainzClient(BaseAPIClient):
         headers = {
             "Authorization": f"Token {config.get('LISTENBRAINZ_TOKEN', '')}",
             "Content-Type": "application/json",
+            "User-Agent": resolve_cmdarr_user_agent(config),
         }
 
         super().__init__(

@@ -35,6 +35,9 @@ class ConfigAdapter:
         self.LOG_RETENTION_DAYS = config_service.get("LOG_RETENTION_DAYS", 7)
         self.LOG_ROTATION = config_service.get("LOG_ROTATION", "daily")
 
+        # Outbound HTTP (MusicBrainz, ListenBrainz, …)
+        self.CMDARR_USER_AGENT = config_service.get("CMDARR_USER_AGENT", "")
+
         # Lidarr Configuration
         self.LIDARR_URL = config_service.get("LIDARR_URL", "http://localhost:8686")
         self.LIDARR_API_KEY = config_service.get("LIDARR_API_KEY", "")

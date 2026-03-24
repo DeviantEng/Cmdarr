@@ -35,7 +35,11 @@ type CategoryGroup = {
 };
 
 const categoryGroups: CategoryGroup[] = [
-  { name: "Application", icon: "⚙️", categories: ["logging", "web", "output", "pretty"] },
+  {
+    name: "Application",
+    icon: "⚙️",
+    categories: ["logging", "web", "output", "pretty", "application"],
+  },
   {
     name: "Music Sources",
     icon: "🎵",
