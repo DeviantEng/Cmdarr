@@ -34,6 +34,7 @@ import {
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { ExpirationFields } from "@/components/ExpirationFields";
+import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 import { toExpiresAtIso } from "@/lib/expiration";
 
 type PlaylistType =
@@ -217,7 +218,6 @@ export function CreatePlaylistSyncDialog({
     target: "plex" as "plex" | "jellyfin",
     sync_to_multiple_plex_users: false,
     plex_account_ids: [] as string[],
-    plex_playlist_account_id: "",
     enable_artist_discovery: false,
     artist_discovery_max_per_run: 2,
     schedule_cron: "0 6 * * *",
@@ -383,7 +383,6 @@ export function CreatePlaylistSyncDialog({
         target: "plex",
         sync_to_multiple_plex_users: false,
         plex_account_ids: [],
-        plex_playlist_account_id: "",
         enable_artist_discovery: false,
         artist_discovery_max_per_run: 2,
         schedule_cron: "0 6 * * *",
@@ -520,6 +519,14 @@ export function CreatePlaylistSyncDialog({
       }
       return true;
     }
+    if (
+      playlistType === "other" &&
+      formData.target === "plex" &&
+      formData.sync_to_multiple_plex_users &&
+      formData.plex_account_ids.length === 0
+    ) {
+      return false;
+    }
     if (!validation.isValid) return false;
     if (formData.expires_at_enabled && !formData.expires_at) return false;
     return true;
@@ -654,15 +661,12 @@ export function CreatePlaylistSyncDialog({
             : undefined,
           enabled: xmplaylistForm.enabled,
         };
-        if (xmplaylistForm.target === "plex") {
-          if (
-            xmplaylistForm.sync_to_multiple_plex_users &&
-            xmplaylistForm.plex_account_ids.length > 0
-          ) {
-            payload.plex_account_ids = xmplaylistForm.plex_account_ids;
-          } else if (xmplaylistForm.plex_playlist_account_id.trim()) {
-            payload.plex_playlist_account_id = xmplaylistForm.plex_playlist_account_id.trim();
-          }
+        if (
+          xmplaylistForm.target === "plex" &&
+          xmplaylistForm.sync_to_multiple_plex_users &&
+          xmplaylistForm.plex_account_ids.length > 0
+        ) {
+          payload.plex_account_ids = xmplaylistForm.plex_account_ids;
         }
         if (xmplaylistForm.expires_at_enabled && xmplaylistForm.expires_at) {
           payload.expires_at = toExpiresAtIso(xmplaylistForm.expires_at);
@@ -1919,7 +1923,7 @@ export function CreatePlaylistSyncDialog({
                     onChange={(e) => setXmplaylistStationFilter(e.target.value)}
                     disabled={xmplaylistStationsLoading}
                   />
-                  <div className="max-h-52 overflow-y-auto rounded-md border border-input">
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-input">
                     {xmplaylistStationsLoading ? (
                       <p className="p-3 text-sm text-muted-foreground">Loading stations…</p>
                     ) : filteredXmStations.length === 0 ? (
@@ -1929,7 +1933,7 @@ export function CreatePlaylistSyncDialog({
                         <button
                           key={s.deeplink}
                           type="button"
-                          className="block w-full border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+                          className="block w-full border-b border-border px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-accent"
                           onClick={() =>
                             setXmplaylistForm((prev) => ({
                               ...prev,
@@ -2011,7 +2015,6 @@ export function CreatePlaylistSyncDialog({
                         sync_to_multiple_plex_users:
                           v === "jellyfin" ? false : prev.sync_to_multiple_plex_users,
                         plex_account_ids: v === "jellyfin" ? [] : prev.plex_account_ids,
-                        plex_playlist_account_id: v === "jellyfin" ? "" : prev.plex_playlist_account_id,
                       }))
                     }
                   >
@@ -2025,84 +2028,26 @@ export function CreatePlaylistSyncDialog({
                   </Select>
                 </div>
                 {xmplaylistForm.target === "plex" && (
-                  <div className="space-y-2">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={xmplaylistForm.sync_to_multiple_plex_users}
-                        onChange={(e) =>
-                          setXmplaylistForm((prev) => ({
-                            ...prev,
-                            sync_to_multiple_plex_users: e.target.checked,
-                            plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
-                            plex_playlist_account_id: e.target.checked ? "" : prev.plex_playlist_account_id,
-                          }))
-                        }
-                        className="rounded border-input"
-                      />
-                      <span className="text-sm font-medium">Sync to multiple Plex users</span>
-                    </label>
-                    {xmplaylistForm.sync_to_multiple_plex_users && (
-                      <div className="flex flex-wrap gap-3 rounded-lg border p-3">
-                        {plexAccounts.map((acc) => (
-                          <label
-                            key={acc.id}
-                            className="flex cursor-pointer items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={xmplaylistForm.plex_account_ids.includes(acc.id)}
-                              onChange={(e) =>
-                                setXmplaylistForm((prev) => ({
-                                  ...prev,
-                                  plex_account_ids: e.target.checked
-                                    ? [...prev.plex_account_ids, acc.id]
-                                    : prev.plex_account_ids.filter((id) => id !== acc.id),
-                                }))
-                              }
-                              className="rounded border-input"
-                            />
-                            {acc.name || `Account ${acc.id}`}
-                          </label>
-                        ))}
-                        {plexAccounts.length === 0 && (
-                          <span className="text-sm text-muted-foreground">
-                            No Plex accounts available
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {!xmplaylistForm.sync_to_multiple_plex_users && (
-                      <div className="space-y-2">
-                        <Label>Plex playlist user (optional)</Label>
-                        <Select
-                          value={xmplaylistForm.plex_playlist_account_id || "__default__"}
-                          onValueChange={(v) =>
-                            setXmplaylistForm((prev) => ({
-                              ...prev,
-                              plex_playlist_account_id: v === "__default__" ? "" : v,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Primary server account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__default__">Primary server account</SelectItem>
-                            {plexAccounts.map((acc) => (
-                              <SelectItem key={acc.id} value={acc.id}>
-                                {acc.name || acc.id}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Uses the server token by default. Choose a Plex Home user to create the
-                          playlist in their library (managed user token).
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  <PlexPlaylistTargetSection
+                    accounts={plexAccounts}
+                    syncToMultiple={xmplaylistForm.sync_to_multiple_plex_users}
+                    selectedAccountIds={xmplaylistForm.plex_account_ids}
+                    onSyncToMultipleChange={(checked) =>
+                      setXmplaylistForm((prev) => ({
+                        ...prev,
+                        sync_to_multiple_plex_users: checked,
+                        plex_account_ids: checked ? prev.plex_account_ids : [],
+                      }))
+                    }
+                    onToggleAccount={(accountId, selected) =>
+                      setXmplaylistForm((prev) => ({
+                        ...prev,
+                        plex_account_ids: selected
+                          ? [...prev.plex_account_ids, accountId]
+                          : prev.plex_account_ids.filter((id) => id !== accountId),
+                      }))
+                    }
+                  />
                 )}
                 <div className="space-y-2 rounded-lg border p-4">
                   <div className="flex items-center gap-2">
@@ -2303,53 +2248,26 @@ export function CreatePlaylistSyncDialog({
                 </div>
 
                 {formData.target === "plex" && playlistType === "other" && (
-                  <div className="space-y-2">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.sync_to_multiple_plex_users}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            sync_to_multiple_plex_users: e.target.checked,
-                            plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
-                          }))
-                        }
-                        className="rounded border-input"
-                      />
-                      <span className="text-sm font-medium">Sync to multiple Plex users</span>
-                    </label>
-                    {formData.sync_to_multiple_plex_users && (
-                      <div className="flex flex-wrap gap-3 rounded-lg border p-3">
-                        {plexAccounts.map((acc) => (
-                          <label
-                            key={acc.id}
-                            className="flex cursor-pointer items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={formData.plex_account_ids.includes(acc.id)}
-                              onChange={(e) =>
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  plex_account_ids: e.target.checked
-                                    ? [...prev.plex_account_ids, acc.id]
-                                    : prev.plex_account_ids.filter((id) => id !== acc.id),
-                                }))
-                              }
-                              className="rounded border-input"
-                            />
-                            {acc.name || `Account ${acc.id}`}
-                          </label>
-                        ))}
-                        {plexAccounts.length === 0 && (
-                          <span className="text-sm text-muted-foreground">
-                            No Plex accounts available
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <PlexPlaylistTargetSection
+                    accounts={plexAccounts}
+                    syncToMultiple={formData.sync_to_multiple_plex_users}
+                    selectedAccountIds={formData.plex_account_ids}
+                    onSyncToMultipleChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        sync_to_multiple_plex_users: checked,
+                        plex_account_ids: checked ? prev.plex_account_ids : [],
+                      }))
+                    }
+                    onToggleAccount={(accountId, selected) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        plex_account_ids: selected
+                          ? [...prev.plex_account_ids, accountId]
+                          : prev.plex_account_ids.filter((id) => id !== accountId),
+                      }))
+                    }
+                  />
                 )}
 
                 <div className="space-y-2">

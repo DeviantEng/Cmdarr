@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security: pip-audit ignore for Pygments CVE-2026-4539 until PyPI has a fix; `docs/security-audit-followups.md` to revisit.
 - API: `except (ValueError, IndexError)` in command creation routes (Python 3).
 - Docs: `docs/testing_unit_spec.md` for unit test conventions.
+- UI: `docs/create_command_plex_playlist_target_spec.md` and shared `PlexPlaylistTargetSection` for XMPlaylist and external playlist sync (no Plex user dropdown); shorter XMPlaylist station list with scroll.
 
 ## [0.3.11] - 2026-03-17
 
