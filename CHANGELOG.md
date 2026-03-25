@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security updates**: Bump python base digest; update npm flatted to address CVE-2026-33228; addressed codeql finding in new_release.py; Bump trivy scanner version (migrate to SHA instead of version tag due to recent supply chain attack)
 - **CICD cleanup**: Dependabot tracking for trivy image; Additions to .dockerignore to decrease image size
 
+### Features
+- Command-spec: create dialog refactor for types that skip Common Settings; XMPlaylist uses its own form block.
+- XMPlaylist: register target client for library cache; split playlist title vs command display name; multi-Plex create/edit like playlist sync; cleanup matches multi-user config.
+- Security: pip-audit ignore for Pygments CVE-2026-4539 until PyPI has a fix; `docs/security-audit-followups.md` to revisit.
+- API: `except (ValueError, IndexError)` in command creation routes (Python 3).
+- Docs: `docs/testing_unit_spec.md` for unit test conventions.
+
 ## [0.3.11] - 2026-03-17
 
 ### Housekeeping
