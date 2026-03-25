@@ -2190,11 +2190,12 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings (hidden for daylist, top_tracks, local_discovery, mood_playlist - they have their own forms) */}
+            {/* Common Settings (hidden for types with a full dedicated form above) */}
             {playlistType !== "daylist" &&
               playlistType !== "top_tracks" &&
               playlistType !== "local_discovery" &&
-              playlistType !== "mood_playlist" && (
+              playlistType !== "mood_playlist" &&
+              playlistType !== "xmplaylist" && (
                 <>
                   <div className="space-y-2">
                     <Label>Target</Label>
@@ -2460,6 +2461,4 @@ export function CreatePlaylistSyncDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
 }
