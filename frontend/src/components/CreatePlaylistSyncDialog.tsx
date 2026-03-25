@@ -45,6 +45,15 @@ type PlaylistType =
   | "mood_playlist"
   | "xmplaylist";
 
+/** Types with a full dedicated form above; shared Common Settings must stay hidden for them. */
+const PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS: readonly PlaylistType[] = [
+  "daylist",
+  "top_tracks",
+  "local_discovery",
+  "mood_playlist",
+  "xmplaylist",
+];
+
 type XmplaylistStationRow = {
   name: string;
   deeplink: string;
@@ -2190,12 +2199,8 @@ export function CreatePlaylistSyncDialog({
               </>
             )}
 
-            {/* Common Settings (hidden for types with a full dedicated form above) */}
-            {playlistType !== "daylist" &&
-              playlistType !== "top_tracks" &&
-              playlistType !== "local_discovery" &&
-              playlistType !== "mood_playlist" &&
-              playlistType !== "xmplaylist" && (
+            {/* Common Settings (hidden when a dedicated form above already covers these fields) */}
+            {!PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS.includes(playlistType) && (
                 <>
                   <div className="space-y-2">
                     <Label>Target</Label>
