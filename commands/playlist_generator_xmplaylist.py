@@ -33,8 +33,8 @@ def _dedupe_tracks(tracks: list[dict[str, str]]) -> list[dict[str, str]]:
     return out
 
 
-def _build_playlist_title(cfg: dict[str, Any]) -> str:
-    """Playlist / display title: [Cmdarr] [user] SXM - Station - Mode → Target"""
+def _xmplaylist_station_mode_target(cfg: dict[str, Any]) -> tuple[str, str, str]:
+    """Returns (station segment, mode label, target label Plex|Jellyfin)."""
     station = (cfg.get("station_display_name") or cfg.get("station_deeplink") or "Station").strip()
     target = str(cfg.get("target", "plex")).lower()
     target_label = "Jellyfin" if target == "jellyfin" else "Plex"
@@ -44,20 +44,85 @@ def _build_playlist_title(cfg: dict[str, Any]) -> str:
         mode = f"Most Played ({days}d)"
     else:
         mode = "Newest"
+    return station, mode, target_label
 
-    user_bracket = ""
-    acc_id = cfg.get("plex_playlist_account_id")
-    if acc_id and target == "plex":
+
+def _plex_user_bracket_for_display(cfg: dict[str, Any]) -> str:
+    """
+    Bracket text for command display_name only (e.g. " [alice, bob]" or " [alice]").
+    Empty when using server default and not multi-user.
+    """
+    target = str(cfg.get("target", "plex")).lower()
+    if target != "plex":
+        return ""
+
+    plex_ids = cfg.get("plex_account_ids") or []
+    if isinstance(plex_ids, list) and len(plex_ids) > 0:
         from clients.client_plex import PlexClient
         from commands.config_adapter import Config
 
         pc = PlexClient(Config())
         accounts = pc.get_accounts()
-        acc = next((a for a in accounts if str(a.get("id", "")) == str(acc_id)), None)
-        name = (acc.get("name") if acc else None) or str(acc_id)
-        user_bracket = f" [{name}]"
+        names = []
+        for aid in plex_ids:
+            acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
+            names.append((acc.get("name") if acc else None) or str(aid))
+        return f" [{', '.join(names)}]"
 
+    acc_id = (cfg.get("plex_playlist_account_id") or "").strip()
+    if not acc_id:
+        return ""
+
+    from clients.client_plex import PlexClient
+    from commands.config_adapter import Config
+
+    pc = PlexClient(Config())
+    accounts = pc.get_accounts()
+
+    acc = next((a for a in accounts if str(a.get("id", "")) == str(acc_id)), None)
+    name = (acc.get("name") if acc else None) or str(acc_id)
+    return f" [{name}]"
+
+
+def _build_xmplaylist_sync_title(cfg: dict[str, Any]) -> str:
+    """Title written to Plex/Jellyfin — never includes Plex user disambiguation."""
+    station, mode, target_label = _xmplaylist_station_mode_target(cfg)
+    return f"[Cmdarr] SXM - {station} - {mode} → {target_label}"
+
+
+def _build_xmplaylist_display_name(cfg: dict[str, Any]) -> str:
+    """Command list / UI display name; may include [users] when multi or non-default Plex account."""
+    station, mode, target_label = _xmplaylist_station_mode_target(cfg)
+    user_bracket = _plex_user_bracket_for_display(cfg)
     return f"[Cmdarr]{user_bracket} SXM - {station} - {mode} → {target_label}"
+
+
+def _build_playlist_title(cfg: dict[str, Any]) -> str:
+    """Deprecated alias for _build_xmplaylist_display_name (backward compatibility)."""
+    return _build_xmplaylist_display_name(cfg)
+
+
+def _resolve_tracks_for_plex(
+    plex_client: PlexClient, tracks: list[dict[str, Any]], cached_data: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Resolve artist/track to rating keys once for multi-user Plex sync."""
+    resolved: list[dict[str, Any]] = []
+    for track in tracks:
+        rating_key = track.get("rating_key") or track.get("key")
+        if rating_key:
+            resolved.append({**track, "rating_key": str(rating_key)})
+            continue
+        artist = track.get("artist", "")
+        track_name = track.get("track", "")
+        if not artist or not track_name:
+            continue
+        album = track.get("album", "")
+        key = plex_client.search_for_track(
+            track_name, artist, cached_data=cached_data, album_name=album
+        )
+        if key:
+            resolved.append({**track, "rating_key": key})
+    return resolved
 
 
 class PlaylistGeneratorXmplaylistCommand(BaseCommand):
@@ -100,7 +165,7 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
 
-    def _persist_after_success(self, playlist_title: str) -> None:
+    def _persist_after_success(self, sync_playlist_title: str) -> None:
         try:
             from database.config_models import CommandConfig
             from database.database import get_database_manager
@@ -118,14 +183,23 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                 )
                 if cmd:
                     cfg = dict(cmd.config_json or {})
-                    cfg["last_playlist_title"] = playlist_title
+                    cfg["last_playlist_title"] = sync_playlist_title
                     cmd.config_json = cfg
-                    cmd.display_name = playlist_title
                     session.commit()
             finally:
                 session.close()
         except Exception as e:
             self.logger.warning(f"Could not persist after success: {e}")
+
+    def _register_for_library_cache(
+        self, target_key: str, register_client: PlexClient | JellyfinClient
+    ) -> None:
+        if not self.library_cache_manager:
+            return
+        try:
+            self.library_cache_manager.register_client(target_key, register_client)
+        except Exception as e:
+            self.logger.warning(f"Could not register {target_key} with library cache manager: {e}")
 
     async def execute(self) -> bool:
         self.last_run_stats = {}
@@ -158,8 +232,15 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                 self.last_run_stats = {"error": "No target library"}
                 return False
 
+            plex_account_ids_raw = cfg.get("plex_account_ids") or []
+            multi_plex = (
+                target_key == "plex"
+                and isinstance(plex_account_ids_raw, list)
+                and len(plex_account_ids_raw) > 0
+            )
+
             token_override = None
-            if target_key == "plex":
+            if target_key == "plex" and not multi_plex:
                 acc_id = cfg.get("plex_playlist_account_id")
                 if acc_id:
                     token_override = self.plex_client.get_token_for_user(str(acc_id))
@@ -197,10 +278,22 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                 }
                 return True
 
-            playlist_title = _build_playlist_title(cfg)
+            sync_title = _build_xmplaylist_sync_title(cfg)
             last_title = cfg.get("last_playlist_title")
-            if last_title and last_title != playlist_title:
-                self._delete_playlist_by_name(target_client, last_title)
+            if last_title and last_title != sync_title:
+                if multi_plex:
+                    from utils.plex_user import get_token_for_user
+
+                    for uid in plex_account_ids_raw:
+                        tok = get_token_for_user(self.config, str(uid))
+                        pc_del = (
+                            PlexClient(self.config, token_override=tok)
+                            if tok
+                            else self.plex_client
+                        )
+                        self._delete_playlist_by_name(pc_del, last_title)
+                else:
+                    self._delete_playlist_by_name(target_client, last_title)
 
             if kind == "most_heard":
                 summary = f"SiriusXM via xmplaylist.com — most played ({most_days}d)"
@@ -209,25 +302,75 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
 
             cached_data = None
             if self.library_cache_manager:
+                if target_key == "plex":
+                    self._register_for_library_cache("plex", self.plex_client)
+                else:
+                    self._register_for_library_cache("jellyfin", target_client)
                 cached_data = self.library_cache_manager.get_library_cache(
                     target_key, str(library_key)
                 )
 
-            if hasattr(target_client, "_cached_library"):
-                target_client._cached_library = cached_data
+            result: dict[str, Any] = {
+                "success": False,
+                "found_tracks": 0,
+                "total_tracks": len(tracks),
+                "unmatched_tracks": [],
+            }
+            success = False
+            found = 0
+            total = len(tracks)
+            unmatched: list[Any] = []
 
-            result = target_client.sync_playlist(
-                title=playlist_title,
-                tracks=tracks,
-                summary=summary,
-                library_cache_manager=self.library_cache_manager,
-                library_key=library_key,
-            )
+            if multi_plex:
+                from utils.plex_user import get_token_for_user
 
-            success = bool(result.get("success"))
-            found = int(result.get("found_tracks", 0))
-            total = int(result.get("total_tracks", len(tracks)))
-            unmatched = result.get("unmatched_tracks") or []
+                resolved = _resolve_tracks_for_plex(self.plex_client, tracks, cached_data)
+                cache_enabled = bool(self.config.get("LIBRARY_CACHE_PLEX_ENABLED", False))
+                all_ok = True
+                any_sync = False
+                for user_id in plex_account_ids_raw:
+                    uid_s = str(user_id)
+                    token = get_token_for_user(self.config, uid_s)
+                    if not token:
+                        self.logger.error(
+                            f"Could not resolve token for Plex user {uid_s}. Skipping user."
+                        )
+                        all_ok = False
+                        continue
+                    any_sync = True
+                    pc = PlexClient(self.config, token_override=token)
+                    if cached_data and cache_enabled:
+                        pc._cached_library = cached_data
+                    result = pc.sync_playlist(
+                        title=sync_title,
+                        tracks=resolved,
+                        summary=summary,
+                        library_cache_manager=self.library_cache_manager,
+                        library_key=library_key,
+                    )
+                    if not bool(result.get("success")):
+                        all_ok = False
+                success = all_ok and any_sync
+                found = int(result.get("found_tracks", 0))
+                total = int(result.get("total_tracks", len(tracks)))
+                unmatched = result.get("unmatched_tracks") or []
+            else:
+                if hasattr(target_client, "_cached_library"):
+                    target_client._cached_library = cached_data
+
+                result = target_client.sync_playlist(
+                    title=sync_title,
+                    tracks=tracks,
+                    summary=summary,
+                    library_cache_manager=self.library_cache_manager,
+                    library_key=library_key,
+                )
+
+                success = bool(result.get("success"))
+                found = int(result.get("found_tracks", 0))
+                total = int(result.get("total_tracks", len(tracks)))
+                unmatched = result.get("unmatched_tracks") or []
+
             if isinstance(unmatched, list):
                 missing_sample = [str(x) for x in unmatched[:10]]
             else:
@@ -286,8 +429,8 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
             }
 
             if success:
-                self.logger.info(f"XM playlist '{playlist_title}': {found}/{total} tracks matched")
-                self._persist_after_success(playlist_title)
+                self.logger.info(f"XM playlist '{sync_title}': {found}/{total} tracks matched")
+                self._persist_after_success(sync_title)
             else:
                 self.last_run_stats["error"] = result.get("message") or "sync_playlist failed"
 

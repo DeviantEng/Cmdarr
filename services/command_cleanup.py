@@ -288,15 +288,23 @@ class CommandCleanupService:
             target = str(cfg.get("target", "plex")).lower()
             pl_title = cfg.get("last_playlist_title")
             if not pl_title:
-                from commands.playlist_generator_xmplaylist import _build_playlist_title
+                from commands.playlist_generator_xmplaylist import _build_xmplaylist_sync_title
 
-                pl_title = _build_playlist_title(cfg)
-            token_override = None
-            if target == "plex":
-                token_override = self._get_user_token_for_playlist_delete(
-                    {"plex_history_account_id": cfg.get("plex_playlist_account_id")}
-                )
-            self._delete_playlist_if_exists(target, pl_title, token_override=token_override)
+                pl_title = _build_xmplaylist_sync_title(cfg)
+            plex_account_ids = cfg.get("plex_account_ids") or []
+            if target == "plex" and isinstance(plex_account_ids, list) and plex_account_ids:
+                for user_id in plex_account_ids:
+                    token = self._get_user_token_for_playlist_delete(
+                        {"plex_history_account_id": user_id}
+                    )
+                    self._delete_playlist_if_exists(target, pl_title, token_override=token)
+            else:
+                token_override = None
+                if target == "plex":
+                    token_override = self._get_user_token_for_playlist_delete(
+                        {"plex_history_account_id": cfg.get("plex_playlist_account_id")}
+                    )
+                self._delete_playlist_if_exists(target, pl_title, token_override=token_override)
 
     def _get_user_token_for_playlist_delete(self, cfg: dict) -> str | None:
         """Resolve user token for daylist/local_discovery playlist deletion.

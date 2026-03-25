@@ -215,6 +215,8 @@ export function CreatePlaylistSyncDialog({
     most_heard_days: 30 as 1 | 7 | 14 | 30 | 60,
     max_tracks: 50,
     target: "plex" as "plex" | "jellyfin",
+    sync_to_multiple_plex_users: false,
+    plex_account_ids: [] as string[],
     plex_playlist_account_id: "",
     enable_artist_discovery: false,
     artist_discovery_max_per_run: 2,
@@ -379,6 +381,8 @@ export function CreatePlaylistSyncDialog({
         most_heard_days: 30,
         max_tracks: 50,
         target: "plex",
+        sync_to_multiple_plex_users: false,
+        plex_account_ids: [],
         plex_playlist_account_id: "",
         enable_artist_discovery: false,
         artist_discovery_max_per_run: 2,
@@ -507,6 +511,13 @@ export function CreatePlaylistSyncDialog({
     if (playlistType === "xmplaylist") {
       if (!xmplaylistForm.station_deeplink.trim()) return false;
       if (xmplaylistForm.expires_at_enabled && !xmplaylistForm.expires_at) return false;
+      if (
+        xmplaylistForm.target === "plex" &&
+        xmplaylistForm.sync_to_multiple_plex_users &&
+        xmplaylistForm.plex_account_ids.length === 0
+      ) {
+        return false;
+      }
       return true;
     }
     if (!validation.isValid) return false;
@@ -643,8 +654,15 @@ export function CreatePlaylistSyncDialog({
             : undefined,
           enabled: xmplaylistForm.enabled,
         };
-        if (xmplaylistForm.target === "plex" && xmplaylistForm.plex_playlist_account_id.trim()) {
-          payload.plex_playlist_account_id = xmplaylistForm.plex_playlist_account_id.trim();
+        if (xmplaylistForm.target === "plex") {
+          if (
+            xmplaylistForm.sync_to_multiple_plex_users &&
+            xmplaylistForm.plex_account_ids.length > 0
+          ) {
+            payload.plex_account_ids = xmplaylistForm.plex_account_ids;
+          } else if (xmplaylistForm.plex_playlist_account_id.trim()) {
+            payload.plex_playlist_account_id = xmplaylistForm.plex_playlist_account_id.trim();
+          }
         }
         if (xmplaylistForm.expires_at_enabled && xmplaylistForm.expires_at) {
           payload.expires_at = toExpiresAtIso(xmplaylistForm.expires_at);
@@ -1987,7 +2005,14 @@ export function CreatePlaylistSyncDialog({
                   <Select
                     value={xmplaylistForm.target}
                     onValueChange={(v: "plex" | "jellyfin") =>
-                      setXmplaylistForm((prev) => ({ ...prev, target: v }))
+                      setXmplaylistForm((prev) => ({
+                        ...prev,
+                        target: v,
+                        sync_to_multiple_plex_users:
+                          v === "jellyfin" ? false : prev.sync_to_multiple_plex_users,
+                        plex_account_ids: v === "jellyfin" ? [] : prev.plex_account_ids,
+                        plex_playlist_account_id: v === "jellyfin" ? "" : prev.plex_playlist_account_id,
+                      }))
                     }
                   >
                     <SelectTrigger>
@@ -1999,33 +2024,84 @@ export function CreatePlaylistSyncDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                {xmplaylistForm.target === "plex" && plexAccounts.length > 0 && (
+                {xmplaylistForm.target === "plex" && (
                   <div className="space-y-2">
-                    <Label>Plex playlist user (optional)</Label>
-                    <Select
-                      value={xmplaylistForm.plex_playlist_account_id || "__default__"}
-                      onValueChange={(v) =>
-                        setXmplaylistForm((prev) => ({
-                          ...prev,
-                          plex_playlist_account_id: v === "__default__" ? "" : v,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Server default" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__default__">Server default</SelectItem>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={xmplaylistForm.sync_to_multiple_plex_users}
+                        onChange={(e) =>
+                          setXmplaylistForm((prev) => ({
+                            ...prev,
+                            sync_to_multiple_plex_users: e.target.checked,
+                            plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
+                            plex_playlist_account_id: e.target.checked ? "" : prev.plex_playlist_account_id,
+                          }))
+                        }
+                        className="rounded border-input"
+                      />
+                      <span className="text-sm font-medium">Sync to multiple Plex users</span>
+                    </label>
+                    {xmplaylistForm.sync_to_multiple_plex_users && (
+                      <div className="flex flex-wrap gap-3 rounded-lg border p-3">
                         {plexAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id}>
-                            {acc.name || acc.id}
-                          </SelectItem>
+                          <label
+                            key={acc.id}
+                            className="flex cursor-pointer items-center gap-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={xmplaylistForm.plex_account_ids.includes(acc.id)}
+                              onChange={(e) =>
+                                setXmplaylistForm((prev) => ({
+                                  ...prev,
+                                  plex_account_ids: e.target.checked
+                                    ? [...prev.plex_account_ids, acc.id]
+                                    : prev.plex_account_ids.filter((id) => id !== acc.id),
+                                }))
+                              }
+                              className="rounded border-input"
+                            />
+                            {acc.name || `Account ${acc.id}`}
+                          </label>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Use a Plex Home user token when creating playlists in their library.
-                    </p>
+                        {plexAccounts.length === 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            No Plex accounts available
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {!xmplaylistForm.sync_to_multiple_plex_users && (
+                      <div className="space-y-2">
+                        <Label>Plex playlist user (optional)</Label>
+                        <Select
+                          value={xmplaylistForm.plex_playlist_account_id || "__default__"}
+                          onValueChange={(v) =>
+                            setXmplaylistForm((prev) => ({
+                              ...prev,
+                              plex_playlist_account_id: v === "__default__" ? "" : v,
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Primary server account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__default__">Primary server account</SelectItem>
+                            {plexAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.name || acc.id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Uses the server token by default. Choose a Plex Home user to create the
+                          playlist in their library (managed user token).
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="space-y-2 rounded-lg border p-4">
@@ -2201,235 +2277,235 @@ export function CreatePlaylistSyncDialog({
 
             {/* Common Settings (hidden when a dedicated form above already covers these fields) */}
             {!PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS.includes(playlistType) && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Target</Label>
-                    <Select
-                      value={formData.target}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          target: value,
-                          sync_to_multiple_plex_users:
-                            value === "jellyfin" ? false : prev.sync_to_multiple_plex_users,
-                          plex_account_ids: value === "jellyfin" ? [] : prev.plex_account_ids,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="plex">Plex</SelectItem>
-                        <SelectItem value="jellyfin">Jellyfin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <>
+                <div className="space-y-2">
+                  <Label>Target</Label>
+                  <Select
+                    value={formData.target}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        target: value,
+                        sync_to_multiple_plex_users:
+                          value === "jellyfin" ? false : prev.sync_to_multiple_plex_users,
+                        plex_account_ids: value === "jellyfin" ? [] : prev.plex_account_ids,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex</SelectItem>
+                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  {formData.target === "plex" && playlistType === "other" && (
-                    <div className="space-y-2">
-                      <label className="flex cursor-pointer items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.sync_to_multiple_plex_users}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              sync_to_multiple_plex_users: e.target.checked,
-                              plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
-                            }))
-                          }
-                          className="rounded border-input"
-                        />
-                        <span className="text-sm font-medium">Sync to multiple Plex users</span>
-                      </label>
-                      {formData.sync_to_multiple_plex_users && (
-                        <div className="flex flex-wrap gap-3 rounded-lg border p-3">
-                          {plexAccounts.map((acc) => (
-                            <label
-                              key={acc.id}
-                              className="flex cursor-pointer items-center gap-2 text-sm"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={formData.plex_account_ids.includes(acc.id)}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    plex_account_ids: e.target.checked
-                                      ? [...prev.plex_account_ids, acc.id]
-                                      : prev.plex_account_ids.filter((id) => id !== acc.id),
-                                  }))
-                                }
-                                className="rounded border-input"
-                              />
-                              {acc.name || `Account ${acc.id}`}
-                            </label>
-                          ))}
-                          {plexAccounts.length === 0 && (
-                            <span className="text-sm text-muted-foreground">
-                              No Plex accounts available
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
+                {formData.target === "plex" && playlistType === "other" && (
                   <div className="space-y-2">
-                    <Label>Sync Mode</Label>
-                    <Select
-                      value={formData.sync_mode}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, sync_mode: value }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full">Full Sync</SelectItem>
-                        <SelectItem value="append">Append Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <label className="flex cursor-pointer items-center gap-2">
                       <input
                         type="checkbox"
-                        id="create-ext-schedule-override"
-                        checked={formData.schedule_override}
+                        checked={formData.sync_to_multiple_plex_users}
                         onChange={(e) =>
                           setFormData((prev) => ({
                             ...prev,
-                            schedule_override: e.target.checked,
+                            sync_to_multiple_plex_users: e.target.checked,
+                            plex_account_ids: e.target.checked ? prev.plex_account_ids : [],
                           }))
                         }
                         className="rounded border-input"
                       />
-                      <Label
-                        htmlFor="create-ext-schedule-override"
-                        className="cursor-pointer font-normal"
-                      >
-                        Override default schedule
-                      </Label>
-                    </div>
-                    {formData.schedule_override && (
-                      <>
-                        <div className="space-y-2 rounded-lg border p-4">
-                          <Input
-                            placeholder="0 6 * * *"
-                            value={formData.schedule_cron}
-                            onChange={(e) =>
-                              setFormData((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                            }
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
-                        </p>
-                      </>
-                    )}
-                    {!formData.schedule_override && (
-                      <p className="text-xs text-muted-foreground">
-                        Uses global default (Config → Scheduler)
-                      </p>
-                    )}
-                  </div>
-
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.enabled}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          enabled: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-gray-300"
-                    />
-                    <span className="text-sm">Enable immediately after creation</span>
-                  </label>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="create-enable-artist-discovery"
-                        checked={formData.enable_artist_discovery}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            enable_artist_discovery: e.target.checked,
-                          }))
-                        }
-                        className="rounded border-input"
-                      />
-                      <Label
-                        htmlFor="create-enable-artist-discovery"
-                        className="cursor-pointer font-normal"
-                      >
-                        Add new artists
-                      </Label>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Artists discovered missing from Lidarr are added to the Playlist Sync
-                      Discovery import list. Discovery always runs to report counts; this controls
-                      whether to add.
-                    </p>
-                    {formData.enable_artist_discovery && (
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Label htmlFor="create-artist-discovery-max">
-                          Max artists to add per run
-                        </Label>
-                        <NumericInput
-                          id="create-artist-discovery-max"
-                          placeholder="2"
-                          value={
-                            formData.artist_discovery_max_per_run ??
-                            (formData.enable_artist_discovery ? 2 : 0)
-                          }
-                          onChange={(v) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              artist_discovery_max_per_run: v ?? 2,
-                            }))
-                          }
-                          min={0}
-                          max={50}
-                          defaultValue={2}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          0 = no limit. Limits how many new artists are added per sync run;
-                          remaining artists are added on subsequent runs. First run adds none—only
-                          reports count.
-                        </p>
+                      <span className="text-sm font-medium">Sync to multiple Plex users</span>
+                    </label>
+                    {formData.sync_to_multiple_plex_users && (
+                      <div className="flex flex-wrap gap-3 rounded-lg border p-3">
+                        {plexAccounts.map((acc) => (
+                          <label
+                            key={acc.id}
+                            className="flex cursor-pointer items-center gap-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.plex_account_ids.includes(acc.id)}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  plex_account_ids: e.target.checked
+                                    ? [...prev.plex_account_ids, acc.id]
+                                    : prev.plex_account_ids.filter((id) => id !== acc.id),
+                                }))
+                              }
+                              className="rounded border-input"
+                            />
+                            {acc.name || `Account ${acc.id}`}
+                          </label>
+                        ))}
+                        {plexAccounts.length === 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            No Plex accounts available
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
+                )}
 
-                  <ExpirationFields
-                    idPrefix="create-ext"
-                    enabled={formData.expires_at_enabled}
-                    onEnabledChange={(v) =>
+                <div className="space-y-2">
+                  <Label>Sync Mode</Label>
+                  <Select
+                    value={formData.sync_mode}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, sync_mode: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="full">Full Sync</SelectItem>
+                      <SelectItem value="append">Append Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-ext-schedule-override"
+                      checked={formData.schedule_override}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label
+                      htmlFor="create-ext-schedule-override"
+                      className="cursor-pointer font-normal"
+                    >
+                      Override default schedule
+                    </Label>
+                  </div>
+                  {formData.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder="0 6 * * *"
+                          value={formData.schedule_cron}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, schedule_cron: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
+                      </p>
+                    </>
+                  )}
+                  {!formData.schedule_override && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses global default (Config → Scheduler)
+                    </p>
+                  )}
+                </div>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.enabled}
+                    onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        expires_at_enabled: v,
-                        expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                        enabled: e.target.checked,
                       }))
                     }
-                    value={formData.expires_at}
-                    onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
-                    showDeletePlaylistOption={true}
-                    deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
-                    onDeletePlaylistChange={(v) =>
-                      setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
-                    }
+                    className="rounded border-gray-300"
                   />
-                </>
-              )}
+                  <span className="text-sm">Enable immediately after creation</span>
+                </label>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-enable-artist-discovery"
+                      checked={formData.enable_artist_discovery}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          enable_artist_discovery: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label
+                      htmlFor="create-enable-artist-discovery"
+                      className="cursor-pointer font-normal"
+                    >
+                      Add new artists
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Artists discovered missing from Lidarr are added to the Playlist Sync Discovery
+                    import list. Discovery always runs to report counts; this controls whether to
+                    add.
+                  </p>
+                  {formData.enable_artist_discovery && (
+                    <div className="space-y-2 rounded-lg border p-4">
+                      <Label htmlFor="create-artist-discovery-max">
+                        Max artists to add per run
+                      </Label>
+                      <NumericInput
+                        id="create-artist-discovery-max"
+                        placeholder="2"
+                        value={
+                          formData.artist_discovery_max_per_run ??
+                          (formData.enable_artist_discovery ? 2 : 0)
+                        }
+                        onChange={(v) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            artist_discovery_max_per_run: v ?? 2,
+                          }))
+                        }
+                        min={0}
+                        max={50}
+                        defaultValue={2}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        0 = no limit. Limits how many new artists are added per sync run; remaining
+                        artists are added on subsequent runs. First run adds none—only reports
+                        count.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <ExpirationFields
+                  idPrefix="create-ext"
+                  enabled={formData.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={formData.expires_at}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
+                  }
+                />
+              </>
+            )}
           </div>
         )}
 

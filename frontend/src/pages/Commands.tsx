@@ -474,7 +474,12 @@ export function CommandsPage() {
       xm_station_display_name: (cfg.station_display_name as string) || "",
       xm_playlist_kind: (cfg.playlist_kind as string) === "most_heard" ? "most_heard" : "newest",
       xm_most_heard_days: typeof cfg.most_heard_days === "number" ? cfg.most_heard_days : 30,
-      plex_playlist_account_id: (cfg.plex_playlist_account_id as string) || "",
+      plex_playlist_account_id:
+        command.command_name.startsWith("xmplaylist_") &&
+        Array.isArray(cfg.plex_account_ids) &&
+        cfg.plex_account_ids.length > 0
+          ? ""
+          : (cfg.plex_playlist_account_id as string) || "",
     });
     if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       const editingParam = `editing_command=${encodeURIComponent(command.command_name)}`;
@@ -2355,7 +2360,17 @@ export function CommandsPage() {
                           <Label>Target</Label>
                           <Select
                             value={editForm.target ?? "plex"}
-                            onValueChange={(v) => setEditForm((f) => ({ ...f, target: v }))}
+                            onValueChange={(v) =>
+                              setEditForm((f) => ({
+                                ...f,
+                                target: v,
+                                sync_to_multiple_plex_users:
+                                  v === "jellyfin" ? false : f.sync_to_multiple_plex_users,
+                                plex_account_ids: v === "jellyfin" ? [] : (f.plex_account_ids ?? []),
+                                plex_playlist_account_id:
+                                  v === "jellyfin" ? "" : f.plex_playlist_account_id,
+                              }))
+                            }
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -2366,30 +2381,90 @@ export function CommandsPage() {
                             </SelectContent>
                           </Select>
                         </div>
-                        {editForm.target === "plex" && plexAccounts.length > 0 && (
+                        {editForm.target === "plex" && (
                           <div className="space-y-2">
-                            <Label>Plex user (optional)</Label>
-                            <Select
-                              value={editForm.plex_playlist_account_id || "__default__"}
-                              onValueChange={(v) =>
-                                setEditForm((f) => ({
-                                  ...f,
-                                  plex_playlist_account_id: v === "__default__" ? "" : v,
-                                }))
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__default__">Server default</SelectItem>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={editForm.sync_to_multiple_plex_users ?? false}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({
+                                    ...f,
+                                    sync_to_multiple_plex_users: e.target.checked,
+                                    plex_account_ids: e.target.checked
+                                      ? (f.plex_account_ids ?? [])
+                                      : [],
+                                    plex_playlist_account_id: e.target.checked
+                                      ? ""
+                                      : f.plex_playlist_account_id,
+                                  }))
+                                }
+                                className="rounded border-input"
+                              />
+                              <span className="text-sm font-medium">Sync to multiple Plex users</span>
+                            </label>
+                            {editForm.sync_to_multiple_plex_users && (
+                              <div className="flex flex-wrap gap-3 rounded-lg border p-3">
                                 {plexAccounts.map((acc) => (
-                                  <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.name || acc.id}
-                                  </SelectItem>
+                                  <label
+                                    key={acc.id}
+                                    className="flex cursor-pointer items-center gap-2 text-sm"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(editForm.plex_account_ids ?? []).includes(acc.id)}
+                                      onChange={(e) =>
+                                        setEditForm((f) => ({
+                                          ...f,
+                                          plex_account_ids: e.target.checked
+                                            ? [...(f.plex_account_ids ?? []), acc.id]
+                                            : (f.plex_account_ids ?? []).filter(
+                                                (id) => id !== acc.id
+                                              ),
+                                        }))
+                                      }
+                                      className="rounded border-input"
+                                    />
+                                    {acc.name || `Account ${acc.id}`}
+                                  </label>
                                 ))}
-                              </SelectContent>
-                            </Select>
+                                {plexAccounts.length === 0 && (
+                                  <span className="text-sm text-muted-foreground">
+                                    No Plex accounts available
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {!editForm.sync_to_multiple_plex_users && (
+                              <div className="space-y-2">
+                                <Label>Plex playlist user (optional)</Label>
+                                <Select
+                                  value={editForm.plex_playlist_account_id || "__default__"}
+                                  onValueChange={(v) =>
+                                    setEditForm((f) => ({
+                                      ...f,
+                                      plex_playlist_account_id: v === "__default__" ? "" : v,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Primary server account" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__default__">Primary server account</SelectItem>
+                                    {plexAccounts.map((acc) => (
+                                      <SelectItem key={acc.id} value={acc.id}>
+                                        {acc.name || acc.id}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                  Uses the server token by default. Choose a Plex Home user for that
+                                  user&apos;s library.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         )}
                         <label className="flex items-center space-x-2">
@@ -2838,6 +2913,11 @@ export function CommandsPage() {
                 )}
                 {editingCommand.command_name.startsWith("xmplaylist_") && (
                   <Button
+                    disabled={
+                      editForm.target === "plex" &&
+                      !!editForm.sync_to_multiple_plex_users &&
+                      (editForm.plex_account_ids ?? []).length === 0
+                    }
                     onClick={() => {
                       const cfg: Record<string, unknown> = {
                         ...(editingCommand.config_json || {}),
@@ -2854,10 +2934,24 @@ export function CommandsPage() {
                         enable_artist_discovery: editForm.enable_artist_discovery ?? false,
                         artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
                       };
-                      const pid = (editForm.plex_playlist_account_id ?? "").trim();
-                      if (pid) {
-                        cfg.plex_playlist_account_id = pid;
+                      const tgt = (editForm.target ?? "plex") as string;
+                      if (tgt === "plex") {
+                        const multi = !!editForm.sync_to_multiple_plex_users;
+                        const ids = editForm.plex_account_ids ?? [];
+                        if (multi && ids.length > 0) {
+                          cfg.plex_account_ids = ids;
+                          delete cfg.plex_playlist_account_id;
+                        } else {
+                          delete cfg.plex_account_ids;
+                          const pid = (editForm.plex_playlist_account_id ?? "").trim();
+                          if (pid) {
+                            cfg.plex_playlist_account_id = pid;
+                          } else {
+                            delete cfg.plex_playlist_account_id;
+                          }
+                        }
                       } else {
+                        delete cfg.plex_account_ids;
                         delete cfg.plex_playlist_account_id;
                       }
                       if (editForm.expires_at_enabled && editForm.expires_at) {

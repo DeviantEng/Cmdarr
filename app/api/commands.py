@@ -416,9 +416,11 @@ async def update_command(
                     user_bracket = " "
                 command.display_name = f"[{source}]{user_bracket}{playlist_name} → Plex"
             elif command_name.startswith("xmplaylist_"):
-                from commands.playlist_generator_xmplaylist import _build_playlist_title
+                from commands.playlist_generator_xmplaylist import _build_xmplaylist_display_name
 
-                command.display_name = _build_playlist_title(dict(command.config_json or {}))
+                command.display_name = _build_xmplaylist_display_name(
+                    dict(command.config_json or {})
+                )
 
         command.updated_at = datetime.utcnow()
         db.commit()
@@ -1375,7 +1377,7 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
     try:
         from clients.client_xmplaylist import MOST_HEARD_DAYS
         from commands.config_adapter import Config
-        from commands.playlist_generator_xmplaylist import _build_playlist_title
+        from commands.playlist_generator_xmplaylist import _build_xmplaylist_display_name
         from database.config_models import CommandConfig
 
         deeplink = (request.get("station_deeplink") or "").strip().lower().replace(" ", "")
@@ -1433,15 +1435,24 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
         if plex_account is not None:
             plex_account = str(plex_account).strip() or None
 
-        cfg_for_title = {
+        plex_account_ids = request.get("plex_account_ids") or []
+        if not isinstance(plex_account_ids, list):
+            plex_account_ids = []
+        plex_account_ids = [str(a).strip() for a in plex_account_ids if str(a).strip()]
+
+        cfg_for_title: dict = {
             "station_display_name": station_name,
             "station_deeplink": deeplink,
             "playlist_kind": playlist_kind,
             "most_heard_days": most_heard_days,
             "target": target,
-            "plex_playlist_account_id": plex_account,
         }
-        display_name = _build_playlist_title(cfg_for_title)
+        if target == "plex" and plex_account_ids:
+            cfg_for_title["plex_account_ids"] = plex_account_ids
+        elif plex_account:
+            cfg_for_title["plex_playlist_account_id"] = plex_account
+
+        display_name = _build_xmplaylist_display_name(cfg_for_title)
 
         schedule_cron = (request.get("schedule_cron") or "").strip() or None
         schedule_override = bool(schedule_cron)
@@ -1459,7 +1470,9 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
             "enable_artist_discovery": bool(request.get("enable_artist_discovery", False)),
             "artist_discovery_max_per_run": int(request.get("artist_discovery_max_per_run", 2)),
         }
-        if plex_account:
+        if target == "plex" and plex_account_ids:
+            config_json["plex_account_ids"] = plex_account_ids
+        elif plex_account:
             config_json["plex_playlist_account_id"] = plex_account
 
         if request.get("expires_at"):
