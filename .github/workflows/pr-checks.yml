@@ -163,7 +163,10 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit
-        run: pip-audit
+        run: |
+          # CVE-2026-4539: no Pygments release >2.19.2 on PyPI yet (transitive via spotifyscraper→rich).
+          # Remove --ignore-vuln after pinning Pygments>=2.19.3 in requirements.txt.
+          pip-audit -r requirements.txt --ignore-vuln CVE-2026-4539
 
   zap-full-scan:
     name: ZAP Full Scan

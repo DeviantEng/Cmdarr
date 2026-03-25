@@ -893,7 +893,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -997,7 +997,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1123,7 +1123,7 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1248,7 +1248,7 @@ async def create_mood_playlist(request: dict, db: Annotated[Session, Depends(get
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1422,7 +1422,7 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
         for cmd in existing:
             try:
                 used_ids.add(int(cmd.command_name.split("_")[-1]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
         next_id = 1
         while next_id in used_ids:
@@ -1609,7 +1609,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1625,7 +1625,7 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID
@@ -1792,7 +1792,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(cmd.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Also check execution history for any orphaned IDs
@@ -1808,7 +1808,7 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
                 try:
                     cmd_id = int(execution.command_name.split("_")[-1])
                     used_ids.add(cmd_id)
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     continue
 
             # Find the next available ID
