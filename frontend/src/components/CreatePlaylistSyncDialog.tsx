@@ -36,6 +36,9 @@ import { toast } from "sonner";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 import { toExpiresAtIso } from "@/lib/expiration";
+import { commandUiCopy } from "@/command-spec";
+
+const playlistSyncArtistCopy = commandUiCopy.playlistSync.artistDiscovery;
 
 type PlaylistType =
   | "listenbrainz"
@@ -2365,18 +2368,16 @@ export function CreatePlaylistSyncDialog({
                       htmlFor="create-enable-artist-discovery"
                       className="cursor-pointer font-normal"
                     >
-                      Add new artists
+                      {playlistSyncArtistCopy.checkboxLabel}
                     </Label>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Artists discovered missing from Lidarr are added to the Playlist Sync Discovery
-                    import list. Discovery always runs to report counts; this controls whether to
-                    add.
+                    {playlistSyncArtistCopy.helper}
                   </p>
                   {formData.enable_artist_discovery && (
                     <div className="space-y-2 rounded-lg border p-4">
                       <Label htmlFor="create-artist-discovery-max">
-                        Max artists to add per run
+                        {playlistSyncArtistCopy.maxLabel}
                       </Label>
                       <NumericInput
                         id="create-artist-discovery-max"
@@ -2396,9 +2397,7 @@ export function CreatePlaylistSyncDialog({
                         defaultValue={2}
                       />
                       <p className="text-xs text-muted-foreground">
-                        0 = no limit. Limits how many new artists are added per sync run; remaining
-                        artists are added on subsequent runs. First run adds none—only reports
-                        count.
+                        {playlistSyncArtistCopy.maxHelper}
                       </p>
                     </div>
                   )}
