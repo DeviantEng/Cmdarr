@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.12-dev] - TBD
+## [0.3.12] - 2026-03-26
 
 ### Housekeeping
 - **Security updates**: Bump python base digest; update npm flatted to address CVE-2026-33228; addressed codeql finding in new_release.py; Bump trivy scanner version (migrate to SHA instead of version tag due to recent supply chain attack)
