@@ -36,9 +36,12 @@ import { toast } from "sonner";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 import { toExpiresAtIso } from "@/lib/expiration";
-import { commandUiCopy } from "@/command-spec";
-
-const playlistSyncArtistCopy = commandUiCopy.playlistSync.artistDiscovery;
+import {
+  isCompoundFieldVisible,
+  resolveContextForCreate,
+  PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS,
+} from "@/command-spec";
+import { PlaylistSyncArtistDiscoveryControl } from "@/components/command-edit/PlaylistSyncArtistDiscoveryControl";
 
 type PlaylistType =
   | "listenbrainz"
@@ -49,14 +52,7 @@ type PlaylistType =
   | "mood_playlist"
   | "xmplaylist";
 
-/** Types with a full dedicated form above; shared Common Settings must stay hidden for them. */
-const PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS: readonly PlaylistType[] = [
-  "daylist",
-  "top_tracks",
-  "local_discovery",
-  "mood_playlist",
-  "xmplaylist",
-];
+/** @see PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS in command-spec/createPlaylistSurface.ts */
 
 type XmplaylistStationRow = {
   name: string;
@@ -2030,7 +2026,13 @@ export function CreatePlaylistSyncDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                {xmplaylistForm.target === "plex" && (
+                {isCompoundFieldVisible(
+                  "compound.plex_playlist_target",
+                  resolveContextForCreate({
+                    playlistType: "xmplaylist",
+                    target: xmplaylistForm.target,
+                  }),
+                ) && (
                   <PlexPlaylistTargetSection
                     accounts={plexAccounts}
                     syncToMultiple={xmplaylistForm.sync_to_multiple_plex_users}
@@ -2052,49 +2054,31 @@ export function CreatePlaylistSyncDialog({
                     }
                   />
                 )}
-                <div className="space-y-2 rounded-lg border p-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-xm-artist-discovery"
-                      checked={xmplaylistForm.enable_artist_discovery}
-                      onChange={(e) =>
+                {isCompoundFieldVisible(
+                  "compound.artist_discovery",
+                  resolveContextForCreate({
+                    playlistType: "xmplaylist",
+                    target: xmplaylistForm.target,
+                  }),
+                ) && (
+                  <div className="space-y-2 rounded-lg border p-4">
+                    <PlaylistSyncArtistDiscoveryControl
+                      checkboxId="create-xm-artist-discovery"
+                      value={{
+                        enable_artist_discovery: xmplaylistForm.enable_artist_discovery,
+                        artist_discovery_max_per_run:
+                          xmplaylistForm.artist_discovery_max_per_run ?? 2,
+                      }}
+                      onChange={(next) =>
                         setXmplaylistForm((prev) => ({
                           ...prev,
-                          enable_artist_discovery: e.target.checked,
+                          enable_artist_discovery: next.enable_artist_discovery,
+                          artist_discovery_max_per_run: next.artist_discovery_max_per_run,
                         }))
                       }
-                      className="rounded border-input"
                     />
-                    <Label
-                      htmlFor="create-xm-artist-discovery"
-                      className="cursor-pointer font-normal"
-                    >
-                      Artist discovery (Lidarr import list)
-                    </Label>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Unmatched artists can be added to the Playlist Sync Discovery import list
-                    (MusicBrainz + Lidarr). First run previews only.
-                  </p>
-                  {xmplaylistForm.enable_artist_discovery && (
-                    <div className="space-y-2 pt-2">
-                      <Label>Max artists to add per run</Label>
-                      <NumericInput
-                        value={xmplaylistForm.artist_discovery_max_per_run}
-                        onChange={(v) =>
-                          setXmplaylistForm((prev) => ({
-                            ...prev,
-                            artist_discovery_max_per_run: v ?? 2,
-                          }))
-                        }
-                        min={0}
-                        max={50}
-                        defaultValue={2}
-                      />
-                    </div>
-                  )}
-                </div>
+                )}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <input
@@ -2224,7 +2208,7 @@ export function CreatePlaylistSyncDialog({
             )}
 
             {/* Common Settings (hidden when a dedicated form above already covers these fields) */}
-            {!PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS.includes(playlistType) && (
+            {!(PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS as readonly string[]).includes(playlistType) && (
               <>
                 <div className="space-y-2">
                   <Label>Target</Label>
@@ -2250,7 +2234,13 @@ export function CreatePlaylistSyncDialog({
                   </Select>
                 </div>
 
-                {formData.target === "plex" && playlistType === "other" && (
+                {isCompoundFieldVisible(
+                  "compound.plex_playlist_target",
+                  resolveContextForCreate({
+                    playlistType,
+                    target: formData.target,
+                  }),
+                ) && (
                   <PlexPlaylistTargetSection
                     accounts={plexAccounts}
                     syncToMultiple={formData.sync_to_multiple_plex_users}
@@ -2350,58 +2340,30 @@ export function CreatePlaylistSyncDialog({
                   <span className="text-sm">Enable immediately after creation</span>
                 </label>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-enable-artist-discovery"
-                      checked={formData.enable_artist_discovery}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          enable_artist_discovery: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label
-                      htmlFor="create-enable-artist-discovery"
-                      className="cursor-pointer font-normal"
-                    >
-                      {playlistSyncArtistCopy.checkboxLabel}
-                    </Label>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {playlistSyncArtistCopy.helper}
-                  </p>
-                  {formData.enable_artist_discovery && (
-                    <div className="space-y-2 rounded-lg border p-4">
-                      <Label htmlFor="create-artist-discovery-max">
-                        {playlistSyncArtistCopy.maxLabel}
-                      </Label>
-                      <NumericInput
-                        id="create-artist-discovery-max"
-                        placeholder="2"
-                        value={
-                          formData.artist_discovery_max_per_run ??
-                          (formData.enable_artist_discovery ? 2 : 0)
-                        }
-                        onChange={(v) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            artist_discovery_max_per_run: v ?? 2,
-                          }))
-                        }
-                        min={0}
-                        max={50}
-                        defaultValue={2}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {playlistSyncArtistCopy.maxHelper}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                {isCompoundFieldVisible(
+                  "compound.artist_discovery",
+                  resolveContextForCreate({
+                    playlistType,
+                    target: formData.target,
+                  }),
+                ) && (
+                  <PlaylistSyncArtistDiscoveryControl
+                    checkboxId="create-enable-artist-discovery"
+                    value={{
+                      enable_artist_discovery: formData.enable_artist_discovery,
+                      artist_discovery_max_per_run:
+                        formData.artist_discovery_max_per_run ??
+                        (formData.enable_artist_discovery ? 2 : 0),
+                    }}
+                    onChange={(next) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        enable_artist_discovery: next.enable_artist_discovery,
+                        artist_discovery_max_per_run: next.artist_discovery_max_per_run,
+                      }))
+                    }
+                  />
+                )}
 
                 <ExpirationFields
                   idPrefix="create-ext"

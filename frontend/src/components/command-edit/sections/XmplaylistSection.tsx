@@ -10,11 +10,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
-import { commandUiCopy } from "@/command-spec";
+import { commandUiCopy, isCompoundFieldVisible, resolveContextForEditCommand } from "@/command-spec";
 import { ArtistDiscoveryFields } from "../ArtistDiscoveryFields";
 
 export function XmplaylistSection({ ctx }: { ctx: CommandEditRenderContext }) {
-  const { editForm, setEditForm, plexAccounts, xmplaylistEditFilter, setXmplaylistEditFilter, xmplaylistEditLoading, filteredXmEditStations } = ctx;
+  const {
+    editForm,
+    setEditForm,
+    plexAccounts,
+    xmplaylistEditFilter,
+    setXmplaylistEditFilter,
+    xmplaylistEditLoading,
+    filteredXmEditStations,
+    editingCommand,
+  } = ctx;
+  const r = resolveContextForEditCommand(editingCommand);
+
   return (
     <>
       <div className="space-y-2">
@@ -115,7 +126,7 @@ export function XmplaylistSection({ ctx }: { ctx: CommandEditRenderContext }) {
           {commandUiCopy.xmplaylist.targetReadOnlyHelp}
         </p>
       </div>
-      {editForm.target === "plex" && (
+      {isCompoundFieldVisible("compound.plex_playlist_target", r) && (
         <PlexPlaylistTargetSection
           accounts={plexAccounts}
           syncToMultiple={!!editForm.sync_to_multiple_plex_users}
@@ -137,11 +148,13 @@ export function XmplaylistSection({ ctx }: { ctx: CommandEditRenderContext }) {
           }
         />
       )}
-      <ArtistDiscoveryFields
-        editForm={editForm}
-        setEditForm={setEditForm}
-        checkboxId="edit-xm-enable-artist-discovery"
-      />
-  </>
-    );
+      {isCompoundFieldVisible("compound.artist_discovery", r) && (
+        <ArtistDiscoveryFields
+          editForm={editForm}
+          setEditForm={setEditForm}
+          checkboxId="edit-xm-enable-artist-discovery"
+        />
+      )}
+    </>
+  );
 }

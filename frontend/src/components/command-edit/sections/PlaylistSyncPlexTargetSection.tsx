@@ -1,7 +1,11 @@
+import { isCompoundFieldVisible, resolveContextForEditCommand } from "@/command-spec";
 import type { CommandEditRenderContext } from "../types";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 
 export function PlaylistSyncPlexTargetSection({ ctx }: { ctx: CommandEditRenderContext }) {
+  const r = resolveContextForEditCommand(ctx.editingCommand);
+  if (!isCompoundFieldVisible("compound.plex_playlist_target", r)) return null;
+
   const { editForm, setEditForm, plexAccounts } = ctx;
   return (
     <>
@@ -25,6 +29,6 @@ export function PlaylistSyncPlexTargetSection({ ctx }: { ctx: CommandEditRenderC
           }))
         }
       />
-  </>
-    );
+    </>
+  );
 }

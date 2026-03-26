@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs: `docs/testing_unit_spec.md` for unit test conventions.
 - UI: `docs/create_command_plex_playlist_target_spec.md` and shared `PlexPlaylistTargetSection` for XMPlaylist and external playlist sync (no Plex user dropdown); shorter XMPlaylist station list with scroll.
 - UI: Command edit dialog uses TypeScript spec (`command-spec` copy + `getCommandEditSectionOrder`) with `CommandEditFormBody` and per-type section components; shared artist-discovery copy and `ArtistDiscoveryFields`; XMPlaylist playlist mode and targets read-only on edit; top tracks target read-only on edit; enabled state shown as a header badge (removed large Enabled card).
+- UI: Phase 2 command-spec — `CompoundFieldDef`, `getFieldsForContext` / `isCompoundFieldVisible`, shared `PlaylistSyncArtistDiscoveryControl` for create+edit; create wizard imports `PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS` from spec; Plex target + artist discovery visibility driven by `resolveContextForCreate` / `resolveContextForEditCommand`.
 
 ## [0.3.11] - 2026-03-17
 
