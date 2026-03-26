@@ -54,7 +54,10 @@ def test_build_xmplaylist_display_name_multi_plex_bracket():
         "plex_account_ids": ["1", "2"],
     }
     fake_accounts = [{"id": "1", "name": "Alice"}, {"id": "2", "name": "Bob"}]
-    with patch("commands.config_adapter.Config"), patch("clients.client_plex.PlexClient") as MockPlex:
+    with (
+        patch("commands.config_adapter.Config"),
+        patch("clients.client_plex.PlexClient") as MockPlex,
+    ):
         MockPlex.return_value.get_accounts.return_value = fake_accounts
         t = _build_xmplaylist_display_name(cfg)
     assert "[Alice, Bob]" in t

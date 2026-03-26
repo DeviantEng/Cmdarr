@@ -15,6 +15,6 @@ export function PlaylistSyncUrlSection({ ctx }: { ctx: CommandEditRenderContext 
           className="font-mono text-sm"
         />
       </div>
-  </>
-    );
+    </>
+  );
 }

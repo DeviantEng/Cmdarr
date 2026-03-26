@@ -287,9 +287,7 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                     for uid in plex_account_ids_raw:
                         tok = get_token_for_user(self.config, str(uid))
                         pc_del = (
-                            PlexClient(self.config, token_override=tok)
-                            if tok
-                            else self.plex_client
+                            PlexClient(self.config, token_override=tok) if tok else self.plex_client
                         )
                         self._delete_playlist_by_name(pc_del, last_title)
                 else:

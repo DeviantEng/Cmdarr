@@ -1,3 +1,7 @@
+import { commandUiCopy } from "@/command-spec";
+
+const plexT = commandUiCopy.plexPlaylistTarget;
+
 export type PlexPlaylistTargetAccount = { id: string; name: string };
 
 type PlexPlaylistTargetSectionProps = {
@@ -28,19 +32,13 @@ export function PlexPlaylistTargetSection({
           onChange={(e) => onSyncToMultipleChange(e.target.checked)}
           className="rounded border-input"
         />
-        <span className="text-sm font-medium">Sync to multiple Plex users</span>
+        <span className="text-sm font-medium">{plexT.syncToMultipleLabel}</span>
       </label>
-      <p className="text-xs text-muted-foreground pl-6">
-        Leave unchecked to use the server&apos;s primary account. Check the box to choose one or
-        more Plex Home users (you can select a single user).
-      </p>
+      <p className="text-xs text-muted-foreground pl-6">{plexT.helper}</p>
       {syncToMultiple && (
         <div className="flex flex-wrap gap-3 rounded-lg border p-3">
           {accounts.map((acc) => (
-            <label
-              key={acc.id}
-              className="flex cursor-pointer items-center gap-2 text-sm"
-            >
+            <label key={acc.id} className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={selectedAccountIds.includes(acc.id)}
@@ -51,7 +49,7 @@ export function PlexPlaylistTargetSection({
             </label>
           ))}
           {accounts.length === 0 && (
-            <span className="text-sm text-muted-foreground">No Plex accounts available</span>
+            <span className="text-sm text-muted-foreground">{plexT.noAccounts}</span>
           )}
         </div>
       )}

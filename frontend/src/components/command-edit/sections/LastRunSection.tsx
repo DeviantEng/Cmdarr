@@ -7,15 +7,12 @@ export function LastRunSection({ ctx }: { ctx: CommandEditRenderContext }) {
   const { editingCommand } = ctx;
   return (
     <>
-  {editingCommand.last_run && (
-    <div className="space-y-2">
-      <Label>{commandUiCopy.lastRun.label}</Label>
-      <Input
-        value={new Date(editingCommand.last_run).toLocaleString()}
-        disabled
-      />
-    </div>
-  )}
-  </>
-    );
+      {editingCommand.last_run && (
+        <div className="space-y-2">
+          <Label>{commandUiCopy.lastRun.label}</Label>
+          <Input value={new Date(editingCommand.last_run).toLocaleString()} disabled />
+        </div>
+      )}
+    </>
+  );
 }

@@ -37,6 +37,7 @@ import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 import { toExpiresAtIso } from "@/lib/expiration";
 import {
+  commandUiCopy,
   isCompoundFieldVisible,
   resolveContextForCreate,
   PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS,
@@ -60,6 +61,16 @@ type XmplaylistStationRow = {
   number: number | null;
   label: string;
 };
+
+const cw = commandUiCopy.createWizard;
+const sch = commandUiCopy.schedule;
+const d = commandUiCopy.daylist;
+const ld = commandUiCopy.localDiscovery;
+const tt = commandUiCopy.topTracks;
+const mood = commandUiCopy.moodPlaylist;
+const xm = commandUiCopy.xmplaylist;
+const lb = commandUiCopy.listenbrainz;
+const ps = commandUiCopy.playlistSync;
 
 const DEFAULT_DAYLIST_TIME_PERIODS: Record<string, { start: number; end: number }> = {
   Dawn: { start: 3, end: 5 },
@@ -715,33 +726,35 @@ export function CreatePlaylistSyncDialog({
         <DialogHeader>
           <DialogTitle>
             {step === "type"
-              ? "Create New Command"
+              ? cw.titleChooseType
               : playlistType === "daylist"
-                ? "Configure Daylist"
+                ? cw.titleDaylist
                 : playlistType === "top_tracks"
-                  ? "Configure Artist Essentials"
+                  ? cw.titleArtistEssentials
                   : playlistType === "local_discovery"
-                    ? "Configure Local Discovery"
+                    ? cw.titleLocalDiscovery
                     : playlistType === "mood_playlist"
-                      ? "Configure Mood Playlist"
+                      ? cw.titleMoodPlaylist
                       : playlistType === "xmplaylist"
-                        ? "Configure XMPlaylist (SiriusXM History)"
-                        : `Configure ${playlistType === "listenbrainz" ? "ListenBrainz" : "External"} Playlist`}
+                        ? cw.titleXmplaylist
+                        : playlistType === "listenbrainz"
+                          ? cw.titleListenbrainz
+                          : cw.titleExternal}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
-              ? "Choose the type of command to create"
+              ? cw.descChooseType
               : playlistType === "daylist"
-                ? "Configure your daylist settings"
+                ? cw.descDaylist
                 : playlistType === "top_tracks"
-                  ? "Artists must exist in your library. One artist per line."
+                  ? cw.descTopTracks
                   : playlistType === "local_discovery"
-                    ? "Top artists from play history + sonically similar tracks. Fresh each run."
+                    ? cw.descLocalDiscovery
                     : playlistType === "mood_playlist"
-                      ? "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher."
+                      ? cw.descMoodPlaylist
                       : playlistType === "xmplaylist"
-                        ? "Data from xmplaylist.com. Tracks are matched to your Plex or Jellyfin library."
-                        : "Configure your playlist sync settings"}
+                        ? cw.descXmplaylist
+                        : cw.descDefault}
           </DialogDescription>
         </DialogHeader>
 
@@ -756,10 +769,8 @@ export function CreatePlaylistSyncDialog({
                 <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">Daylist</h3>
-                <p className="text-xs text-muted-foreground">
-                  Time-of-day playlists from Plex listening history and Sonic Analysis. Plex only.
-                </p>
+                <h3 className="font-semibold">{cw.cardDaylistTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
               </div>
             </button>
 
@@ -772,11 +783,8 @@ export function CreatePlaylistSyncDialog({
                 <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">Local Discovery</h3>
-                <p className="text-xs text-muted-foreground">
-                  Top artists from play history + sonically similar tracks. Fresh each run. Plex
-                  only.
-                </p>
+                <h3 className="font-semibold">{cw.cardLocalDiscoveryTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
               </div>
             </button>
 
@@ -789,10 +797,8 @@ export function CreatePlaylistSyncDialog({
                 <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">ListenBrainz Curated</h3>
-                <p className="text-xs text-muted-foreground">
-                  Sync Weekly Exploration, Weekly Jams, or Daily Jams playlists
-                </p>
+                <h3 className="font-semibold">{cw.cardListenbrainzTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardListenbrainzBlurb}</p>
               </div>
             </button>
 
@@ -805,10 +811,8 @@ export function CreatePlaylistSyncDialog({
                 <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">External Playlist</h3>
-                <p className="text-xs text-muted-foreground">
-                  Sync public playlists from Spotify, Deezer, or other sources
-                </p>
+                <h3 className="font-semibold">{cw.cardExternalTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardExternalBlurb}</p>
               </div>
             </button>
 
@@ -821,10 +825,8 @@ export function CreatePlaylistSyncDialog({
                 <ListMusic className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">Artist Essentials</h3>
-                <p className="text-xs text-muted-foreground">
-                  Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).
-                </p>
+                <h3 className="font-semibold">{cw.cardArtistEssentialsTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardArtistEssentialsBlurb}</p>
               </div>
             </button>
 
@@ -837,10 +839,8 @@ export function CreatePlaylistSyncDialog({
                 <Radio className="h-5 w-5 text-sky-600 dark:text-sky-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">XMPlaylist (SiriusXM History)</h3>
-                <p className="text-xs text-muted-foreground">
-                  Newest or most-played tracks per station via xmplaylist.com → Plex or Jellyfin.
-                </p>
+                <h3 className="font-semibold">{cw.cardXmplaylistTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardXmplaylistBlurb}</p>
               </div>
             </button>
 
@@ -853,10 +853,8 @@ export function CreatePlaylistSyncDialog({
                 <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">Mood Playlist</h3>
-                <p className="text-xs text-muted-foreground">
-                  Generate from selected Plex moods. Fresh each run with exclude-last-run.
-                </p>
+                <h3 className="font-semibold">{cw.cardMoodTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardMoodBlurb}</p>
               </div>
             </button>
           </div>
@@ -866,7 +864,7 @@ export function CreatePlaylistSyncDialog({
               <>
                 {/* Playlist Types */}
                 <div className="space-y-2">
-                  <Label>Playlist Types</Label>
+                  <Label>{lb.playlistTypesLabel}</Label>
                   <div className="space-y-2">
                     {["weekly_exploration", "weekly_jams", "daily_jams"].map((type) => (
                       <label key={type} className="flex items-center space-x-2">
@@ -889,10 +887,10 @@ export function CreatePlaylistSyncDialog({
 
                 {/* Retention Settings */}
                 <div className="space-y-2">
-                  <Label>Retention Settings</Label>
+                  <Label>{lb.retentionHeading}</Label>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <Label className="text-xs">Weekly Exploration</Label>
+                      <Label className="text-xs">{lb.weeklyExploration}</Label>
                       <NumericInput
                         value={formData.weekly_exploration_keep}
                         onChange={(v) =>
@@ -904,7 +902,7 @@ export function CreatePlaylistSyncDialog({
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Weekly Jams</Label>
+                      <Label className="text-xs">{lb.weeklyJams}</Label>
                       <NumericInput
                         value={formData.weekly_jams_keep}
                         onChange={(v) =>
@@ -916,7 +914,7 @@ export function CreatePlaylistSyncDialog({
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Daily Jams</Label>
+                      <Label className="text-xs">{lb.dailyJams}</Label>
                       <NumericInput
                         value={formData.daily_jams_keep}
                         onChange={(v) =>
@@ -928,9 +926,7 @@ export function CreatePlaylistSyncDialog({
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Number of playlists to keep for each type (older ones will be deleted)
-                  </p>
+                  <p className="text-xs text-muted-foreground">{lb.retentionHelper}</p>
                 </div>
 
                 {/* Cleanup Toggle */}
@@ -946,7 +942,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable playlist cleanup (delete old playlists)</span>
+                  <span className="text-sm">{lb.cleanupCheckbox}</span>
                 </label>
               </>
             ) : playlistType === "daylist" ? (
@@ -954,7 +950,7 @@ export function CreatePlaylistSyncDialog({
                 {/* Primary settings */}
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Plex Account (play history source)</Label>
+                    <Label>{d.plexAccountLabel}</Label>
                     <Select
                       value={daylistForm.plex_history_account_id}
                       onValueChange={(v) =>
@@ -962,7 +958,7 @@ export function CreatePlaylistSyncDialog({
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select Plex account" />
+                        <SelectValue placeholder={d.selectPlexPlaceholder} />
                       </SelectTrigger>
                       <SelectContent>
                         {plexAccounts.map((acc) => (
@@ -972,19 +968,16 @@ export function CreatePlaylistSyncDialog({
                             disabled={daylistUsedIds.has(acc.id)}
                           >
                             {acc.name || `Account ${acc.id}`}
-                            {daylistUsedIds.has(acc.id) ? " (already has Daylist)" : ""}
+                            {daylistUsedIds.has(acc.id) ? d.accountSuffixInUse : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Plex Home users only. Daylist uses this account&apos;s play history. One
-                      Daylist per user.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{d.plexAccountHelp}</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Run at minute of hour (0–59)</Label>
+                    <Label>{d.runAtMinuteLabel}</Label>
                     <NumericInput
                       value={daylistForm.schedule_minute}
                       onChange={(v) =>
@@ -994,15 +987,12 @@ export function CreatePlaylistSyncDialog({
                       max={59}
                       defaultValue={0}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Daylist runs hourly at this minute. Runs only when the day period changes
-                      (Dawn, Morning, etc.). Min: 0, max: 59.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{d.runAtMinuteHelp}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Exclude played (days)</Label>
+                      <Label>{d.excludePlayedLabel}</Label>
                       <NumericInput
                         value={daylistForm.exclude_played_days}
                         onChange={(v) =>
@@ -1012,12 +1002,10 @@ export function CreatePlaylistSyncDialog({
                         max={30}
                         defaultValue={3}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Skip tracks played in last N days. Min: 1, max: 30.
-                      </p>
+                      <p className="text-xs text-muted-foreground">{d.excludePlayedHelp}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>History lookback (days)</Label>
+                      <Label>{d.historyLookbackLabel}</Label>
                       <NumericInput
                         value={daylistForm.history_lookback_days}
                         onChange={(v) =>
@@ -1027,12 +1015,10 @@ export function CreatePlaylistSyncDialog({
                         max={365}
                         defaultValue={45}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Days of play history to analyze. Min: 7, max: 365.
-                      </p>
+                      <p className="text-xs text-muted-foreground">{d.historyLookbackHelp}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>Max tracks</Label>
+                      <Label>{d.maxTracksLabel}</Label>
                       <NumericInput
                         value={daylistForm.max_tracks}
                         onChange={(v) =>
@@ -1042,9 +1028,7 @@ export function CreatePlaylistSyncDialog({
                         max={200}
                         defaultValue={50}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Target playlist size. Min: 10, max: 200.
-                      </p>
+                      <p className="text-xs text-muted-foreground">{d.maxTracksHelp}</p>
                     </div>
                   </div>
                 </div>
@@ -1052,12 +1036,14 @@ export function CreatePlaylistSyncDialog({
                 {/* Advanced settings (collapsible) */}
                 <details className="rounded-lg border p-4">
                   <summary className="cursor-pointer font-medium text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    Advanced settings
+                    {d.advancedSummary}
                   </summary>
                   <div className="mt-4 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Historical ratio: {daylistForm.historical_ratio}</Label>
+                        <Label>
+                          {d.historicalRatioLabel} {daylistForm.historical_ratio}
+                        </Label>
                         <input
                           type="range"
                           min={0.1}
@@ -1072,12 +1058,10 @@ export function CreatePlaylistSyncDialog({
                           }
                           className="slider-range"
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Share of tracks from history. Min: 0.1, max: 0.8.
-                        </p>
+                        <p className="text-xs text-muted-foreground">{d.historicalRatioHelp}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Sonically similar limit</Label>
+                        <Label>{d.sonicSimilarLimitLabel}</Label>
                         <NumericInput
                           value={daylistForm.sonic_similar_limit}
                           onChange={(v) =>
@@ -1087,12 +1071,10 @@ export function CreatePlaylistSyncDialog({
                           max={30}
                           defaultValue={10}
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Max similar tracks per seed. Min: 1, max: 30.
-                        </p>
+                        <p className="text-xs text-muted-foreground">{d.sonicSimilarLimitHelp}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Sonically similar playlist limit</Label>
+                        <Label>{d.sonicSimilarPlaylistLimitLabel}</Label>
                         <NumericInput
                           value={daylistForm.sonic_similarity_limit}
                           onChange={(v) =>
@@ -1106,12 +1088,12 @@ export function CreatePlaylistSyncDialog({
                           defaultValue={50}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Max tracks to fetch from Plex sonic API per request. Min: 10, max: 200.
+                          {d.sonicSimilarPlaylistLimitHelp}
                         </p>
                       </div>
                       <div className="space-y-2">
                         <Label>
-                          Sonically similar distance: {daylistForm.sonic_similarity_distance}
+                          {d.sonicSimilarDistanceLabel} {daylistForm.sonic_similarity_distance}
                         </Label>
                         <input
                           type="range"
@@ -1128,7 +1110,7 @@ export function CreatePlaylistSyncDialog({
                           className="slider-range"
                         />
                         <p className="text-xs text-muted-foreground">
-                          0.1 = very similar, 2 = more diverse. Min: 0.1, max: 2.
+                          {d.sonicSimilarDistanceHelp}
                         </p>
                       </div>
                     </div>
@@ -1145,35 +1127,25 @@ export function CreatePlaylistSyncDialog({
                         }
                         className="rounded border-input"
                       />
-                      <span className="text-sm">
-                        Use primary mood for cover (default: secondary)
-                      </span>
+                      <span className="text-sm">{d.usePrimaryMood}</span>
                     </label>
-                    <p className="text-xs text-muted-foreground -mt-2">
-                      Cover text uses the second-most-common mood by default (Meloday). Enable to
-                      use the most common mood instead.
-                    </p>
+                    <p className="text-xs text-muted-foreground -mt-2">{d.usePrimaryMoodHelp}</p>
 
                     <div className="space-y-2">
-                      <Label>Timezone (optional)</Label>
+                      <Label>{d.timezoneLabel}</Label>
                       <Input
-                        placeholder="e.g. America/New_York"
+                        placeholder={d.timezonePlaceholder}
                         value={daylistForm.timezone}
                         onChange={(e) =>
                           setDaylistForm((prev) => ({ ...prev, timezone: e.target.value }))
                         }
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Leave empty to use scheduler timezone
-                      </p>
+                      <p className="text-xs text-muted-foreground">{d.timezoneHelp}</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Time periods (Start–End hour, 0–23)</Label>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        When each period runs. Late Night wraps (e.g. 22–2 = 22,23,0,1,2). Hours
-                        0–23.
-                      </p>
+                      <Label>{d.timePeriodsLabel}</Label>
+                      <p className="text-xs text-muted-foreground mb-2">{d.timePeriodsHelp}</p>
                       <div className="grid gap-2">
                         {Object.entries(daylistForm.time_periods).map(
                           ([period, { start, end }]) => (
@@ -1235,7 +1207,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
 
                 <ExpirationFields
@@ -1260,7 +1232,7 @@ export function CreatePlaylistSyncDialog({
             ) : playlistType === "local_discovery" ? (
               <>
                 <div className="space-y-2">
-                  <Label>Plex Account (play history source)</Label>
+                  <Label>{ld.plexAccountLabel}</Label>
                   <Select
                     value={localDiscoveryForm.plex_history_account_id}
                     onValueChange={(v) =>
@@ -1268,7 +1240,7 @@ export function CreatePlaylistSyncDialog({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
+                      <SelectValue placeholder={ld.selectPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
                       {plexAccounts.map((acc) => (
@@ -1278,21 +1250,16 @@ export function CreatePlaylistSyncDialog({
                           disabled={localDiscoveryUsedIds.has(acc.id)}
                         >
                           {acc.name || acc.id}
-                          {localDiscoveryUsedIds.has(acc.id)
-                            ? " (already has Local Discovery)"
-                            : ""}
+                          {localDiscoveryUsedIds.has(acc.id) ? ld.accountSuffixInUse : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Plex Home users only. Local Discovery uses this account&apos;s play history. One
-                    Local Discovery per user.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{ld.plexAccountHelp}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Lookback days</Label>
+                    <Label>{ld.lookbackDaysLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.lookback_days}
                       onChange={(v) =>
@@ -1302,13 +1269,10 @@ export function CreatePlaylistSyncDialog({
                       max={365}
                       defaultValue={90}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      How far back to count plays. Shorter = more day-to-day variety. Min: 7, max:
-                      365.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.lookbackDaysHelp}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Exclude played days</Label>
+                    <Label>{ld.excludePlayedLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.exclude_played_days}
                       onChange={(v) =>
@@ -1318,14 +1282,12 @@ export function CreatePlaylistSyncDialog({
                       max={30}
                       defaultValue={3}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Skip tracks played in last N days. Reduces repetition. Min: 0, max: 30.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.excludePlayedHelp}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Top artists count</Label>
+                    <Label>{ld.topArtistsCountLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.top_artists_count}
                       onChange={(v) =>
@@ -1338,12 +1300,10 @@ export function CreatePlaylistSyncDialog({
                       max={20}
                       defaultValue={10}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      How many top artists to randomly pick each run. Min: 1, max: 20.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.topArtistsCountHelp}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Artist pool size</Label>
+                    <Label>{ld.artistPoolSizeLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.artist_pool_size}
                       onChange={(v) =>
@@ -1356,13 +1316,11 @@ export function CreatePlaylistSyncDialog({
                       max={50}
                       defaultValue={20}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Size of artist pool to sample from (must be ≥ top artists count).
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.artistPoolSizeHelp}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Max tracks</Label>
+                  <Label>{ld.maxTracksLabel}</Label>
                   <NumericInput
                     value={localDiscoveryForm.max_tracks}
                     onChange={(v) =>
@@ -1372,13 +1330,11 @@ export function CreatePlaylistSyncDialog({
                     max={200}
                     defaultValue={50}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Target playlist size. Min: 1, max: 200.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{ld.maxTracksHelp}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Sonic similar limit</Label>
+                    <Label>{ld.sonicSimilarLimitLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.sonic_similar_limit}
                       onChange={(v) =>
@@ -1391,12 +1347,12 @@ export function CreatePlaylistSyncDialog({
                       max={50}
                       defaultValue={15}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Max sonically similar tracks per seed. Min: 5, max: 50.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.sonicSimilarLimitHelp}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Historical ratio: {localDiscoveryForm.historical_ratio}</Label>
+                    <Label>
+                      {ld.historicalRatioLabel} {localDiscoveryForm.historical_ratio}
+                    </Label>
                     <input
                       type="range"
                       min="0"
@@ -1411,15 +1367,12 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="w-full"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60%
-                      similar.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{ld.historicalRatioHelp}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Sonic similarity distance</Label>
+                    <Label>{ld.sonicSimilarityDistanceLabel}</Label>
                     <NumericInput
                       value={localDiscoveryForm.sonic_similarity_distance}
                       onChange={(v) =>
@@ -1434,7 +1387,7 @@ export function CreatePlaylistSyncDialog({
                       numericType="float"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.
+                      {ld.sonicSimilarityDistanceHelp}
                     </p>
                   </div>
                 </div>
@@ -1452,13 +1405,13 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="rounded border-input"
                     />
-                    <Label htmlFor="create-ld-schedule-override">Override default schedule</Label>
+                    <Label htmlFor="create-ld-schedule-override">{sch.overrideLabel}</Label>
                   </div>
                   {localDiscoveryForm.schedule_override && (
                     <>
                       <div className="space-y-2 rounded-lg border p-4">
                         <Input
-                          placeholder="0 6 * * *"
+                          placeholder={sch.createCronPlaceholder}
                           value={localDiscoveryForm.schedule_cron}
                           onChange={(e) =>
                             setLocalDiscoveryForm((prev) => ({
@@ -1468,15 +1421,11 @@ export function CreatePlaylistSyncDialog({
                           }
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
-                      </p>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
                     </>
                   )}
                   {!localDiscoveryForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">
-                      Uses global default (Config → Scheduler)
-                    </p>
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
                   )}
                 </div>
                 <label className="flex items-center space-x-2">
@@ -1488,7 +1437,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
                 <ExpirationFields
                   idPrefix="create-ld"
@@ -1514,22 +1463,19 @@ export function CreatePlaylistSyncDialog({
             ) : playlistType === "top_tracks" ? (
               <>
                 <div className="space-y-2">
-                  <Label>Artists (one per line)</Label>
+                  <Label>{tt.artistsLabel}</Label>
                   <textarea
                     className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Artist One&#10;Artist Two&#10;Artist Three"
+                    placeholder={tt.artistsPlaceholder}
                     value={topTracksForm.artists}
                     onChange={(e) =>
                       setTopTracksForm((prev) => ({ ...prev, artists: e.target.value }))
                     }
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Artists must exist in your library. Names are validated against the library
-                    cache.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{tt.artistsHelp}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Top X tracks per artist</Label>
+                  <Label>{tt.topXLabelCreate}</Label>
                   <NumericInput
                     placeholder="5"
                     value={topTracksForm.top_x}
@@ -1538,12 +1484,10 @@ export function CreatePlaylistSyncDialog({
                     max={20}
                     defaultValue={5}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Number of top tracks per artist. Min: 1, max: 20.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{tt.topXHelp}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Target</Label>
+                  <Label>{tt.targetLabel}</Label>
                   <Select
                     value={topTracksForm.target}
                     onValueChange={(v: "plex" | "jellyfin") =>
@@ -1562,10 +1506,10 @@ export function CreatePlaylistSyncDialog({
                       <SelectItem value="jellyfin">Jellyfin</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Where to create the playlist.</p>
+                  <p className="text-xs text-muted-foreground">{tt.targetWhereHelp}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Source (Jellyfin target uses Last.fm only)</Label>
+                  <Label>{tt.sourceLabelCreate}</Label>
                   <Select
                     value={topTracksForm.target === "jellyfin" ? "lastfm" : topTracksForm.source}
                     disabled={topTracksForm.target === "jellyfin"}
@@ -1577,13 +1521,11 @@ export function CreatePlaylistSyncDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="plex">Plex (ratingCount)</SelectItem>
-                      <SelectItem value="lastfm">Last.fm</SelectItem>
+                      <SelectItem value="plex">{tt.plexOptionRating}</SelectItem>
+                      <SelectItem value="lastfm">{tt.lastfmOption}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Plex uses ratingCount; Last.fm uses play counts. Jellyfin requires Last.fm.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{tt.sourceHelp}</p>
                 </div>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1597,11 +1539,11 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Use custom playlist name</span>
+                  <span className="text-sm">{tt.useCustomPlaylistName}</span>
                 </label>
                 {topTracksForm.use_custom_playlist_name && (
                   <div className="space-y-2">
-                    <Label>Custom playlist name</Label>
+                    <Label>{tt.customPlaylistNameLabel}</Label>
                     <Input
                       value={topTracksForm.custom_playlist_name}
                       onChange={(e) =>
@@ -1610,19 +1552,13 @@ export function CreatePlaylistSyncDialog({
                           custom_playlist_name: e.target.value,
                         }))
                       }
-                      placeholder="e.g. Road Trip Mix"
+                      placeholder={tt.customPlaylistPlaceholder}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Override auto-generated name. Shown as [Cmdarr] Artist Essentials:
-                      &lt;name&gt;.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{tt.customPlaylistNameHelper}</p>
                   </div>
                 )}
                 {!topTracksForm.use_custom_playlist_name && (
-                  <p className="text-xs text-muted-foreground">
-                    Playlist name is auto-generated from artist names (e.g. Artist1 · Artist2 + 3
-                    More).
-                  </p>
+                  <p className="text-xs text-muted-foreground">{tt.autoNameHelp}</p>
                 )}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -1638,28 +1574,24 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="rounded border-input"
                     />
-                    <Label htmlFor="create-tt-schedule-override">Override default schedule</Label>
+                    <Label htmlFor="create-tt-schedule-override">{sch.overrideLabel}</Label>
                   </div>
                   {topTracksForm.schedule_override && (
                     <>
                       <div className="space-y-2 rounded-lg border p-4">
                         <Input
-                          placeholder="0 6 * * *"
+                          placeholder={sch.createCronPlaceholder}
                           value={topTracksForm.schedule_cron}
                           onChange={(e) =>
                             setTopTracksForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
                           }
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
-                      </p>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
                     </>
                   )}
                   {!topTracksForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">
-                      Uses global default (Config → Scheduler)
-                    </p>
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
                   )}
                 </div>
                 <label className="flex items-center space-x-2">
@@ -1671,7 +1603,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
 
                 <ExpirationFields
@@ -1696,29 +1628,27 @@ export function CreatePlaylistSyncDialog({
             ) : playlistType === "mood_playlist" ? (
               <>
                 <div className="space-y-2">
-                  <Label>Moods (select one or more)</Label>
+                  <Label>{mood.moodsHeading}</Label>
                   <div className="max-h-[200px] overflow-y-auto rounded-md border border-input p-2">
                     {moodsList.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Loading moods...</p>
+                      <p className="text-sm text-muted-foreground">{mood.loadingMoods}</p>
                     ) : (
                       <div className="grid grid-cols-3 gap-1">
-                        {moodsList.map((mood) => (
-                          <label key={mood} className="flex items-center space-x-2">
+                        {moodsList.map((moodName) => (
+                          <label key={moodName} className="flex items-center space-x-2">
                             <input
                               type="checkbox"
-                              checked={moodPlaylistForm.moods.includes(mood)}
-                              onChange={() => handleToggleMood(mood)}
+                              checked={moodPlaylistForm.moods.includes(moodName)}
+                              onChange={() => handleToggleMood(moodName)}
                               className="rounded border-gray-300"
                             />
-                            <span className="text-sm">{mood}</span>
+                            <span className="text-sm">{moodName}</span>
                           </label>
                         ))}
                       </div>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Tracks matching multiple selected moods rank higher. Uses Plex Sonic Analysis.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{mood.rankingHelper}</p>
                 </div>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1732,11 +1662,11 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Use custom playlist name</span>
+                  <span className="text-sm">{mood.useCustomPlaylistName}</span>
                 </label>
                 {moodPlaylistForm.use_custom_playlist_name && (
                   <div className="space-y-2">
-                    <Label>Custom playlist name</Label>
+                    <Label>{mood.customPlaylistNameLabel}</Label>
                     <Input
                       value={moodPlaylistForm.custom_playlist_name}
                       onChange={(e) =>
@@ -1745,20 +1675,16 @@ export function CreatePlaylistSyncDialog({
                           custom_playlist_name: e.target.value,
                         }))
                       }
-                      placeholder="e.g. Chill Vibes"
+                      placeholder={mood.customPlaylistPlaceholder}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Override auto-generated name. Shown as [Cmdarr] Mood: &lt;name&gt;.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{mood.customPlaylistNameHelper}</p>
                   </div>
                 )}
                 {!moodPlaylistForm.use_custom_playlist_name && (
-                  <p className="text-xs text-muted-foreground">
-                    Playlist name is auto-generated from mood names (e.g. Chill · Relaxed + 2 More).
-                  </p>
+                  <p className="text-xs text-muted-foreground">{mood.autoNameHelp}</p>
                 )}
                 <div className="space-y-2">
-                  <Label>Max tracks</Label>
+                  <Label>{mood.maxTracksLabel}</Label>
                   <NumericInput
                     placeholder="50"
                     value={moodPlaylistForm.max_tracks}
@@ -1769,7 +1695,7 @@ export function CreatePlaylistSyncDialog({
                     max={200}
                     defaultValue={50}
                   />
-                  <p className="text-xs text-muted-foreground">Min 1, max 200</p>
+                  <p className="text-xs text-muted-foreground">{mood.maxTracksHelp}</p>
                 </div>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1783,7 +1709,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Force fresh (exclude tracks from previous run)</span>
+                  <span className="text-sm">{mood.forceFresh}</span>
                 </label>
                 <label className="flex items-center space-x-2">
                   <input
@@ -1797,14 +1723,14 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Limit by release year (album year)</span>
+                  <span className="text-sm">{mood.limitByYear}</span>
                 </label>
                 {moodPlaylistForm.limit_by_year && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Min year</Label>
+                      <Label>{mood.minYear}</Label>
                       <NumericInput
-                        placeholder="e.g. 1990"
+                        placeholder={mood.minYearPlaceholder}
                         value={moodPlaylistForm.min_year}
                         onChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, min_year: v }))}
                         min={1800}
@@ -1814,9 +1740,9 @@ export function CreatePlaylistSyncDialog({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Max year</Label>
+                      <Label>{mood.maxYear}</Label>
                       <NumericInput
-                        placeholder="e.g. 2010"
+                        placeholder={mood.maxYearPlaceholder}
                         value={moodPlaylistForm.max_year}
                         onChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, max_year: v }))}
                         min={1800}
@@ -1828,9 +1754,7 @@ export function CreatePlaylistSyncDialog({
                   </div>
                 )}
                 {moodPlaylistForm.limit_by_year && (
-                  <p className="text-xs text-muted-foreground">
-                    Set min and/or max. Tracks without year metadata are excluded. Range: 1800–2100.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{mood.yearRangeHelp}</p>
                 )}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -1846,13 +1770,13 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="rounded border-input"
                     />
-                    <Label htmlFor="create-mood-schedule-override">Override default schedule</Label>
+                    <Label htmlFor="create-mood-schedule-override">{sch.overrideLabel}</Label>
                   </div>
                   {moodPlaylistForm.schedule_override && (
                     <>
                       <div className="space-y-2 rounded-lg border p-4">
                         <Input
-                          placeholder="0 6 * * *"
+                          placeholder={sch.createCronPlaceholder}
                           value={moodPlaylistForm.schedule_cron}
                           onChange={(e) =>
                             setMoodPlaylistForm((prev) => ({
@@ -1862,15 +1786,11 @@ export function CreatePlaylistSyncDialog({
                           }
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
-                      </p>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
                     </>
                   )}
                   {!moodPlaylistForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">
-                      Uses global default (Config → Scheduler)
-                    </p>
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
                   )}
                 </div>
                 <label className="flex items-center space-x-2">
@@ -1882,7 +1802,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
 
                 <ExpirationFields
@@ -1907,26 +1827,26 @@ export function CreatePlaylistSyncDialog({
             ) : playlistType === "xmplaylist" ? (
               <>
                 <div className="space-y-2">
-                  <Label>Station</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Search by channel number or name. Sorted by channel number.
-                  </p>
+                  <Label>{xm.stationLabel}</Label>
+                  <p className="text-xs text-muted-foreground">{xm.stationSearchHint}</p>
                   {xmplaylistForm.station_label ? (
-                    <p className="text-sm font-medium">Selected: {xmplaylistForm.station_label}</p>
+                    <p className="text-sm font-medium">
+                      {xm.selectedStationLabel} {xmplaylistForm.station_label}
+                    </p>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No station selected</p>
+                    <p className="text-sm text-muted-foreground">{xm.noStationSelected}</p>
                   )}
                   <Input
-                    placeholder="Filter stations…"
+                    placeholder={xm.filterStationsPlaceholder}
                     value={xmplaylistStationFilter}
                     onChange={(e) => setXmplaylistStationFilter(e.target.value)}
                     disabled={xmplaylistStationsLoading}
                   />
                   <div className="max-h-40 overflow-y-auto rounded-md border border-input">
                     {xmplaylistStationsLoading ? (
-                      <p className="p-3 text-sm text-muted-foreground">Loading stations…</p>
+                      <p className="p-3 text-sm text-muted-foreground">{xm.loadingStations}</p>
                     ) : filteredXmStations.length === 0 ? (
-                      <p className="p-3 text-sm text-muted-foreground">No stations match.</p>
+                      <p className="p-3 text-sm text-muted-foreground">{xm.noStationsMatch}</p>
                     ) : (
                       filteredXmStations.map((s) => (
                         <button
@@ -1949,7 +1869,7 @@ export function CreatePlaylistSyncDialog({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Playlist source</Label>
+                  <Label>{xm.playlistSourceLabel}</Label>
                   <Select
                     value={xmplaylistForm.playlist_kind}
                     onValueChange={(v: "newest" | "most_heard") =>
@@ -1960,14 +1880,14 @@ export function CreatePlaylistSyncDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="newest">Newest tracks</SelectItem>
-                      <SelectItem value="most_heard">Most played</SelectItem>
+                      <SelectItem value="newest">{xm.newestTracksOption}</SelectItem>
+                      <SelectItem value="most_heard">{xm.mostPlayedOption}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {xmplaylistForm.playlist_kind === "most_heard" && (
                   <div className="space-y-2">
-                    <Label>Time period</Label>
+                    <Label>{xm.timePeriodLabel}</Label>
                     <Select
                       value={String(xmplaylistForm.most_heard_days)}
                       onValueChange={(v) =>
@@ -1981,17 +1901,17 @@ export function CreatePlaylistSyncDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">1 day</SelectItem>
-                        <SelectItem value="7">7 days</SelectItem>
-                        <SelectItem value="14">14 days</SelectItem>
-                        <SelectItem value="30">30 days</SelectItem>
-                        <SelectItem value="60">60 days</SelectItem>
+                        <SelectItem value="1">{xm.period1Day}</SelectItem>
+                        <SelectItem value="7">{xm.period7Days}</SelectItem>
+                        <SelectItem value="14">{xm.period14Days}</SelectItem>
+                        <SelectItem value="30">{xm.period30Days}</SelectItem>
+                        <SelectItem value="60">{xm.period60Days}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label>Max tracks in playlist</Label>
+                  <Label>{xm.maxTracksInPlaylistLabel}</Label>
                   <NumericInput
                     value={xmplaylistForm.max_tracks}
                     onChange={(v) =>
@@ -2001,10 +1921,10 @@ export function CreatePlaylistSyncDialog({
                     max={50}
                     defaultValue={50}
                   />
-                  <p className="text-xs text-muted-foreground">Between 1 and 50.</p>
+                  <p className="text-xs text-muted-foreground">{xm.maxTracksHelpRange}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Target</Label>
+                  <Label>{ps.targetLabel}</Label>
                   <Select
                     value={xmplaylistForm.target}
                     onValueChange={(v: "plex" | "jellyfin") =>
@@ -2091,13 +2011,13 @@ export function CreatePlaylistSyncDialog({
                       }
                       className="rounded border-input"
                     />
-                    <Label htmlFor="create-xm-schedule-override">Override default schedule</Label>
+                    <Label htmlFor="create-xm-schedule-override">{sch.overrideLabel}</Label>
                   </div>
                   {xmplaylistForm.schedule_override && (
                     <>
                       <div className="space-y-2 rounded-lg border p-4">
                         <Input
-                          placeholder="0 6 * * *"
+                          placeholder={sch.createCronPlaceholder}
                           value={xmplaylistForm.schedule_cron}
                           onChange={(e) =>
                             setXmplaylistForm((prev) => ({
@@ -2107,9 +2027,7 @@ export function CreatePlaylistSyncDialog({
                           }
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Cron: minute hour day month weekday (e.g. 0 6 * * * = daily 6am)
-                      </p>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
                     </>
                   )}
                 </div>
@@ -2122,7 +2040,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
                 <ExpirationFields
                   idPrefix="create-xm"
@@ -2147,11 +2065,11 @@ export function CreatePlaylistSyncDialog({
               <>
                 {/* Playlist URL */}
                 <div className="space-y-2">
-                  <Label>Playlist URL</Label>
+                  <Label>{ps.playlistUrlLabel}</Label>
                   <div className="relative">
                     <Input
                       type="url"
-                      placeholder="https://open.spotify.com/playlist/..."
+                      placeholder={ps.playlistUrlPlaceholder}
                       value={formData.playlist_url}
                       onChange={(e) =>
                         setFormData((prev) => ({
@@ -2198,9 +2116,7 @@ export function CreatePlaylistSyncDialog({
                       </div>
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    Supports Spotify, Deezer public playlists
-                  </p>
+                  <p className="text-xs text-muted-foreground">{ps.publicSourcesHelp}</p>
                 </div>
               </>
             )}
@@ -2211,7 +2127,7 @@ export function CreatePlaylistSyncDialog({
             ) && (
               <>
                 <div className="space-y-2">
-                  <Label>Target</Label>
+                  <Label>{ps.targetLabel}</Label>
                   <Select
                     value={formData.target}
                     onValueChange={(value) =>
@@ -2264,7 +2180,7 @@ export function CreatePlaylistSyncDialog({
                 )}
 
                 <div className="space-y-2">
-                  <Label>Sync Mode</Label>
+                  <Label>{ps.syncModeLabel}</Label>
                   <Select
                     value={formData.sync_mode}
                     onValueChange={(value) =>
@@ -2275,8 +2191,8 @@ export function CreatePlaylistSyncDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="full">Full Sync</SelectItem>
-                      <SelectItem value="append">Append Only</SelectItem>
+                      <SelectItem value="full">{ps.syncModeFull}</SelectItem>
+                      <SelectItem value="append">{ps.syncModeAppend}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2299,29 +2215,25 @@ export function CreatePlaylistSyncDialog({
                       htmlFor="create-ext-schedule-override"
                       className="cursor-pointer font-normal"
                     >
-                      Override default schedule
+                      {sch.overrideLabel}
                     </Label>
                   </div>
                   {formData.schedule_override && (
                     <>
                       <div className="space-y-2 rounded-lg border p-4">
                         <Input
-                          placeholder="0 6 * * *"
+                          placeholder={sch.createCronPlaceholder}
                           value={formData.schedule_cron}
                           onChange={(e) =>
                             setFormData((prev) => ({ ...prev, schedule_cron: e.target.value }))
                           }
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)
-                      </p>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
                     </>
                   )}
                   {!formData.schedule_override && (
-                    <p className="text-xs text-muted-foreground">
-                      Uses global default (Config → Scheduler)
-                    </p>
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
                   )}
                 </div>
 
@@ -2337,7 +2249,7 @@ export function CreatePlaylistSyncDialog({
                     }
                     className="rounded border-gray-300"
                   />
-                  <span className="text-sm">Enable immediately after creation</span>
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
 
                 {isCompoundFieldVisible(
@@ -2402,18 +2314,20 @@ export function CreatePlaylistSyncDialog({
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  {cw.submitCreating}
                 </>
               ) : playlistType === "daylist" ? (
-                "Create Daylist"
+                cw.submitDaylist
               ) : playlistType === "top_tracks" ? (
-                "Create Artist Essentials"
+                cw.submitArtistEssentials
               ) : playlistType === "local_discovery" ? (
-                "Create Local Discovery"
+                cw.submitLocalDiscovery
               ) : playlistType === "xmplaylist" ? (
-                "Create XMPlaylist"
+                cw.submitXmplaylist
+              ) : playlistType === "mood_playlist" ? (
+                cw.submitMoodPlaylist
               ) : (
-                "Create Playlist Sync"
+                cw.submitPlaylistSync
               )}
             </Button>
           )}

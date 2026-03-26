@@ -312,7 +312,9 @@ export function CommandsPage() {
       }
     }
 
-    const cfgPlexIdsRaw = Array.isArray(cfg.plex_account_ids) ? cfg.plex_account_ids.map(String) : [];
+    const cfgPlexIdsRaw = Array.isArray(cfg.plex_account_ids)
+      ? cfg.plex_account_ids.map(String)
+      : [];
     let syncMultiPlex = cfgPlexIdsRaw.length > 0;
     let plexAccountIdsList = cfgPlexIdsRaw;
     if (command.command_name.startsWith("xmplaylist_")) {

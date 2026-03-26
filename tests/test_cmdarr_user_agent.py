@@ -1,7 +1,6 @@
 """Unit tests for utils/cmdarr_user_agent.py."""
 
 from __version__ import __version__
-
 from services.config_service import _CONFIG_KEYS_SKIP_ENV
 from utils.cmdarr_user_agent import (
     DEFAULT_CMDARR_USER_AGENT,
