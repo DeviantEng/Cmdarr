@@ -2031,7 +2031,7 @@ export function CreatePlaylistSyncDialog({
                   resolveContextForCreate({
                     playlistType: "xmplaylist",
                     target: xmplaylistForm.target,
-                  }),
+                  })
                 ) && (
                   <PlexPlaylistTargetSection
                     accounts={plexAccounts}
@@ -2059,25 +2059,23 @@ export function CreatePlaylistSyncDialog({
                   resolveContextForCreate({
                     playlistType: "xmplaylist",
                     target: xmplaylistForm.target,
-                  }),
+                  })
                 ) && (
-                  <div className="space-y-2 rounded-lg border p-4">
-                    <PlaylistSyncArtistDiscoveryControl
-                      checkboxId="create-xm-artist-discovery"
-                      value={{
-                        enable_artist_discovery: xmplaylistForm.enable_artist_discovery,
-                        artist_discovery_max_per_run:
-                          xmplaylistForm.artist_discovery_max_per_run ?? 2,
-                      }}
-                      onChange={(next) =>
-                        setXmplaylistForm((prev) => ({
-                          ...prev,
-                          enable_artist_discovery: next.enable_artist_discovery,
-                          artist_discovery_max_per_run: next.artist_discovery_max_per_run,
-                        }))
-                      }
-                    />
-                  </div>
+                  <PlaylistSyncArtistDiscoveryControl
+                    checkboxId="create-xm-artist-discovery"
+                    value={{
+                      enable_artist_discovery: xmplaylistForm.enable_artist_discovery,
+                      artist_discovery_max_per_run:
+                        xmplaylistForm.artist_discovery_max_per_run ?? 2,
+                    }}
+                    onChange={(next) =>
+                      setXmplaylistForm((prev) => ({
+                        ...prev,
+                        enable_artist_discovery: next.enable_artist_discovery,
+                        artist_discovery_max_per_run: next.artist_discovery_max_per_run,
+                      }))
+                    }
+                  />
                 )}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -2208,7 +2206,9 @@ export function CreatePlaylistSyncDialog({
             )}
 
             {/* Common Settings (hidden when a dedicated form above already covers these fields) */}
-            {!(PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS as readonly string[]).includes(playlistType) && (
+            {!(PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS as readonly string[]).includes(
+              playlistType
+            ) && (
               <>
                 <div className="space-y-2">
                   <Label>Target</Label>
@@ -2239,7 +2239,7 @@ export function CreatePlaylistSyncDialog({
                   resolveContextForCreate({
                     playlistType,
                     target: formData.target,
-                  }),
+                  })
                 ) && (
                   <PlexPlaylistTargetSection
                     accounts={plexAccounts}
@@ -2345,7 +2345,7 @@ export function CreatePlaylistSyncDialog({
                   resolveContextForCreate({
                     playlistType,
                     target: formData.target,
-                  }),
+                  })
                 ) && (
                   <PlaylistSyncArtistDiscoveryControl
                     checkboxId="create-enable-artist-discovery"
