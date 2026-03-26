@@ -9,18 +9,17 @@ from typing import Any
 
 import aiohttp
 
-from __version__ import __version__
+from utils.cmdarr_user_agent import DEFAULT_CMDARR_USER_AGENT, resolve_cmdarr_user_agent
 
 from .client_base import BaseAPIClient
 
-# Hardcoded per MusicBrainz API guidelines: AppName/Version (contact)
-# Parentheses required; project URL for maintainer contact
-MUSICBRAINZ_USER_AGENT = f"Cmdarr/{__version__} (https://github.com/DeviantEng/Cmdarr)"
+# Backward-compatible name (default only; real requests use resolve_cmdarr_user_agent(config))
+MUSICBRAINZ_USER_AGENT = DEFAULT_CMDARR_USER_AGENT
 
 
 class MusicBrainzClient(BaseAPIClient):
     def __init__(self, config):
-        headers = {"User-Agent": MUSICBRAINZ_USER_AGENT}
+        headers = {"User-Agent": resolve_cmdarr_user_agent(config)}
 
         super().__init__(
             config=config,

@@ -1,4 +1,10 @@
-# Project metadata omitted; version lives in __version__.py only
+# Application version for runtime/API: __version__.py (single source of truth for releases).
+# [project] below satisfies uv / PEP 621 so `uv run` knows the Python bound (silences requires-python warning).
+
+[project]
+name = "cmdarr"
+version = "0.0.0"
+requires-python = ">=3.14"
 
 [tool.ruff]
 target-version = "py314"

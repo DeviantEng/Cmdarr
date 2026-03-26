@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.12] - 2026-03-26
+
+### Housekeeping
+- **Security updates**: Bump python base digest; update npm flatted to address CVE-2026-33228; addressed codeql finding in new_release.py; Bump trivy scanner version (migrate to SHA instead of version tag due to recent supply chain attack)
+- **CICD cleanup**: Dependabot tracking for trivy image; Additions to .dockerignore to decrease image size
+
+### Features
+- Command-spec: create dialog refactor for types that skip Common Settings; XMPlaylist uses its own form block.
+- XMPlaylist: register target client for library cache; split playlist title vs command display name; multi-Plex create/edit like playlist sync; cleanup matches multi-user config.
+- Security: pip-audit ignore for Pygments CVE-2026-4539 until PyPI has a fix; `docs/security-audit-followups.md` to revisit.
+- API: `except (ValueError, IndexError)` in command creation routes (Python 3).
+- Docs: `docs/testing_unit_spec.md` for unit test conventions.
+- UI: `docs/create_command_plex_playlist_target_spec.md` and shared `PlexPlaylistTargetSection` for XMPlaylist and external playlist sync (no Plex user dropdown); shorter XMPlaylist station list with scroll.
+- UI: Command edit dialog uses TypeScript spec (`command-spec` copy + `getCommandEditSectionOrder`) with `CommandEditFormBody` and per-type section components; shared artist-discovery copy and `ArtistDiscoveryFields`; XMPlaylist playlist mode and targets read-only on edit; top tracks target read-only on edit; enabled state shown as a header badge (removed large Enabled card).
+- UI: Phase 2 command-spec — `CompoundFieldDef`, `getFieldsForContext` / `isCompoundFieldVisible`, shared `PlaylistSyncArtistDiscoveryControl` for create+edit; create wizard imports `PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS` from spec; Plex target + artist discovery visibility driven by `resolveContextForCreate` / `resolveContextForEditCommand`.
+- UI: Create XMPlaylist — artist discovery block no longer wrapped in an extra bordered card (matches edit + external playlist create).
+
 ## [0.3.11] - 2026-03-17
 
 ### Housekeeping

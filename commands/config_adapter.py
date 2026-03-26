@@ -35,6 +35,9 @@ class ConfigAdapter:
         self.LOG_RETENTION_DAYS = config_service.get("LOG_RETENTION_DAYS", 7)
         self.LOG_ROTATION = config_service.get("LOG_ROTATION", "daily")
 
+        # Outbound HTTP (MusicBrainz, ListenBrainz, …)
+        self.CMDARR_USER_AGENT = config_service.get("CMDARR_USER_AGENT", "")
+
         # Lidarr Configuration
         self.LIDARR_URL = config_service.get("LIDARR_URL", "http://localhost:8686")
         self.LIDARR_API_KEY = config_service.get("LIDARR_API_KEY", "")
@@ -72,6 +75,10 @@ class ConfigAdapter:
         self.JELLYFIN_USER_ID = config_service.get("JELLYFIN_USER_ID", "")
         self.JELLYFIN_TIMEOUT = config_service.get("JELLYFIN_TIMEOUT", 30)
         self.JELLYFIN_IGNORE_TLS = config_service.get("JELLYFIN_IGNORE_TLS", False)
+
+        # XMPlaylist (xmplaylist.com)
+        self.XMPLAYLIST_USE_CURL_CFFI = config_service.get("XMPLAYLIST_USE_CURL_CFFI", True)
+        self.XMPLAYLIST_CURL_IMPERSONATE = config_service.get("XMPLAYLIST_CURL_IMPERSONATE", "")
 
         # Spotify Configuration
         self.SPOTIFY_CLIENT_ID = config_service.get("SPOTIFY_CLIENT_ID", "")

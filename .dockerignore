@@ -3,6 +3,17 @@
 .gitignore
 .github
 
+# CI / local tooling (not used inside the runtime image)
+Dockerfile
+.dockerignore
+Makefile
+.trivyignore
+requirements-dev.txt
+pyproject.toml
+uv.lock
+.python-version
+.nvmrc
+
 # Documentation
 README.md
 *.md
@@ -60,6 +71,7 @@ data/
 logs/
 
 # Testing
+tests/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -68,6 +80,12 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
+
+# Local security / package audit caches (from Makefile or CLI)
+.pip-audit-cache/
+
+# Editor / agent (if present)
+.cursor/
 
 # Temporary files
 temp/

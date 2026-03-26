@@ -1,5 +1,8 @@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { commandUiCopy } from "@/command-spec";
+
+const exp = commandUiCopy.expiration;
 
 interface ExpirationFieldsProps {
   enabled: boolean;
@@ -54,7 +57,7 @@ export function ExpirationFields({
       {enabled && (
         <div className="space-y-2 rounded-lg border p-4">
           <Label htmlFor={`${idPrefix}-datetime`} className="text-sm">
-            Expires at
+            {exp.expiresAtLabel}
           </Label>
           <Input
             id={`${idPrefix}-datetime`}
@@ -73,7 +76,7 @@ export function ExpirationFields({
                 onChange={(e) => onDeletePlaylistChange(e.target.checked)}
                 className="rounded border-input"
               />
-              <span className="text-sm">Delete playlist from target when expired</span>
+              <span className="text-sm">{exp.deletePlaylistLabel}</span>
             </label>
           )}
         </div>

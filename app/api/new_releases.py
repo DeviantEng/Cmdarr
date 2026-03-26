@@ -11,7 +11,6 @@ Flow:
 New: DB-backed pending table, dismiss, recheck, run-batch, scan-artist.
 """
 
-import json
 import random
 from datetime import UTC, datetime
 from typing import Annotated
@@ -729,6 +728,41 @@ class ScanArtistUrlRequest(BaseModel):
     album_types: list[str] | None = None
 
 
+class ScanArtistUrlAlbumOut(BaseModel):
+    """Serialized album row for scan-artist-url; explicit fields avoid exception/taint flow to clients."""
+
+    name: str
+    release_date: str
+    album_type: str
+    total_tracks: int
+    album_url: str
+    harmony_url: str
+
+
+class ScanArtistUrlResponse(BaseModel):
+    success: bool
+    artist_name: str
+    artist_in_mb: bool
+    musicbrainz_artist_url: str | None
+    total_albums: int
+    missing_count: int
+    albums: list[ScanArtistUrlAlbumOut]
+
+
+def _missing_album_dicts_to_out(items: list[dict]) -> list[ScanArtistUrlAlbumOut]:
+    return [
+        ScanArtistUrlAlbumOut(
+            name=str(a.get("name", "Unknown")),
+            release_date=str(a.get("release_date", "")),
+            album_type=str(a.get("album_type", "")),
+            total_tracks=int(a.get("total_tracks", 0) or 0),
+            album_url=str(a.get("album_url", "")),
+            harmony_url=str(a.get("harmony_url", "")),
+        )
+        for a in items
+    ]
+
+
 def _build_missing_album(album: dict, artist_id: str, selected: set[str]) -> dict | None:
     """Build missing album dict if album passes filters."""
     if str(album.get("primary_artist_id", "")) != str(artist_id):
@@ -752,8 +786,8 @@ def _build_missing_album(album: dict, artist_id: str, selected: set[str]) -> dic
     }
 
 
-@router.post("/new-releases/scan-artist-url")
-async def scan_artist_url(body: ScanArtistUrlRequest):
+@router.post("/new-releases/scan-artist-url", response_model=ScanArtistUrlResponse)
+async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
     """
     Scan by Spotify or Deezer artist or album URL.
     - Album URL: returns single release with Harmony link.
@@ -806,24 +840,24 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                     else f"https://www.deezer.com/album/{album_id}"
                 )
             harmony_url = f"{HARMONY_BASE_URL}?url={quote(album_url, safe='')}"
-            return {
-                "success": True,
-                "artist_name": artist_name,
-                "artist_in_mb": False,
-                "musicbrainz_artist_url": None,
-                "total_albums": 1,
-                "missing_count": 1,
-                "albums": [
-                    {
-                        "name": album_info.get("title", "Unknown"),
-                        "release_date": album_info.get("release_date", ""),
-                        "album_type": album_info.get("record_type", "album"),
-                        "total_tracks": album_info.get("nb_tracks", 0),
-                        "album_url": album_url,
-                        "harmony_url": harmony_url,
-                    }
+            return ScanArtistUrlResponse(
+                success=True,
+                artist_name=str(artist_name),
+                artist_in_mb=False,
+                musicbrainz_artist_url=None,
+                total_albums=1,
+                missing_count=1,
+                albums=[
+                    ScanArtistUrlAlbumOut(
+                        name=str(album_info.get("title", "Unknown")),
+                        release_date=str(album_info.get("release_date", "")),
+                        album_type=str(album_info.get("record_type", "album")),
+                        total_tracks=int(album_info.get("nb_tracks", 0) or 0),
+                        album_url=str(album_url),
+                        harmony_url=str(harmony_url),
+                    )
                 ],
-            }
+            )
         except HTTPException:
             raise
         except Exception:
@@ -857,8 +891,8 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
 
-    async def _do_mb_scan() -> dict:
-        """Run MusicBrainz scan; returns result dict. Raises HTTPException on error."""
+    async def _do_mb_scan() -> ScanArtistUrlResponse:
+        """Run MusicBrainz scan. Raises HTTPException on error."""
         mb_artist_mbid: str | None = None
         best_missing: list[dict] = []
         async with MusicBrainzClient(config) as mb_client:
@@ -924,27 +958,25 @@ async def scan_artist_url(body: ScanArtistUrlRequest):
                 best_missing, title_key="name", date_key="release_date"
             )
 
-            return {
-                "success": True,
-                "artist_name": artist_name,
-                "artist_in_mb": mb_artist_mbid is not None,
-                "musicbrainz_artist_url": f"https://musicbrainz.org/artist/{mb_artist_mbid}"
-                if mb_artist_mbid
-                else None,
-                "total_albums": len(albums),
-                "missing_count": len(best_missing),
-                "albums": best_missing,
-            }
+            return ScanArtistUrlResponse(
+                success=True,
+                artist_name=str(artist_name),
+                artist_in_mb=mb_artist_mbid is not None,
+                musicbrainz_artist_url=(
+                    f"https://musicbrainz.org/artist/{mb_artist_mbid}" if mb_artist_mbid else None
+                ),
+                total_albums=len(albums),
+                missing_count=len(best_missing),
+                albums=_missing_album_dicts_to_out(best_missing),
+            )
 
     try:
-        result = await _do_mb_scan()
+        return await _do_mb_scan()
     except HTTPException:
         raise
     except Exception:
         logger.exception("Scan artist URL failed")
         raise HTTPException(status_code=500, detail="Scan artist URL failed") from None
-    # JSON round-trip breaks taint flow (CodeQL: stack trace exposure)
-    return json.loads(json.dumps(result))
 
 
 @router.post("/new-releases/sync-lidarr-artists")

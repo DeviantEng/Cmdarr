@@ -54,6 +54,7 @@
     "vite": "^7.1.7"
   },
   "overrides": {
+    "picomatch": "4.0.4",
     "rollup": "4.59.0",
     "minimatch": "9.0.7",
     "@typescript-eslint/typescript-estree": {

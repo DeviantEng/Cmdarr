@@ -1,6 +1,9 @@
 # Core HTTP client for async requests
 aiohttp>=3.8.0
 
+# TLS/browser fingerprint impersonation (xmplaylist.com behind Cloudflare)
+curl-cffi>=0.7.0
+
 # Synchronous HTTP client for Plex API (proven working approach)
 requests>=2.28.0
 
@@ -33,6 +36,8 @@ tzdata>=2024.1
 
 # Spotify playlist scraping (no credentials required for public playlists)
 spotifyscraper>=2.1.0
+# Transitive: spotifyscraper → rich → pygments. When PyPI has a fixed release, pin e.g.:
+# Pygments>=2.19.3  # CVE-2026-4539 / GHSA-5239-wwwm-4pmq; then remove pip-audit --ignore-vuln in Makefile + CI
 
 # Password hashing for access control (bcrypt directly; passlib unmaintained, incompatible with bcrypt 4.1+)
 bcrypt>=4.0.0
