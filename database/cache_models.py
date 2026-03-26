@@ -6,7 +6,7 @@ SQLAlchemy models for Cmdarr cache database
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
 # Separate base for cache database
