@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixes
 - **Playlist naming**: Fixed issue where music target was showing in playlist name in Plex/Jellyfin
+- **Playlist match tuning**: Minor tweaks to improve fuzzy match success
 
 ## [0.3.12] - 2026-03-26
 
