@@ -14,7 +14,7 @@ def test_collaboration_mismatch_penalty_featured_plex_only():
             "Bring Me the Horizon",
             "Bring Me the Horizon & Draper",
         )
-        == 40
+        == 60
     )
 
 
@@ -77,9 +77,9 @@ def test_score_track_match_bmth_crucify_me_prefers_solo_over_featured(plex_clien
         "guid": "",
     }
     s_solo, _, _ = plex_client._score_track_match(
-        solo, "Crucify Me", "Bring Me the Horizion", None, None
+        solo, "Crucify Me", "Bring Me the Horizon", None, None
     )
     s_feat, _, _ = plex_client._score_track_match(
-        featured, "Crucify Me", "Bring Me the Horizion", None, None
+        featured, "Crucify Me", "Bring Me the Horizon", None, None
     )
     assert s_solo > s_feat

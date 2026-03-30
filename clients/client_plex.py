@@ -18,7 +18,11 @@ from cache_manager import get_cache_manager
 from services.config_service import config_service
 from utils.cache_client import create_cache_client
 from utils.library_selector import resolve_plex_library
-from utils.track_match import collaboration_mismatch_penalty, fuzzy_char_overlap_match
+from utils.track_match import (
+    collaboration_mismatch_penalty,
+    fuzzy_char_overlap_match,
+    normalized_artist_for_source_vs_library,
+)
 
 from .client_base import BaseAPIClient
 
@@ -388,7 +392,7 @@ class PlexClient(BaseAPIClient):
         if candidate_keys:
             self.logger.debug(f"🔍 CACHED SEARCH: Scoring {len(candidate_keys)} candidates")
             best_match = None
-            best_score = 0
+            best_rank: tuple[int, int] | None = None
             scored_tracks = []
 
             for track in tracks:
@@ -401,6 +405,9 @@ class PlexClient(BaseAPIClient):
                         original_track=track_name,
                         original_artist=artist_name,
                     )
+                    collab_pen = collaboration_mismatch_penalty(
+                        artist_name or "", str(track.get("artist", "") or "")
+                    )
                     track_info = {
                         "key": track["key"],
                         "artist": track["artist"],
@@ -412,10 +419,12 @@ class PlexClient(BaseAPIClient):
                     }
                     scored_tracks.append(track_info)
 
-                    # Require artist match (>=50) to avoid cross-artist false matches (e.g. Antidote/Braeker vs Antidote/Greywind)
-                    if total_score > best_score and artist_score >= 50 and track_score >= 50:
-                        best_score = total_score
-                        best_match = track["key"]
+                    # Prefer higher score, then lower collaboration penalty (solo line over "& Guest")
+                    rank = (total_score, -collab_pen)
+                    if artist_score >= 50 and track_score >= 50:
+                        if best_rank is None or rank > best_rank:
+                            best_rank = rank
+                            best_match = track["key"]
 
             # Log all scored tracks sorted by score
             scored_tracks.sort(key=lambda x: x["score"], reverse=True)
@@ -425,6 +434,7 @@ class PlexClient(BaseAPIClient):
                     f"🔍 CACHED SEARCH:   #{i + 1}: '{track_info['artist']}' - '{track_info['title']}' - '{track_info['album']}' - Score: {track_info['score']} (artist={track_info['artist_score']}, track={track_info['track_score']})"
                 )
 
+            best_score = best_rank[0] if best_rank else 0
             if best_match and best_score >= 100:
                 self.logger.debug(
                     f"🔍 CACHED SEARCH: ✅ Best match: '{best_match}' with score {best_score}"
@@ -438,7 +448,7 @@ class PlexClient(BaseAPIClient):
         # Strategy 3: Fuzzy matching fallback (only if no direct matches)
         if not candidate_keys:
             best_match = None
-            best_score = 0
+            best_rank3: tuple[int, int] | None = None
 
             # Sample-based fuzzy search to avoid full scan
             sample_size = min(5000, len(tracks))  # Limit fuzzy search scope
@@ -453,12 +463,17 @@ class PlexClient(BaseAPIClient):
                     original_track=track_name,
                     original_artist=artist_name,
                 )
-                # Require artist + real title match (not wrong song by same artist)
-                if total_score > best_score and artist_score >= 50 and track_score >= 50:
-                    best_score = total_score
-                    best_match = track["key"]
+                collab_pen = collaboration_mismatch_penalty(
+                    artist_name or "", str(track.get("artist", "") or "")
+                )
+                rank = (total_score, -collab_pen)
+                if artist_score >= 50 and track_score >= 50:
+                    if best_rank3 is None or rank > best_rank3:
+                        best_rank3 = rank
+                        best_match = track["key"]
 
-            if best_match and best_score >= 120:  # Higher threshold for fuzzy matches
+            best_score3 = best_rank3[0] if best_rank3 else 0
+            if best_match and best_score3 >= 120:  # Higher threshold for fuzzy matches
                 return best_match
 
         return None
@@ -505,6 +520,12 @@ class PlexClient(BaseAPIClient):
         # Use originals for empty-string fallback (e.g. "†" normalizes to "")
         orig_track = (original_track or "").lower()
         orig_artist = (original_artist or "").lower()
+
+        plex_artist_raw = str(track.get("artist", "") or "").strip()
+        target_raw = (original_artist or "").strip() or orig_artist
+        plex_artist = normalized_artist_for_source_vs_library(
+            target_raw, plex_artist_raw, plex_artist
+        )
 
         # Score track title match
         # Require min length for partial match - empty/single-char (e.g. "†") would match everything
@@ -591,8 +612,6 @@ class PlexClient(BaseAPIClient):
             else:
                 self.logger.debug("No album info provided for cached matching")
 
-        plex_artist_raw = track.get("artist", "") or ""
-        target_raw = (original_artist or "").strip() or orig_artist
         collab_pen = collaboration_mismatch_penalty(target_raw, plex_artist_raw)
         if collab_pen:
             score = max(0, score - collab_pen)
@@ -687,7 +706,7 @@ class PlexClient(BaseAPIClient):
             search_strategies.append((artist_name, None))
 
         best_match = None
-        best_score = 0
+        best_rank_live: tuple[int, int] | None = None
 
         for library in libraries_to_search:
             library_key = library["key"]
@@ -706,11 +725,16 @@ class PlexClient(BaseAPIClient):
                         track_obj, track_name, artist_name, mbids, album_name
                     )
 
-                    # Require artist + title match (not a different song by the same artist)
-                    if total_score > best_score and artist_score >= 50 and track_score >= 50:
-                        best_score = total_score
-                        best_match = track_obj
+                    collab_pen = collaboration_mismatch_penalty(
+                        artist_name or "", str(track_obj.get("grandparentTitle", "") or "")
+                    )
+                    rank = (total_score, -collab_pen)
+                    if artist_score >= 50 and track_score >= 50:
+                        if best_rank_live is None or rank > best_rank_live:
+                            best_rank_live = rank
+                            best_match = track_obj
 
+        best_score = best_rank_live[0] if best_rank_live else 0
         # total_score >= 100 and track_title matched (>=50) — artist-only no longer used when title present
         if best_match and best_score >= 100:
             return best_match["ratingKey"]
@@ -1684,6 +1708,10 @@ class PlexClient(BaseAPIClient):
         target_track_lower = normalize_text(target_track_lower)
         target_artist_lower = normalize_text(target_artist_lower)
         target_album_lower = normalize_text(target_album_lower)
+
+        plex_artist_name = normalized_artist_for_source_vs_library(
+            target_artist_name, plex_artist_raw, plex_artist_name
+        )
 
         # Require min length for partial match - empty/single-char (e.g. "†") would match everything
         min_partial_len = 2

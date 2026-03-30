@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixes
 - **Playlist naming**: Fixed issue where music target was showing in playlist name in Plex/Jellyfin
-- **Playlist match tuning**: Minor tweaks to improve fuzzy match success
+- **Playlist match tuning**: Minor tweaks to improve fuzzy match success; Centralized logic now better shared across Plex and Jellyfin
+- **Workflow updates**: Bumped docker/login-action from v3 to v4, setup-node from v4 to v6; Unit test for track matching
 
 ## [0.3.12] - 2026-03-26
 

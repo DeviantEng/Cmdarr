@@ -59,7 +59,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
         self, artists: list[str], cached_data: dict[str, Any] | None
     ) -> tuple[list[str], list[str]]:
         """Validate artists against library cache. Returns (valid, invalid).
-        Uses exact match first, then fuzzy match (ratio >= 0.88) for typos.
+        Uses exact match first, then fuzzy match (ratio >= 0.88).
         """
         if not cached_data or "artist_index" not in cached_data:
             return [], [a.strip() for a in artists if a.strip()]

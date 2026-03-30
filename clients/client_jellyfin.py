@@ -851,7 +851,7 @@ class JellyfinClient(BaseAPIClient):
             artist_jaccard = self._calculate_similarity(normalized_artist, track_artist_norm)
             title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
 
-            # Character-based similarity for titles (handles minor spelling differences)
+            # Character-based similarity for titles
             title_char_sim = self._calculate_character_similarity(
                 normalized_title, track_title_norm
             )
