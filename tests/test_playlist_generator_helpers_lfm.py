@@ -2,6 +2,7 @@
 
 from commands.playlist_generator_helpers import (
     build_lfm_similar_artist_pool,
+    compute_lfm_similar_playlist_title,
     merge_similar_round_robin,
 )
 
@@ -41,6 +42,11 @@ def test_build_lfm_similar_artist_pool_include_seeds_and_round_robin():
     assert names[0] == "SeedA"
     assert names[1] == "SeedB"
     assert "X1" in names and "Y1" in names
+
+
+def test_compute_lfm_similar_playlist_title_seeds():
+    t = compute_lfm_similar_playlist_title({"seed_artists": ["A", "B", "C"]})
+    assert t == "[Cmdarr] Last.fm Similar: A · B · C"
 
 
 def test_build_lfm_similar_artist_pool_seeds_only_when_max_small():

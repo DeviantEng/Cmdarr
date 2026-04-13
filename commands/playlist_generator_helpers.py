@@ -8,6 +8,8 @@ from utils.text_normalizer import normalize_text
 
 SEP = " · "
 MAX_ARTIST_LEN = 40
+PLAYLIST_TITLE_TOP_TRACKS_PREFIX = "[Cmdarr] Artist Essentials"
+PLAYLIST_TITLE_LFM_SIMILAR_PREFIX = "[Cmdarr] Last.fm Similar"
 
 
 def build_auto_playlist_suffix(artist_names: list[str]) -> str:
@@ -133,3 +135,36 @@ def build_lfm_similar_artist_pool(
         if len(out) >= max_artists:
             break
     return out[:max_artists]
+
+
+def compute_lfm_similar_playlist_title(config: dict[str, Any]) -> str:
+    """Full playlist title from config (matches playlist_generator_lfm_similar naming rules)."""
+    seeds_raw = config.get("seed_artists")
+    if seeds_raw is None:
+        seeds_raw = config.get("artists", [])
+    if isinstance(seeds_raw, str):
+        seeds_raw = [s.strip() for s in seeds_raw.split("\n") if s.strip()]
+    seeds = [s for s in seeds_raw if (s or "").strip()]
+    use_custom = config.get("use_custom_playlist_name", False)
+    custom = (config.get("custom_playlist_name") or "").strip()
+    if use_custom and custom:
+        suffix = custom
+    else:
+        seed_display = [s.strip() for s in seeds if s.strip()]
+        suffix = build_auto_playlist_suffix(seed_display) if seed_display else "Mix"
+    return f"{PLAYLIST_TITLE_LFM_SIMILAR_PREFIX}: {suffix}"
+
+
+def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:
+    """Playlist title from stored config (all listed artists in auto suffix). Used on save/API."""
+    artists_raw = config.get("artists", [])
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    use_custom = config.get("use_custom_playlist_name", False)
+    custom = (config.get("custom_playlist_name") or "").strip()
+    if use_custom and custom:
+        suffix = custom
+    else:
+        suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
+    return f"{PLAYLIST_TITLE_TOP_TRACKS_PREFIX}: {suffix}"

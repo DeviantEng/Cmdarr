@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.13-dev] - TBA
 
-## Features
+### Features
 - **Last.FM Similar Artist Command**: New playlist_generator command to input a list of artists, few config options, finds similar artists and creates a playlist with X tracks per artists.
 
 ### Fixes
