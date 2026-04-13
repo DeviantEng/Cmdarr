@@ -351,7 +351,7 @@ class DaylistCommand(BaseCommand):
             if tz:
                 return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def _last_played_at_for_similar(self, item: dict, tz) -> datetime | None:
@@ -365,7 +365,7 @@ class DaylistCommand(BaseCommand):
                 if tz:
                     return datetime.fromtimestamp(ts, tz=tz)
                 return datetime.fromtimestamp(ts)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
         return None
 
