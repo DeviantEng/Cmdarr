@@ -911,7 +911,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             "sonic_similar_limit": int(request.get("sonic_similar_limit", 10)),
             "sonic_similarity_limit": int(request.get("sonic_similarity_limit", 50)),
             "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.8)),
-            "historical_ratio": float(request.get("historical_ratio", 0.4)),
+            "historical_ratio": float(request.get("historical_ratio", 0.3)),
             "time_periods": request.get("time_periods"),
             "timezone": (request.get("timezone") or "").strip() or None,
             "use_primary_mood": bool(request.get("use_primary_mood", False)),
@@ -1019,7 +1019,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
             "max_tracks": int(request.get("max_tracks", 50)),
             "sonic_similar_limit": int(request.get("sonic_similar_limit", 15)),
             "sonic_similarity_distance": float(request.get("sonic_similarity_distance", 0.25)),
-            "historical_ratio": float(request.get("historical_ratio", 0.4)),
+            "historical_ratio": float(request.get("historical_ratio", 0.3)),
             "target_library_key": str(library_key),
         }
         if request.get("expires_at"):

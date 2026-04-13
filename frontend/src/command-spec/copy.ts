@@ -142,7 +142,7 @@ export const commandUiCopy = {
     sonicSimilarityDistanceHelp: "Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.",
     historicalRatioLabel: "Historical ratio:",
     historicalRatioHelp:
-      "Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.",
+      "Share of tracks from play history vs sonically similar. 0.3 = 30% history, 70% similar.",
   },
   moodPlaylist: {
     moodsHeading: "Moods (select one or more)",

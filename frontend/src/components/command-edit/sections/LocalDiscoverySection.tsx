@@ -127,14 +127,14 @@ export function LocalDiscoverySection({ ctx }: { ctx: CommandEditRenderContext }
       </div>
       <div className="space-y-2">
         <Label>
-          {ld.historicalRatioLabel} {editForm.historical_ratio ?? 0.4}
+          {ld.historicalRatioLabel} {editForm.historical_ratio ?? 0.3}
         </Label>
         <input
           type="range"
           min="0"
           max="1"
           step="0.1"
-          value={editForm.historical_ratio ?? 0.4}
+          value={editForm.historical_ratio ?? 0.3}
           onChange={(e) =>
             setEditForm((f) => ({
               ...f,

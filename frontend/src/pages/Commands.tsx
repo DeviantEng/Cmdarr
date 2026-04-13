@@ -356,7 +356,7 @@ export function CommandsPage() {
         typeof cfg.sonic_similarity_limit === "number" ? cfg.sonic_similarity_limit : 50,
       sonic_similarity_distance:
         typeof cfg.sonic_similarity_distance === "number" ? cfg.sonic_similarity_distance : 0.8,
-      historical_ratio: typeof cfg.historical_ratio === "number" ? cfg.historical_ratio : 0.4,
+      historical_ratio: typeof cfg.historical_ratio === "number" ? cfg.historical_ratio : 0.3,
       timezone: (cfg.timezone as string) || "",
       time_periods: timePeriods,
       use_primary_mood: !!cfg.use_primary_mood,
@@ -1290,7 +1290,7 @@ export function CommandsPage() {
                         sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
                         sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
                         sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
-                        historical_ratio: editForm.historical_ratio ?? 0.4,
+                        historical_ratio: editForm.historical_ratio ?? 0.3,
                         timezone: editForm.timezone || undefined,
                         time_periods,
                         use_primary_mood: editForm.use_primary_mood ?? false,
@@ -1356,7 +1356,7 @@ export function CommandsPage() {
                         max_tracks: editForm.max_tracks ?? 50,
                         sonic_similar_limit: editForm.sonic_similar_limit ?? 15,
                         sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.25,
-                        historical_ratio: editForm.historical_ratio ?? 0.4,
+                        historical_ratio: editForm.historical_ratio ?? 0.3,
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);

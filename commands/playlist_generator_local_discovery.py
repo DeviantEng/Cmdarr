@@ -214,7 +214,7 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                         similar_tracks.append(s)
 
             # 5. Combine: historical ratio from seed_tracks, rest from similar
-            historical_ratio = float(config.get("historical_ratio", 0.4))
+            historical_ratio = float(config.get("historical_ratio", 0.3))
             historical_ratio = max(0.0, min(1.0, historical_ratio))
             n_historical = int(max_tracks * historical_ratio)
             n_similar = max_tracks - n_historical

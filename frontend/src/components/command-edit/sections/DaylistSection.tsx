@@ -102,14 +102,14 @@ export function DaylistSection({ ctx }: { ctx: CommandEditRenderContext }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>
-                {d.historicalRatioLabel} {editForm.historical_ratio ?? 0.4}
+                {d.historicalRatioLabel} {editForm.historical_ratio ?? 0.3}
               </Label>
               <input
                 type="range"
                 min={0.1}
                 max={0.8}
                 step={0.1}
-                value={editForm.historical_ratio ?? 0.4}
+                value={editForm.historical_ratio ?? 0.3}
                 onChange={(e) =>
                   setEditForm((f) => ({
                     ...f,
