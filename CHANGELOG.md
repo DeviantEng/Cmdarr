@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Playlist match tuning**: Minor tweaks to improve fuzzy match success; Centralized logic now better shared across Plex and Jellyfin
 - **Workflow updates**: Bumped docker/login-action from v3 to v4, setup-node from v4 to v6; Unit test for track matching
 
+### Security
+- **NPM/Vite Vuln**: Update npm vite package to 7.3.2 to resolve recent CVE
+- **Docker pinning**: Update Dockerfile SHA for python:3.14-slim-trixie image
+
 ## [0.3.12] - 2026-03-26
 
 ### Housekeeping
