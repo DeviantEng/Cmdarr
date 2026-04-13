@@ -351,8 +351,29 @@ class DaylistCommand(BaseCommand):
             if tz:
                 return datetime.fromtimestamp(ts, tz=tz)
             return datetime.fromtimestamp(ts)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return None
+
+    def _last_played_at_for_similar(self, item: dict, tz) -> datetime | None:
+        """Best-effort last play time from track metadata (Plex may expose lastViewedAt / viewedAt)."""
+        for key in ("lastViewedAt", "viewedAt"):
+            v = item.get(key)
+            if v is None:
+                continue
+            try:
+                ts = int(v)
+                if tz:
+                    return datetime.fromtimestamp(ts, tz=tz)
+                return datetime.fromtimestamp(ts)
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    def _similar_played_inside_exclude_window(
+        self, item: dict, exclude_start: datetime, tz
+    ) -> bool:
+        lp = self._last_played_at_for_similar(item, tz)
+        return lp is not None and lp >= exclude_start
 
     def _generate_playlist_title_and_description(
         self, period: str, tracks: list[dict]
@@ -626,8 +647,7 @@ class DaylistCommand(BaseCommand):
                 maxresults=2000,
             )
 
-            # Filter: type=track, not in exclude window. Use ALL recent history - period is for
-            # title/cover/ordering only; restricting to period hours would exclude most plays.
+            # Filter: type=track, not in exclude window (full lookback for pool + exclusions).
             history_items = []
             excluded_keys = set()
             for h in history_raw:
@@ -649,10 +669,30 @@ class DaylistCommand(BaseCommand):
                     "and that tracks (not albums/videos) were played in the music library."
                 )
 
-            # Balance popular/rare
-            track_counts = Counter(h.get("ratingKey") for h in history_items)
+            # Meloday-style: popular/rare split on plays in the *current period* hours when enough data.
+            min_period_plays = max(25, max_tracks // 2)
+            seed_history = [
+                h
+                for h in history_items
+                if self._parse_viewed_at(h, tz)
+                and self._parse_viewed_at(h, tz).hour in period_hours
+            ]
+            if len(seed_history) < min_period_plays:
+                self.logger.info(
+                    f"Period-filtered plays ({len(seed_history)}) below threshold {min_period_plays}; "
+                    "using full lookback for seed selection"
+                )
+                seed_history = list(history_items)
+            else:
+                self.logger.info(
+                    f"Seed selection from {current_period} hours: {len(seed_history)} plays "
+                    f"(full lookback {len(history_items)} tracks)"
+                )
+
+            # Balance popular/rare (on seed_history)
+            track_counts = Counter(h.get("ratingKey") for h in seed_history)
             sorted_hist = sorted(
-                history_items,
+                seed_history,
                 key=lambda t: track_counts.get(t.get("ratingKey"), 0),
                 reverse=True,
             )
@@ -680,6 +720,8 @@ class DaylistCommand(BaseCommand):
                 for s in sims:
                     if str(s.get("ratingKey")) in excluded_keys:
                         continue
+                    if self._similar_played_inside_exclude_window(s, exclude_start, tz):
+                        continue
                     similar_tracks.append(s)
 
             # Combine and process
@@ -693,14 +735,23 @@ class DaylistCommand(BaseCommand):
                 attempts += 1
                 more_hist = [h for h in history_items if str(h.get("ratingKey")) not in final_rks]
                 more_sim = []
-                for t in final_tracks[:10]:
+                ref_pool = list(final_tracks)
+                if len(ref_pool) > 50:
+                    ref_pool = random.sample(ref_pool, 50)
+                for t in ref_pool:
                     sims = self.plex_client.get_sonically_similar(
                         str(t.get("ratingKey")),
                         limit=sonic_limit,
                         max_distance=sonic_similarity_distance,
                         library_key=library_key,
                     )
-                    more_sim.extend(sims)
+                    for s in sims:
+                        sk = str(s.get("ratingKey", ""))
+                        if sk in excluded_keys:
+                            continue
+                        if self._similar_played_inside_exclude_window(s, exclude_start, tz):
+                            continue
+                        more_sim.append(s)
                 candidates = [
                     t for t in (more_hist + more_sim) if str(t.get("ratingKey")) not in final_rks
                 ]

@@ -5,6 +5,7 @@ Automated "Sonic Adventure" style playlist. Plex only.
 """
 
 import random
+import secrets
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
@@ -41,7 +42,10 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
         self.library_cache_manager = get_library_cache_manager(self.config)
 
     def get_description(self) -> str:
-        return "Automated local discovery: top artists + sonically similar + lesser-played. Fresh each run. Plex only."
+        return (
+            "Automated local discovery: top artists + sonically similar + lesser-played. "
+            "Randomized each run. Plex only."
+        )
 
     def get_logger_name(self) -> str:
         return "playlist_generator.local_discovery"
@@ -172,8 +176,7 @@ class PlaylistGeneratorLocalDiscoveryCommand(BaseCommand):
                 self.logger.warning("No artists in history")
                 return True
 
-            seed_str = now.date().isoformat()
-            rng = random.Random(seed_str)
+            rng = random.Random(secrets.randbits(64))
             chosen_artists = rng.sample(ranked, min(top_artists_count, len(ranked)))
 
             # 3. For each artist: pick random seed tracks from their history

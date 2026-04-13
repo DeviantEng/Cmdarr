@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.13-dev] - TBA
 
 ### Fixes
+- **Playlist generators (freshness)**: Local Discovery now uses per-run randomness (no calendar-day RNG seed). Daylist aligns closer with Meloday—seed picks favor plays in the current time-period when enough history exists (fallback to full lookback), fill-loop sonic expansion uses a broad reference set (up to 50 tracks), and sonically similar candidates respect recent-play metadata when Plex provides it.
 - **Playlist naming**: Fixed issue where music target was showing in playlist name in Plex/Jellyfin
 - **Playlist match tuning**: Minor tweaks to improve fuzzy match success; Centralized logic now better shared across Plex and Jellyfin
 - **Workflow updates**: Bumped docker/login-action from v3 to v4, setup-node from v4 to v6; Unit test for track matching
