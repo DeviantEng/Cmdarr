@@ -363,6 +363,14 @@ export function CommandsPage() {
       artists: Array.isArray(cfg.artists)
         ? (cfg.artists as string[]).join("\n")
         : (cfg.artists as string) || "",
+      seed_artists: (() => {
+        const s = cfg.seed_artists ?? cfg.artists;
+        if (Array.isArray(s)) return (s as string[]).join("\n");
+        return (s as string) || "";
+      })(),
+      similar_per_seed: typeof cfg.similar_per_seed === "number" ? cfg.similar_per_seed : 5,
+      max_artists: typeof cfg.max_artists === "number" ? cfg.max_artists : 25,
+      include_seeds: cfg.include_seeds !== false,
       top_x: typeof cfg.top_x === "number" ? cfg.top_x : 5,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
@@ -1343,6 +1351,43 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name.startsWith("lfm_similar_") && (
+                  <Button
+                    onClick={() => {
+                      const seedsRaw = (editForm.seed_artists ?? "").trim().split("\n");
+                      const seed_artists = seedsRaw.filter((a: string) => a.trim());
+                      const cfg: Record<string, unknown> = {
+                        ...(editingCommand.config_json || {}),
+                        seed_artists,
+                        similar_per_seed: Math.max(1, Math.min(50, editForm.similar_per_seed ?? 5)),
+                        max_artists: Math.max(1, Math.min(200, editForm.max_artists ?? 25)),
+                        include_seeds: editForm.include_seeds !== false,
+                        top_x: Math.max(1, Math.min(20, editForm.top_x ?? 5)),
+                        source: "lastfm",
+                        target: editForm.target ?? "plex",
+                        use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
+                        custom_playlist_name: editForm.custom_playlist_name ?? "",
+                      };
+                      if (editForm.expires_at_enabled && editForm.expires_at) {
+                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist =
+                          editForm.expires_at_delete_playlist ?? true;
+                      } else {
+                        delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
+                      }
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: cfg,
+                      });
+                    }}
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name.startsWith("local_discovery_") && (
                   <Button
                     onClick={() => {
@@ -1475,6 +1520,7 @@ export function CommandsPage() {
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
                   !editingCommand.command_name.startsWith("top_tracks_") &&
+                  !editingCommand.command_name.startsWith("lfm_similar_") &&
                   !editingCommand.command_name.startsWith("mood_playlist_") &&
                   !editingCommand.command_name.startsWith("xmplaylist_") &&
                   !editingCommand.command_name.startsWith("local_discovery_") && (

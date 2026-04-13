@@ -27,6 +27,10 @@ export type CommandEditFormState = {
   timezone?: string;
   time_periods?: Record<string, { start: number; end: number }>;
   artists?: string;
+  seed_artists?: string;
+  similar_per_seed?: number;
+  max_artists?: number;
+  include_seeds?: boolean;
   top_x?: number;
   source?: string;
   target?: string;

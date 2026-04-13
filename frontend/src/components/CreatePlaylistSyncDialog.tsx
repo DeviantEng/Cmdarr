@@ -30,6 +30,7 @@ import {
   Compass,
   Sparkles,
   Radio,
+  Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ type PlaylistType =
   | "other"
   | "daylist"
   | "top_tracks"
+  | "lfm_similar"
   | "local_discovery"
   | "mood_playlist"
   | "xmplaylist";
@@ -67,6 +69,7 @@ const sch = commandUiCopy.schedule;
 const d = commandUiCopy.daylist;
 const ld = commandUiCopy.localDiscovery;
 const tt = commandUiCopy.topTracks;
+const lf = commandUiCopy.lfmSimilar;
 const mood = commandUiCopy.moodPlaylist;
 const xm = commandUiCopy.xmplaylist;
 const lb = commandUiCopy.listenbrainz;
@@ -189,6 +192,23 @@ export function CreatePlaylistSyncDialog({
     artists: "",
     top_x: 5,
     source: "plex" as "plex" | "lastfm",
+    target: "plex" as "plex" | "jellyfin",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [lfmSimilarForm, setLfmSimilarForm] = useState({
+    seed_artists: "",
+    similar_per_seed: 5,
+    max_artists: 25,
+    include_seeds: true,
+    top_x: 5,
     target: "plex" as "plex" | "jellyfin",
     use_custom_playlist_name: false,
     custom_playlist_name: "",
@@ -507,6 +527,17 @@ export function CreatePlaylistSyncDialog({
       if (topTracksForm.expires_at_enabled && !topTracksForm.expires_at) return false;
       return true;
     }
+    if (playlistType === "lfm_similar") {
+      if (
+        lfmSimilarForm.seed_artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
+        return false;
+      if (lfmSimilarForm.expires_at_enabled && !lfmSimilarForm.expires_at) return false;
+      return true;
+    }
     if (playlistType === "mood_playlist") {
       if (moodPlaylistForm.moods.length === 0) return false;
       if (moodPlaylistForm.expires_at_enabled && !moodPlaylistForm.expires_at) return false;
@@ -574,6 +605,33 @@ export function CreatePlaylistSyncDialog({
           { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "Artist Essentials command created");
+      } else if (playlistType === "lfm_similar") {
+        const payload: Record<string, unknown> = {
+          seed_artists: lfmSimilarForm.seed_artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
+          similar_per_seed: lfmSimilarForm.similar_per_seed,
+          max_artists: lfmSimilarForm.max_artists,
+          include_seeds: lfmSimilarForm.include_seeds,
+          top_x: lfmSimilarForm.top_x,
+          target: lfmSimilarForm.target,
+          use_custom_playlist_name: lfmSimilarForm.use_custom_playlist_name,
+          custom_playlist_name: lfmSimilarForm.custom_playlist_name,
+          schedule_cron: lfmSimilarForm.schedule_override
+            ? lfmSimilarForm.schedule_cron
+            : undefined,
+          enabled: lfmSimilarForm.enabled,
+        };
+        if (lfmSimilarForm.expires_at_enabled && lfmSimilarForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(lfmSimilarForm.expires_at);
+          payload.expires_at_delete_playlist = lfmSimilarForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lfm-similar/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Last.fm Similar command created");
       } else if (playlistType === "daylist") {
         const time_periods: Record<string, number[]> = {};
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
@@ -731,15 +789,17 @@ export function CreatePlaylistSyncDialog({
                 ? cw.titleDaylist
                 : playlistType === "top_tracks"
                   ? cw.titleArtistEssentials
-                  : playlistType === "local_discovery"
-                    ? cw.titleLocalDiscovery
-                    : playlistType === "mood_playlist"
-                      ? cw.titleMoodPlaylist
-                      : playlistType === "xmplaylist"
-                        ? cw.titleXmplaylist
-                        : playlistType === "listenbrainz"
-                          ? cw.titleListenbrainz
-                          : cw.titleExternal}
+                  : playlistType === "lfm_similar"
+                    ? cw.titleLfmSimilar
+                    : playlistType === "local_discovery"
+                      ? cw.titleLocalDiscovery
+                      : playlistType === "mood_playlist"
+                        ? cw.titleMoodPlaylist
+                        : playlistType === "xmplaylist"
+                          ? cw.titleXmplaylist
+                          : playlistType === "listenbrainz"
+                            ? cw.titleListenbrainz
+                            : cw.titleExternal}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
@@ -748,13 +808,15 @@ export function CreatePlaylistSyncDialog({
                 ? cw.descDaylist
                 : playlistType === "top_tracks"
                   ? cw.descTopTracks
-                  : playlistType === "local_discovery"
-                    ? cw.descLocalDiscovery
-                    : playlistType === "mood_playlist"
-                      ? cw.descMoodPlaylist
-                      : playlistType === "xmplaylist"
-                        ? cw.descXmplaylist
-                        : cw.descDefault}
+                  : playlistType === "lfm_similar"
+                    ? cw.descLfmSimilar
+                    : playlistType === "local_discovery"
+                      ? cw.descLocalDiscovery
+                      : playlistType === "mood_playlist"
+                        ? cw.descMoodPlaylist
+                        : playlistType === "xmplaylist"
+                          ? cw.descXmplaylist
+                          : cw.descDefault}
           </DialogDescription>
         </DialogHeader>
 
@@ -827,6 +889,20 @@ export function CreatePlaylistSyncDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">{cw.cardArtistEssentialsTitle}</h3>
                 <p className="text-xs text-muted-foreground">{cw.cardArtistEssentialsBlurb}</p>
+              </div>
+            </button>
+
+            {/* Last.fm Similar */}
+            <button
+              onClick={() => handleSelectType("lfm_similar")}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900">
+                <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold">{cw.cardLfmSimilarTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardLfmSimilarBlurb}</p>
               </div>
             </button>
 
@@ -1625,6 +1701,196 @@ export function CreatePlaylistSyncDialog({
                   }
                 />
               </>
+            ) : playlistType === "lfm_similar" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>{lf.seedArtistsLabel}</Label>
+                  <textarea
+                    className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder={lf.seedArtistsPlaceholder}
+                    value={lfmSimilarForm.seed_artists}
+                    onChange={(e) =>
+                      setLfmSimilarForm((prev) => ({ ...prev, seed_artists: e.target.value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">{lf.seedArtistsHelp}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{lf.similarPerSeedLabel}</Label>
+                    <NumericInput
+                      placeholder="5"
+                      value={lfmSimilarForm.similar_per_seed}
+                      onChange={(v) =>
+                        setLfmSimilarForm((prev) => ({ ...prev, similar_per_seed: v ?? 5 }))
+                      }
+                      min={1}
+                      max={50}
+                      defaultValue={5}
+                    />
+                    <p className="text-xs text-muted-foreground">{lf.similarPerSeedHelp}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{lf.maxArtistsLabel}</Label>
+                    <NumericInput
+                      placeholder="25"
+                      value={lfmSimilarForm.max_artists}
+                      onChange={(v) =>
+                        setLfmSimilarForm((prev) => ({ ...prev, max_artists: v ?? 25 }))
+                      }
+                      min={1}
+                      max={200}
+                      defaultValue={25}
+                    />
+                    <p className="text-xs text-muted-foreground">{lf.maxArtistsHelp}</p>
+                  </div>
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={lfmSimilarForm.include_seeds}
+                    onChange={(e) =>
+                      setLfmSimilarForm((prev) => ({ ...prev, include_seeds: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{lf.includeSeedsLabel}</span>
+                </label>
+                <p className="text-xs text-muted-foreground">{lf.includeSeedsHelp}</p>
+                <div className="space-y-2">
+                  <Label>{lf.topXLabel}</Label>
+                  <NumericInput
+                    placeholder="5"
+                    value={lfmSimilarForm.top_x}
+                    onChange={(v) => setLfmSimilarForm((prev) => ({ ...prev, top_x: v ?? 5 }))}
+                    min={1}
+                    max={20}
+                    defaultValue={5}
+                  />
+                  <p className="text-xs text-muted-foreground">{lf.topXHelp}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>{lf.targetLabel}</Label>
+                  <Select
+                    value={lfmSimilarForm.target}
+                    onValueChange={(v: "plex" | "jellyfin") =>
+                      setLfmSimilarForm((prev) => ({ ...prev, target: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex</SelectItem>
+                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{lf.targetWhereHelp}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{lf.lastfmNote}</p>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={lfmSimilarForm.use_custom_playlist_name}
+                    onChange={(e) =>
+                      setLfmSimilarForm((prev) => ({
+                        ...prev,
+                        use_custom_playlist_name: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{lf.useCustomPlaylistName}</span>
+                </label>
+                {lfmSimilarForm.use_custom_playlist_name && (
+                  <div className="space-y-2">
+                    <Label>{lf.customPlaylistNameLabel}</Label>
+                    <Input
+                      value={lfmSimilarForm.custom_playlist_name}
+                      onChange={(e) =>
+                        setLfmSimilarForm((prev) => ({
+                          ...prev,
+                          custom_playlist_name: e.target.value,
+                        }))
+                      }
+                      placeholder={lf.customPlaylistPlaceholder}
+                    />
+                    <p className="text-xs text-muted-foreground">{lf.customPlaylistNameHelper}</p>
+                  </div>
+                )}
+                {!lfmSimilarForm.use_custom_playlist_name && (
+                  <p className="text-xs text-muted-foreground">{lf.autoNameHelp}</p>
+                )}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-lf-schedule-override"
+                      checked={lfmSimilarForm.schedule_override}
+                      onChange={(e) =>
+                        setLfmSimilarForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-lf-schedule-override">{sch.overrideLabel}</Label>
+                  </div>
+                  {lfmSimilarForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder={sch.createCronPlaceholder}
+                          value={lfmSimilarForm.schedule_cron}
+                          onChange={(e) =>
+                            setLfmSimilarForm((prev) => ({
+                              ...prev,
+                              schedule_cron: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
+                    </>
+                  )}
+                  {!lfmSimilarForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
+                  )}
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={lfmSimilarForm.enabled}
+                    onChange={(e) =>
+                      setLfmSimilarForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
+                </label>
+                <ExpirationFields
+                  idPrefix="create-lf"
+                  enabled={lfmSimilarForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setLfmSimilarForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={lfmSimilarForm.expires_at}
+                  onValueChange={(v) => setLfmSimilarForm((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={lfmSimilarForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setLfmSimilarForm((prev) => ({
+                      ...prev,
+                      expires_at_delete_playlist: v,
+                    }))
+                  }
+                />
+              </>
             ) : playlistType === "mood_playlist" ? (
               <>
                 <div className="space-y-2">
@@ -2320,6 +2586,8 @@ export function CreatePlaylistSyncDialog({
                 cw.submitDaylist
               ) : playlistType === "top_tracks" ? (
                 cw.submitArtistEssentials
+              ) : playlistType === "lfm_similar" ? (
+                cw.submitLfmSimilar
               ) : playlistType === "local_discovery" ? (
                 cw.submitLocalDiscovery
               ) : playlistType === "xmplaylist" ? (

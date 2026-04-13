@@ -368,7 +368,7 @@ async def update_command(
                     finally:
                         await client.close()
             command.config_json = request.config_json
-            # display_name for top_tracks is updated by the command when it runs (matches playlist title)
+            # display_name for top_tracks / lfm_similar is updated by the command when it runs
             # display_name for daylist/local_discovery: sync when plex_history_account_id changes
             if command_name.startswith("daylist_") or command_name.startswith("local_discovery_"):
                 plex_account_id = request.config_json.get("plex_history_account_id")
@@ -1170,6 +1170,134 @@ async def create_top_tracks(request: dict, db: Annotated[Session, Depends(get_co
         get_commands_logger().error(f"Failed to create top tracks: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create top tracks") from None
+
+
+@router.get("/lfm-similar/exists")
+async def lfm_similar_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any Last.fm Similar playlist command exists."""
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("lfm_similar_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
+@router.post("/lfm-similar/create")
+async def create_lfm_similar(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a Last.fm Similar Artists playlist generator command."""
+    try:
+        seeds_raw = request.get("seed_artists")
+        if seeds_raw is None:
+            seeds_raw = request.get("artists", [])
+        if isinstance(seeds_raw, str):
+            seeds_raw = [s.strip() for s in seeds_raw.split("\n") if s.strip()]
+        if not seeds_raw:
+            raise HTTPException(
+                status_code=400,
+                detail="seed_artists is required (list or newline-separated)",
+            )
+
+        similar_per_seed = int(request.get("similar_per_seed", 5))
+        similar_per_seed = max(1, min(50, similar_per_seed))
+        max_artists = int(request.get("max_artists", 25))
+        max_artists = max(1, min(200, max_artists))
+        include_seeds = bool(request.get("include_seeds", True))
+
+        top_x = int(request.get("top_x", 5))
+        top_x = max(1, min(20, top_x))
+        target = str(request.get("target", "plex")).lower()
+        if target not in ("plex", "jellyfin"):
+            target = "plex"
+
+        use_custom_playlist_name = bool(request.get("use_custom_playlist_name", False))
+        custom_playlist_name = (request.get("custom_playlist_name") or "").strip()
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+
+        config = Config()
+        library_key = None
+        if target == "plex":
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            library_key = pc.get_resolved_library_key()
+        elif target == "jellyfin":
+            from clients.client_jellyfin import JellyfinClient
+
+            jc = JellyfinClient(config)
+            library_key = jc.get_resolved_library_key()
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_NAME or JELLYFIN_LIBRARY_NAME, or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("lfm_similar_%")).all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"lfm_similar_{next_id:05d}"
+
+        config_json = {
+            "seed_artists": seeds_raw,
+            "similar_per_seed": similar_per_seed,
+            "max_artists": max_artists,
+            "include_seeds": include_seeds,
+            "top_x": top_x,
+            "source": "lastfm",
+            "target": target,
+            "target_library_key": str(library_key),
+            "use_custom_playlist_name": use_custom_playlist_name,
+            "custom_playlist_name": custom_playlist_name,
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name="[Cmdarr] Last.fm Similar",
+            description=(
+                "Generate playlist from seed artists expanded via Last.fm similar artists "
+                "(top tracks per artist)."
+            ),
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_lfm_similar_commands()
+
+        return {"message": "Last.fm Similar command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create lfm_similar: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to create Last.fm Similar command"
+        ) from None
 
 
 @router.get("/mood-playlist/moods")

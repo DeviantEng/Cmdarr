@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.13-dev] - TBA
 
+## Features
+- **Last.FM Similar Artist Command**: New playlist_generator command to input a list of artists, few config options, finds similar artists and creates a playlist with X tracks per artists.
+
 ### Fixes
 - **Daylist**: Default **historical ratio** decreased to **0.3** from 0.4. Fill-loop sonic expansion uses a wider, bounded reference pool (scales with `max_tracks`, capped to limit Plex API fan-out) instead of a flat 50-track sample. At most two tracks per artist per playlist; the fill step reuses the same artist/genre dedupe state so that cap applies to the whole list (fixes extra same-artist picks after fill).
 - **Local Discovery**: Default **historical ratio** **0.3** for consistency with Daylist.
