@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.13-dev] - TBA
+## [0.3.13] - 2026-04-14
 
 ### Features
 - **Last.FM Similar Artist Command**: New playlist_generator command to input a list of artists, few config options, finds similar artists and creates a playlist with X tracks per artists.
@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Workflow updates**: Bumped docker/login-action from v3 to v4, setup-node from v4 to v6; Unit test for track matching
 
 ### Security
+- **HTTP headers (ZAP)**: Stricter default CSP (explicit `base-uri`, `form-action`, `object-src`, `frame-src`, `worker-src`, `manifest-src`, `media-src`; no `https:` img wildcard; production `script-src 'self'` only). `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy: unsafe-none`, and `Cross-Origin-Resource-Policy: cross-origin` on all responses. Local Vite dev: set `CMDARR_RELAXED_CSP=1` for HMR-friendly CSP.
 - **NPM/Vite Vuln**: Update npm vite package to 7.3.2 to resolve recent CVE
 - **Docker pinning**: Update Dockerfile SHA for python:3.14-slim-trixie image
 - **Trivy**: `.trivyignore` entries for outstanding Debian slim-image CVEs, each with an **exp:** review date so CI surfaces them again for reassessment
