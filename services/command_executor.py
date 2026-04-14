@@ -64,6 +64,7 @@ class CommandExecutor:
             self._load_dynamic_daylist_commands()
             # Load dynamic top tracks commands from database
             self._load_dynamic_top_tracks_commands()
+            self._load_dynamic_lfm_similar_commands()
             # Load dynamic mood playlist commands from database
             self._load_dynamic_mood_playlist_commands()
             # Load dynamic local discovery commands from database
@@ -452,6 +453,8 @@ class CommandExecutor:
             return self._build_daylist_summary(stats, duration)
         elif command_name.startswith("top_tracks_") and stats:
             return self._build_top_tracks_summary(stats, duration)
+        elif command_name.startswith("lfm_similar_") and stats:
+            return self._build_lfm_similar_summary(stats, duration)
         elif command_name.startswith("xmplaylist_") and stats:
             return self._build_xmplaylist_summary(stats, duration)
 
@@ -511,6 +514,23 @@ class CommandExecutor:
         parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
         if source:
             parts.append(f"source: {source}")
+        summary = " • ".join(parts)
+        if invalid:
+            summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
+        return summary
+
+    def _build_lfm_similar_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Last.fm Similar playlist generator summary."""
+        artists_matched = stats.get("artists_processed", 0)
+        artists_total = stats.get("artists_total", artists_matched)
+        found = stats.get("tracks_found", 0)
+        total = stats.get("tracks_total", 0)
+        invalid = stats.get("invalid_artists", [])[:5]
+        seeds = stats.get("seeds_count")
+        parts = [f"Last.fm Similar completed in {duration:.1f}s"]
+        parts.append(f"{artists_matched}/{artists_total} artists matched, {found}/{total} tracks")
+        if seeds is not None:
+            parts.append(f"{seeds} seed(s)")
         summary = " • ".join(parts)
         if invalid:
             summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
@@ -903,6 +923,33 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic top tracks commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_lfm_similar_commands(self):
+        """Load dynamic Last.fm Similar playlist commands from database."""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_lfm_similar import PlaylistGeneratorLfmSimilarCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                rows = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("lfm_similar_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in rows:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorLfmSimilarCommand
+                    self.logger.debug(f"Loaded dynamic Last.fm Similar command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic lfm_similar commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

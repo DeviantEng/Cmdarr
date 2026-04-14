@@ -85,9 +85,9 @@ def _plex_user_bracket_for_display(cfg: dict[str, Any]) -> str:
 
 
 def _build_xmplaylist_sync_title(cfg: dict[str, Any]) -> str:
-    """Title written to Plex/Jellyfin — never includes Plex user disambiguation."""
-    station, mode, target_label = _xmplaylist_station_mode_target(cfg)
-    return f"[Cmdarr] SXM - {station} - {mode} → {target_label}"
+    """Title written to Plex/Jellyfin — no user bracket and no Cmdarr-only '→ Plex/Jellyfin' suffix."""
+    station, mode, _target_label = _xmplaylist_station_mode_target(cfg)
+    return f"[Cmdarr] SXM - {station} - {mode}"
 
 
 def _build_xmplaylist_display_name(cfg: dict[str, Any]) -> str:

@@ -18,12 +18,18 @@ class LastFMClient(BaseAPIClient):
             rate_limit=config.LASTFM_RATE_LIMIT,
         )
 
-    def _get_cache_key(self, mbid: str = None, artist_name: str = None) -> str:
-        """Generate cache key for Last.fm requests"""
+    def _get_similar_cache_key(
+        self,
+        mbid: str | None = None,
+        artist_name: str | None = None,
+        playlist: bool = False,
+    ) -> str:
+        """Cache key for artist.getsimilar; playlist variant merges name-only similar artists."""
         if mbid:
-            return f"similar_mbid:{mbid}"
+            base = f"similar_mbid:{mbid}"
         else:
-            return f"similar_name:{artist_name}"
+            base = f"similar_name:{artist_name or ''}"
+        return f"{base}:pl" if playlist else base
 
     async def _make_request(
         self, params: dict[str, str], context_info: str = None
@@ -35,113 +41,48 @@ class LastFMClient(BaseAPIClient):
         # Use parent class method
         return await super()._make_request("", params=params)
 
-    async def get_similar_artists(
-        self, mbid: str, artist_name: str = None, limit: int = None
-    ) -> tuple:
-        """Get similar artists for a given MBID, with artist name fallback and caching.
+    def _process_similar_artist_rows(
+        self,
+        artists: list,
+        include_similar_without_mbid: bool,
+    ) -> tuple[list, list]:
+        processed_artists = []
+        skipped_artists = []
 
-        Args:
-            mbid: MusicBrainz artist ID
-            artist_name: Artist name for fallback lookup
-            limit: Max similar artists to request (overrides config if provided)
-        """
-        similar_limit = limit if limit is not None else self.config.LASTFM_SIMILAR_COUNT
-
-        # Try cache first if enabled (cache key includes limit for correctness)
-        cache_key = self._get_cache_key(mbid=mbid)
-        if self.cache_enabled and self.cache:
-            # Check if this is a known failed lookup
-            if self.cache.is_failed_lookup(cache_key, "lastfm"):
-                self.logger.debug(f"Skipping known failed lookup: {mbid}")
-                return [], []
-
-            # Try to get from cache (cached results may have more items; we slice when returning)
-            cached_result = self.cache.get(cache_key, "lastfm")
-            if cached_result is not None:
-                self.logger.debug(f"Cache hit for Last.fm similar artists: {mbid}")
-                proc = cached_result.get("processed", [])[:similar_limit]
-                skip = cached_result.get("skipped", [])[:similar_limit]
-                return proc, skip
-
-        # Try MBID-based query first
-        params = {"method": "artist.getsimilar", "mbid": mbid, "limit": str(similar_limit)}
-
-        try:
-            response = await self._make_request(
-                params, context_info=f"artist '{artist_name}' (MBID: {mbid})"
-            )
-
-            # If MBID query failed and we have artist name, try name-based query
-            if not response and artist_name:
-                self.logger.debug(
-                    f"MBID lookup failed for '{artist_name}' (MBID: {mbid}), trying name-based query"
+        for artist in artists:
+            name = (artist.get("name") or "").strip()
+            match_score = artist.get("match", "0")
+            try:
+                float(match_score)
+            except ValueError, TypeError:
+                skipped_artists.append(
+                    {
+                        "name": artist.get("name", ""),
+                        "match": match_score,
+                        "url": artist.get("url", ""),
+                        "reason": "invalid_match_score",
+                    }
                 )
-
-                # Try cache for name-based lookup
-                name_cache_key = self._get_cache_key(artist_name=artist_name)
-                if self.cache_enabled and self.cache:
-                    if self.cache.is_failed_lookup(name_cache_key, "lastfm"):
-                        self.logger.debug(f"Skipping known failed name lookup: {artist_name}")
-                        return [], []
-
-                    cached_result = self.cache.get(name_cache_key, "lastfm")
-                    if cached_result is not None:
-                        self.logger.debug(
-                            f"Cache hit for Last.fm similar artists (name): {artist_name}"
-                        )
-                        return cached_result.get("processed", []), cached_result.get("skipped", [])
-
-                params = {
-                    "method": "artist.getsimilar",
-                    "artist": artist_name,
-                    "limit": str(similar_limit),
-                }
-                response = await self._make_request(
-                    params, context_info=f"artist '{artist_name}' (name fallback)"
+                self.logger.warning(
+                    f"Invalid match score for {artist.get('name', 'unknown')}: {match_score}"
                 )
+                continue
 
-                # Log success/failure of fallback
-                if response:
-                    self.logger.debug(
-                        f"Name-based lookup succeeded for '{artist_name}' after MBID failure"
+            if not artist.get("mbid"):
+                if include_similar_without_mbid and name:
+                    processed_artists.append(
+                        {
+                            "name": name,
+                            "mbid": "",
+                            "match": match_score,
+                            "url": artist.get("url", ""),
+                        }
                     )
                 else:
-                    self.logger.debug(
-                        f"Both MBID and name-based lookups failed for '{artist_name}'"
-                    )
-
-                cache_key = name_cache_key  # Use name-based cache key for caching
-
-            if not response:
-                # Cache the failure
-                if self.cache_enabled and self.cache:
-                    self.cache.mark_failed_lookup(
-                        cache_key,
-                        "lastfm",
-                        "API request failed",
-                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
-                    )
-                return [], []  # Return empty lists for both processed and skipped
-
-            # Extract similar artists from response
-            similar_data = response.get("similarartists", {})
-            artists = similar_data.get("artist", [])
-
-            # Handle single artist response (not in array)
-            if isinstance(artists, dict):
-                artists = [artists]
-
-            # Process and filter artists
-            processed_artists = []
-            skipped_artists = []  # Track artists without MBIDs
-
-            for artist in artists:
-                # Track artists without MBID separately
-                if not artist.get("mbid"):
                     skipped_artists.append(
                         {
                             "name": artist.get("name", ""),
-                            "match": artist.get("match", "0"),
+                            "match": match_score,
                             "url": artist.get("url", ""),
                             "reason": "no_mbid",
                         }
@@ -149,53 +90,116 @@ class LastFMClient(BaseAPIClient):
                     self.logger.debug(
                         f"Skipping similar artist '{artist.get('name', 'unknown')}' - no MBID"
                     )
-                    continue
+                continue
 
-                # Validate match score
-                match_score = artist.get("match", "0")
-                try:
-                    float(match_score)
-                except ValueError, TypeError:
-                    skipped_artists.append(
-                        {
-                            "name": artist.get("name", ""),
-                            "match": match_score,
-                            "url": artist.get("url", ""),
-                            "reason": "invalid_match_score",
-                        }
-                    )
-                    self.logger.warning(
-                        f"Invalid match score for {artist.get('name', 'unknown')}: {match_score}"
-                    )
-                    continue
-
-                processed_artists.append(
-                    {
-                        "name": artist.get("name", ""),
-                        "mbid": artist.get("mbid", ""),
-                        "match": match_score,
-                        "url": artist.get("url", ""),
-                    }
-                )
-
-            self.logger.debug(
-                f"Found {len(processed_artists)} similar artists with MBIDs, {len(skipped_artists)} skipped for {'MBID ' + mbid if 'mbid' in params else 'artist ' + artist_name}"
+            processed_artists.append(
+                {
+                    "name": artist.get("name", ""),
+                    "mbid": artist.get("mbid", ""),
+                    "match": match_score,
+                    "url": artist.get("url", ""),
+                }
             )
 
-            # Cache the successful result
+        return processed_artists, skipped_artists
+
+    async def get_similar_artists(
+        self,
+        mbid: str | None = None,
+        artist_name: str | None = None,
+        limit: int | None = None,
+        include_similar_without_mbid: bool = False,
+    ) -> tuple:
+        """Get similar artists via Last.fm artist.getsimilar (MBID and/or name) with caching.
+
+        Args:
+            mbid: Optional MusicBrainz artist ID; if omitted/empty, uses name-only request.
+            artist_name: Artist name (required for name-only lookup; used as MBID fallback).
+            limit: Max similar artists to request (overrides config if provided).
+            include_similar_without_mbid: If True, similar rows without MBID are returned in
+                processed_artists (for playlist generation). Discovery should leave this False.
+        """
+        similar_limit = limit if limit is not None else self.config.LASTFM_SIMILAR_COUNT
+        mbid = (mbid or "").strip() or None
+        name_clean = (artist_name or "").strip() or None
+        if not mbid and not name_clean:
+            return [], []
+
+        playlist = bool(include_similar_without_mbid)
+        cache_key = self._get_similar_cache_key(
+            mbid=mbid, artist_name=name_clean, playlist=playlist
+        )
+
+        if self.cache_enabled and self.cache:
+            if self.cache.is_failed_lookup(cache_key, "lastfm"):
+                self.logger.debug(f"Skipping known failed similar lookup: {cache_key}")
+                return [], []
+
+            cached_result = self.cache.get(cache_key, "lastfm")
+            if cached_result is not None:
+                self.logger.debug(f"Cache hit for Last.fm similar artists: {cache_key}")
+                proc = cached_result.get("processed", [])[:similar_limit]
+                skip = cached_result.get("skipped", [])
+                return proc, skip
+
+        params: dict[str, str] = {}
+        response = None
+
+        try:
+            if mbid:
+                params = {"method": "artist.getsimilar", "mbid": mbid, "limit": str(similar_limit)}
+                response = await self._make_request(
+                    params, context_info=f"artist '{name_clean}' (MBID: {mbid})"
+                )
+
+            if not response and name_clean:
+                if mbid:
+                    self.logger.debug(
+                        f"MBID lookup failed for '{name_clean}' (MBID: {mbid}), trying name-based query"
+                    )
+                params = {
+                    "method": "artist.getsimilar",
+                    "artist": name_clean,
+                    "limit": str(similar_limit),
+                }
+                response = await self._make_request(
+                    params, context_info=f"artist '{name_clean}' (name)"
+                )
+
+            if not response:
+                if self.cache_enabled and self.cache:
+                    self.cache.mark_failed_lookup(
+                        cache_key,
+                        "lastfm",
+                        "API request failed",
+                        self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
+                    )
+                return [], []
+
+            similar_data = response.get("similarartists", {})
+            artists = similar_data.get("artist", [])
+            if isinstance(artists, dict):
+                artists = [artists]
+
+            processed_artists, skipped_artists = self._process_similar_artist_rows(
+                artists, include_similar_without_mbid
+            )
+
+            ctx = f"MBID {mbid}" if mbid and "mbid" in params else f"artist {name_clean}"
+            self.logger.debug(
+                f"Found {len(processed_artists)} similar artists (processed), "
+                f"{len(skipped_artists)} skipped for {ctx}"
+            )
+
             if self.cache_enabled and self.cache:
                 cache_data = {"processed": processed_artists, "skipped": skipped_artists}
                 self.cache.set(cache_key, "lastfm", cache_data, self.config.CACHE_LASTFM_TTL_DAYS)
 
-            # Return both processed and skipped for tracking
-            return processed_artists, skipped_artists
+            return processed_artists[:similar_limit], skipped_artists
 
         except Exception as e:
-            self.logger.error(
-                f"Error getting similar artists for {'MBID ' + mbid if 'mbid' in params else 'artist ' + (artist_name or 'unknown')}: {e}"
-            )
+            self.logger.error(f"Error getting similar artists for {cache_key}: {e}")
 
-            # Cache the failure
             if self.cache_enabled and self.cache:
                 self.cache.mark_failed_lookup(
                     cache_key,
@@ -204,7 +208,7 @@ class LastFMClient(BaseAPIClient):
                     self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
                 )
 
-            return [], []  # Return empty lists for both processed and skipped
+            return [], []
 
     async def get_top_tracks(self, artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
         """

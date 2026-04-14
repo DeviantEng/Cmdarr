@@ -22,6 +22,25 @@ def test_build_xmplaylist_display_name_newest_plex():
     assert t == "[Cmdarr] SXM - Octane - Newest → Plex"
 
 
+def test_build_xmplaylist_sync_title_no_target_suffix():
+    """Plex/Jellyfin playlist name must not include Cmdarr display-only '→ Plex/Jellyfin'."""
+    plex_cfg = {
+        "station_display_name": "Octane",
+        "station_deeplink": "octane",
+        "playlist_kind": "newest",
+        "target": "plex",
+    }
+    assert _build_xmplaylist_sync_title(plex_cfg) == "[Cmdarr] SXM - Octane - Newest"
+    jf_cfg = {
+        **plex_cfg,
+        "playlist_kind": "most_heard",
+        "most_heard_days": 60,
+        "target": "jellyfin",
+    }
+    assert _build_xmplaylist_sync_title(jf_cfg) == "[Cmdarr] SXM - Octane - Most Played (60d)"
+    assert "→" not in _build_xmplaylist_sync_title(jf_cfg)
+
+
 def test_build_playlist_title_alias_matches_display():
     cfg = {
         "station_display_name": "Octane",
@@ -42,7 +61,7 @@ def test_build_xmplaylist_sync_title_never_includes_plex_user():
             "plex_playlist_account_id": "999",
         }
     )
-    assert t == "[Cmdarr] SXM - Octane - Newest → Plex"
+    assert t == "[Cmdarr] SXM - Octane - Newest"
 
 
 def test_build_xmplaylist_display_name_multi_plex_bracket():
@@ -61,7 +80,7 @@ def test_build_xmplaylist_display_name_multi_plex_bracket():
         MockPlex.return_value.get_accounts.return_value = fake_accounts
         t = _build_xmplaylist_display_name(cfg)
     assert "[Alice, Bob]" in t
-    assert _build_xmplaylist_sync_title(cfg) == "[Cmdarr] SXM - Octane - Newest → Plex"
+    assert _build_xmplaylist_sync_title(cfg) == "[Cmdarr] SXM - Octane - Newest"
 
 
 def test_build_xmplaylist_display_name_most_heard_jellyfin():

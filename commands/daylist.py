@@ -247,26 +247,59 @@ class DaylistCommand(BaseCommand):
             filtered.append(t)
         return filtered
 
+    def _daylist_track_title(self, t: dict) -> str:
+        return (t.get("title") or t.get("originalTitle") or "").strip()
+
+    def _daylist_artist_key(self, t: dict) -> str:
+        a = (t.get("grandparentTitle") or "").strip().lower()
+        if a:
+            return a
+        for tag in _extract_tag_list(t.get("Artist")):
+            s = tag.strip().lower()
+            if s:
+                return s
+        gpk = t.get("grandparentRatingKey")
+        if gpk is not None and str(gpk).strip():
+            return f"__gpk_{gpk}"
+        return ""
+
+    def _balance_state_from_tracks(self, tracks: list[dict]) -> tuple[set, Counter]:
+        seen: set[tuple[str, str]] = set()
+        artist_count: Counter = Counter()
+        for t in tracks:
+            rk = t.get("ratingKey")
+            title = self._daylist_track_title(t)
+            artist = self._daylist_artist_key(t)
+            if not rk or not title or not artist:
+                continue
+            title_clean = self._clean_title(title)
+            key = (title_clean, artist)
+            if key in seen:
+                continue
+            seen.add(key)
+            artist_count[artist] += 1
+        return seen, artist_count
+
     def _process_tracks(
         self,
         tracks: list[dict],
-        max_tracks: int,
-        artist_limit_pct: float = 0.05,
-        genre_limit_pct: float = 0.15,
+        *,
+        artist_limit: int,
+        seen: set | None = None,
+        artist_count: Counter | None = None,
+        max_to_add: int | None = None,
     ) -> list[dict]:
-        """Deduplicate and balance tracks by artist/genre."""
         filtered = self._filter_low_rated(tracks)
-        seen = set()
+        seen = set(seen) if seen is not None else set()
+        artist_count = Counter(artist_count) if artist_count is not None else Counter()
         result = []
-        artist_count = Counter()
-        genre_count = Counter()
-        artist_limit = max(1, int(max_tracks * artist_limit_pct))
-        genre_limit = max(1, int(max_tracks * genre_limit_pct))
 
         for t in filtered:
+            if max_to_add is not None and len(result) >= max_to_add:
+                break
             rk = t.get("ratingKey")
-            title = (t.get("title") or "").strip()
-            artist = (t.get("grandparentTitle") or "").strip().lower()
+            title = self._daylist_track_title(t)
+            artist = self._daylist_artist_key(t)
             if not rk or not title or not artist:
                 continue
             title_clean = self._clean_title(title)
@@ -275,20 +308,8 @@ class DaylistCommand(BaseCommand):
                 continue
             if artist_count[artist] >= artist_limit:
                 continue
-            genres = t.get("Genre") or []
-            if isinstance(genres, dict):
-                genres = [genres] if genres.get("tag") else []
-            elif not isinstance(genres, list):
-                genres = []
-            genre = "Unknown"
-            if genres:
-                g0 = genres[0]
-                genre = g0.get("tag", str(g0)) if isinstance(g0, dict) else str(g0)
-            if genre_count[genre] >= genre_limit:
-                continue
             seen.add(key)
             artist_count[artist] += 1
-            genre_count[genre] += 1
             result.append(t)
         return result
 
@@ -353,6 +374,27 @@ class DaylistCommand(BaseCommand):
             return datetime.fromtimestamp(ts)
         except ValueError, TypeError:
             return None
+
+    def _last_played_at_for_similar(self, item: dict, tz) -> datetime | None:
+        """Best-effort last play time from track metadata (Plex may expose lastViewedAt / viewedAt)."""
+        for key in ("lastViewedAt", "viewedAt"):
+            v = item.get(key)
+            if v is None:
+                continue
+            try:
+                ts = int(v)
+                if tz:
+                    return datetime.fromtimestamp(ts, tz=tz)
+                return datetime.fromtimestamp(ts)
+            except ValueError, TypeError:
+                continue
+        return None
+
+    def _similar_played_inside_exclude_window(
+        self, item: dict, exclude_start: datetime, tz
+    ) -> bool:
+        lp = self._last_played_at_for_similar(item, tz)
+        return lp is not None and lp >= exclude_start
 
     def _generate_playlist_title_and_description(
         self, period: str, tracks: list[dict]
@@ -608,7 +650,8 @@ class DaylistCommand(BaseCommand):
             sonic_limit = int(config.get("sonic_similar_limit", 10))
             sonic_similarity_limit = int(config.get("sonic_similarity_limit", 50))
             sonic_similarity_distance = float(config.get("sonic_similarity_distance", 0.8))
-            historical_ratio = float(config.get("historical_ratio", 0.4))
+            historical_ratio = float(config.get("historical_ratio", 0.3))
+            artist_limit = min(2, max_tracks)
 
             time_periods = self._get_time_periods()
             period_hours = set(time_periods.get(current_period, [0, 1, 2]))
@@ -626,8 +669,7 @@ class DaylistCommand(BaseCommand):
                 maxresults=2000,
             )
 
-            # Filter: type=track, not in exclude window. Use ALL recent history - period is for
-            # title/cover/ordering only; restricting to period hours would exclude most plays.
+            # Filter: type=track, not in exclude window (full lookback for pool + exclusions).
             history_items = []
             excluded_keys = set()
             for h in history_raw:
@@ -649,10 +691,30 @@ class DaylistCommand(BaseCommand):
                     "and that tracks (not albums/videos) were played in the music library."
                 )
 
-            # Balance popular/rare
-            track_counts = Counter(h.get("ratingKey") for h in history_items)
+            # Meloday-style: popular/rare split on plays in the *current period* hours when enough data.
+            min_period_plays = max(25, max_tracks // 2)
+            seed_history = [
+                h
+                for h in history_items
+                if self._parse_viewed_at(h, tz)
+                and self._parse_viewed_at(h, tz).hour in period_hours
+            ]
+            if len(seed_history) < min_period_plays:
+                self.logger.info(
+                    f"Period-filtered plays ({len(seed_history)}) below threshold {min_period_plays}; "
+                    "using full lookback for seed selection"
+                )
+                seed_history = list(history_items)
+            else:
+                self.logger.info(
+                    f"Seed selection from {current_period} hours: {len(seed_history)} plays "
+                    f"(full lookback {len(history_items)} tracks)"
+                )
+
+            # Balance popular/rare (on seed_history)
+            track_counts = Counter(h.get("ratingKey") for h in seed_history)
             sorted_hist = sorted(
-                history_items,
+                seed_history,
                 key=lambda t: track_counts.get(t.get("ratingKey"), 0),
                 reverse=True,
             )
@@ -665,7 +727,6 @@ class DaylistCommand(BaseCommand):
             ) + random.sample(popular, min(len(popular), int(max_tracks * 0.25)))
             historical = random.sample(historical, min(guaranteed_count, len(historical)))
 
-            # Fetch sonically similar
             similar_tracks = []
             for h in historical:
                 rk = h.get("ratingKey")
@@ -680,32 +741,54 @@ class DaylistCommand(BaseCommand):
                 for s in sims:
                     if str(s.get("ratingKey")) in excluded_keys:
                         continue
+                    if self._similar_played_inside_exclude_window(s, exclude_start, tz):
+                        continue
                     similar_tracks.append(s)
 
             # Combine and process
             all_tracks = historical + similar_tracks
-            final_tracks = self._process_tracks(all_tracks, max_tracks)
-
-            # Fill to max_tracks if needed (simplified - could loop like Meloday)
+            final_tracks = self._process_tracks(
+                all_tracks,
+                artist_limit=artist_limit,
+            )
+            fill_ref_cap = min(max(80, max_tracks * 2), 150)
             final_rks = {str(t.get("ratingKey")) for t in final_tracks}
+            seen, ac = self._balance_state_from_tracks(final_tracks)
             attempts = 0
-            while len(final_tracks) < max_tracks and attempts < 3:
+            while len(final_tracks) < max_tracks and attempts < 6:
                 attempts += 1
                 more_hist = [h for h in history_items if str(h.get("ratingKey")) not in final_rks]
                 more_sim = []
-                for t in final_tracks[:10]:
+                ref_pool = list(final_tracks)
+                if len(ref_pool) > fill_ref_cap:
+                    ref_pool = random.sample(ref_pool, fill_ref_cap)
+                for t in ref_pool:
                     sims = self.plex_client.get_sonically_similar(
                         str(t.get("ratingKey")),
                         limit=sonic_limit,
                         max_distance=sonic_similarity_distance,
                         library_key=library_key,
                     )
-                    more_sim.extend(sims)
+                    for s in sims:
+                        sk = str(s.get("ratingKey", ""))
+                        if sk in excluded_keys:
+                            continue
+                        if self._similar_played_inside_exclude_window(s, exclude_start, tz):
+                            continue
+                        more_sim.append(s)
                 candidates = [
                     t for t in (more_hist + more_sim) if str(t.get("ratingKey")) not in final_rks
                 ]
-                added = self._process_tracks(candidates, max_tracks - len(final_tracks))
-                for t in added[: max_tracks - len(final_tracks)]:
+                random.shuffle(candidates)
+                need = max_tracks - len(final_tracks)
+                added = self._process_tracks(
+                    candidates,
+                    artist_limit=artist_limit,
+                    seen=seen,
+                    artist_count=ac,
+                    max_to_add=need,
+                )
+                for t in added:
                     final_tracks.append(t)
                     final_rks.add(str(t.get("ratingKey")))
                 if not added:

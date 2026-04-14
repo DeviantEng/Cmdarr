@@ -142,7 +142,7 @@ export const commandUiCopy = {
     sonicSimilarityDistanceHelp: "Plex sonic match threshold. Lower = stricter. Min: 0.1, max: 1.",
     historicalRatioLabel: "Historical ratio:",
     historicalRatioHelp:
-      "Share of tracks from play history vs sonically similar. 0.4 = 40% history, 60% similar.",
+      "Share of tracks from play history vs sonically similar. 0.3 = 30% history, 70% similar.",
   },
   moodPlaylist: {
     moodsHeading: "Moods (select one or more)",
@@ -189,6 +189,32 @@ export const commandUiCopy = {
     plexOptionRating: "Plex (ratingCount)",
     lastfmOption: "Last.fm",
   },
+  lfmSimilar: {
+    targetReadOnlyHelp: "Create a new command to change Plex or Jellyfin.",
+    seedArtistsLabel: "Seed artists (one per line)",
+    seedArtistsHelp:
+      "Expanded via Last.fm similar artists. Final artists must exist in your library (library cache).",
+    seedArtistsPlaceholder: "Radiohead\nMiles Davis",
+    similarPerSeedLabel: "Similar artists per seed",
+    similarPerSeedHelp: "How many similar artists to request from Last.fm per seed (1–50).",
+    maxArtistsLabel: "Max artists in playlist pool",
+    maxArtistsHelp:
+      "After merging similar results (round-robin across seeds), cap total unique artists (1–200).",
+    includeSeedsLabel: "Include seed artists in the playlist",
+    includeSeedsHelp: "When enabled, seeds are added first; similar artists fill remaining slots.",
+    topXLabel: "Top X tracks per artist",
+    topXHelp: "Last.fm top tracks per library-matched artist. Min: 1, max: 20.",
+    useCustomPlaylistName: "Use custom playlist name",
+    customPlaylistNameLabel: "Custom playlist name",
+    customPlaylistPlaceholder: "e.g. Neighbors Mix",
+    customPlaylistNameHelper:
+      "Override auto-generated name. Shown as [Cmdarr] Last.fm Similar: <name>.",
+    autoNameHelp:
+      "Playlist title uses seed artist names only (not every similar name), e.g. Artist1 · Artist2 + 1 More.",
+    targetLabel: "Target",
+    targetWhereHelp: "Where to create the playlist. Charts always come from Last.fm.",
+    lastfmNote: "Track list uses Last.fm top tracks, matched to your library.",
+  },
   xmplaylist: {
     sourceLockedHint: "Source mode is fixed after creation.",
     targetReadOnlyLabel: "Target",
@@ -223,6 +249,7 @@ export const commandUiCopy = {
     titleChooseType: "Create New Command",
     titleDaylist: "Configure Daylist",
     titleArtistEssentials: "Configure Artist Essentials",
+    titleLfmSimilar: "Configure Last.fm Similar",
     titleLocalDiscovery: "Configure Local Discovery",
     titleMoodPlaylist: "Configure Mood Playlist",
     titleXmplaylist: "Configure XMPlaylist (SiriusXM History)",
@@ -231,6 +258,8 @@ export const commandUiCopy = {
     descChooseType: "Choose the type of command to create",
     descDaylist: "Configure your daylist settings",
     descTopTracks: "Artists must exist in your library. One artist per line.",
+    descLfmSimilar:
+      "Seed artists → Last.fm similar → top tracks per artist. Requires Last.fm API key in config.",
     descLocalDiscovery: "Top artists from play history + sonically similar tracks. Fresh each run.",
     descMoodPlaylist:
       "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher.",
@@ -250,6 +279,9 @@ export const commandUiCopy = {
     cardArtistEssentialsTitle: "Artist Essentials",
     cardArtistEssentialsBlurb:
       "Generate playlist from artist list with top X tracks per artist (Plex or Last.fm).",
+    cardLfmSimilarTitle: "Last.fm Similar",
+    cardLfmSimilarBlurb:
+      "Expand seed artists with Last.fm similar, then top tracks per library-matched artist.",
     cardXmplaylistTitle: "XMPlaylist (SiriusXM History)",
     cardXmplaylistBlurb:
       "Newest or most-played tracks per station via xmplaylist.com → Plex or Jellyfin.",
@@ -259,6 +291,7 @@ export const commandUiCopy = {
     submitCreating: "Creating...",
     submitDaylist: "Create Daylist",
     submitArtistEssentials: "Create Artist Essentials",
+    submitLfmSimilar: "Create Last.fm Similar",
     submitLocalDiscovery: "Create Local Discovery",
     submitXmplaylist: "Create XMPlaylist",
     submitPlaylistSync: "Create Playlist Sync",

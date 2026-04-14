@@ -15,6 +15,7 @@ from cache_manager import get_cache_manager
 from services.config_service import config_service
 from utils.cache_client import create_cache_client
 from utils.library_selector import resolve_jellyfin_library
+from utils.track_match import collaboration_mismatch_penalty, fuzzy_char_overlap_match
 
 from .client_base import BaseAPIClient
 
@@ -850,7 +851,7 @@ class JellyfinClient(BaseAPIClient):
             artist_jaccard = self._calculate_similarity(normalized_artist, track_artist_norm)
             title_jaccard = self._calculate_similarity(normalized_title, track_title_norm)
 
-            # Character-based similarity for titles (handles minor spelling differences)
+            # Character-based similarity for titles
             title_char_sim = self._calculate_character_similarity(
                 normalized_title, track_title_norm
             )
@@ -1836,15 +1837,15 @@ class JellyfinClient(BaseAPIClient):
                 intersection = artist_tracks.intersection(track_tracks)
 
                 if intersection:
-                    # If we have album info, score the matches
+                    # If we have album info, score the matches (same collab tie-break as Plex cache)
                     if album_key:
                         best_match = None
-                        best_score = 0
+                        best_rank: tuple[float, int] | None = None
                         for track_id in intersection:
                             # Find the track data
                             track_data = next((t for t in tracks if t["id"] == track_id), None)
                             if track_data:
-                                album_score = 0
+                                album_score = 0.0
                                 if track_data.get("album"):
                                     track_album_norm = self._normalize_text(track_data["album"])
                                     if track_album_norm == album_key:
@@ -1857,19 +1858,56 @@ class JellyfinClient(BaseAPIClient):
                                     elif self._fuzzy_match(album_key, track_album_norm):
                                         album_score = 0.5  # Fuzzy album match
 
-                                if album_score > best_score:
-                                    best_score = album_score
+                                pen = collaboration_mismatch_penalty(
+                                    artist_name, str(track_data.get("artist", "") or "")
+                                )
+                                rank = (album_score, -pen)
+                                if best_rank is None or rank > best_rank:
+                                    best_rank = rank
                                     best_match = track_id
 
                         if best_match:
                             return best_match
 
-                    # Fallback to first match if no album scoring
-                    return list(intersection)[0]
+                    # No album hint: prefer library row without extra collaborators (Plex-aligned)
+                    best_tid = None
+                    best_rank2: tuple[int, int] | None = None
+                    for track_id in intersection:
+                        track_data = next((t for t in tracks if t["id"] == track_id), None)
+                        if not track_data:
+                            continue
+                        pen = collaboration_mismatch_penalty(
+                            artist_name, str(track_data.get("artist", "") or "")
+                        )
+                        rank2 = (0, -pen)
+                        if best_rank2 is None or rank2 > best_rank2:
+                            best_rank2 = rank2
+                            best_tid = track_id
+                    return best_tid
 
-            # Strategy 2: Fuzzy matching with album scoring
+            # Strategy 2: Fuzzy matching with album scoring (char-overlap fuzzy = Plex-aligned)
             best_match = None
-            best_score = 0
+            best_rank_f: tuple[float, int] | None = None
+
+            def _consider(track_id: str, base: float) -> None:
+                nonlocal best_match, best_rank_f
+                track_data = next((t for t in tracks if t["id"] == track_id), None)
+                if not track_data:
+                    return
+                score = base
+                if album_key and track_data.get("album"):
+                    track_album_norm = self._normalize_text(track_data["album"])
+                    if track_album_norm == album_key:
+                        score += 0.2
+                    elif album_key in track_album_norm or track_album_norm in album_key:
+                        score += 0.1
+                pen = collaboration_mismatch_penalty(
+                    artist_name, str(track_data.get("artist", "") or "")
+                )
+                rank = (score, -pen)
+                if best_rank_f is None or rank > best_rank_f:
+                    best_rank_f = rank
+                    best_match = track_id
 
             # Try fuzzy matching on artist
             for cached_artist in artist_index:
@@ -1879,26 +1917,8 @@ class JellyfinClient(BaseAPIClient):
                         track_tracks = set(track_index[track_key])
                         intersection = artist_tracks.intersection(track_tracks)
                         if intersection:
-                            # Score matches with album bonus
                             for track_id in intersection:
-                                track_data = next((t for t in tracks if t["id"] == track_id), None)
-                                if track_data:
-                                    score = 0.8  # Base score for fuzzy artist match
-
-                                    # Add album bonus
-                                    if album_key and track_data.get("album"):
-                                        track_album_norm = self._normalize_text(track_data["album"])
-                                        if track_album_norm == album_key:
-                                            score += 0.2  # Album bonus
-                                        elif (
-                                            album_key in track_album_norm
-                                            or track_album_norm in album_key
-                                        ):
-                                            score += 0.1  # Partial album bonus
-
-                                    if score > best_score:
-                                        best_score = score
-                                        best_match = track_id
+                                _consider(track_id, 0.8)
 
             # Try fuzzy matching on track name
             for cached_track in track_index:
@@ -1908,26 +1928,8 @@ class JellyfinClient(BaseAPIClient):
                         artist_tracks = set(artist_index[artist_key])
                         intersection = artist_tracks.intersection(track_tracks)
                         if intersection:
-                            # Score matches with album bonus
                             for track_id in intersection:
-                                track_data = next((t for t in tracks if t["id"] == track_id), None)
-                                if track_data:
-                                    score = 0.8  # Base score for fuzzy track match
-
-                                    # Add album bonus
-                                    if album_key and track_data.get("album"):
-                                        track_album_norm = self._normalize_text(track_data["album"])
-                                        if track_album_norm == album_key:
-                                            score += 0.2  # Album bonus
-                                        elif (
-                                            album_key in track_album_norm
-                                            or track_album_norm in album_key
-                                        ):
-                                            score += 0.1  # Partial album bonus
-
-                                    if score > best_score:
-                                        best_score = score
-                                        best_match = track_id
+                                _consider(track_id, 0.8)
 
             return best_match
 
@@ -1936,16 +1938,13 @@ class JellyfinClient(BaseAPIClient):
             return None
 
     def _fuzzy_match(self, search_term: str, cached_term: str) -> bool:
-        """Simple fuzzy matching for artist/track names"""
+        """Exact / substring first, then shared char-overlap fuzzy (same as Plex library matching)."""
         if not search_term or not cached_term:
             return False
 
-        # Exact match
         if search_term == cached_term:
             return True
 
-        # Contains match
-        # Require min length - empty/single-char (e.g. "†") would match everything
         if (
             len(search_term) >= 2
             and len(cached_term) >= 2
@@ -1953,16 +1952,7 @@ class JellyfinClient(BaseAPIClient):
         ):
             return True
 
-        # Word boundary match (handle "The Beatles" vs "Beatles")
-        search_words = set(search_term.split())
-        cached_words = set(cached_term.split())
-
-        # If most words match, consider it a match
-        if len(search_words) > 0 and len(cached_words) > 0:
-            overlap = len(search_words.intersection(cached_words))
-            return overlap >= min(len(search_words), len(cached_words)) * 0.7
-
-        return False
+        return fuzzy_char_overlap_match(search_term, cached_term)
 
     def verify_track_exists(self, track_id: str) -> bool:
         """

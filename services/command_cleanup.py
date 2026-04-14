@@ -243,12 +243,31 @@ class CommandCleanupService:
                 if use_custom and custom:
                     pl_title = f"[Cmdarr] Artist Essentials: {custom}"
                 elif artists_raw:
-                    from commands.playlist_generator_top_tracks import _build_auto_playlist_suffix
+                    from commands.playlist_generator_helpers import build_auto_playlist_suffix
 
-                    suffix = _build_auto_playlist_suffix(artists_raw[:50])
+                    suffix = build_auto_playlist_suffix(artists_raw[:50])
                     pl_title = f"[Cmdarr] Artist Essentials: {suffix}"
                 else:
                     pl_title = "[Cmdarr] Artist Essentials: Mix"
+            self._delete_playlist_if_exists(target, pl_title)
+        elif name.startswith("lfm_similar_"):
+            target = str(cfg.get("target", "plex")).lower()
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                seeds_raw = cfg.get("seed_artists") or cfg.get("artists", [])
+                if isinstance(seeds_raw, str):
+                    seeds_raw = [a.strip() for a in seeds_raw.split("\n") if a.strip()]
+                use_custom = cfg.get("use_custom_playlist_name", False)
+                custom = (cfg.get("custom_playlist_name") or "").strip()
+                if use_custom and custom:
+                    pl_title = f"[Cmdarr] Last.fm Similar: {custom}"
+                elif seeds_raw:
+                    from commands.playlist_generator_helpers import build_auto_playlist_suffix
+
+                    suffix = build_auto_playlist_suffix(seeds_raw[:50])
+                    pl_title = f"[Cmdarr] Last.fm Similar: {suffix}"
+                else:
+                    pl_title = "[Cmdarr] Last.fm Similar: Mix"
             self._delete_playlist_if_exists(target, pl_title)
         elif name.startswith("daylist_"):
             token = self._get_user_token_for_playlist_delete(cfg)

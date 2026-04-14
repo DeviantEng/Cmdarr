@@ -1,3 +1,10 @@
-# Ignored CVEs - revisit when upstream ships a fix
-# CVE-2026-4105: systemd RegisterMachine D-Bus privilege escalation (libsystemd0, libudev1) - no fix in Debian stable yet
-CVE-2026-4105
+# Ignored OS-layer CVEs — revisit when Debian / base image ships fixes.
+# Use "exp:YYYY-MM-DD" so Trivy reports the CVE again after that date (forces CI review).
+# CVE-2026-4105: systemd RegisterMachine D-Bus (trixie <no-dsa>; fix in newer systemd, not in trixie yet)
+CVE-2026-4105 exp:2026-06-01
+# CVE-2026-29111: systemd spurious IPC (libsystemd0, libudev1)
+CVE-2026-29111 exp:2026-06-01
+# CVE-2025-69720: ncurses (libtinfo6, libncursesw6, ncurses-*); headless container low exposure
+CVE-2025-69720 exp:2026-06-01
+# CVE-2026-27135: nghttp2 DoS (libnghttp2-14)
+CVE-2026-27135 exp:2026-06-01
