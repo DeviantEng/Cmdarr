@@ -43,7 +43,7 @@ const categoryGroups: CategoryGroup[] = [
   {
     name: "Music Sources",
     icon: "🎵",
-    categories: ["lastfm", "listenbrainz", "musicbrainz", "spotify", "deezer"],
+    categories: ["lastfm", "listenbrainz", "musicbrainz", "spotify", "deezer", "artist_events"],
   },
   { name: "Media Servers", icon: "📺", categories: ["plex", "jellyfin"] },
   { name: "Music Management", icon: "🎯", categories: ["lidarr"] },

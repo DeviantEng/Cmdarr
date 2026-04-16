@@ -74,6 +74,18 @@ def init_default_commands():
                 "new_releases_source": "deezer",
             },
         },
+        {
+            "command_name": "artist_events_refresh",
+            "display_name": "Artist Events Refresh",
+            "description": "Fetch upcoming events for Lidarr artists (Bandsintown / Songkick / Ticketmaster)",
+            "enabled": False,
+            "timeout_minutes": 60,
+            "command_type": "discovery",
+            "config_json": {
+                "artists_per_run": 15,
+                "refresh_ttl_days": 14,
+            },
+        },
     ]
 
     try:

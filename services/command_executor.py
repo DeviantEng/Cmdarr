@@ -43,6 +43,7 @@ class CommandExecutor:
         self.max_parallel_commands = config_service.get_int("MAX_PARALLEL_COMMANDS", 1)
 
         # Import command classes
+        from commands.artist_events_refresh import ArtistEventsRefreshCommand
         from commands.discovery_lastfm import DiscoveryLastfmCommand
         from commands.library_cache_builder import LibraryCacheBuilderCommand
         from commands.new_releases_discovery import NewReleasesDiscoveryCommand
@@ -56,6 +57,7 @@ class CommandExecutor:
                 "library_cache_builder": LibraryCacheBuilderCommand,
                 "playlist_sync_discovery_maintenance": PlaylistSyncDiscoveryMaintenanceCommand,
                 "new_releases_discovery": NewReleasesDiscoveryCommand,
+                "artist_events_refresh": ArtistEventsRefreshCommand,
             }
 
             # Load dynamic playlist sync commands from database
@@ -449,6 +451,8 @@ class CommandExecutor:
             return self._build_playlist_sync_summary(stats, duration)
         elif command_name == "new_releases_discovery" and stats:
             return self._build_new_releases_summary(stats, duration)
+        elif command_name == "artist_events_refresh" and stats:
+            return self._build_artist_events_summary(stats, duration)
         elif command_name.startswith("daylist_") and stats:
             return self._build_daylist_summary(stats, duration)
         elif command_name.startswith("top_tracks_") and stats:
@@ -578,6 +582,17 @@ class CommandExecutor:
             parts.append(f"Scanned {scanned:,} artists, no new releases detected")
         else:
             parts.append(f"Scanned {scanned:,} artists, {detected:,} new release(s) detected")
+        return " • ".join(parts)
+
+    def _build_artist_events_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build artist events refresh summary from command result"""
+        if stats.get("error"):
+            return f"Artist events: {stats['error']} ({duration:.1f}s)"
+        ap = stats.get("artists_processed", 0)
+        ne = stats.get("new_events", 0)
+        sa = stats.get("sources_added", 0)
+        parts = [f"Artist events refresh completed in {duration:.1f}s"]
+        parts.append(f"{ap} artists processed, {ne} new event(s), {sa} new source link(s)")
         return " • ".join(parts)
 
     def _build_library_cache_summary(self, stats: dict[str, Any], duration: float) -> str:

@@ -404,6 +404,102 @@ class ApiClient {
     return this.request(`/api/new-releases/sync-lidarr-artists`, { method: "POST" });
   }
 
+  // Artist events (live shows, festivals, etc.)
+  async getEventsProviderStatus(): Promise<{
+    success: boolean;
+    bandsintown: { enabled: boolean; configured: boolean };
+    songkick: { enabled: boolean; configured: boolean };
+    ticketmaster: { enabled: boolean; configured: boolean };
+    any_ready: boolean;
+  }> {
+    return this.request("/api/events/provider-status");
+  }
+
+  async getEventsSettings(): Promise<{
+    success: boolean;
+    bandsintown_enabled: boolean;
+    songkick_enabled: boolean;
+    ticketmaster_enabled: boolean;
+    user_lat: string;
+    user_lon: string;
+    user_label: string;
+    radius_miles: number;
+  }> {
+    return this.request("/api/events/settings");
+  }
+
+  async geocodeEventsLocation(query: string): Promise<{
+    success: boolean;
+    lat: number;
+    lon: number;
+    label: string;
+  }> {
+    return this.request("/api/events/geocode", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+  }
+
+  async getUpcomingEvents(params?: {
+    max_miles?: number;
+    include_hidden?: boolean;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    events: {
+      id: number;
+      artist_mbid: string;
+      artist_name: string;
+      venue_name: string | null;
+      venue_city: string | null;
+      venue_region: string | null;
+      venue_country: string | null;
+      venue_lat: number | null;
+      venue_lon: number | null;
+      starts_at_utc: string | null;
+      local_date: string;
+      sources: string[];
+      distance_miles: number | null;
+      last_fm_events_url: string;
+    }[];
+    user_location: {
+      lat: number | null;
+      lon: number | null;
+      label: string;
+      radius_miles: number;
+    };
+  }> {
+    const searchParams = new URLSearchParams();
+    if (params?.max_miles !== undefined) searchParams.set("max_miles", String(params.max_miles));
+    if (params?.include_hidden) searchParams.set("include_hidden", "true");
+    if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
+    const q = searchParams.toString();
+    return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);
+  }
+
+  async getHiddenEventArtists(): Promise<{
+    success: boolean;
+    items: { artist_mbid: string; artist_name: string; hidden_at: string | null }[];
+  }> {
+    return this.request("/api/events/hidden");
+  }
+
+  async hideEventArtist(artist_mbid: string, artist_name?: string): Promise<{ success: boolean }> {
+    return this.request("/api/events/hide", {
+      method: "POST",
+      body: JSON.stringify({ artist_mbid, artist_name }),
+    });
+  }
+
+  async unhideEventArtist(artist_mbid: string): Promise<{ success: boolean }> {
+    const enc = encodeURIComponent(artist_mbid);
+    return this.request(`/api/events/unhide/${enc}`, { method: "POST" });
+  }
+
+  async unhideAllEventArtists(): Promise<{ success: boolean; removed?: number }> {
+    return this.request("/api/events/unhide-all", { method: "POST" });
+  }
+
   async scanArtistUrl(params: {
     url: string;
     album_types?: string[];

@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.15-dev] - TBA
+
+### Features
+- **Naming**: Artist events feature renamed for clarity (not only concerts): API module **`events`**, REST prefix **`/api/events`**, config keys **`ARTIST_EVENTS_*`**, command **`artist_events_refresh`**, helpers **`event_geo`** / **`event_ingest`**. DB migration renames existing `CONCERT_EVENTS_*` settings and `concert_events_refresh` command row.
+
 ## [0.3.14-dev] - TBA
+
+### Features
+- **Artist events**: New **Artist events** page (`/events`) with upcoming shows aggregated from optional **Bandsintown**, **Songkick**, and **Ticketmaster Discovery** (each independently enabled). Scheduled **`artist_events_refresh`** command batches Lidarr artists with TTL (default 14 days), dedupes across providers, and stores canonical events plus per-source links. US geocoding (Nominatim) for distance filtering, per-artist **hide** with restore / restore-all, and **Last.fm** links for full artist event pages.
 
 ### Fixes
 - **Security headers (plain HTTP)**: Dropped CSP `upgrade-insecure-requests` so browsers do not upgrade asset URLs to HTTPS when the app is only served over HTTP (fixes blank UI / `ERR_SSL_PROTOCOL_ERROR` on LAN). Removed deprecated Permissions-Policy `interest-cohort`. `Cross-Origin-Opener-Policy` is only sent for HTTPS, localhost, or when `X-Forwarded-Proto: https` (reverse proxy TLS).

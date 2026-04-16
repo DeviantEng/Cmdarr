@@ -558,8 +558,14 @@ async def react_new_releases(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+@app.get("/events", response_class=HTMLResponse)
+async def react_events(request: Request):
+    """Serve React app for artist events route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
 # API Routes - Import after logging is configured
-from app.api import config, import_lists, new_releases, status, test_connectivity
+from app.api import config, events, import_lists, new_releases, status, test_connectivity
 
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
@@ -567,6 +573,7 @@ app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
+app.include_router(events.router, prefix="/api/events", tags=["events"])
 
 
 if __name__ == "__main__":

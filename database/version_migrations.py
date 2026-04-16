@@ -287,6 +287,63 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_artist_events_naming(cursor):
+        """Rename CONCERT_EVENTS_* config keys and concert_events_refresh command."""
+        key_map = [
+            ("CONCERT_EVENTS_BANDSINTOWN_ENABLED", "ARTIST_EVENTS_BANDSINTOWN_ENABLED"),
+            ("CONCERT_EVENTS_BANDSINTOWN_APP_ID", "ARTIST_EVENTS_BANDSINTOWN_APP_ID"),
+            ("CONCERT_EVENTS_SONGKICK_ENABLED", "ARTIST_EVENTS_SONGKICK_ENABLED"),
+            ("CONCERT_EVENTS_SONGKICK_API_KEY", "ARTIST_EVENTS_SONGKICK_API_KEY"),
+            ("CONCERT_EVENTS_TICKETMASTER_ENABLED", "ARTIST_EVENTS_TICKETMASTER_ENABLED"),
+            ("CONCERT_EVENTS_TICKETMASTER_API_KEY", "ARTIST_EVENTS_TICKETMASTER_API_KEY"),
+            ("CONCERT_EVENTS_USER_LAT", "ARTIST_EVENTS_USER_LAT"),
+            ("CONCERT_EVENTS_USER_LON", "ARTIST_EVENTS_USER_LON"),
+            ("CONCERT_EVENTS_USER_LABEL", "ARTIST_EVENTS_USER_LABEL"),
+            ("CONCERT_EVENTS_RADIUS_MILES", "ARTIST_EVENTS_RADIUS_MILES"),
+        ]
+        for old_key, new_key in key_map:
+            cursor.execute("SELECT 1 FROM config_settings WHERE key = ?", (new_key,))
+            has_new = cursor.fetchone() is not None
+            cursor.execute("SELECT 1 FROM config_settings WHERE key = ?", (old_key,))
+            has_old = cursor.fetchone() is not None
+            if has_new and has_old:
+                cursor.execute("DELETE FROM config_settings WHERE key = ?", (old_key,))
+            elif has_old:
+                cursor.execute(
+                    "UPDATE config_settings SET key = ?, category = ? WHERE key = ?",
+                    (new_key, "artist_events", old_key),
+                )
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='command_configs'")
+        if cursor.fetchone():
+            cursor.execute(
+                """
+                UPDATE command_configs
+                SET command_name = 'artist_events_refresh',
+                    display_name = 'Artist Events Refresh',
+                    description = 'Fetch upcoming events for Lidarr artists (Bandsintown / Songkick / Ticketmaster)'
+                WHERE command_name = 'concert_events_refresh'
+                """
+            )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='command_executions'")
+        if cursor.fetchone():
+            cursor.execute(
+                """
+                UPDATE command_executions
+                SET command_name = 'artist_events_refresh'
+                WHERE command_name = 'concert_events_refresh'
+                """
+            )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.15",
+            name="artist_events_naming",
+            description="Rename concert event config keys to ARTIST_EVENTS_* and command to artist_events_refresh",
+            up_func=migrate_artist_events_naming,
+        )
+    )
+
     return runner
 
 
