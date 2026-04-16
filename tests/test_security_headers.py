@@ -32,7 +32,9 @@ def test_security_headers_added(monkeypatch):
     assert "script-src 'self'" in csp
     assert "unsafe-eval" not in csp
     assert "https:" not in csp
-    assert response.headers["cross-origin-opener-policy"] == "same-origin"
+    assert "upgrade-insecure-requests" not in csp
+    # TestClient uses http://testserver — COOP omitted (non-trustworthy origin)
+    assert "cross-origin-opener-policy" not in response.headers
     assert response.headers["cross-origin-embedder-policy"] == "unsafe-none"
     assert response.headers["cross-origin-resource-policy"] == "cross-origin"
 
@@ -44,6 +46,21 @@ def test_security_headers_permissions_policy(monkeypatch):
     policy = response.headers.get("permissions-policy", "")
     assert "camera=()" in policy
     assert "microphone=()" in policy
+
+
+def test_coop_set_when_x_forwarded_proto_https(monkeypatch):
+    """Behind TLS-terminating proxy, COOP applies."""
+    monkeypatch.delenv("CMDARR_RELAXED_CSP", raising=False)
+    app_https = FastAPI()
+    app_https.add_middleware(SecurityHeadersMiddleware)
+
+    @app_https.get("/t")
+    def _t():
+        return {}
+
+    client = TestClient(app_https)
+    r = client.get("/t", headers={"X-Forwarded-Proto": "https"})
+    assert r.headers.get("cross-origin-opener-policy") == "same-origin"
 
 
 def test_security_headers_relaxed_csp_when_env_set(monkeypatch):
