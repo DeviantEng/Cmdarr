@@ -59,8 +59,7 @@ async def geocode_location(req: GeocodeRequest):
     if not q:
         raise HTTPException(status_code=400, detail="query required")
     ua = (
-        f"{config_service.get('CMDARR_USER_AGENT', '')}".strip()
-        or "Cmdarr (artist events geocode)"
+        f"{config_service.get('CMDARR_USER_AGENT', '')}".strip() or "Cmdarr (artist events geocode)"
     )
     url = "https://nominatim.openstreetmap.org/search"
     params = {"q": q + ", USA", "format": "json", "limit": "1", "countrycodes": "us"}
@@ -170,10 +169,7 @@ async def list_hidden(
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
     rows = (
-        db.query(ArtistEventHidden)
-        .order_by(ArtistEventHidden.hidden_at.desc())
-        .limit(limit)
-        .all()
+        db.query(ArtistEventHidden).order_by(ArtistEventHidden.hidden_at.desc()).limit(limit).all()
     )
     return {
         "success": True,
@@ -191,9 +187,7 @@ async def list_hidden(
 @router.post("/hide")
 async def hide_artist(req: HideArtistRequest, db: Annotated[Session, Depends(get_config_db)]):
     existing = (
-        db.query(ArtistEventHidden)
-        .filter(ArtistEventHidden.artist_mbid == req.artist_mbid)
-        .first()
+        db.query(ArtistEventHidden).filter(ArtistEventHidden.artist_mbid == req.artist_mbid).first()
     )
     if existing:
         return {"success": True, "message": "Already hidden"}
@@ -209,9 +203,7 @@ async def hide_artist(req: HideArtistRequest, db: Annotated[Session, Depends(get
 
 @router.post("/unhide/{artist_mbid}")
 async def unhide_artist(artist_mbid: str, db: Annotated[Session, Depends(get_config_db)]):
-    row = (
-        db.query(ArtistEventHidden).filter(ArtistEventHidden.artist_mbid == artist_mbid).first()
-    )
+    row = db.query(ArtistEventHidden).filter(ArtistEventHidden.artist_mbid == artist_mbid).first()
     if not row:
         raise HTTPException(status_code=404, detail="Not hidden")
     db.delete(row)

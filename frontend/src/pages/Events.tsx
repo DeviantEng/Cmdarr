@@ -446,8 +446,8 @@ export function EventsPage() {
           <DialogHeader>
             <DialogTitle>Restore all hidden artists?</DialogTitle>
             <DialogDescription>
-              This clears every hidden-artist entry. Their events will appear in the
-              list again (if any).
+              This clears every hidden-artist entry. Their events will appear in the list again (if
+              any).
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

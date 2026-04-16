@@ -163,9 +163,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         cutoff = now - timedelta(days=1)
         old_ids = [
             r[0]
-            for r in session.query(ArtistEvent.id)
-            .filter(ArtistEvent.starts_at_utc < cutoff)
-            .all()
+            for r in session.query(ArtistEvent.id).filter(ArtistEvent.starts_at_utc < cutoff).all()
         ]
         if not old_ids:
             return

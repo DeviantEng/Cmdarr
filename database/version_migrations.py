@@ -314,7 +314,9 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                     (new_key, "artist_events", old_key),
                 )
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='command_configs'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='command_configs'"
+        )
         if cursor.fetchone():
             cursor.execute(
                 """
@@ -325,7 +327,9 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                 WHERE command_name = 'concert_events_refresh'
                 """
             )
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='command_executions'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='command_executions'"
+        )
         if cursor.fetchone():
             cursor.execute(
                 """

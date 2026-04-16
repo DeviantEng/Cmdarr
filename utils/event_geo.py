@@ -57,5 +57,5 @@ def parse_float(val: Any) -> float | None:
         return None
     try:
         return float(val)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
