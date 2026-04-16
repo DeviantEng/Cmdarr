@@ -6,6 +6,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from utils.event_geo import coerce_location_str
+
 from .client_base import BaseAPIClient
 
 
@@ -97,20 +99,19 @@ class SongkickClient(BaseAPIClient):
         local_date = starts.date().isoformat()
         ext_id = str(ev.get("id") or "")
 
+        ma = venue.get("metroArea") if isinstance(venue.get("metroArea"), dict) else {}
         return {
             "provider": "songkick",
             "external_id": ext_id[:256] if ext_id else f"sk-{artist_mbid}-{local_date}",
             "source_url": (ev.get("uri") or ev.get("url") or "")[:1024] or None,
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
-            "venue_name": venue.get("displayName"),
-            "venue_city": city.get("displayName") if isinstance(city, dict) else None,
-            "venue_region": (venue.get("metroArea") or {}).get("state")
-            if isinstance(venue.get("metroArea"), dict)
-            else None,
-            "venue_country": (venue.get("metroArea") or {}).get("country")
-            if isinstance(venue.get("metroArea"), dict)
-            else None,
+            "venue_name": coerce_location_str(venue.get("displayName")),
+            "venue_city": coerce_location_str(
+                city.get("displayName") if isinstance(city, dict) else city
+            ),
+            "venue_region": coerce_location_str(ma.get("state")),
+            "venue_country": coerce_location_str(ma.get("country")),
             "venue_lat": lat_f,
             "venue_lon": lon_f,
             "starts_at_utc": starts,

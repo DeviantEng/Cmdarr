@@ -69,6 +69,7 @@ npm run preview
 - Tabbed interface organized by category:
   - Application (logging, web, output)
   - Music Sources (LastFM, ListenBrainz, Spotify, etc.)
+  - Event Sources (artist events: Bandsintown, Songkick, Ticketmaster)
   - Media Servers (Plex, Jellyfin)
   - Music Management (Lidarr)
   - Performance (cache, library, commands)

@@ -19,6 +19,26 @@ def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     return r * c
 
 
+def coerce_location_str(val: Any) -> str | None:
+    """Normalize city/region/name fields from APIs that sometimes return nested objects."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        s = val.strip()
+        return s if s else None
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, dict):
+        for k in ("name", "code", "region", "state", "abbreviation", "displayName"):
+            v = val.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+            if isinstance(v, (int, float)):
+                return str(v)
+        return None
+    return str(val).strip() or None
+
+
 def normalize_venue_name(name: str | None) -> str:
     if not name:
         return ""
@@ -36,9 +56,9 @@ def venue_fingerprint(
     lon: float | None,
 ) -> str:
     """Stable string for dedupe heuristics."""
-    vn = normalize_venue_name(venue_name)
-    c = (city or "").strip().lower()
-    r = (region or "").strip().lower()
+    vn = normalize_venue_name(coerce_location_str(venue_name))
+    c = (coerce_location_str(city) or "").strip().lower()
+    r = (coerce_location_str(region) or "").strip().lower()
     if lat is not None and lon is not None:
         geo = f"{round(lat, 4)},{round(lon, 4)}"
     else:

@@ -225,8 +225,8 @@ export function EventsPage() {
             <Link to="/config" className="underline font-medium text-foreground">
               Configuration
             </Link>{" "}
-            (Music Sources → artist_events). At least one source must be enabled and fully
-            configured before refresh runs.
+            (Config → Event Sources). At least one source must be enabled and fully configured
+            before refresh runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -299,8 +299,9 @@ export function EventsPage() {
             Location & radius
           </CardTitle>
           <CardDescription>
-            US-only geocoding (ZIP or city, state). Used to filter by distance when venue
-            coordinates exist.
+            Enter a ZIP or city and state, then save — Cmdarr stores coordinates and label for you.
+            You do not need to set latitude, longitude, or radius under Configuration; those keys
+            remain available for environment variables or automation only.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">

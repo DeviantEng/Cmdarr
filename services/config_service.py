@@ -73,7 +73,8 @@ class ConfigService:
                 "data_type": "string",
                 "category": "application",
                 "description": (
-                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, …). "
+                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, "
+                    "Bandsintown, …). "
                     "Empty = Cmdarr/<version> (https://github.com/DeviantEng/Cmdarr). "
                     "Not overridable via Docker/environment variables (use this UI only). "
                     "Set a fixed string here if an operator whitelists by UA without a version suffix."
@@ -550,7 +551,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Bandsintown app_id (required when enabled)",
+                "description": "Bandsintown public API app identifier (any string you choose, e.g. cmdarr; required when Bandsintown is enabled)",
             },
             {
                 "key": "ARTIST_EVENTS_SONGKICK_ENABLED",
@@ -579,7 +580,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Ticketmaster Discovery API key (required when enabled)",
+                "description": "Ticketmaster Discovery API: use Consumer Key from developer portal as apikey (Consumer Secret is not used for Discovery GET requests; required when Ticketmaster is enabled)",
                 "is_sensitive": True,
             },
             {
@@ -587,28 +588,32 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "User latitude for distance filter (decimal degrees)",
+                "description": "Saved latitude for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_USER_LON",
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "User longitude for distance filter (decimal degrees)",
+                "description": "Saved longitude for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_USER_LABEL",
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Display label for saved location (e.g. city or ZIP)",
+                "description": "Saved location label (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_RADIUS_MILES",
                 "default_value": "100",
                 "data_type": "float",
                 "category": "artist_events",
-                "description": "Max distance from user location to show events (miles)",
+                "description": "Radius for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
             },
             # Access control (single user)
             {
@@ -666,6 +671,15 @@ class ConfigService:
 
                         setting = ConfigSetting(**setting_data)
                         session.add(setting)
+                    elif default.get("is_hidden") and default["key"] in (
+                        "ARTIST_EVENTS_USER_LAT",
+                        "ARTIST_EVENTS_USER_LON",
+                        "ARTIST_EVENTS_USER_LABEL",
+                        "ARTIST_EVENTS_RADIUS_MILES",
+                    ):
+                        existing.is_hidden = True
+                        if default.get("description"):
+                            existing.description = default["description"]
 
                 session.commit()
                 self.logger.info(f"Initialized {len(defaults)} default configuration settings")

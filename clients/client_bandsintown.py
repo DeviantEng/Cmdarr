@@ -7,6 +7,9 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
+from utils.cmdarr_user_agent import resolve_cmdarr_user_agent
+from utils.event_geo import coerce_location_str
+
 from .client_base import BaseAPIClient
 
 
@@ -17,6 +20,7 @@ class BandsintownClient(BaseAPIClient):
             client_name="bandsintown",
             base_url="https://rest.bandsintown.com",
             rate_limit=2.0,
+            headers={"User-Agent": resolve_cmdarr_user_agent(config)},
         )
         self._app_id = app_id
 
@@ -70,9 +74,8 @@ class BandsintownClient(BaseAPIClient):
             lat_f, lon_f = None, None
 
         local_date = starts.date().isoformat()
-        ext_id = str(
-            ev.get("id") or ev.get("url") or f"{artist_mbid}-{local_date}-{venue.get('name', '')}"
-        )
+        vname = coerce_location_str(venue.get("name")) or ""
+        ext_id = str(ev.get("id") or ev.get("url") or f"{artist_mbid}-{local_date}-{vname}")
 
         return {
             "provider": "bandsintown",
@@ -80,10 +83,10 @@ class BandsintownClient(BaseAPIClient):
             "source_url": (ev.get("url") or "")[:1024] or None,
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
-            "venue_name": venue.get("name"),
-            "venue_city": venue.get("city"),
-            "venue_region": venue.get("region"),
-            "venue_country": venue.get("country"),
+            "venue_name": coerce_location_str(venue.get("name")),
+            "venue_city": coerce_location_str(venue.get("city")),
+            "venue_region": coerce_location_str(venue.get("region")),
+            "venue_country": coerce_location_str(venue.get("country")),
             "venue_lat": lat_f,
             "venue_lon": lon_f,
             "starts_at_utc": starts,
