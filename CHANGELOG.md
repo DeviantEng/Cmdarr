@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.14-dev] - TBD
+## [0.3.14-dev] - 2026-04-17
 
 ### Features
 - **Artist Events**: New `/events` page aggregating upcoming shows from optional Bandsintown, Songkick, and Ticketmaster Discovery; scheduled `artist_events_refresh` command batches Lidarr artists with TTL, dedupes across providers, US geocoding (Nominatim) for distance filter, per-artist and per-event hide with restore, Last.fm links, and an **Interested** star with filter.
