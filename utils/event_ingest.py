@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from database.config_models import ArtistEvent, ArtistEventSource
-from utils.event_geo import make_dedupe_key, venue_fingerprint
+from utils.event_geo import coerce_location_str, make_dedupe_key, venue_fingerprint
 
 
 def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> tuple[int, int]:
@@ -17,10 +17,14 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
     new_events = 0
     sources_added = 0
     for item in items:
+        v_name = coerce_location_str(item.get("venue_name"))
+        v_city = coerce_location_str(item.get("venue_city"))
+        v_region = coerce_location_str(item.get("venue_region"))
+        v_country = coerce_location_str(item.get("venue_country"))
         fp = venue_fingerprint(
-            item.get("venue_name"),
-            item.get("venue_city"),
-            item.get("venue_region"),
+            v_name,
+            v_city,
+            v_region,
             item.get("venue_lat"),
             item.get("venue_lon"),
         )
@@ -30,10 +34,10 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
             existing = ArtistEvent(
                 artist_mbid=item["artist_mbid"],
                 artist_name=item["artist_name"],
-                venue_name=item.get("venue_name"),
-                venue_city=item.get("venue_city"),
-                venue_region=item.get("venue_region"),
-                venue_country=item.get("venue_country"),
+                venue_name=v_name,
+                venue_city=v_city,
+                venue_region=v_region,
+                venue_country=v_country,
                 venue_lat=item.get("venue_lat"),
                 venue_lon=item.get("venue_lon"),
                 starts_at_utc=item["starts_at_utc"],

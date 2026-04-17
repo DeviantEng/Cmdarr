@@ -29,6 +29,11 @@ def test_coerce_location_str_nested_region():
     assert coerce_location_str({"code": "CA"}) == "CA"
 
 
+def test_coerce_location_str_ticketmaster_style():
+    assert coerce_location_str({"name": "Florida", "stateCode": "FL"}) == "FL"
+    assert coerce_location_str({"name": "United States Of America", "countryCode": "US"}) == "US"
+
+
 def test_venue_fingerprint_accepts_dict_region():
     """Bandsintown may return region as a nested object."""
     fp_str = venue_fingerprint("Venue", "Portland", "Oregon", 45.5, -122.6)

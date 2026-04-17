@@ -29,7 +29,17 @@ def coerce_location_str(val: Any) -> str | None:
     if isinstance(val, (int, float)):
         return str(val)
     if isinstance(val, dict):
-        for k in ("name", "code", "region", "state", "abbreviation", "displayName"):
+        # Ticketmaster: { stateCode, name }; country: { countryCode, name }
+        for k in (
+            "stateCode",
+            "countryCode",
+            "name",
+            "code",
+            "region",
+            "state",
+            "abbreviation",
+            "displayName",
+        ):
             v = val.get(k)
             if isinstance(v, str) and v.strip():
                 return v.strip()

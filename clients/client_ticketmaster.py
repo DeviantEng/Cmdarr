@@ -6,6 +6,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from utils.event_geo import coerce_location_str
+
 from .client_base import BaseAPIClient
 
 
@@ -84,7 +86,7 @@ class TicketmasterClient(BaseAPIClient):
                 starts = starts.replace(tzinfo=UTC)
             else:
                 starts = starts.astimezone(UTC)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return None
         if starts < now:
             return None
@@ -98,13 +100,16 @@ class TicketmasterClient(BaseAPIClient):
         try:
             lat_f = float(lat_s) if lat_s is not None else None
             lon_f = float(lon_s) if lon_s is not None else None
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             lat_f, lon_f = None, None
 
         addr = venue.get("address") or {}
         state = venue.get("state") or addr.get("line2")
         city = venue.get("city") or {}
         city_name = city.get("name") if isinstance(city, dict) else None
+        country_raw = venue.get("country")
+        if country_raw is None:
+            country_raw = "US"
 
         local_date = starts.date().isoformat()
         ext_id = str(ev.get("id") or "")
@@ -115,10 +120,10 @@ class TicketmasterClient(BaseAPIClient):
             "source_url": (ev.get("url") or "")[:1024] or None,
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
-            "venue_name": venue.get("name"),
-            "venue_city": city_name,
-            "venue_region": state,
-            "venue_country": venue.get("country") or "US",
+            "venue_name": coerce_location_str(venue.get("name")),
+            "venue_city": coerce_location_str(city_name),
+            "venue_region": coerce_location_str(state),
+            "venue_country": coerce_location_str(country_raw),
             "venue_lat": lat_f,
             "venue_lon": lon_f,
             "starts_at_utc": starts,
