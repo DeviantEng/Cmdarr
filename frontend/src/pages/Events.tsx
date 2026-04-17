@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
+import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
 import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
@@ -603,13 +604,7 @@ export function EventsPage() {
                   ev.source_links && ev.source_links.length > 0
                     ? ev.source_links
                     : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
-                const seenSourceKeys = new Set<string>();
-                const sourceRows = rawSourceRows.filter((row) => {
-                  const key = `${row.provider}::${(row.url || "").split("?")[0]}`;
-                  if (seenSourceKeys.has(key)) return false;
-                  seenSourceKeys.add(key);
-                  return true;
-                });
+                const sourceRows = collapseSourceLinksForDisplay(rawSourceRows, ev.artist_name);
                 return (
                   <li
                     key={`${ev.id}-${ev.starts_at_utc}`}
@@ -653,12 +648,12 @@ export function EventsPage() {
                           <span className="tabular-nums">· {ev.distance_miles} mi</span>
                         )}
                         <span className="flex flex-wrap gap-1">
-                          {sourceRows.map((row, i) => {
+                          {sourceRows.map((row) => {
                             const label = sourceBadge(row.provider);
                             if (row.url) {
                               return (
                                 <a
-                                  key={`${row.provider}-${i}`}
+                                  key={row.provider}
                                   href={row.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -670,7 +665,7 @@ export function EventsPage() {
                             }
                             return (
                               <Badge
-                                key={`${row.provider}-${i}`}
+                                key={row.provider}
                                 variant="secondary"
                                 className="px-1.5 py-0 text-[10px] font-normal"
                               >

@@ -6,10 +6,50 @@ Shared HTTP functionality for all API clients
 
 import asyncio
 import logging
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
 import aiohttp
+
+
+class QuotaExceededError(Exception):
+    """Raised when a provider reports a long-window quota/plan violation.
+
+    Distinct from ordinary spike/second-rate 429s: the retry window is typically
+    minutes to hours rather than seconds, so callers should stop issuing requests
+    to the affected provider for the remainder of the run rather than burning
+    further attempts that will themselves be rejected.
+    """
+
+    def __init__(self, retry_after_seconds: float | None = None, detail: str = ""):
+        super().__init__(detail or "provider quota exceeded")
+        self.retry_after_seconds = retry_after_seconds
+        self.detail = detail
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header value into seconds.
+
+    RFC 7231 allows either an integer seconds value or an HTTP-date. Returns
+    None on unparseable input so callers can fall back to their own backoff.
+    """
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except TypeError, ValueError:
+        pass
+    try:
+        dt = parsedate_to_datetime(value)
+    except TypeError, ValueError:
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return max(0.0, (dt - datetime.now(UTC)).total_seconds())
 
 
 class HTTPClientUtils:
@@ -74,21 +114,56 @@ class HTTPClientUtils:
                                     f"Successful {method} request to {url} (status {response.status}, no content)"
                                 )
                             return {}
-                    elif response.status in (429, 503) and attempt < max_retries:
-                        # Rate limit (429) or service unavailable (503) - honor Retry-After
-                        # when present, otherwise exponential backoff. Floor the first 429
-                        # retry at 2s so we clear the typical 1-second spike-arrest window
-                        # before retrying.
+                    elif response.status in (429, 503):
+                        # Rate limit (429) or service unavailable (503).
+                        #
+                        # Two flavors of 429 matter here:
+                        #   - Short-window spike arrest / per-second burst: clears in
+                        #     seconds, so we retry with exponential backoff (floored at 2s
+                        #     to clear the typical 1s spike-arrest window) honoring any
+                        #     Retry-After header.
+                        #   - Long-window quota/plan violation: clears in minutes to hours.
+                        #     Retrying in-session is counterproductive (each retry also
+                        #     counts against the quota and delays the run). Surface as
+                        #     QuotaExceededError so the caller can disable the provider
+                        #     for the remainder of the run.
                         error_text = await response.text()
                         retry_after_hdr = response.headers.get(
                             "Retry-After"
                         ) or response.headers.get("retry-after")
+                        retry_after_sec = _parse_retry_after(retry_after_hdr)
+
+                        is_quota = response.status == 429 and (
+                            "quota" in error_text.lower()
+                            or (retry_after_sec is not None and retry_after_sec > 60.0)
+                        )
+                        if is_quota:
+                            if logger:
+                                logger.error(
+                                    "Quota/plan 429 on %s (Retry-After=%s): %s",
+                                    url,
+                                    retry_after_hdr,
+                                    error_text[:300],
+                                )
+                            raise QuotaExceededError(
+                                retry_after_seconds=retry_after_sec,
+                                detail=error_text[:500],
+                            )
+
+                        if attempt >= max_retries:
+                            if logger:
+                                logger.error(
+                                    "Rate limit %s exhausted retries (%s/%s): %s",
+                                    response.status,
+                                    attempt + 1,
+                                    max_retries + 1,
+                                    error_text[:300],
+                                )
+                            return None
+
                         wait_time = retry_delay * (2**attempt)
-                        if retry_after_hdr:
-                            try:
-                                wait_time = max(wait_time, float(retry_after_hdr))
-                            except TypeError, ValueError:
-                                pass
+                        if retry_after_sec is not None:
+                            wait_time = max(wait_time, retry_after_sec)
                         if response.status == 429:
                             wait_time = max(wait_time, 2.0)
                         if logger:

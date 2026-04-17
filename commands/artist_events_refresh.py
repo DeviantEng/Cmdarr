@@ -23,6 +23,7 @@ from database.config_models import (
 from database.database import get_database_manager
 from services.config_service import config_service
 from utils.event_ingest import persist_normalized_events
+from utils.http_client import QuotaExceededError
 
 
 class ArtistEventsRefreshCommand(BaseCommand):
@@ -32,6 +33,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         super().__init__(config if config else ConfigAdapter())
         self.config_adapter = ConfigAdapter()
         self.last_run_stats: dict[str, Any] = {}
+        self._quota_locked: dict[str, float] = {}
 
     def get_description(self) -> str:
         return "Refresh artist events for Lidarr library (Bandsintown / Songkick / Ticketmaster)"
@@ -126,6 +128,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "songkick": 0,
                 "ticketmaster": 0,
             }
+            self._quota_locked = {}
 
             for la in rows:
                 merged, provider_errors = await self._fetch_for_artist(
@@ -157,7 +160,17 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 if had_error:
                     # Retry sooner than the normal TTL; never stamp last_fetched_at on a failure
                     # so "never succeeded" remains observable in the UI / DB.
+                    # If any provider is quota-locked, push the retry to the quota-reset
+                    # horizon so we don't burn a second wave of rejections as soon as the
+                    # scheduler fires again.
                     retry_due = now + timedelta(minutes=error_retry_minutes)
+                    if self._quota_locked:
+                        max_lock_seconds = max(self._quota_locked.values())
+                        quota_retry = now + timedelta(
+                            seconds=max(max_lock_seconds, error_retry_minutes * 60)
+                        )
+                        if quota_retry > retry_due:
+                            retry_due = quota_retry
                     if not ar:
                         session.add(
                             ArtistEventRefresh(
@@ -195,6 +208,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "provider_errors": provider_error_counts,
                 "past_events_purged": past_events_purged,
                 "past_event_retention_days": past_event_retention_days,
+                "quota_locked_providers": sorted(self._quota_locked.keys()),
             }
             log.info(
                 "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
@@ -263,19 +277,19 @@ class ArtistEventsRefreshCommand(BaseCommand):
         """
 
         async def run_bit():
-            if not bit_on or not bit_app:
+            if not bit_on or not bit_app or "bandsintown" in self._quota_locked:
                 return []
             async with BandsintownClient(cfg, bit_app) as c:
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
 
         async def run_sk():
-            if not sk_on or not sk_key:
+            if not sk_on or not sk_key or "songkick" in self._quota_locked:
                 return []
             async with SongkickClient(cfg, sk_key) as c:
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
 
         async def run_tm():
-            if not tm_on or not tm_key:
+            if not tm_on or not tm_key or "ticketmaster" in self._quota_locked:
                 return []
             async with TicketmasterClient(cfg, tm_key) as c:
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
@@ -290,6 +304,24 @@ class ArtistEventsRefreshCommand(BaseCommand):
             return_exceptions=True,
         )
         for provider_name, res in zip(provider_order, results, strict=False):
+            if isinstance(res, QuotaExceededError):
+                # Long-window quota lockout: stop using this provider for the rest of the run.
+                # Every subsequent request would also be rejected and would further delay the
+                # scheduler's eventual unblock. Record the lock-until horizon so the per-artist
+                # next_due_at can be pushed past the quota window.
+                retry_after = res.retry_after_seconds or 3600.0
+                self._quota_locked[provider_name] = retry_after
+                self.logger.error(
+                    "%s quota exceeded while fetching '%s'; disabling %s for the rest of this "
+                    "run (next request allowed in ~%s min). Detail: %s",
+                    provider_name,
+                    artist_name,
+                    provider_name,
+                    int(retry_after / 60),
+                    res.detail[:200],
+                )
+                errored.append(provider_name)
+                continue
             if isinstance(res, Exception):
                 self.logger.warning("%s fetch raised for '%s': %s", provider_name, artist_name, res)
                 errored.append(provider_name)
