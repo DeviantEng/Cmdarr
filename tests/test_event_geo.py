@@ -3,6 +3,7 @@
 from utils.event_geo import (
     coerce_location_str,
     haversine_miles,
+    lat_lon_deg_bounds_for_radius_miles,
     make_dedupe_key,
     venue_fingerprint,
 )
@@ -32,6 +33,12 @@ def test_coerce_location_str_nested_region():
 def test_coerce_location_str_ticketmaster_style():
     assert coerce_location_str({"name": "Florida", "stateCode": "FL"}) == "FL"
     assert coerce_location_str({"name": "United States Of America", "countryCode": "US"}) == "US"
+
+
+def test_lat_lon_bounds_contains_center():
+    lat_min, lat_max, lon_min, lon_max = lat_lon_deg_bounds_for_radius_miles(38.0, -84.5, 100)
+    assert lat_min < 38.0 < lat_max
+    assert lon_min < -84.5 < lon_max
 
 
 def test_venue_fingerprint_accepts_dict_region():

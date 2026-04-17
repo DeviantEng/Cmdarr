@@ -86,7 +86,7 @@ class TicketmasterClient(BaseAPIClient):
                 starts = starts.replace(tzinfo=UTC)
             else:
                 starts = starts.astimezone(UTC)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
         if starts < now:
             return None
@@ -100,7 +100,7 @@ class TicketmasterClient(BaseAPIClient):
         try:
             lat_f = float(lat_s) if lat_s is not None else None
             lon_f = float(lon_s) if lon_s is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             lat_f, lon_f = None, None
 
         addr = venue.get("address") or {}

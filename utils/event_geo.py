@@ -89,3 +89,18 @@ def parse_float(val: Any) -> float | None:
         return float(val)
     except TypeError, ValueError:
         return None
+
+
+def lat_lon_deg_bounds_for_radius_miles(
+    lat: float, lon: float, miles: float
+) -> tuple[float, float, float, float]:
+    """
+    Axis-aligned bounding box in degrees that contains a circle of `miles` around (lat, lon).
+    Used to narrow SQL before haversine (US-scale distances).
+    """
+    if miles <= 0:
+        miles = 0.01
+    lat_pad = miles / 69.0
+    cos_lat = max(0.2, abs(math.cos(math.radians(lat))))
+    lon_pad = miles / (69.0 * cos_lat)
+    return lat - lat_pad, lat + lat_pad, lon - lon_pad, lon + lon_pad

@@ -12,10 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from database.config_models import ArtistEvent, ArtistEventHidden, ArtistEventSource
+from database.config_models import (
+    ArtistConcertHiddenEvent,
+    ArtistEvent,
+    ArtistEventHidden,
+    ArtistEventSource,
+)
 from database.database import get_config_db
 from services.config_service import config_service
-from utils.event_geo import haversine_miles, parse_float
+from utils.event_geo import haversine_miles, lat_lon_deg_bounds_for_radius_miles, parse_float
 from utils.logger import get_logger
 
 router = APIRouter()
@@ -32,6 +37,10 @@ class GeocodeRequest(BaseModel):
 class HideArtistRequest(BaseModel):
     artist_mbid: str = Field(..., min_length=1, max_length=100)
     artist_name: str | None = None
+
+
+class HideEventRequest(BaseModel):
+    event_id: int = Field(..., ge=1)
 
 
 @router.get("/provider-status")
@@ -105,26 +114,45 @@ async def list_upcoming_events(
     use_miles = max_miles if max_miles is not None else radius
 
     hidden_mbids: set[str] = set()
+    hidden_event_ids: set[int] = set()
     if not include_hidden:
         hidden_mbids = {r[0] for r in db.query(ArtistEventHidden.artist_mbid).all()}
+        hidden_event_ids = {r[0] for r in db.query(ArtistConcertHiddenEvent.event_id).all()}
 
-    q = (
-        db.query(ArtistEvent)
-        .filter(ArtistEvent.starts_at_utc >= now)
-        .order_by(ArtistEvent.starts_at_utc.asc())
-        .limit(limit * 3)
-    )
-    rows = q.all()
+    # When the user has a saved location, filter by radius. Do NOT apply a small SQL LIMIT before
+    # distance filtering — that only loads the earliest N events globally and yields few in-range rows.
+    use_geo_filter = user_lat is not None and user_lon is not None
+    base = db.query(ArtistEvent).filter(ArtistEvent.starts_at_utc >= now)
+    if use_geo_filter:
+        lat_min, lat_max, lon_min, lon_max = lat_lon_deg_bounds_for_radius_miles(
+            user_lat, user_lon, use_miles
+        )
+        q = (
+            base.filter(ArtistEvent.venue_lat.isnot(None))
+            .filter(ArtistEvent.venue_lon.isnot(None))
+            .filter(ArtistEvent.venue_lat >= lat_min, ArtistEvent.venue_lat <= lat_max)
+            .filter(ArtistEvent.venue_lon >= lon_min, ArtistEvent.venue_lon <= lon_max)
+            .order_by(ArtistEvent.starts_at_utc.asc())
+            .limit(10000)
+        )
+        rows = q.all()
+    else:
+        q = base.order_by(ArtistEvent.starts_at_utc.asc()).limit(limit * 3)
+        rows = q.all()
+
     out: list[dict[str, Any]] = []
     for ev in rows:
         if not include_hidden and ev.artist_mbid in hidden_mbids:
             continue
+        if not include_hidden and ev.id in hidden_event_ids:
+            continue
         dist = None
-        if user_lat is not None and user_lon is not None:
-            if ev.venue_lat is not None and ev.venue_lon is not None:
-                dist = haversine_miles(user_lat, user_lon, ev.venue_lat, ev.venue_lon)
-                if dist > use_miles:
-                    continue
+        if use_geo_filter:
+            if ev.venue_lat is None or ev.venue_lon is None:
+                continue
+            dist = haversine_miles(user_lat, user_lon, ev.venue_lat, ev.venue_lon)
+            if dist > use_miles:
+                continue
         sources = (
             db.query(ArtistEventSource).filter(ArtistEventSource.concert_event_id == ev.id).all()
         )
@@ -214,6 +242,74 @@ async def unhide_artist(artist_mbid: str, db: Annotated[Session, Depends(get_con
 @router.post("/unhide-all")
 async def unhide_all(db: Annotated[Session, Depends(get_config_db)]):
     n = db.query(ArtistEventHidden).delete()
+    db.commit()
+    return {"success": True, "removed": n}
+
+
+@router.get("/hidden-events")
+async def list_hidden_events(
+    db: Annotated[Session, Depends(get_config_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+):
+    """Single-event hides with joined row details for the UI."""
+    q = (
+        db.query(ArtistConcertHiddenEvent, ArtistEvent)
+        .join(ArtistEvent, ArtistEvent.id == ArtistConcertHiddenEvent.event_id)
+        .order_by(ArtistConcertHiddenEvent.hidden_at.desc())
+        .limit(limit)
+    )
+    rows = q.all()
+    return {
+        "success": True,
+        "items": [
+            {
+                "event_id": ev.id,
+                "artist_mbid": ev.artist_mbid,
+                "artist_name": ev.artist_name,
+                "venue_name": ev.venue_name,
+                "venue_city": ev.venue_city,
+                "local_date": ev.local_date,
+                "hidden_at": h.hidden_at.isoformat() + "Z" if h.hidden_at else None,
+            }
+            for h, ev in rows
+        ],
+    }
+
+
+@router.post("/hide-event")
+async def hide_single_event(req: HideEventRequest, db: Annotated[Session, Depends(get_config_db)]):
+    ev = db.query(ArtistEvent).filter(ArtistEvent.id == req.event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    existing = (
+        db.query(ArtistConcertHiddenEvent)
+        .filter(ArtistConcertHiddenEvent.event_id == req.event_id)
+        .first()
+    )
+    if existing:
+        return {"success": True, "message": "Already hidden"}
+    db.add(ArtistConcertHiddenEvent(event_id=req.event_id))
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/unhide-event/{event_id}")
+async def unhide_single_event(event_id: int, db: Annotated[Session, Depends(get_config_db)]):
+    row = (
+        db.query(ArtistConcertHiddenEvent)
+        .filter(ArtistConcertHiddenEvent.event_id == event_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not hidden")
+    db.delete(row)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/unhide-all-events")
+async def unhide_all_events(db: Annotated[Session, Depends(get_config_db)]):
+    n = db.query(ArtistConcertHiddenEvent).delete()
     db.commit()
     return {"success": True, "removed": n}
 

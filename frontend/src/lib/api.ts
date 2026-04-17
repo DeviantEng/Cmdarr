@@ -500,6 +500,36 @@ class ApiClient {
     return this.request("/api/events/unhide-all", { method: "POST" });
   }
 
+  async getHiddenEvents(): Promise<{
+    success: boolean;
+    items: {
+      event_id: number;
+      artist_mbid: string;
+      artist_name: string;
+      venue_name: string | null;
+      venue_city: string | null;
+      local_date: string;
+      hidden_at: string | null;
+    }[];
+  }> {
+    return this.request("/api/events/hidden-events");
+  }
+
+  async hideEventRow(eventId: number): Promise<{ success: boolean }> {
+    return this.request("/api/events/hide-event", {
+      method: "POST",
+      body: JSON.stringify({ event_id: eventId }),
+    });
+  }
+
+  async unhideEventRow(eventId: number): Promise<{ success: boolean }> {
+    return this.request(`/api/events/unhide-event/${eventId}`, { method: "POST" });
+  }
+
+  async unhideAllHiddenEvents(): Promise<{ success: boolean; removed?: number }> {
+    return this.request("/api/events/unhide-all-events", { method: "POST" });
+  }
+
   async scanArtistUrl(params: {
     url: string;
     album_types?: string[];

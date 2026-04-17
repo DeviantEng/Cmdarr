@@ -267,3 +267,14 @@ class ArtistEventHidden(ConfigBase):
     artist_mbid = Column(String(100), primary_key=True)
     artist_name = Column(String(500), nullable=True)
     hidden_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArtistConcertHiddenEvent(ConfigBase):
+    """Single canonical events hidden from the list (other shows for the same artist still appear)."""
+
+    __tablename__ = "artist_concert_hidden_event"
+
+    event_id = Column(
+        Integer, ForeignKey("concert_event.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    hidden_at = Column(DateTime(timezone=True), server_default=func.now())
