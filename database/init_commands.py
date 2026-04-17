@@ -82,7 +82,7 @@ def init_default_commands():
             "timeout_minutes": 60,
             "command_type": "discovery",
             "config_json": {
-                "artists_per_run": 15,
+                "artists_per_run": 20,
                 "refresh_ttl_days": 14,
             },
         },

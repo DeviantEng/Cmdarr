@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Star,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -36,6 +37,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
 
@@ -71,8 +73,10 @@ export function EventsPage() {
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false);
   const [confirmRestoreAllEvents, setConfirmRestoreAllEvents] = useState(false);
   const [refreshRunning, setRefreshRunning] = useState(false);
+  const [confirmRefreshAllDue, setConfirmRefreshAllDue] = useState(false);
   const [artistFilter, setArtistFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [interestFilter, setInterestFilter] = useState<"all" | "interested">("all");
   const [confirmHideArtist, setConfirmHideArtist] = useState<ArtistEventRow | null>(null);
   const [confirmHideEvent, setConfirmHideEvent] = useState<ArtistEventRow | null>(null);
 
@@ -82,7 +86,10 @@ export function EventsPage() {
       const [ps, st, ev, hA, hE] = await Promise.all([
         api.getEventsProviderStatus(),
         api.getEventsSettings(),
-        api.getUpcomingEvents({ limit: 200 }),
+        api.getUpcomingEvents({
+          limit: 200,
+          interested_only: interestFilter === "interested",
+        }),
         api.getHiddenEventArtists(),
         api.getHiddenEvents(),
       ]);
@@ -100,7 +107,7 @@ export function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [interestFilter]);
 
   useEffect(() => {
     load();
@@ -190,6 +197,24 @@ export function EventsPage() {
     }
   };
 
+  const runRefreshAllDue = async () => {
+    setConfirmRefreshAllDue(false);
+    setRefreshRunning(true);
+    try {
+      await api.executeCommand("artist_events_refresh", {
+        triggered_by: "api",
+        config_override: { refresh_all_due: true },
+      });
+      toast.success(
+        "Full refresh started — every due artist will be processed in one run. See Commands for progress."
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start refresh");
+    } finally {
+      setRefreshRunning(false);
+    }
+  };
+
   const doHideArtist = async () => {
     const ev = confirmHideArtist;
     if (!ev) return;
@@ -264,6 +289,21 @@ export function EventsPage() {
     }
   };
 
+  const toggleInterested = async (ev: ArtistEventRow) => {
+    const next = !ev.interested;
+    if (interestFilter === "interested" && !next) {
+      setEvents((prev) => prev.filter((e) => e.id !== ev.id));
+    } else {
+      setEvents((prev) => prev.map((e) => (e.id === ev.id ? { ...e, interested: next } : e)));
+    }
+    try {
+      await api.setEventInterested(ev.id, next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+      void load();
+    }
+  };
+
   const toggleProvider = async (
     key:
       | "ARTIST_EVENTS_BANDSINTOWN_ENABLED"
@@ -301,7 +341,7 @@ export function EventsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Artist events</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
         <p className="text-muted-foreground mt-1">
           Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
           from enabled providers. Sync Lidarr artists from New Releases first, then run the refresh
@@ -310,120 +350,141 @@ export function EventsPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Music className="h-5 w-5" />
+        <CardHeader className="space-y-1 px-4 py-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Music className="h-4 w-4" />
             Providers
           </CardTitle>
-          <CardDescription>
-            Toggle which sources participate in refresh. Set app IDs and API keys on{" "}
+          <CardDescription className="text-xs leading-snug">
+            Toggle sources; credentials in{" "}
             <Link to="/config" className="underline font-medium text-foreground">
-              Configuration
-            </Link>{" "}
-            (Config → Event Sources). At least one source must be enabled and fully configured
-            before refresh runs.
+              Configuration → Event Sources
+            </Link>
+            . Bandsintown <code className="text-[10px]">app_id</code> ≠ User-Agent (
+            <code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
+            ready before refresh.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
-            <p className="text-sm text-amber-600 dark:text-amber-400">
-              No provider is fully configured. Enable a source below, then add credentials in{" "}
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No provider fully configured — add keys in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
               </Link>
               .
             </p>
           )}
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <Label>Bandsintown</Label>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
+            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+              <Label className="text-xs font-normal">Bandsintown</Label>
+              <div className="flex items-center gap-2">
                 <Switch
                   checked={settings?.bandsintown_enabled ?? false}
                   onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_BANDSINTOWN_ENABLED", c)}
                 />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {providerStatus?.bandsintown.enabled ? "ready" : "needs app ID"}
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Status: {providerStatus?.bandsintown.enabled ? "ready" : "needs app ID in Config"}
-              </p>
             </div>
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <Label>Songkick</Label>
+            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+              <Label className="text-xs font-normal">Songkick</Label>
+              <div className="flex items-center gap-2">
                 <Switch
                   checked={settings?.songkick_enabled ?? false}
                   onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SONGKICK_ENABLED", c)}
                 />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {providerStatus?.songkick.enabled ? "ready" : "needs key"}
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Status: {providerStatus?.songkick.enabled ? "ready" : "needs API key in Config"}
-              </p>
             </div>
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <Label>Ticketmaster</Label>
+            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+              <Label className="text-xs font-normal">Ticketmaster</Label>
+              <div className="flex items-center gap-2">
                 <Switch
                   checked={settings?.ticketmaster_enabled ?? false}
                   onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_TICKETMASTER_ENABLED", c)}
                 />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {providerStatus?.ticketmaster.enabled ? "ready" : "needs key"}
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Status: {providerStatus?.ticketmaster.enabled ? "ready" : "needs API key in Config"}
-              </p>
             </div>
           </div>
-          <Button
-            variant="secondary"
-            onClick={runRefresh}
-            disabled={refreshRunning || !providerStatus?.any_ready}
-          >
-            {refreshRunning ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            Run artist events refresh
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={runRefresh}
+              disabled={refreshRunning || !providerStatus?.any_ready}
+            >
+              {refreshRunning ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Run scheduled batch
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmRefreshAllDue(true)}
+              disabled={refreshRunning || !providerStatus?.any_ready}
+            >
+              Refresh all due artists
+            </Button>
+            <p className="text-[11px] leading-snug text-muted-foreground max-w-xl">
+              Batch size: Commands → Artist Events Refresh (default 20). “All due” processes every
+              artist past interval in one run; large libraries may need a higher command timeout.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
+        <CardHeader className="space-y-1 px-4 py-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MapPin className="h-4 w-4" />
             Location & radius
           </CardTitle>
-          <CardDescription>
-            Enter a ZIP or city and state, then save — Cmdarr stores coordinates and label for you.
-            You do not need to set latitude, longitude, or radius under Configuration; those keys
-            remain available for environment variables or automation only.
+          <CardDescription className="text-xs leading-snug">
+            ZIP or city/state → saved as coordinates. Radius filters distance on this page.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-2">
-            <Label>Geocode</Label>
-            <Input
-              placeholder="e.g. 97201 or Portland, OR"
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
-            />
+        <CardContent className="px-4 pb-3 pt-0">
+          <div className="flex flex-wrap items-end gap-2 gap-y-2">
+            <div className="min-w-[12rem] flex-1 space-y-1">
+              <Label className="text-xs">Location</Label>
+              <Input
+                className="h-9"
+                placeholder="e.g. 97201 or Portland, OR"
+                value={locationQuery}
+                onChange={(e) => setLocationQuery(e.target.value)}
+              />
+            </div>
+            <Button className="h-9" size="sm" onClick={handleGeocode} disabled={geoLoading}>
+              {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+            <div className="w-24 space-y-1">
+              <Label className="text-xs">Radius (mi)</Label>
+              <Input
+                className="h-9"
+                value={radiusInput}
+                onChange={(e) => setRadiusInput(e.target.value)}
+              />
+            </div>
+            <Button className="h-9" variant="outline" size="sm" onClick={saveRadius}>
+              Apply
+            </Button>
           </div>
-          <Button onClick={handleGeocode} disabled={geoLoading}>
-            {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save location"}
-          </Button>
-          <div className="w-full space-y-2 sm:w-32">
-            <Label>Radius (mi)</Label>
-            <Input value={radiusInput} onChange={(e) => setRadiusInput(e.target.value)} />
-          </div>
-          <Button variant="outline" onClick={saveRadius}>
-            Save radius
-          </Button>
+          {settings?.user_label && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Saved: {settings.user_label} ({settings.user_lat}, {settings.user_lon})
+            </p>
+          )}
         </CardContent>
-        {settings?.user_label && (
-          <CardContent className="pt-0 text-sm text-muted-foreground">
-            Saved: {settings.user_label} ({settings.user_lat}, {settings.user_lon})
-          </CardContent>
-        )}
       </Card>
 
       <Card>
@@ -453,20 +514,35 @@ export function EventsPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="relative min-w-[12rem] flex-1">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search artist or venue…"
                 value={artistFilter}
                 onChange={(e) => setArtistFilter(e.target.value)}
-                className="pl-9"
+                className="h-9 pl-9"
               />
             </div>
-            <div className="w-full space-y-1.5 sm:w-48">
+            <div className="w-full space-y-1.5 sm:w-40">
+              <Label className="text-xs text-muted-foreground">Interest</Label>
+              <Select
+                value={interestFilter}
+                onValueChange={(v) => setInterestFilter(v as "all" | "interested")}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All events</SelectItem>
+                  <SelectItem value="interested">Interested only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full space-y-1.5 sm:w-44">
               <Label className="text-xs text-muted-foreground">Source</Label>
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue placeholder="All sources" />
                 </SelectTrigger>
                 <SelectContent>
@@ -480,7 +556,10 @@ export function EventsPage() {
           </div>
           <p className="text-xs text-muted-foreground">
             Showing {filteredEvents.length} of {events.length} loaded events
-            {artistFilter.trim() || sourceFilter !== "all" ? " (filtered)" : ""}.
+            {artistFilter.trim() || sourceFilter !== "all" || interestFilter === "interested"
+              ? " (filtered)"
+              : ""}
+            .
           </p>
           {events.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -495,11 +574,40 @@ export function EventsPage() {
                 const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
                   .filter(Boolean)
                   .join(" · ");
+                const sourceRows =
+                  ev.source_links && ev.source_links.length > 0
+                    ? ev.source_links
+                    : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
                 return (
                   <li
                     key={`${ev.id}-${ev.starts_at_utc}`}
-                    className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3"
+                    className={cn(
+                      "flex flex-col gap-2 px-2 py-2 pl-1 sm:flex-row sm:items-center sm:gap-2 sm:pl-2",
+                      ev.interested &&
+                        "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
+                    )}
                   >
+                    <div className="flex shrink-0 items-start pt-0.5 sm:pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8",
+                          ev.interested && "text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                        )}
+                        title={ev.interested ? "Remove from interested" : "Mark interested"}
+                        onClick={() => void toggleInterested(ev)}
+                      >
+                        <Star
+                          className={cn("h-4 w-4", ev.interested && "fill-current")}
+                          aria-hidden
+                        />
+                        <span className="sr-only">
+                          {ev.interested ? "Remove interested" : "Interested"}
+                        </span>
+                      </Button>
+                    </div>
                     <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-0">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold leading-tight">{ev.artist_name}</span>
@@ -512,16 +620,32 @@ export function EventsPage() {
                         {ev.distance_miles != null && (
                           <span className="tabular-nums">· {ev.distance_miles} mi</span>
                         )}
-                        <span className="flex gap-1">
-                          {ev.sources.map((s) => (
-                            <Badge
-                              key={s}
-                              variant="secondary"
-                              className="px-1.5 py-0 text-[10px] font-normal"
-                            >
-                              {sourceBadge(s)}
-                            </Badge>
-                          ))}
+                        <span className="flex flex-wrap gap-1">
+                          {sourceRows.map((row, i) => {
+                            const label = sourceBadge(row.provider);
+                            if (row.url) {
+                              return (
+                                <a
+                                  key={`${row.provider}-${i}`}
+                                  href={row.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center rounded-md border border-transparent bg-secondary px-1.5 py-0 text-[10px] font-normal text-secondary-foreground underline-offset-2 hover:underline"
+                                >
+                                  {label}
+                                </a>
+                              );
+                            }
+                            return (
+                              <Badge
+                                key={`${row.provider}-${i}`}
+                                variant="secondary"
+                                className="px-1.5 py-0 text-[10px] font-normal"
+                              >
+                                {label}
+                              </Badge>
+                            );
+                          })}
                         </span>
                       </div>
                     </div>
@@ -729,6 +853,27 @@ export function EventsPage() {
             >
               Restore all
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmRefreshAllDue} onOpenChange={setConfirmRefreshAllDue}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Refresh all due artists?</DialogTitle>
+            <DialogDescription>
+              This single run processes <strong>every</strong> Lidarr artist that has no event-scan
+              record yet or is past the per-artist refresh interval — not just the usual batch size.
+              It can take several minutes for large libraries. If the run times out, increase{" "}
+              <strong>Timeout</strong> for this command under Commands, or rely on smaller scheduled
+              batches instead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setConfirmRefreshAllDue(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void runRefreshAllDue()}>Start full refresh</Button>
           </div>
         </DialogContent>
       </Dialog>

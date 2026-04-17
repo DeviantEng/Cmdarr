@@ -16,6 +16,7 @@ from database.config_models import (
     ArtistConcertHiddenEvent,
     ArtistEvent,
     ArtistEventHidden,
+    ArtistEventRefresh,
     ArtistEventSource,
 )
 from database.database import get_config_db
@@ -41,6 +42,10 @@ class HideArtistRequest(BaseModel):
 
 class HideEventRequest(BaseModel):
     event_id: int = Field(..., ge=1)
+
+
+class SetInterestedRequest(BaseModel):
+    interested: bool = True
 
 
 @router.get("/provider-status")
@@ -102,6 +107,7 @@ async def list_upcoming_events(
     db: Annotated[Session, Depends(get_config_db)],
     max_miles: Annotated[float | None, Query(ge=0)] = None,
     include_hidden: bool = False,
+    interested_only: bool = False,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
     """Upcoming artist events; optional distance filter from user location in config."""
@@ -123,6 +129,8 @@ async def list_upcoming_events(
     # distance filtering — that only loads the earliest N events globally and yields few in-range rows.
     use_geo_filter = user_lat is not None and user_lon is not None
     base = db.query(ArtistEvent).filter(ArtistEvent.starts_at_utc >= now)
+    if interested_only:
+        base = base.filter(ArtistEvent.user_interested.is_(True))
     if use_geo_filter:
         lat_min, lat_max, lon_min, lon_max = lat_lon_deg_bounds_for_radius_miles(
             user_lat, user_lon, use_miles
@@ -154,9 +162,13 @@ async def list_upcoming_events(
             if dist > use_miles:
                 continue
         sources = (
-            db.query(ArtistEventSource).filter(ArtistEventSource.concert_event_id == ev.id).all()
+            db.query(ArtistEventSource)
+            .filter(ArtistEventSource.concert_event_id == ev.id)
+            .order_by(ArtistEventSource.provider.asc())
+            .all()
         )
         badges = sorted({s.provider for s in sources})
+        source_links = [{"provider": s.provider, "url": s.source_url} for s in sources]
         lastfm = f"https://www.last.fm/music/{quote(ev.artist_name, safe='')}/+events"
         out.append(
             {
@@ -172,7 +184,9 @@ async def list_upcoming_events(
                 "starts_at_utc": ev.starts_at_utc.isoformat() + "Z" if ev.starts_at_utc else None,
                 "local_date": ev.local_date,
                 "sources": badges,
-                "distance_miles": round(dist, 1) if dist is not None else None,
+                "source_links": source_links,
+                "interested": bool(getattr(ev, "user_interested", False)),
+                "distance_miles": round(dist) if dist is not None else None,
                 "last_fm_events_url": lastfm,
             }
         )
@@ -189,6 +203,48 @@ async def list_upcoming_events(
             "radius_miles": use_miles,
         },
     }
+
+
+@router.post("/invalidate-cache")
+async def invalidate_events_cache(db: Annotated[Session, Depends(get_config_db)]):
+    """
+    Delete all stored concert rows (and per-source links) and clear per-artist refresh
+    schedule so every Lidarr artist is due for the next artist_events_refresh run.
+    Artist-level and single-event hides are preserved; stored events are removed so the
+    Artist Events page is empty until the next refresh repopulates.
+    """
+    try:
+        n_events = db.query(ArtistEvent).delete(synchronize_session=False)
+        n_refresh = db.query(ArtistEventRefresh).delete(synchronize_session=False)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    _log().info(
+        "Invalidated artist events cache: %s concert_event rows, %s artist_concert_refresh rows",
+        n_events,
+        n_refresh,
+    )
+    return {
+        "success": True,
+        "deleted_event_rows": n_events,
+        "reset_refresh_rows": n_refresh,
+    }
+
+
+@router.patch("/{event_id}/interested")
+async def set_event_interested(
+    event_id: int,
+    req: SetInterestedRequest,
+    db: Annotated[Session, Depends(get_config_db)],
+):
+    """Mark a canonical event as interested (or clear) for filtering on the Artist Events page."""
+    ev = db.query(ArtistEvent).filter(ArtistEvent.id == event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    ev.user_interested = req.interested
+    db.commit()
+    return {"success": True, "interested": req.interested}
 
 
 @router.get("/hidden")

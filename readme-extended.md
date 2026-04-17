@@ -208,22 +208,31 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 ### Event Sources (artist events)
 
-Upcoming shows are aggregated on **Artist events** (`/events`) from optional **Bandsintown**, **Songkick**, and **Ticketmaster Discovery**. Configure these under **Config → Event Sources** in the UI (category `artist_events`). Data is refreshed by the **`artist_events_refresh`** command (scheduler or manual run).
+Upcoming shows are aggregated on **Artist events** (`/events`) from optional **Bandsintown**, **Songkick**, and **Ticketmaster Discovery**.
+
+**Where to configure what**
+
+| What | Where |
+|------|--------|
+| **Enable each provider** (on/off) | **Artist events** page only — not duplicated under Config. |
+| **Credentials** (Bandsintown `app_id`, Songkick API key, Ticketmaster Consumer Key) | **Config → Event Sources** (`artist_events`), or environment variables. |
+| **Batch size & per-artist TTL** | **Commands → Artist Events Refresh** → Edit: `artists_per_run` (default **20**, range 1–50), `refresh_ttl_days` (default **14** days). These live in the command’s `config_json`, not global Config. |
+| **Location & radius** (distance filter on `/events`) | **Artist events** page (stored as `ARTIST_EVENTS_USER_*` / radius; those keys are hidden on the Config page). |
+
+Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run scheduled batch** or **Refresh all due artists** on the Artist events page, or Commands → Run). An ad-hoc run can pass **`refresh_all_due: true`** (via the “Refresh all due artists” button) to process every due artist in one execution instead of the usual batch cap.
 
 | Setting | Required? | Notes |
 |---------|-----------|--------|
-| `ARTIST_EVENTS_BANDSINTOWN_ENABLED` | No | Default off. |
-| `ARTIST_EVENTS_BANDSINTOWN_APP_ID` | **Yes if Bandsintown enabled** | Public API: any stable string you choose (e.g. `cmdarr`). It identifies your app to Bandsintown, not a secret from an artist. |
-| `ARTIST_EVENTS_SONGKICK_ENABLED` | No | Default off. |
+| `ARTIST_EVENTS_BANDSINTOWN_ENABLED` | No | Default off. Toggled on **Artist events**; omitted from Config UI to avoid duplication (still settable via env/DB). |
+| `ARTIST_EVENTS_BANDSINTOWN_APP_ID` | **Yes if Bandsintown enabled** | Bandsintown’s public API **`app_id`** query parameter: any stable string you choose (e.g. `cmdarr`). **Not** the HTTP User-Agent (see below). |
+| `ARTIST_EVENTS_SONGKICK_ENABLED` | No | Default off. Toggled on **Artist events** only. |
 | `ARTIST_EVENTS_SONGKICK_API_KEY` | **Yes if Songkick enabled** | Commercial/partnership keys are common; availability varies. |
-| `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. |
+| `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. Toggled on **Artist events** only. |
 | `ARTIST_EVENTS_TICKETMASTER_API_KEY` | **Yes if Ticketmaster enabled** | [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/getting-started/) uses a single `apikey` query parameter. Paste your **Consumer Key** here. The **Consumer Secret** is for other OAuth-style flows and is **not** used by Cmdarr’s Discovery GET requests. |
-| `ARTIST_EVENTS_USER_LAT` | **No** | **Distance filter only** — not required for ingestion. Normally set from **Artist events** (`/events`) via geocode (“Save location”), not from Config (hidden there to avoid duplication). Can still be set via env for automation. |
-| `ARTIST_EVENTS_USER_LON` | **No** | Same as latitude. |
-| `ARTIST_EVENTS_USER_LABEL` | **No** | Display label for the saved location; set from the Artist events page with lat/lon. |
-| `ARTIST_EVENTS_RADIUS_MILES` | — | Default `100`. Saved from the Artist events page (“Save radius”); hidden in Config like the location fields. Applies when lat/lon exist. |
+| `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | **No** | Distance filter only; set from **Artist events**. Hidden on Config. |
+| `ARTIST_EVENTS_RADIUS_MILES` | — | Default `100`. Set from **Artist events**; hidden on Config. |
 
-**User-Agent:** Bandsintown requests use the same **`CMDARR_USER_AGENT`** as MusicBrainz / ListenBrainz (Application in Config). Override there if an operator whitelists by UA.
+**Bandsintown `app_id` vs HTTP User-Agent:** `ARTIST_EVENTS_BANDSINTOWN_APP_ID` is only the Bandsintown **`app_id`** parameter. Outbound HTTP requests to Bandsintown (and the User-Agent used for geocoding) follow **`CMDARR_USER_AGENT`**, configured under **Config → Application** (visible; not a hidden field). It is the same style of client identifier used for MusicBrainz / ListenBrainz.
 
 REST API: `GET /api/events/...` (see OpenAPI docs in the running app).
 

@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Calendar,
   CheckCircle2,
   XCircle,
   Clock,
@@ -14,7 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { StatusInfo, LibraryCacheStatus, NrdMetrics } from "@/lib/types";
+import type { ArtistEventsStats, StatusInfo, LibraryCacheStatus, NrdMetrics } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,9 +49,11 @@ export function StatusPage() {
   const [dismissedTotal, setDismissedTotal] = useState(0);
   const [confirmRestoreAllOpen, setConfirmRestoreAllOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
-  const [confirmActionLoading, setConfirmActionLoading] = useState<"restore-all" | "reset" | null>(
-    null
-  );
+  const [confirmInvalidateEventsOpen, setConfirmInvalidateEventsOpen] = useState(false);
+  const [confirmActionLoading, setConfirmActionLoading] = useState<
+    "restore-all" | "reset" | "invalidate-events" | null
+  >(null);
+  const [artistEventsStats, setArtistEventsStats] = useState<ArtistEventsStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -109,16 +112,33 @@ export function StatusPage() {
     }
   };
 
+  const handleInvalidateArtistEvents = async () => {
+    setConfirmActionLoading("invalidate-events");
+    try {
+      const res = await api.invalidateArtistEventsCache();
+      toast.success(
+        `Cleared ${res.deleted_event_rows} events; ${res.reset_refresh_rows} artists due for refresh`
+      );
+      setConfirmInvalidateEventsOpen(false);
+      loadStatus();
+    } catch {
+      toast.error("Failed to clear artist events cache");
+    } finally {
+      setConfirmActionLoading(null);
+    }
+  };
+
   const loadStatus = async () => {
     setError(null);
     try {
-      const [statusData, healthData, cacheData, nrdData] = await Promise.all([
+      const [bundle, healthData, cacheData, nrdData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
         api.getCacheStatus().catch(() => null),
         api.getNrdMetrics().catch(() => null),
       ]);
-      setStatus(statusData);
+      setStatus(bundle.system);
+      setArtistEventsStats(bundle.artist_events);
       setHealth(healthData);
       setCacheStatus(cacheData);
       setNrdMetrics(nrdData);
@@ -306,6 +326,76 @@ export function StatusPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {artistEventsStats && (
+        <Card>
+          <CardHeader className="space-y-2 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calendar className="h-4 w-4" />
+                  Artist Events
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Cached shows from the event refresh command. Clearing deletes stored events and
+                  per-artist scan timestamps so every library artist is due on the next run. Artist
+                  hides (from the Events page) are kept; single-event hides tied to deleted rows are
+                  removed.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive shrink-0"
+                onClick={() => setConfirmInvalidateEventsOpen(true)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Clear event cache
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.lidarr_artists.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Lidarr artists</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.artists_scanned_at_least_once.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Scanned ≥ once</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.scan_coverage_percent.toFixed(1)}%
+                </div>
+                <div className="text-xs text-muted-foreground">Scan coverage</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.upcoming_events_stored.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Upcoming stored</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.hidden_artists.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Hidden artists</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {artistEventsStats.hidden_events.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Hidden events</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Library Cache */}
@@ -581,6 +671,35 @@ export function StatusPage() {
               disabled={confirmActionLoading === "reset"}
             >
               {confirmActionLoading === "reset" ? "Resetting…" : "Reset"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmInvalidateEventsOpen} onOpenChange={setConfirmInvalidateEventsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Clear artist events cache?
+            </DialogTitle>
+            <DialogDescription>
+              This deletes all stored upcoming events and clears per-artist event-scan timestamps.
+              The Artist Events page will be empty until the next refresh. Every Lidarr artist will
+              be due for scanning again. Artist-level hides are kept; hides on individual events are
+              dropped with those rows.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setConfirmInvalidateEventsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleInvalidateArtistEvents}
+              disabled={confirmActionLoading === "invalidate-events"}
+            >
+              {confirmActionLoading === "invalidate-events" ? "Clearing…" : "Clear cache"}
             </Button>
           </div>
         </DialogContent>

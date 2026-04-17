@@ -69,8 +69,10 @@ def venue_fingerprint(
     vn = normalize_venue_name(coerce_location_str(venue_name))
     c = (coerce_location_str(city) or "").strip().lower()
     r = (coerce_location_str(region) or "").strip().lower()
+    # Coarser than raw API coords so two responses for the same venue (slightly different
+    # lat/lon) still share a fingerprint. ~0.01° is ~1.1 km — fine for stadium-level dedupe.
     if lat is not None and lon is not None:
-        geo = f"{round(lat, 4)},{round(lon, 4)}"
+        geo = f"{round(lat, 2)},{round(lon, 2)}"
     else:
         geo = ""
     raw = f"{vn}|{c}|{r}|{geo}"

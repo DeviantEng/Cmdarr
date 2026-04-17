@@ -43,8 +43,10 @@ class ArtistEventsRefreshCommand(BaseCommand):
         log = self.logger
         cfg = self.config_adapter
         cj = getattr(self, "config_json", None) or {}
-        ttl_days = int(cj.get("refresh_ttl_days", 14))
-        artists_per_run = int(cj.get("artists_per_run", 15))
+        ttl_days = max(1, min(365, int(cj.get("refresh_ttl_days", 14))))
+        artists_per_run = int(cj.get("artists_per_run", 20))
+        artists_per_run = max(1, min(50, artists_per_run))
+        refresh_all_due = bool(cj.get("refresh_all_due", False))
 
         bit_on = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
         bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
@@ -73,7 +75,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
             self._delete_past_events(session, now)
             session.commit()
 
-            rows = (
+            q = (
                 session.query(LidarrArtist)
                 .outerjoin(
                     ArtistEventRefresh,
@@ -89,9 +91,10 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     case((ArtistEventRefresh.next_due_at.is_(None), 0), else_=1),
                     ArtistEventRefresh.next_due_at.asc(),
                 )
-                .limit(artists_per_run)
-                .all()
             )
+            if not refresh_all_due:
+                q = q.limit(artists_per_run)
+            rows = q.all()
 
             if not rows:
                 log.info("No Lidarr artists due for event refresh")
@@ -146,9 +149,12 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "artists_processed": processed,
                 "new_events": total_new,
                 "sources_added": total_sources,
+                "refresh_all_due": refresh_all_due,
+                "artists_per_run_cap": artists_per_run,
             }
             log.info(
-                f"Artist events refresh: {processed} artists, {total_new} new canonical events, {total_sources} new sources"
+                f"Artist events refresh: {processed} artists (all_due={refresh_all_due}, cap={artists_per_run}), "
+                f"{total_new} new canonical events, {total_sources} new sources"
             )
             return True
         except Exception as e:

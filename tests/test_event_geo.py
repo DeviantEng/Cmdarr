@@ -46,3 +46,10 @@ def test_venue_fingerprint_accepts_dict_region():
     fp_str = venue_fingerprint("Venue", "Portland", "Oregon", 45.5, -122.6)
     fp_dict = venue_fingerprint("Venue", "Portland", {"name": "Oregon"}, 45.5, -122.6)
     assert fp_str == fp_dict
+
+
+def test_venue_fingerprint_merges_slightly_different_coords():
+    """Same venue from two API responses with noisy coordinates should dedupe together."""
+    fp_a = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 36.16251, -86.77148)
+    fp_b = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 36.16284, -86.77112)
+    assert fp_a == fp_b

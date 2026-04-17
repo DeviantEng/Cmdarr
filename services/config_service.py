@@ -544,21 +544,30 @@ class ConfigService:
                 "default_value": "false",
                 "data_type": "bool",
                 "category": "artist_events",
-                "description": "Enable Bandsintown as an event data source",
+                "description": "Enable Bandsintown (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_BANDSINTOWN_APP_ID",
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Bandsintown public API app identifier (any string you choose, e.g. cmdarr; required when Bandsintown is enabled)",
+                "description": (
+                    "Bandsintown Public API app_id (query param on rest.bandsintown.com). "
+                    "Must be a valid key from Bandsintown; the placeholder 'test' may work for spot checks only. "
+                    "Artist-manager API keys are scoped to that artist—bulk scans over a whole library often need "
+                    "Bandsintown partnership approval; HTTP 403 with an AWS-style 'explicit deny' policy message "
+                    "usually means the key is not permitted for this traffic pattern. "
+                    "User-Agent for HTTP is Application → CMDARR_USER_AGENT (not this field)."
+                ),
             },
             {
                 "key": "ARTIST_EVENTS_SONGKICK_ENABLED",
                 "default_value": "false",
                 "data_type": "bool",
                 "category": "artist_events",
-                "description": "Enable Songkick as an event data source",
+                "description": "Enable Songkick (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_SONGKICK_API_KEY",
@@ -573,7 +582,8 @@ class ConfigService:
                 "default_value": "false",
                 "data_type": "bool",
                 "category": "artist_events",
-                "description": "Enable Ticketmaster Discovery as an event data source",
+                "description": "Enable Ticketmaster (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
             },
             {
                 "key": "ARTIST_EVENTS_TICKETMASTER_API_KEY",
@@ -672,6 +682,9 @@ class ConfigService:
                         setting = ConfigSetting(**setting_data)
                         session.add(setting)
                     elif default.get("is_hidden") and default["key"] in (
+                        "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
+                        "ARTIST_EVENTS_SONGKICK_ENABLED",
+                        "ARTIST_EVENTS_TICKETMASTER_ENABLED",
                         "ARTIST_EVENTS_USER_LAT",
                         "ARTIST_EVENTS_USER_LON",
                         "ARTIST_EVENTS_USER_LABEL",

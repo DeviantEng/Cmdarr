@@ -83,6 +83,14 @@ export const commandUiCopy = {
     spotifyCredentialsOk: "credentials configured",
     spotifyCredentialsMissing: "set credentials in Config",
   },
+  artistEvents: {
+    artistsPerRun: "Artists per scheduled run",
+    artistsPerRunHelp:
+      "How many Lidarr artists to process each time the command runs (1–50). Artists never scanned or past their refresh time are chosen first. Default 20.",
+    refreshTtl: "Per-artist refresh interval (days)",
+    refreshTtlHelp:
+      "After a successful fetch for an artist, wait this many days before they are due again (1–365).",
+  },
   daylist: {
     plexAccountLabel: "Plex Account (play history source)",
     selectPlexPlaceholder: "Select Plex account",

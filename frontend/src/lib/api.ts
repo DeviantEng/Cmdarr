@@ -1,4 +1,5 @@
 import type {
+  ArtistEventsStats,
   CommandConfig,
   CommandExecution,
   CommandUpdateRequest,
@@ -195,9 +196,12 @@ class ApiClient {
   }
 
   // Status API
-  async getStatus(): Promise<StatusInfo> {
-    const response = await this.request<{ system: StatusInfo }>("/api/status/raw");
-    return response.system;
+  async getStatus(): Promise<{ system: StatusInfo; artist_events: ArtistEventsStats | null }> {
+    const response = await this.request<{
+      system: StatusInfo;
+      artist_events?: ArtistEventsStats;
+    }>("/api/status/raw");
+    return { system: response.system, artist_events: response.artist_events ?? null };
   }
 
   async healthCheck(): Promise<{
@@ -443,6 +447,7 @@ class ApiClient {
   async getUpcomingEvents(params?: {
     max_miles?: number;
     include_hidden?: boolean;
+    interested_only?: boolean;
     limit?: number;
   }): Promise<{
     success: boolean;
@@ -459,6 +464,8 @@ class ApiClient {
       starts_at_utc: string | null;
       local_date: string;
       sources: string[];
+      source_links: { provider: string; url: string | null }[];
+      interested: boolean;
       distance_miles: number | null;
       last_fm_events_url: string;
     }[];
@@ -472,6 +479,7 @@ class ApiClient {
     const searchParams = new URLSearchParams();
     if (params?.max_miles !== undefined) searchParams.set("max_miles", String(params.max_miles));
     if (params?.include_hidden) searchParams.set("include_hidden", "true");
+    if (params?.interested_only) searchParams.set("interested_only", "true");
     if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
     const q = searchParams.toString();
     return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);
@@ -528,6 +536,24 @@ class ApiClient {
 
   async unhideAllHiddenEvents(): Promise<{ success: boolean; removed?: number }> {
     return this.request("/api/events/unhide-all-events", { method: "POST" });
+  }
+
+  async setEventInterested(
+    eventId: number,
+    interested: boolean
+  ): Promise<{ success: boolean; interested: boolean }> {
+    return this.request(`/api/events/${eventId}/interested`, {
+      method: "PATCH",
+      body: JSON.stringify({ interested }),
+    });
+  }
+
+  async invalidateArtistEventsCache(): Promise<{
+    success: boolean;
+    deleted_event_rows: number;
+    reset_refresh_rows: number;
+  }> {
+    return this.request("/api/events/invalidate-cache", { method: "POST" });
   }
 
   async scanArtistUrl(params: {
