@@ -5,6 +5,7 @@ from utils.event_geo import (
     haversine_miles,
     lat_lon_deg_bounds_for_radius_miles,
     make_dedupe_key,
+    parse_float,
     venue_fingerprint,
 )
 
@@ -53,3 +54,37 @@ def test_venue_fingerprint_merges_slightly_different_coords():
     fp_a = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 36.16251, -86.77148)
     fp_b = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 36.16284, -86.77112)
     assert fp_a == fp_b
+
+
+def test_venue_fingerprint_differs_for_distinct_venues():
+    a = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 36.1625, -86.7714)
+    b = venue_fingerprint("Bridgestone Arena", "Nashville", "TN", 36.1591, -86.7784)
+    c = venue_fingerprint("Nissan Stadium", "Nashville", "TN", 40.0, -80.0)
+    assert a != b
+    assert a != c
+
+
+def test_haversine_self_is_zero_and_symmetric():
+    p = (36.1625, -86.7714)
+    q = (34.0522, -118.2437)
+    assert haversine_miles(*p, *p) == 0
+    assert abs(haversine_miles(*p, *q) - haversine_miles(*q, *p)) < 1e-9
+
+
+def test_make_dedupe_key_changes_with_inputs():
+    fp = venue_fingerprint("V", "C", "R", 1.0, 2.0)
+    k1 = make_dedupe_key("mbid", "2026-06-01", fp)
+    k2 = make_dedupe_key("mbid", "2026-06-02", fp)
+    fp2 = venue_fingerprint("V2", "C", "R", 1.0, 2.0)
+    k3 = make_dedupe_key("mbid", "2026-06-01", fp2)
+    assert k1 != k2
+    assert k1 != k3
+
+
+def test_parse_float_handles_inputs():
+    assert parse_float(None) is None
+    assert parse_float("") is None
+    assert parse_float("abc") is None
+    assert parse_float("1.5") == 1.5
+    assert parse_float(2) == 2.0
+    assert parse_float({"x": 1}) is None

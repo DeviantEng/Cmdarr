@@ -8,10 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.14-dev] - TBD
 
 ### Features
-- **Naming**: Artist events feature renamed for clarity (not only concerts): API module **`events`**, REST prefix **`/api/events`**, config keys **`ARTIST_EVENTS_*`**, command **`artist_events_refresh`**, helpers **`event_geo`** / **`event_ingest`**. DB migration renames existing `CONCERT_EVENTS_*` settings and `concert_events_refresh` command row.
-- **Artist events**: New **Artist events** page (`/events`) with upcoming shows aggregated from optional **Bandsintown**, **Songkick**, and **Ticketmaster Discovery** (each independently enabled). Scheduled **`artist_events_refresh`** command batches Lidarr artists with TTL (default 14 days), dedupes across providers, and stores canonical events plus per-source links. US geocoding (Nominatim) for distance filtering, per-artist **hide** with restore / restore-all, and **Last.fm** links for full artist event pages.
-- **Artist events command**: **`artist_events_refresh`** supports configurable **`artists_per_run`** (default 20, max 50) and **`refresh_ttl_days`** (default 14) in the command’s settings; optional **refresh all due** run from the Artist events page processes every eligible artist in one execution.
-- **Artist events UI**: Search and source filter, compact event rows, per-event hide with restore, provider toggles on **`/events`** only (API keys remain under Config → Event Sources).
+- **Artist Events**: New `/events` page aggregating upcoming shows from optional Bandsintown, Songkick, and Ticketmaster Discovery; scheduled `artist_events_refresh` command batches Lidarr artists with TTL, dedupes across providers, US geocoding (Nominatim) for distance filter, per-artist and per-event hide with restore, Last.fm links, and an **Interested** star with filter.
+- **Artist Events command**: Configurable `artists_per_run` (default 20, max 50) and `refresh_ttl_days` (default 14); optional **refresh all due** run from the page processes every eligible artist.
+- **Status page**: Artist Events card (scan coverage, upcoming stored, hidden counts) with a **Clear event cache** action that wipes stored events and makes every Lidarr artist due on the next refresh.
 
 ### Fixes
 - **Security headers (plain HTTP)**: Dropped CSP `upgrade-insecure-requests` so browsers do not upgrade asset URLs to HTTPS when the app is only served over HTTP (fixes blank UI / `ERR_SSL_PROTOCOL_ERROR` on LAN). Removed deprecated Permissions-Policy `interest-cohort`. `Cross-Origin-Opener-Policy` is only sent for HTTPS, localhost, or when `X-Forwarded-Proto: https` (reverse proxy TLS).
