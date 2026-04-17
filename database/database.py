@@ -7,12 +7,35 @@ import os
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from .cache_models import CacheBase
 from .config_models import ConfigBase
+
+
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_fk(dbapi_connection, connection_record):
+    """Enable foreign key enforcement on every new SQLite connection.
+
+    SQLite defaults foreign keys off, which silently disables our ORM-declared
+    `ondelete=CASCADE` rules. Without this listener, deleting a parent row (e.g.
+    `concert_event`) leaves orphan `concert_event_source` rows behind, which can
+    reattach to unrelated parents once SQLite reuses the freed id. Turning FKs on
+    here makes cascades behave as the schema advertises on every connection the
+    engine hands out.
+    """
+    try:
+        import sqlite3
+
+        if isinstance(dbapi_connection, sqlite3.Connection):
+            cur = dbapi_connection.cursor()
+            cur.execute("PRAGMA foreign_keys = ON")
+            cur.close()
+    except Exception:
+        pass
 
 
 def _get_data_dir() -> str:

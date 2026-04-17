@@ -75,9 +75,22 @@ class HTTPClientUtils:
                                 )
                             return {}
                     elif response.status in (429, 503) and attempt < max_retries:
-                        # Rate limit (429) or service unavailable (503) - retry with exponential backoff
+                        # Rate limit (429) or service unavailable (503) - honor Retry-After
+                        # when present, otherwise exponential backoff. Floor the first 429
+                        # retry at 2s so we clear the typical 1-second spike-arrest window
+                        # before retrying.
                         error_text = await response.text()
-                        wait_time = retry_delay * (2**attempt)  # Exponential backoff
+                        retry_after_hdr = response.headers.get(
+                            "Retry-After"
+                        ) or response.headers.get("retry-after")
+                        wait_time = retry_delay * (2**attempt)
+                        if retry_after_hdr:
+                            try:
+                                wait_time = max(wait_time, float(retry_after_hdr))
+                            except TypeError, ValueError:
+                                pass
+                        if response.status == 429:
+                            wait_time = max(wait_time, 2.0)
                         if logger:
                             logger.warning(
                                 f"Rate limit error {response.status} on attempt {attempt + 1}/{max_retries + 1}: {error_text}"

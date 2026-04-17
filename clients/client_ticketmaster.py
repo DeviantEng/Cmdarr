@@ -34,7 +34,7 @@ class TicketmasterClient(BaseAPIClient):
             config=config,
             client_name="ticketmaster",
             base_url="https://app.ticketmaster.com/discovery/v2",
-            rate_limit=0.5,
+            rate_limit=0.33,
         )
         self._api_key = api_key
 

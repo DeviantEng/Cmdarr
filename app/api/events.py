@@ -211,10 +211,14 @@ async def invalidate_events_cache(db: Annotated[Session, Depends(get_config_db)]
     """
     Delete all stored concert rows (and per-source links) and clear per-artist refresh
     schedule so every Lidarr artist is due for the next artist_events_refresh run.
-    Artist-level and single-event hides are preserved; stored events are removed so the
-    Artist Events page is empty until the next refresh repopulates.
+    Artist-level hides are preserved; per-event hides are dropped because their event_id
+    references vanish with the canonical rows (SQLite does not enforce ON DELETE CASCADE
+    unless `PRAGMA foreign_keys = ON` is set per connection, so we delete each child
+    table explicitly to avoid orphans).
     """
     try:
+        n_hidden_events = db.query(ArtistConcertHiddenEvent).delete(synchronize_session=False)
+        n_sources = db.query(ArtistEventSource).delete(synchronize_session=False)
         n_events = db.query(ArtistEvent).delete(synchronize_session=False)
         n_refresh = db.query(ArtistEventRefresh).delete(synchronize_session=False)
         db.commit()
@@ -222,13 +226,18 @@ async def invalidate_events_cache(db: Annotated[Session, Depends(get_config_db)]
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e)) from e
     _log().info(
-        "Invalidated artist events cache: %s concert_event rows, %s artist_concert_refresh rows",
+        "Invalidated artist events cache: %s concert_event rows, %s concert_event_source rows, "
+        "%s artist_concert_refresh rows, %s artist_concert_hidden_event rows",
         n_events,
+        n_sources,
         n_refresh,
+        n_hidden_events,
     )
     return {
         "success": True,
         "deleted_event_rows": n_events,
+        "deleted_source_rows": n_sources,
+        "deleted_hidden_event_rows": n_hidden_events,
         "reset_refresh_rows": n_refresh,
     }
 

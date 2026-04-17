@@ -51,6 +51,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         if force_refresh_all:
             refresh_all_due = True
         error_retry_minutes = max(5, min(24 * 60, int(cj.get("error_retry_minutes", 60))))
+        past_event_retention_days = max(0, min(365, int(cj.get("past_event_retention_days", 1))))
 
         bit_on = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
         bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
@@ -76,8 +77,14 @@ class ArtistEventsRefreshCommand(BaseCommand):
         session = db.get_config_session_sync()
         now = datetime.now(UTC)
         try:
-            self._delete_past_events(session, now)
+            past_events_purged = self._delete_past_events(session, now, past_event_retention_days)
             session.commit()
+            if past_events_purged:
+                log.info(
+                    "Purged %s past event row(s) older than %s day(s) before refresh",
+                    past_events_purged,
+                    past_event_retention_days,
+                )
 
             q = (
                 session.query(LidarrArtist)
@@ -186,6 +193,8 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "artists_per_run_cap": artists_per_run,
                 "artists_with_errors": artists_with_errors,
                 "provider_errors": provider_error_counts,
+                "past_events_purged": past_events_purged,
+                "past_event_retention_days": past_event_retention_days,
             }
             log.info(
                 "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
@@ -210,20 +219,29 @@ class ArtistEventsRefreshCommand(BaseCommand):
         finally:
             session.close()
 
-    def _delete_past_events(self, session, now: datetime) -> None:
-        cutoff = now - timedelta(days=1)
+    def _delete_past_events(self, session, now: datetime, retention_days: int) -> int:
+        """Remove canonical events whose start time is older than `retention_days` ago.
+
+        Returns the number of canonical `concert_event` rows deleted. With
+        `PRAGMA foreign_keys=ON` enabled globally (see database.database._enable_sqlite_fk)
+        dependent rows in `concert_event_source` and `artist_concert_hidden_event` cascade
+        automatically. The explicit source delete below is kept as a belt-and-suspenders
+        safeguard so cleanup still works if FK enforcement is ever disabled.
+        """
+        cutoff = now - timedelta(days=max(0, retention_days))
         old_ids = [
             r[0]
             for r in session.query(ArtistEvent.id).filter(ArtistEvent.starts_at_utc < cutoff).all()
         ]
         if not old_ids:
-            return
+            return 0
         session.query(ArtistEventSource).filter(
             ArtistEventSource.concert_event_id.in_(old_ids)
         ).delete(synchronize_session=False)
         session.query(ArtistEvent).filter(ArtistEvent.id.in_(old_ids)).delete(
             synchronize_session=False
         )
+        return len(old_ids)
 
     async def _fetch_for_artist(
         self,
