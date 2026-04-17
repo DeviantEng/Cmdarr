@@ -599,10 +599,17 @@ export function EventsPage() {
                 const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
                   .filter(Boolean)
                   .join(" · ");
-                const sourceRows =
+                const rawSourceRows =
                   ev.source_links && ev.source_links.length > 0
                     ? ev.source_links
                     : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
+                const seenSourceKeys = new Set<string>();
+                const sourceRows = rawSourceRows.filter((row) => {
+                  const key = `${row.provider}::${(row.url || "").split("?")[0]}`;
+                  if (seenSourceKeys.has(key)) return false;
+                  seenSourceKeys.add(key);
+                  return true;
+                });
                 return (
                   <li
                     key={`${ev.id}-${ev.starts_at_utc}`}

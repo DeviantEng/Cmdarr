@@ -371,9 +371,11 @@ def create_version_migration_runner() -> VersionMigrationRunner:
 
     def migrate_concert_event_dedupe_coalesce(cursor):
         """
-        Recompute venue fingerprints with coarser geo (see utils.event_geo.venue_fingerprint),
-        merge duplicate concert_event rows that now share the same dedupe key, then refresh
-        dedupe_key for all rows.
+        Recompute venue fingerprints using the current `utils.event_geo.venue_fingerprint`
+        (name-first dedupe with normalized venue/city/region), merge duplicate
+        concert_event rows that now share the same dedupe key — preserving per-source
+        links, user-interested state, and per-event hides — then refresh dedupe_key for
+        all remaining rows.
         """
         from collections import defaultdict
 
@@ -489,7 +491,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         VersionMigration(
             version="0.3.14-dev",
             name="concert_event_dedupe_coalesce",
-            description="Merge duplicate concert_event rows after coarser venue fingerprinting",
+            description="Recompute venue fingerprints (name-first dedupe) and merge duplicate concert_event rows",
             up_func=migrate_concert_event_dedupe_coalesce,
         )
     )
