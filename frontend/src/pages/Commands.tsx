@@ -325,10 +325,22 @@ export function CommandsPage() {
       }
     }
 
+    const isArtistEvents = command.command_name === "artist_events_refresh";
+    const apCfg = cfg.artists_per_run;
+    const artistsPerRunVal =
+      typeof apCfg === "number"
+        ? isArtistEvents
+          ? Math.min(50, Math.max(1, apCfg))
+          : apCfg
+        : isArtistEvents
+          ? 20
+          : 5;
+
     setEditForm({
       schedule_override: !!command.schedule_override,
       schedule_cron: command.schedule_cron || "0 3 * * *",
-      artists_per_run: typeof cfg.artists_per_run === "number" ? cfg.artists_per_run : 5,
+      artists_per_run: artistsPerRunVal,
+      refresh_ttl_days: typeof cfg.refresh_ttl_days === "number" ? cfg.refresh_ttl_days : 14,
       album_types: typesStr
         .split(",")
         .map((s) => s.trim().toLowerCase())
@@ -1229,6 +1241,31 @@ export function CommandsPage() {
                     Save
                   </Button>
                 )}
+                {editingCommand.command_name === "artist_events_refresh" && (
+                  <Button
+                    onClick={() =>
+                      handleSaveCommand({
+                        schedule_override: editForm.schedule_override,
+                        schedule_cron: editForm.schedule_override
+                          ? editForm.schedule_cron
+                          : undefined,
+                        config_json: {
+                          ...(editingCommand.config_json || {}),
+                          artists_per_run: Math.min(
+                            50,
+                            Math.max(1, editForm.artists_per_run ?? 20)
+                          ),
+                          refresh_ttl_days: Math.min(
+                            365,
+                            Math.max(1, editForm.refresh_ttl_days ?? 14)
+                          ),
+                        },
+                      })
+                    }
+                  >
+                    Save
+                  </Button>
+                )}
                 {editingCommand.command_name.startsWith("playlist_sync_") && (
                   <Button
                     disabled={
@@ -1517,6 +1554,7 @@ export function CommandsPage() {
                 )}
                 {editingCommand.command_name !== "new_releases_discovery" &&
                   editingCommand.command_name !== "discovery_lastfm" &&
+                  editingCommand.command_name !== "artist_events_refresh" &&
                   !editingCommand.command_name.startsWith("playlist_sync_") &&
                   !editingCommand.command_name.startsWith("daylist_") &&
                   !editingCommand.command_name.startsWith("top_tracks_") &&

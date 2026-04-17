@@ -15,6 +15,7 @@ import { XmplaylistSection } from "./sections/XmplaylistSection";
 import { ScheduleSection } from "./sections/ScheduleSection";
 import { ExpirationSection } from "./sections/ExpirationSection";
 import { NewReleasesDiscoverySection } from "./sections/NewReleasesDiscoverySection";
+import { ArtistEventsRefreshSection } from "./sections/ArtistEventsRefreshSection";
 import { LastRunSection } from "./sections/LastRunSection";
 import { LastStatusSection } from "./sections/LastStatusSection";
 
@@ -56,6 +57,8 @@ export function CommandEditSection({
       return <ExpirationSection ctx={ctx} />;
     case "new_releases_discovery":
       return <NewReleasesDiscoverySection ctx={ctx} />;
+    case "artist_events_refresh":
+      return <ArtistEventsRefreshSection ctx={ctx} />;
     case "last_run":
       return <LastRunSection ctx={ctx} />;
     case "last_status":

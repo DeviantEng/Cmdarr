@@ -6,6 +6,8 @@ export type CommandEditFormState = {
   schedule_override?: boolean;
   schedule_cron?: string;
   artists_per_run?: number;
+  /** artist_events_refresh: days between per-artist fetches */
+  refresh_ttl_days?: number;
   album_types?: string[];
   new_releases_source?: "spotify" | "deezer";
   artists_to_query?: number;

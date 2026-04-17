@@ -8,6 +8,7 @@ import { ConfigPage } from "@/pages/Config";
 import { StatusPage } from "@/pages/Status";
 import { ImportListsPage } from "@/pages/ImportLists";
 import { NewReleasesPage } from "@/pages/NewReleases";
+import { EventsPage } from "@/pages/Events";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
               <Route path="/status" element={<StatusPage />} />
               <Route path="/import-lists" element={<ImportListsPage />} />
               <Route path="/new-releases" element={<NewReleasesPage />} />
+              <Route path="/events" element={<EventsPage />} />
             </Routes>
           </Layout>
         </AuthGuard>

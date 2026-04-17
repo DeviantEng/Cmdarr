@@ -3,12 +3,28 @@
 Production CSP matches the Vite build (external scripts, no ``https:`` host wildcard).
 For local dev with ``npm run dev`` (Vite HMR), set ``CMDARR_RELAXED_CSP=1`` so scripts may
 use ``unsafe-inline`` / ``unsafe-eval`` and ``connect-src`` allows ``ws:`` / ``wss:``.
+
+We omit ``upgrade-insecure-requests`` so plain-HTTP LAN access does not force HTTPS subresources
+(ERR_SSL_PROTOCOL_ERROR). Terminate TLS at a reverse proxy for HTTPS when needed.
 """
 
 import os
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+
+def _trustworthy_origin_for_coop(request: Request) -> bool:
+    """COOP is ignored on non-trustworthy origins (plain HTTP except localhost)."""
+    if request.url.scheme == "https":
+        return True
+    host = (request.url.hostname or "").lower()
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if forwarded == "https":
+        return True
+    return False
 
 
 def _relaxed_csp() -> str:
@@ -27,8 +43,7 @@ def _relaxed_csp() -> str:
         "worker-src 'self'; "
         "manifest-src 'self'; "
         "media-src 'self'; "
-        "frame-src 'none'; "
-        "upgrade-insecure-requests"
+        "frame-src 'none'"
     )
 
 
@@ -48,8 +63,7 @@ def _strict_csp() -> str:
         "worker-src 'self'; "
         "manifest-src 'self'; "
         "media-src 'self'; "
-        "frame-src 'none'; "
-        "upgrade-insecure-requests"
+        "frame-src 'none'"
     )
 
 
@@ -70,12 +84,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-        )
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = build_content_security_policy()
-        # Explicit cross-origin isolation policy choices (ZAP 90004)
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        if _trustworthy_origin_for_coop(request):
+            response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Embedder-Policy"] = "unsafe-none"
         # Allow cross-origin API use (e.g. Vite dev on :5173 → API :8080); header still present
         response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"

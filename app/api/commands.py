@@ -53,6 +53,8 @@ class CommandExecutionRequest(BaseModel):
     """Request model for executing a command"""
 
     triggered_by: str = "api"  # 'api', 'manual', 'scheduler'
+    # Merged into this run's command.config_json only (not persisted to CommandConfig)
+    config_override: dict[str, Any] | None = None
 
 
 class CommandConfigResponse(BaseModel):
@@ -512,7 +514,9 @@ async def execute_command(
         get_commands_logger().info(
             f"API: Executing command {command_name} with triggered_by='{request.triggered_by}'"
         )
-        result = await command_executor.execute_command(command_name, None, request.triggered_by)
+        result = await command_executor.execute_command(
+            command_name, request.config_override, request.triggered_by
+        )
 
         if result["success"]:
             # Use display_name for user-facing message

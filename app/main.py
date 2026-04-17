@@ -6,7 +6,7 @@ FastAPI application for Cmdarr configuration and management
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -16,6 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from __version__ import __version__
+from database.config_models import (
+    ArtistConcertHiddenEvent,
+    ArtistEvent,
+    ArtistEventHidden,
+    ArtistEventRefresh,
+    LidarrArtist,
+)
 from database.database import get_config_db, get_database_manager
 from services.config_service import config_service
 from utils.logger import CmdarrLogger, get_logger, setup_application_logging
@@ -484,6 +491,39 @@ async def detailed_status_api(db: Annotated[Session, Depends(get_config_db)]):
             "total_failure_count": int(stats.failure) if stats else 0,
         }
 
+        # Artist events (Lidarr library / concert cache / hides)
+        artist_events: dict | None = None
+        try:
+            now_utc = datetime.now(UTC)
+            total_lidarr = db.query(func.count(LidarrArtist.id)).scalar() or 0
+            scanned = (
+                db.query(func.count(ArtistEventRefresh.artist_mbid))
+                .filter(ArtistEventRefresh.last_fetched_at.isnot(None))
+                .scalar()
+                or 0
+            )
+            upcoming = (
+                db.query(func.count(ArtistEvent.id))
+                .filter(ArtistEvent.starts_at_utc >= now_utc)
+                .scalar()
+                or 0
+            )
+            hidden_artists = db.query(func.count(ArtistEventHidden.artist_mbid)).scalar() or 0
+            hidden_events = db.query(func.count(ArtistConcertHiddenEvent.event_id)).scalar() or 0
+            coverage = (
+                round(100.0 * float(scanned) / float(total_lidarr), 1) if total_lidarr else 0.0
+            )
+            artist_events = {
+                "lidarr_artists": int(total_lidarr),
+                "artists_scanned_at_least_once": int(scanned),
+                "scan_coverage_percent": coverage,
+                "upcoming_events_stored": int(upcoming),
+                "hidden_artists": int(hidden_artists),
+                "hidden_events": int(hidden_events),
+            }
+        except Exception as e:
+            get_app_logger().warning("Artist events stats failed: %s", e)
+
         # Get system information
         system_info = {
             "app_name": "Cmdarr",
@@ -509,19 +549,20 @@ async def detailed_status_api(db: Annotated[Session, Depends(get_config_db)]):
             else:
                 config_summary[key] = value
 
-        return JSONResponse(
-            content={
-                "system": system_info,
-                "configuration": config_summary,
-                "endpoints": {
-                    "health": "/health",
-                    "status": "/status",
-                    "config": "/config",
-                    "commands": "/commands",
-                    "api": "/api",
-                },
-            }
-        )
+        payload: dict = {
+            "system": system_info,
+            "configuration": config_summary,
+            "endpoints": {
+                "health": "/health",
+                "status": "/status",
+                "config": "/config",
+                "commands": "/commands",
+                "api": "/api",
+            },
+        }
+        if artist_events is not None:
+            payload["artist_events"] = artist_events
+        return JSONResponse(content=payload)
     except Exception as e:
         get_app_logger().error(f"Status check failed: {e}")
         raise HTTPException(status_code=500, detail="Status check failed")
@@ -558,8 +599,14 @@ async def react_new_releases(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+@app.get("/events", response_class=HTMLResponse)
+async def react_events(request: Request):
+    """Serve React app for artist events route"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
 # API Routes - Import after logging is configured
-from app.api import config, import_lists, new_releases, status, test_connectivity
+from app.api import config, events, import_lists, new_releases, status, test_connectivity
 
 # Include API routers
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
@@ -567,6 +614,7 @@ app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
+app.include_router(events.router, prefix="/api/events", tags=["events"])
 
 
 if __name__ == "__main__":

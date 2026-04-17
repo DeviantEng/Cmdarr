@@ -61,6 +61,8 @@ export interface CommandUpdateRequest {
 
 export interface CommandExecutionRequest {
   triggered_by?: string;
+  /** Merged into this run only (not saved to command config). */
+  config_override?: Record<string, unknown>;
 }
 
 export interface ConfigSetting {
@@ -98,6 +100,15 @@ export interface NrdMetrics {
   artists_not_scanned: number | null;
   cache_ttl_days: number | null;
   timestamp?: string;
+}
+
+export interface ArtistEventsStats {
+  lidarr_artists: number;
+  artists_scanned_at_least_once: number;
+  scan_coverage_percent: number;
+  upcoming_events_stored: number;
+  hidden_artists: number;
+  hidden_events: number;
 }
 
 export interface StatusInfo {

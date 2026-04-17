@@ -12,6 +12,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -205,3 +206,76 @@ class DismissedArtistAlbum(ConfigBase):
             "artist_mbid", "album_title", "release_date", name="uq_dismissed_artist_album"
         ),
     )
+
+
+class ArtistEvent(ConfigBase):
+    """Canonical live event row (shows, festivals, meet-and-greets, etc.) after cross-provider dedupe."""
+
+    __tablename__ = "concert_event"
+
+    id = Column(Integer, primary_key=True, index=True)
+    artist_mbid = Column(String(100), nullable=False, index=True)
+    artist_name = Column(String(500), nullable=False)
+    venue_name = Column(String(500), nullable=True)
+    venue_city = Column(String(200), nullable=True)
+    venue_region = Column(String(100), nullable=True)
+    venue_country = Column(String(100), nullable=True)
+    venue_lat = Column(Float, nullable=True)
+    venue_lon = Column(Float, nullable=True)
+    starts_at_utc = Column(DateTime(timezone=True), nullable=False, index=True)
+    local_date = Column(String(20), nullable=False, index=True)
+    dedupe_key = Column(String(64), nullable=False, unique=True, index=True)
+    user_interested = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ArtistEventSource(ConfigBase):
+    """Per-provider contribution to a canonical artist event row."""
+
+    __tablename__ = "concert_event_source"
+
+    id = Column(Integer, primary_key=True, index=True)
+    concert_event_id = Column(
+        Integer, ForeignKey("concert_event.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider = Column(String(32), nullable=False, index=True)
+    external_id = Column(String(256), nullable=False, default="")
+    source_url = Column(String(1024), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint(
+            "concert_event_id", "provider", "external_id", name="uq_concert_event_source_prov_ext"
+        ),
+    )
+
+
+class ArtistEventRefresh(ConfigBase):
+    """Per-artist fetch schedule for event ingestion."""
+
+    __tablename__ = "artist_concert_refresh"
+
+    artist_mbid = Column(String(100), primary_key=True)
+    last_fetched_at = Column(DateTime(timezone=True), nullable=True)
+    next_due_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class ArtistEventHidden(ConfigBase):
+    """Artists hidden from the default event list (rows still stored)."""
+
+    __tablename__ = "artist_concert_hidden"
+
+    artist_mbid = Column(String(100), primary_key=True)
+    artist_name = Column(String(500), nullable=True)
+    hidden_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArtistConcertHiddenEvent(ConfigBase):
+    """Single canonical events hidden from the list (other shows for the same artist still appear)."""
+
+    __tablename__ = "artist_concert_hidden_event"
+
+    event_id = Column(
+        Integer, ForeignKey("concert_event.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    hidden_at = Column(DateTime(timezone=True), server_default=func.now())

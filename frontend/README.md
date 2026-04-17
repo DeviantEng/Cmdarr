@@ -69,6 +69,7 @@ npm run preview
 - Tabbed interface organized by category:
   - Application (logging, web, output)
   - Music Sources (LastFM, ListenBrainz, Spotify, etc.)
+  - Event Sources (API keys for artist events; enable toggles on the Artist events page)
   - Media Servers (Plex, Jellyfin)
   - Music Management (Lidarr)
   - Performance (cache, library, commands)

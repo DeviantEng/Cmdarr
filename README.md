@@ -9,6 +9,7 @@ A modular music automation platform that bridges services for your self-hosted m
 - **Automatic Music Discovery** – Similar artists (Last.fm), playlist-based discovery, new releases from Deezer/Spotify missing in MusicBrainz, scan artist by URL
 - **Playlist Management** – Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin; add discovered artists to Lidarr
 - **Playlist Generators** – Daylist (time-of-day), Local Discovery (top artists + sonic similar), Artist Essentials (top tracks per artist), Mood Playlist (Plex Sonic moods), **XMPlaylist** (SiriusXM station newest / most-played via [xmplaylist.com](https://xmplaylist.com) → Plex or Jellyfin)
+- **Artist events** – Optional Bandsintown, Songkick, and Ticketmaster feeds for upcoming shows (`/events`), with search, distance filter, and per-artist or per-event hides. See [Artist events](readme-extended.md#event-sources-artist-events) in the extended docs.
 
 For detailed command descriptions, configuration, architecture, and troubleshooting, see **[readme-extended.md](readme-extended.md)**.
 

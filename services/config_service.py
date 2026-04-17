@@ -73,7 +73,8 @@ class ConfigService:
                 "data_type": "string",
                 "category": "application",
                 "description": (
-                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, …). "
+                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, "
+                    "Bandsintown, …). "
                     "Empty = Cmdarr/<version> (https://github.com/DeviantEng/Cmdarr). "
                     "Not overridable via Docker/environment variables (use this UI only). "
                     "Set a fixed string here if an operator whitelists by UA without a version suffix."
@@ -537,6 +538,93 @@ class ConfigService:
                 "category": "output",
                 "description": "Pretty print JSON output",
             },
+            # Artist events (Bandsintown / Songkick / Ticketmaster)
+            {
+                "key": "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable Bandsintown (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_BANDSINTOWN_APP_ID",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": (
+                    "Bandsintown Public API app_id (query param on rest.bandsintown.com). "
+                    "Must be a valid key from Bandsintown; the placeholder 'test' may work for spot checks only. "
+                    "Artist-manager API keys are scoped to that artist—bulk scans over a whole library often need "
+                    "Bandsintown partnership approval; HTTP 403 with an AWS-style 'explicit deny' policy message "
+                    "usually means the key is not permitted for this traffic pattern. "
+                    "User-Agent for HTTP is Application → CMDARR_USER_AGENT (not this field)."
+                ),
+            },
+            {
+                "key": "ARTIST_EVENTS_SONGKICK_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable Songkick (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_SONGKICK_API_KEY",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Songkick API key (required when enabled)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_TICKETMASTER_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable Ticketmaster (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_TICKETMASTER_API_KEY",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Ticketmaster Discovery API: use Consumer Key from developer portal as apikey (Consumer Secret is not used for Discovery GET requests; required when Ticketmaster is enabled)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_USER_LAT",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Saved latitude for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_USER_LON",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Saved longitude for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_USER_LABEL",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Saved location label (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_RADIUS_MILES",
+                "default_value": "100",
+                "data_type": "float",
+                "category": "artist_events",
+                "description": "Radius for distance filter (set from Artist events page or env; not shown in Config)",
+                "is_hidden": True,
+            },
             # Access control (single user)
             {
                 "key": "CMDARR_AUTH_USERNAME",
@@ -593,6 +681,18 @@ class ConfigService:
 
                         setting = ConfigSetting(**setting_data)
                         session.add(setting)
+                    elif default.get("is_hidden") and default["key"] in (
+                        "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
+                        "ARTIST_EVENTS_SONGKICK_ENABLED",
+                        "ARTIST_EVENTS_TICKETMASTER_ENABLED",
+                        "ARTIST_EVENTS_USER_LAT",
+                        "ARTIST_EVENTS_USER_LON",
+                        "ARTIST_EVENTS_USER_LABEL",
+                        "ARTIST_EVENTS_RADIUS_MILES",
+                    ):
+                        existing.is_hidden = True
+                        if default.get("description"):
+                            existing.description = default["description"]
 
                 session.commit()
                 self.logger.info(f"Initialized {len(defaults)} default configuration settings")
