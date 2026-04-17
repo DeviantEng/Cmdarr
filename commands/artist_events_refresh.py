@@ -47,6 +47,10 @@ class ArtistEventsRefreshCommand(BaseCommand):
         artists_per_run = int(cj.get("artists_per_run", 20))
         artists_per_run = max(1, min(50, artists_per_run))
         refresh_all_due = bool(cj.get("refresh_all_due", False))
+        force_refresh_all = bool(cj.get("force_refresh_all", False))
+        if force_refresh_all:
+            refresh_all_due = True
+        error_retry_minutes = max(5, min(24 * 60, int(cj.get("error_retry_minutes", 60))))
 
         bit_on = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
         bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
@@ -81,17 +85,18 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     ArtistEventRefresh,
                     LidarrArtist.artist_mbid == ArtistEventRefresh.artist_mbid,
                 )
-                .filter(
-                    or_(
-                        ArtistEventRefresh.next_due_at.is_(None),
-                        ArtistEventRefresh.next_due_at < now,
-                    )
-                )
                 .order_by(
                     case((ArtistEventRefresh.next_due_at.is_(None), 0), else_=1),
                     ArtistEventRefresh.next_due_at.asc(),
                 )
             )
+            if not force_refresh_all:
+                q = q.filter(
+                    or_(
+                        ArtistEventRefresh.next_due_at.is_(None),
+                        ArtistEventRefresh.next_due_at < now,
+                    )
+                )
             if not refresh_all_due:
                 q = q.limit(artists_per_run)
             rows = q.all()
@@ -108,9 +113,15 @@ class ArtistEventsRefreshCommand(BaseCommand):
             total_new = 0
             total_sources = 0
             processed = 0
+            artists_with_errors = 0
+            provider_error_counts: dict[str, int] = {
+                "bandsintown": 0,
+                "songkick": 0,
+                "ticketmaster": 0,
+            }
 
             for la in rows:
-                merged = await self._fetch_for_artist(
+                merged, provider_errors = await self._fetch_for_artist(
                     cfg,
                     la.artist_name,
                     la.artist_mbid,
@@ -125,23 +136,44 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     n, s = persist_normalized_events(session, merged)
                     total_new += n
                     total_sources += s
+                for p in provider_errors:
+                    provider_error_counts[p] = provider_error_counts.get(p, 0) + 1
+                had_error = bool(provider_errors)
+                if had_error:
+                    artists_with_errors += 1
+
                 ar = (
                     session.query(ArtistEventRefresh)
                     .filter(ArtistEventRefresh.artist_mbid == la.artist_mbid)
                     .first()
                 )
-                next_due = now + timedelta(days=ttl_days)
-                if not ar:
-                    session.add(
-                        ArtistEventRefresh(
-                            artist_mbid=la.artist_mbid,
-                            last_fetched_at=now,
-                            next_due_at=next_due,
+                if had_error:
+                    # Retry sooner than the normal TTL; never stamp last_fetched_at on a failure
+                    # so "never succeeded" remains observable in the UI / DB.
+                    retry_due = now + timedelta(minutes=error_retry_minutes)
+                    if not ar:
+                        session.add(
+                            ArtistEventRefresh(
+                                artist_mbid=la.artist_mbid,
+                                last_fetched_at=None,
+                                next_due_at=retry_due,
+                            )
                         )
-                    )
+                    else:
+                        ar.next_due_at = retry_due
                 else:
-                    ar.last_fetched_at = now
-                    ar.next_due_at = next_due
+                    next_due = now + timedelta(days=ttl_days)
+                    if not ar:
+                        session.add(
+                            ArtistEventRefresh(
+                                artist_mbid=la.artist_mbid,
+                                last_fetched_at=now,
+                                next_due_at=next_due,
+                            )
+                        )
+                    else:
+                        ar.last_fetched_at = now
+                        ar.next_due_at = next_due
                 processed += 1
                 session.commit()
 
@@ -150,11 +182,24 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "new_events": total_new,
                 "sources_added": total_sources,
                 "refresh_all_due": refresh_all_due,
+                "force_refresh_all": force_refresh_all,
                 "artists_per_run_cap": artists_per_run,
+                "artists_with_errors": artists_with_errors,
+                "provider_errors": provider_error_counts,
             }
             log.info(
-                f"Artist events refresh: {processed} artists (all_due={refresh_all_due}, cap={artists_per_run}), "
-                f"{total_new} new canonical events, {total_sources} new sources"
+                "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
+                "%s new events, %s new sources, %s artists had provider errors (bit=%s sk=%s tm=%s)",
+                processed,
+                force_refresh_all,
+                refresh_all_due,
+                artists_per_run,
+                total_new,
+                total_sources,
+                artists_with_errors,
+                provider_error_counts["bandsintown"],
+                provider_error_counts["songkick"],
+                provider_error_counts["ticketmaster"],
             )
             return True
         except Exception as e:
@@ -191,7 +236,14 @@ class ArtistEventsRefreshCommand(BaseCommand):
         sk_key: str,
         tm_on: bool,
         tm_key: str,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        """Return (merged_events, errored_providers).
+
+        A provider contributes to errored_providers when its client returns None (HTTP / parse
+        failure) or raises. Clients that return an empty list (valid "no events") and disabled
+        providers are treated as success and are NOT reported as errors.
+        """
+
         async def run_bit():
             if not bit_on or not bit_app:
                 return []
@@ -211,14 +263,26 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
 
         merged: list[dict[str, Any]] = []
-        for coro in await asyncio.gather(
+        errored: list[str] = []
+        provider_order = ["bandsintown", "songkick", "ticketmaster"]
+        results = await asyncio.gather(
             run_bit(),
             run_sk(),
             run_tm(),
             return_exceptions=True,
-        ):
-            if isinstance(coro, Exception):
-                self.logger.warning("Provider fetch failed: %s", coro)
+        )
+        for provider_name, res in zip(provider_order, results, strict=False):
+            if isinstance(res, Exception):
+                self.logger.warning("%s fetch raised for '%s': %s", provider_name, artist_name, res)
+                errored.append(provider_name)
                 continue
-            merged.extend(coro or [])
-        return merged
+            if res is None:
+                self.logger.warning(
+                    "%s fetch failed for '%s' (HTTP error or invalid payload); will retry sooner",
+                    provider_name,
+                    artist_name,
+                )
+                errored.append(provider_name)
+                continue
+            merged.extend(res)
+        return merged, errored

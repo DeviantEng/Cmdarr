@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Calendar,
+  ChevronDown,
   ExternalLink,
   EyeOff,
   Loader2,
@@ -35,6 +36,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -73,7 +80,7 @@ export function EventsPage() {
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false);
   const [confirmRestoreAllEvents, setConfirmRestoreAllEvents] = useState(false);
   const [refreshRunning, setRefreshRunning] = useState(false);
-  const [confirmRefreshAllDue, setConfirmRefreshAllDue] = useState(false);
+  const [confirmForceRefreshAll, setConfirmForceRefreshAll] = useState(false);
   const [artistFilter, setArtistFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [interestFilter, setInterestFilter] = useState<"all" | "interested">("all");
@@ -185,11 +192,14 @@ export function EventsPage() {
     }
   };
 
-  const runRefresh = async () => {
+  const runRefreshAllDue = async () => {
     setRefreshRunning(true);
     try {
-      await api.executeCommand("artist_events_refresh", { triggered_by: "api" });
-      toast.success("Artist events refresh started — check Commands for progress");
+      await api.executeCommand("artist_events_refresh", {
+        triggered_by: "api",
+        config_override: { refresh_all_due: true },
+      });
+      toast.success("Refreshing every due artist in one run — see Commands for progress.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start refresh");
     } finally {
@@ -197,16 +207,16 @@ export function EventsPage() {
     }
   };
 
-  const runRefreshAllDue = async () => {
-    setConfirmRefreshAllDue(false);
+  const runForceRefreshAll = async () => {
+    setConfirmForceRefreshAll(false);
     setRefreshRunning(true);
     try {
       await api.executeCommand("artist_events_refresh", {
         triggered_by: "api",
-        config_override: { refresh_all_due: true },
+        config_override: { force_refresh_all: true },
       });
       toast.success(
-        "Full refresh started — every due artist will be processed in one run. See Commands for progress."
+        "Force refresh started — every Lidarr artist will be re-queried regardless of TTL. See Commands for progress."
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start refresh");
@@ -414,30 +424,45 @@ export function EventsPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={runRefresh}
-              disabled={refreshRunning || !providerStatus?.any_ready}
-            >
-              {refreshRunning ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Run scheduled batch
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmRefreshAllDue(true)}
-              disabled={refreshRunning || !providerStatus?.any_ready}
-            >
-              Refresh all due artists
-            </Button>
+            <div className="inline-flex">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={runRefreshAllDue}
+                disabled={refreshRunning || !providerStatus?.any_ready}
+                className="rounded-r-none"
+              >
+                {refreshRunning ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Refresh all artists
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={refreshRunning || !providerStatus?.any_ready}
+                    className="rounded-l-none border-l border-background/40 px-2"
+                    aria-label="More refresh options"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setConfirmForceRefreshAll(true)}>
+                    Force refresh all artists
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <p className="text-[11px] leading-snug text-muted-foreground max-w-xl">
-              Batch size: Commands → Artist Events Refresh (default 20). “All due” processes every
-              artist past interval in one run; large libraries may need a higher command timeout.
+              <strong>Refresh all artists</strong> processes every artist past their interval (or
+              never scanned). <strong>Force refresh all artists</strong> ignores the interval and
+              re-queries every Lidarr artist — use after config changes or to recover from a partial
+              scan; large libraries may need a higher command timeout.
             </p>
           </div>
         </CardContent>
@@ -857,23 +882,23 @@ export function EventsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmRefreshAllDue} onOpenChange={setConfirmRefreshAllDue}>
+      <Dialog open={confirmForceRefreshAll} onOpenChange={setConfirmForceRefreshAll}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Refresh all due artists?</DialogTitle>
+            <DialogTitle>Force refresh every artist?</DialogTitle>
             <DialogDescription>
-              This single run processes <strong>every</strong> Lidarr artist that has no event-scan
-              record yet or is past the per-artist refresh interval — not just the usual batch size.
-              It can take several minutes for large libraries. If the run times out, increase{" "}
-              <strong>Timeout</strong> for this command under Commands, or rely on smaller scheduled
-              batches instead.
+              This single run queries <strong>every</strong> Lidarr artist — including ones that
+              were scanned recently — ignoring the per-artist refresh interval. Useful after
+              changing providers or recovering from a partial scan. Large libraries will take
+              several minutes and may need a higher <strong>Timeout</strong> under Commands → Artist
+              Events Refresh.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmRefreshAllDue(false)}>
+            <Button variant="outline" onClick={() => setConfirmForceRefreshAll(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void runRefreshAllDue()}>Start full refresh</Button>
+            <Button onClick={() => void runForceRefreshAll()}>Start force refresh</Button>
           </div>
         </DialogContent>
       </Dialog>

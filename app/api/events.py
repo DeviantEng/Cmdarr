@@ -10,6 +10,7 @@ from urllib.parse import quote
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.config_models import (
@@ -253,7 +254,10 @@ async def list_hidden(
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
     rows = (
-        db.query(ArtistEventHidden).order_by(ArtistEventHidden.hidden_at.desc()).limit(limit).all()
+        db.query(ArtistEventHidden)
+        .order_by(func.lower(ArtistEventHidden.artist_name).asc())
+        .limit(limit)
+        .all()
     )
     return {
         "success": True,
@@ -311,7 +315,7 @@ async def list_hidden_events(
     q = (
         db.query(ArtistConcertHiddenEvent, ArtistEvent)
         .join(ArtistEvent, ArtistEvent.id == ArtistConcertHiddenEvent.event_id)
-        .order_by(ArtistConcertHiddenEvent.hidden_at.desc())
+        .order_by(func.lower(ArtistEvent.artist_name).asc(), ArtistEvent.local_date.asc())
         .limit(limit)
     )
     rows = q.all()

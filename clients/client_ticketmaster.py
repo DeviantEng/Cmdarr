@@ -23,7 +23,12 @@ class TicketmasterClient(BaseAPIClient):
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] if TM returned no matches, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        TM had no events for this keyword right now".
+        """
         if not artist_name or not self._api_key:
             return []
         data = await self._get(
@@ -37,7 +42,9 @@ class TicketmasterClient(BaseAPIClient):
                 "sort": "date,asc",
             },
         )
-        if not data or not isinstance(data, dict):
+        if data is None:
+            return None
+        if not isinstance(data, dict):
             return []
         emb = data.get("_embedded") or {}
         evs = emb.get("events") or []

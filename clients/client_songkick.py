@@ -23,14 +23,21 @@ class SongkickClient(BaseAPIClient):
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] on no-results, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        Songkick had no upcoming events for this artist".
+        """
         if not artist_name or not self._api_key:
             return []
         search = await self._get(
             "/search/artists.json",
             params={"query": artist_name, "apikey": self._api_key},
         )
-        if not search or not isinstance(search, dict):
+        if search is None:
+            return None
+        if not isinstance(search, dict):
             return []
         results = (search.get("resultsPage") or {}).get("results")
         if not isinstance(results, dict):
@@ -47,7 +54,9 @@ class SongkickClient(BaseAPIClient):
             f"/artists/{sk_id}/calendar.json",
             params={"apikey": self._api_key},
         )
-        if not cal or not isinstance(cal, dict):
+        if cal is None:
+            return None
+        if not isinstance(cal, dict):
             return []
         res = (cal.get("resultsPage") or {}).get("results")
         if not isinstance(res, dict):

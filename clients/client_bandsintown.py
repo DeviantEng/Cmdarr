@@ -26,8 +26,12 @@ class BandsintownClient(BaseAPIClient):
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
-        """Return normalized event dicts for ingest."""
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] on no-results, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        Bandsintown had no upcoming events for this artist".
+        """
         if not artist_name or not self._app_id:
             return []
         path = f"/artists/{quote(artist_name, safe='')}/events"
@@ -35,8 +39,8 @@ class BandsintownClient(BaseAPIClient):
             path,
             params={"app_id": self._app_id, "date": "upcoming"},
         )
-        if not data:
-            return []
+        if data is None:
+            return None
         if not isinstance(data, list):
             return []
         out: list[dict[str, Any]] = []
