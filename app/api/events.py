@@ -41,7 +41,7 @@ def _hidden_festival_keys() -> set[str]:
         data = json.loads(raw or "[]")
         if isinstance(data, list):
             return {str(x) for x in data if x}
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         pass
     return set()
 
@@ -423,7 +423,7 @@ async def get_events_settings():
         hidden_festival_keys = json.loads(raw) if isinstance(raw, str) else raw
         if not isinstance(hidden_festival_keys, list):
             hidden_festival_keys = []
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         hidden_festival_keys = []
     return {
         "success": True,

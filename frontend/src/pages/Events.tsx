@@ -403,14 +403,14 @@ export function EventsPage() {
             <Link to="/config" className="underline font-medium text-foreground">
               Configuration &gt; Event Sources
             </Link>
-            . Bandsintown <code className="text-[10px]">app_id</code> is not the same as User-Agent (
-            <code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
+            . Bandsintown <code className="text-[10px]">app_id</code> is not the same as User-Agent
+            (<code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
             ready before refresh.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               No provider fully configured - add keys in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
@@ -418,7 +418,7 @@ export function EventsPage() {
               .
             </p>
           )}
-          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border px-3 py-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
             <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
               <Label className="text-xs font-normal">Bandsintown</Label>
               <div className="flex items-center gap-2">
@@ -552,7 +552,12 @@ export function EventsPage() {
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => void openFestivals()} className="shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openFestivals()}
+              className="shrink-0"
+            >
               Festivals
             </Button>
             <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
@@ -641,7 +646,8 @@ export function EventsPage() {
                     key={`${ev.id}-${ev.starts_at_utc}`}
                     className={cn(
                       "flex flex-col gap-2 px-2 py-2 pl-1 sm:flex-row sm:items-center sm:gap-2 sm:pl-2",
-                      ev.interested && "border-l-2 border-l-primary/50 bg-muted/50"
+                      ev.interested &&
+                        "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
                     )}
                   >
                     <div className="flex shrink-0 items-start pt-0.5 sm:pt-1">
@@ -651,7 +657,7 @@ export function EventsPage() {
                         size="icon"
                         className={cn(
                           "h-8 w-8",
-                          ev.interested && "text-primary hover:text-primary/90"
+                          ev.interested && "text-amber-600 hover:text-amber-700 dark:text-amber-400"
                         )}
                         title={ev.interested ? "Remove from interested" : "Mark interested"}
                         onClick={() => void toggleInterested(ev)}
@@ -771,9 +777,9 @@ export function EventsPage() {
           <DialogHeader>
             <DialogTitle>Festivals & tour packages</DialogTitle>
             <DialogDescription>
-              Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming list.
-              Events you marked interested still appear. Labels fill in after a refresh with the new
-              metadata.
+              Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming
+              list. Events you marked interested still appear. Labels fill in after a refresh with
+              the new metadata.
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -799,7 +805,9 @@ export function EventsPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="whitespace-nowrap text-[10px] text-muted-foreground">Hide</span>
+                    <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                      Hide
+                    </span>
                     <Switch
                       checked={hiddenFestivalKeys.includes(item.key)}
                       onCheckedChange={(v) => void toggleFestivalHidden(item.key, v)}
@@ -889,7 +897,8 @@ export function EventsPage() {
                       <div className="min-w-0">
                         <div className="font-medium">{h.artist_name}</div>
                         <div className="text-muted-foreground text-xs">
-                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} | {h.local_date}
+                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} |{" "}
+                          {h.local_date}
                         </div>
                       </div>
                       <Button
@@ -982,11 +991,11 @@ export function EventsPage() {
           <DialogHeader>
             <DialogTitle>Force refresh every artist?</DialogTitle>
             <DialogDescription>
-              This single run queries <strong>every</strong> Lidarr artist, including ones that
-              were scanned recently, ignoring the per-artist refresh interval. Useful after
-              changing providers or recovering from a partial scan. Large libraries will take
-              several minutes and may need a higher <strong>Timeout</strong> under Commands &gt;
-              Artist Events Refresh.
+              This single run queries <strong>every</strong> Lidarr artist, including ones that were
+              scanned recently, ignoring the per-artist refresh interval. Useful after changing
+              providers or recovering from a partial scan. Large libraries will take several minutes
+              and may need a higher <strong>Timeout</strong> under Commands &gt; Artist Events
+              Refresh.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

@@ -9,7 +9,9 @@ from utils.tm_event_meta import (
 
 
 def test_score_prefers_ticketmaster_event_over_fgtix():
-    tm = "https://www.ticketmaster.com/lorna-shore-buffalo-new-york-04-17-2026/event/0000642E9D5670D"
+    tm = (
+        "https://www.ticketmaster.com/lorna-shore-buffalo-new-york-04-17-2026/event/0000642E9D5670D"
+    )
     fgtix = "https://on.fgtix.com/trk/h1wcc"
     assert score_ticketmaster_url(tm, "Lorna Shore") > score_ticketmaster_url(fgtix, "Lorna Shore")
 
@@ -18,7 +20,9 @@ def test_pick_best_prefers_artist_slug():
     ev = {
         "url": "https://on.fgtix.com/trk/h1wcc",
         "outlets": [
-            {"url": "https://www.ticketmaster.com/lorna-shore-buffalo-new-york-04-17-2026/event/abc"}
+            {
+                "url": "https://www.ticketmaster.com/lorna-shore-buffalo-new-york-04-17-2026/event/abc"
+            }
         ],
     }
     assert "ticketmaster.com" in (pick_best_ticketmaster_url(ev, "Lorna Shore") or "")
