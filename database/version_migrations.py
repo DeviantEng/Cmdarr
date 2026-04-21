@@ -496,6 +496,34 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_concert_event_festival_fields(cursor):
+        """TM event display name, festival/tour classification, festival grouping key."""
+        cursor.execute("PRAGMA table_info(concert_event)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "tm_event_name" not in cols:
+            cursor.execute("ALTER TABLE concert_event ADD COLUMN tm_event_name VARCHAR(500)")
+        if "event_kind" not in cols:
+            cursor.execute(
+                "ALTER TABLE concert_event ADD COLUMN event_kind VARCHAR(32) NOT NULL DEFAULT 'show'"
+            )
+        if "festival_key" not in cols:
+            cursor.execute("ALTER TABLE concert_event ADD COLUMN festival_key VARCHAR(256)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_concert_event_event_kind ON concert_event(event_kind)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_concert_event_festival_key ON concert_event(festival_key)"
+        )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.15",
+            name="concert_event_festival_fields",
+            description="Add tm_event_name, event_kind, festival_key for festival UX and TM ingest",
+            up_func=migrate_concert_event_festival_fields,
+        )
+    )
+
     return runner
 
 

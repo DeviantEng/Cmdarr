@@ -428,8 +428,26 @@ class ApiClient {
     user_lon: string;
     user_label: string;
     radius_miles: number;
+    hidden_festival_keys: string[];
   }> {
     return this.request("/api/events/settings");
+  }
+
+  async getFestivalCatalog(): Promise<{
+    success: boolean;
+    items: { key: string; label: string; event_kind: string; count: number }[];
+  }> {
+    return this.request("/api/events/festivals/catalog");
+  }
+
+  async putFestivalHidden(hidden_keys: string[]): Promise<{
+    success: boolean;
+    hidden_festival_keys: string[];
+  }> {
+    return this.request("/api/events/festival-hidden", {
+      method: "PUT",
+      body: JSON.stringify({ hidden_keys }),
+    });
   }
 
   async geocodeEventsLocation(query: string): Promise<{
@@ -465,6 +483,9 @@ class ApiClient {
       local_date: string;
       sources: string[];
       source_links: { provider: string; url: string | null }[];
+      event_kind?: string;
+      festival_key?: string | null;
+      tm_event_name?: string | null;
       interested: boolean;
       distance_miles: number | null;
       last_fm_events_url: string;

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from database.config_models import ArtistEvent, ArtistEventSource
 from utils.event_geo import coerce_location_str, make_dedupe_key, venue_fingerprint
+from utils.tm_event_meta import merge_event_kind
 
 
 def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> tuple[int, int]:
@@ -31,6 +32,7 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
         dk = make_dedupe_key(item["artist_mbid"], item["local_date"], fp)
         existing = session.query(ArtistEvent).filter(ArtistEvent.dedupe_key == dk).first()
         if not existing:
+            ek = (item.get("event_kind") or "show").strip() or "show"
             existing = ArtistEvent(
                 artist_mbid=item["artist_mbid"],
                 artist_name=item["artist_name"],
@@ -43,6 +45,9 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
                 starts_at_utc=item["starts_at_utc"],
                 local_date=item["local_date"],
                 dedupe_key=dk,
+                event_kind=ek,
+                festival_key=item.get("festival_key"),
+                tm_event_name=(item.get("tm_event_name") or None),
             )
             session.add(existing)
             session.flush()
@@ -53,6 +58,12 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
             ) is not None:
                 existing.venue_lat = item.get("venue_lat")
                 existing.venue_lon = item.get("venue_lon")
+            if item.get("event_kind"):
+                existing.event_kind = merge_event_kind(existing.event_kind, item.get("event_kind"))
+            if item.get("festival_key") and not existing.festival_key:
+                existing.festival_key = item["festival_key"]
+            if item.get("tm_event_name") and not existing.tm_event_name:
+                existing.tm_event_name = (item["tm_event_name"] or "")[:500]
 
         ext = (item.get("external_id") or "")[:256]
         prov = item["provider"]

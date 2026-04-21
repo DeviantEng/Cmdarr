@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Calendar,
   ChevronDown,
   ExternalLink,
   EyeOff,
   Loader2,
-  MapPin,
   MinusCircle,
-  Music,
   RefreshCw,
   RotateCcw,
   Search,
@@ -82,6 +79,12 @@ export function EventsPage() {
   const [confirmRestoreAllEvents, setConfirmRestoreAllEvents] = useState(false);
   const [refreshRunning, setRefreshRunning] = useState(false);
   const [confirmForceRefreshAll, setConfirmForceRefreshAll] = useState(false);
+  const [festivalDialogOpen, setFestivalDialogOpen] = useState(false);
+  const [festivalCatalog, setFestivalCatalog] = useState<
+    { key: string; label: string; event_kind: string; count: number }[]
+  >([]);
+  const [festivalsLoading, setFestivalsLoading] = useState(false);
+  const [hiddenFestivalKeys, setHiddenFestivalKeys] = useState<string[]>([]);
   const [artistFilter, setArtistFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [interestFilter, setInterestFilter] = useState<"all" | "interested">("all");
@@ -103,6 +106,7 @@ export function EventsPage() {
       ]);
       setProviderStatus(ps);
       setSettings(st);
+      setHiddenFestivalKeys(st.hidden_festival_keys ?? []);
       setEvents(ev.events);
       setRadiusInput(String(st.radius_miles ?? 100));
       setLocationQuery(st.user_label ?? "");
@@ -174,6 +178,37 @@ export function EventsPage() {
     try {
       await saveConfig("ARTIST_EVENTS_RADIUS_MILES", { value: String(n), data_type: "float" });
       toast.success("Radius saved");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    }
+  };
+
+  const openFestivals = async () => {
+    setFestivalDialogOpen(true);
+    setFestivalsLoading(true);
+    try {
+      const c = await api.getFestivalCatalog();
+      setFestivalCatalog(c.items);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load festivals");
+    } finally {
+      setFestivalsLoading(false);
+    }
+  };
+
+  const toggleFestivalHidden = async (key: string, hide: boolean) => {
+    const next = new Set(hiddenFestivalKeys);
+    if (hide) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    const arr = [...next].sort();
+    try {
+      await api.putFestivalHidden(arr);
+      setHiddenFestivalKeys(arr);
+      toast.success(hide ? "Hidden from list" : "Shown in list");
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
@@ -362,31 +397,28 @@ export function EventsPage() {
 
       <Card>
         <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Music className="h-4 w-4" />
-            Providers
-          </CardTitle>
+          <CardTitle className="text-base">Providers</CardTitle>
           <CardDescription className="text-xs leading-snug">
             Toggle sources; credentials in{" "}
             <Link to="/config" className="underline font-medium text-foreground">
-              Configuration → Event Sources
+              Configuration &gt; Event Sources
             </Link>
-            . Bandsintown <code className="text-[10px]">app_id</code> ≠ User-Agent (
+            . Bandsintown <code className="text-[10px]">app_id</code> is not the same as User-Agent (
             <code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
             ready before refresh.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              No provider fully configured — add keys in{" "}
+            <p className="text-xs text-muted-foreground">
+              No provider fully configured - add keys in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
               </Link>
               .
             </p>
           )}
-          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border px-3 py-2">
             <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
               <Label className="text-xs font-normal">Bandsintown</Label>
               <div className="flex items-center gap-2">
@@ -462,7 +494,7 @@ export function EventsPage() {
             <p className="text-[11px] leading-snug text-muted-foreground max-w-xl">
               <strong>Refresh all artists</strong> processes every artist past their interval (or
               never scanned). <strong>Force refresh all artists</strong> ignores the interval and
-              re-queries every Lidarr artist — use after config changes or to recover from a partial
+              re-queries every Lidarr artist - use after config changes or to recover from a partial
               scan; large libraries may need a higher command timeout.
             </p>
           </div>
@@ -471,12 +503,9 @@ export function EventsPage() {
 
       <Card>
         <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MapPin className="h-4 w-4" />
-            Location & radius
-          </CardTitle>
+          <CardTitle className="text-base">Location and radius</CardTitle>
           <CardDescription className="text-xs leading-snug">
-            ZIP or city/state → saved as coordinates. Radius filters distance on this page.
+            ZIP or city/state is saved as coordinates. Radius filters distance on this page.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
@@ -516,35 +545,37 @@ export function EventsPage() {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Upcoming events
-            </CardTitle>
+            <CardTitle>Upcoming events</CardTitle>
             <CardDescription>
               Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync
               here.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
-            <EyeOff className="mr-2 h-4 w-4" />
-            Hidden
-            {hiddenTotal > 0 ? (
-              <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-                {hiddenArtistCount > 0 &&
-                  `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
-                {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " · " : ""}
-                {hiddenEventCount > 0 &&
-                  `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
-              </span>
-            ) : null}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void openFestivals()} className="shrink-0">
+              Festivals
+            </Button>
+            <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+              <EyeOff className="mr-2 h-4 w-4" />
+              Hidden
+              {hiddenTotal > 0 ? (
+                <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
+                  {hiddenArtistCount > 0 &&
+                    `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
+                  {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
+                  {hiddenEventCount > 0 &&
+                    `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
+                </span>
+              ) : null}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="relative min-w-[12rem] flex-1">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search artist or venue…"
+                placeholder="Search artist or venue..."
                 value={artistFilter}
                 onChange={(e) => setArtistFilter(e.target.value)}
                 className="h-9 pl-9"
@@ -599,7 +630,7 @@ export function EventsPage() {
               {filteredEvents.map((ev) => {
                 const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
                   .filter(Boolean)
-                  .join(" · ");
+                  .join(" | ");
                 const rawSourceRows =
                   ev.source_links && ev.source_links.length > 0
                     ? ev.source_links
@@ -610,8 +641,7 @@ export function EventsPage() {
                     key={`${ev.id}-${ev.starts_at_utc}`}
                     className={cn(
                       "flex flex-col gap-2 px-2 py-2 pl-1 sm:flex-row sm:items-center sm:gap-2 sm:pl-2",
-                      ev.interested &&
-                        "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
+                      ev.interested && "border-l-2 border-l-primary/50 bg-muted/50"
                     )}
                   >
                     <div className="flex shrink-0 items-start pt-0.5 sm:pt-1">
@@ -621,7 +651,7 @@ export function EventsPage() {
                         size="icon"
                         className={cn(
                           "h-8 w-8",
-                          ev.interested && "text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                          ev.interested && "text-primary hover:text-primary/90"
                         )}
                         title={ev.interested ? "Remove from interested" : "Mark interested"}
                         onClick={() => void toggleInterested(ev)}
@@ -644,8 +674,26 @@ export function EventsPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                         <span>{formatEventDate(ev)}</span>
+                        {ev.event_kind === "festival" && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] font-normal"
+                            title={ev.tm_event_name || "Festival or multi-day event"}
+                          >
+                            Festival
+                          </Badge>
+                        )}
+                        {ev.event_kind === "tour_package" && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] font-normal"
+                            title={ev.tm_event_name || "Multi-act tour or package listing"}
+                          >
+                            Tour
+                          </Badge>
+                        )}
                         {ev.distance_miles != null && (
-                          <span className="tabular-nums">· {ev.distance_miles} mi</span>
+                          <span className="tabular-nums">| {ev.distance_miles} mi</span>
                         )}
                         <span className="flex flex-wrap gap-1">
                           {sourceRows.map((row) => {
@@ -717,6 +765,52 @@ export function EventsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={festivalDialogOpen} onOpenChange={setFestivalDialogOpen}>
+        <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Festivals & tour packages</DialogTitle>
+            <DialogDescription>
+              Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming list.
+              Events you marked interested still appear. Labels fill in after a refresh with the new
+              metadata.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {festivalsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : festivalCatalog.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No grouped tour or festival rows yet. After the next artist refresh, large multi-act
+                Ticketmaster events appear here for bulk hiding.
+              </p>
+            ) : (
+              festivalCatalog.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex items-start justify-between gap-3 rounded border px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-2 font-medium leading-tight">{item.label}</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {item.count} listing{item.count === 1 ? "" : "s"} | {item.event_kind}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="whitespace-nowrap text-[10px] text-muted-foreground">Hide</span>
+                    <Switch
+                      checked={hiddenFestivalKeys.includes(item.key)}
+                      onCheckedChange={(v) => void toggleFestivalHidden(item.key, v)}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={hiddenOpen} onOpenChange={setHiddenOpen}>
         <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
@@ -795,8 +889,7 @@ export function EventsPage() {
                       <div className="min-w-0">
                         <div className="font-medium">{h.artist_name}</div>
                         <div className="text-muted-foreground text-xs">
-                          {[h.venue_name, h.venue_city].filter(Boolean).join(" · ")} ·{" "}
-                          {h.local_date}
+                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} | {h.local_date}
                         </div>
                       </div>
                       <Button
@@ -822,7 +915,7 @@ export function EventsPage() {
             <DialogTitle>Hide all shows for this artist?</DialogTitle>
             <DialogDescription>
               {confirmHideArtist
-                ? `“${confirmHideArtist.artist_name}” will disappear from this list until you restore the artist from Hidden → Artists.`
+                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden > Artists.`
                 : null}
             </DialogDescription>
           </DialogHeader>
@@ -889,11 +982,11 @@ export function EventsPage() {
           <DialogHeader>
             <DialogTitle>Force refresh every artist?</DialogTitle>
             <DialogDescription>
-              This single run queries <strong>every</strong> Lidarr artist — including ones that
-              were scanned recently — ignoring the per-artist refresh interval. Useful after
+              This single run queries <strong>every</strong> Lidarr artist, including ones that
+              were scanned recently, ignoring the per-artist refresh interval. Useful after
               changing providers or recovering from a partial scan. Large libraries will take
-              several minutes and may need a higher <strong>Timeout</strong> under Commands → Artist
-              Events Refresh.
+              several minutes and may need a higher <strong>Timeout</strong> under Commands &gt;
+              Artist Events Refresh.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

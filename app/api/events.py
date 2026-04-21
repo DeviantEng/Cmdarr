@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -32,6 +33,19 @@ def _log():
     return get_logger("cmdarr.api.events")
 
 
+def _hidden_festival_keys() -> set[str]:
+    raw = config_service.get("ARTIST_EVENTS_HIDDEN_FESTIVAL_KEYS", "[]")
+    if isinstance(raw, list):
+        return {str(x) for x in raw if x}
+    try:
+        data = json.loads(raw or "[]")
+        if isinstance(data, list):
+            return {str(x) for x in data if x}
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return set()
+
+
 class GeocodeRequest(BaseModel):
     query: str = Field(..., min_length=0, max_length=500)
 
@@ -47,6 +61,10 @@ class HideEventRequest(BaseModel):
 
 class SetInterestedRequest(BaseModel):
     interested: bool = True
+
+
+class FestivalHiddenRequest(BaseModel):
+    hidden_keys: list[str] = Field(default_factory=list)
 
 
 @router.get("/provider-status")
@@ -119,6 +137,7 @@ async def list_upcoming_events(
     user_lat = parse_float(lat_s.strip() or None)
     user_lon = parse_float(lon_s.strip() or None)
     use_miles = max_miles if max_miles is not None else radius
+    hidden_festival_keys = _hidden_festival_keys()
 
     hidden_mbids: set[str] = set()
     hidden_event_ids: set[int] = set()
@@ -155,6 +174,16 @@ async def list_upcoming_events(
             continue
         if not include_hidden and ev.id in hidden_event_ids:
             continue
+        fk = getattr(ev, "festival_key", None)
+        ek = (getattr(ev, "event_kind", None) or "show").strip() or "show"
+        if (
+            not include_hidden
+            and fk
+            and fk in hidden_festival_keys
+            and ek in ("festival", "tour_package")
+            and not bool(getattr(ev, "user_interested", False))
+        ):
+            continue
         dist = None
         if use_geo_filter:
             if ev.venue_lat is None or ev.venue_lon is None:
@@ -184,6 +213,9 @@ async def list_upcoming_events(
                 "venue_lon": ev.venue_lon,
                 "starts_at_utc": ev.starts_at_utc.isoformat() + "Z" if ev.starts_at_utc else None,
                 "local_date": ev.local_date,
+                "event_kind": ek,
+                "festival_key": fk,
+                "tm_event_name": getattr(ev, "tm_event_name", None),
                 "sources": badges,
                 "source_links": source_links,
                 "interested": bool(getattr(ev, "user_interested", False)),
@@ -386,6 +418,13 @@ async def unhide_all_events(db: Annotated[Session, Depends(get_config_db)]):
 @router.get("/settings")
 async def get_events_settings():
     """Non-sensitive artist-events settings for UI."""
+    raw = config_service.get("ARTIST_EVENTS_HIDDEN_FESTIVAL_KEYS", "[]")
+    try:
+        hidden_festival_keys = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(hidden_festival_keys, list):
+            hidden_festival_keys = []
+    except (json.JSONDecodeError, TypeError):
+        hidden_festival_keys = []
     return {
         "success": True,
         "bandsintown_enabled": config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False),
@@ -395,4 +434,48 @@ async def get_events_settings():
         "user_lon": config_service.get("ARTIST_EVENTS_USER_LON", "") or "",
         "user_label": config_service.get("ARTIST_EVENTS_USER_LABEL", "") or "",
         "radius_miles": float(config_service.get("ARTIST_EVENTS_RADIUS_MILES", 100) or 100),
+        "hidden_festival_keys": [str(x) for x in hidden_festival_keys if x],
     }
+
+
+@router.get("/festivals/catalog")
+async def festival_catalog(
+    db: Annotated[Session, Depends(get_config_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+):
+    """Distinct festival/tour_package groups for filter UI (from stored TM metadata)."""
+    rows = (
+        db.query(
+            ArtistEvent.festival_key,
+            func.max(ArtistEvent.tm_event_name),
+            func.max(ArtistEvent.event_kind),
+            func.count(ArtistEvent.id),
+        )
+        .filter(ArtistEvent.festival_key.isnot(None))
+        .filter(ArtistEvent.event_kind.in_(("festival", "tour_package")))
+        .group_by(ArtistEvent.festival_key)
+        .order_by(func.count(ArtistEvent.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "success": True,
+        "items": [
+            {
+                "key": r[0],
+                "label": (r[1] or r[0])[:200],
+                "event_kind": r[2] or "tour_package",
+                "count": int(r[3]),
+            }
+            for r in rows
+            if r[0]
+        ],
+    }
+
+
+@router.put("/festival-hidden")
+async def set_festival_hidden(req: FestivalHiddenRequest):
+    """Persist which festival_key values are hidden from the default upcoming list."""
+    keys = [str(k).strip() for k in req.hidden_keys if str(k).strip()]
+    config_service.set("ARTIST_EVENTS_HIDDEN_FESTIVAL_KEYS", json.dumps(keys), "string")
+    return {"success": True, "hidden_festival_keys": keys}

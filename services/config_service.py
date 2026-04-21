@@ -625,6 +625,17 @@ class ConfigService:
                 "description": "Radius for distance filter (set from Artist events page or env; not shown in Config)",
                 "is_hidden": True,
             },
+            {
+                "key": "ARTIST_EVENTS_HIDDEN_FESTIVAL_KEYS",
+                "default_value": "[]",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": (
+                    "JSON array of festival_key values to hide from the Artist Events list "
+                    "(events remain in DB; interested events still show). Managed from Artist Events page."
+                ),
+                "is_hidden": True,
+            },
             # Access control (single user)
             {
                 "key": "CMDARR_AUTH_USERNAME",

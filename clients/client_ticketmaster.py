@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from utils.event_geo import coerce_location_str
+from utils.tm_event_meta import classify_ticketmaster_event, pick_best_ticketmaster_url
 
 from .client_base import BaseAPIClient
 
@@ -137,7 +138,7 @@ class TicketmasterClient(BaseAPIClient):
                 starts = starts.replace(tzinfo=UTC)
             else:
                 starts = starts.astimezone(UTC)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return None
         if starts < now:
             return None
@@ -151,7 +152,7 @@ class TicketmasterClient(BaseAPIClient):
         try:
             lat_f = float(lat_s) if lat_s is not None else None
             lon_f = float(lon_s) if lon_s is not None else None
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             lat_f, lon_f = None, None
 
         addr = venue.get("address") or {}
@@ -165,11 +166,16 @@ class TicketmasterClient(BaseAPIClient):
         provider_local = str(start.get("localDate") or "")[:10]
         local_date = provider_local if provider_local else starts.date().isoformat()
         ext_id = str(ev.get("id") or "")
+        event_kind, festival_key, tm_event_name = classify_ticketmaster_event(ev)
+        best_url = pick_best_ticketmaster_url(ev, artist_name)
 
         return {
             "provider": "ticketmaster",
             "external_id": ext_id[:256] if ext_id else f"tm-{artist_mbid}-{local_date}",
-            "source_url": (ev.get("url") or "")[:1024] or None,
+            "source_url": best_url or ((ev.get("url") or "")[:1024] or None),
+            "event_kind": event_kind,
+            "festival_key": festival_key,
+            "tm_event_name": (tm_event_name or "")[:500] or None,
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
             "venue_name": coerce_location_str(venue.get("name")),
