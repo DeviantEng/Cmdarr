@@ -7,14 +7,16 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, or_
+from sqlalchemy import case, func, or_
 
 from clients.client_bandsintown import BandsintownClient
+from clients.client_lidarr import LidarrClient
 from clients.client_songkick import SongkickClient
 from clients.client_ticketmaster import TicketmasterClient
 from commands.command_base import BaseCommand
 from commands.config_adapter import ConfigAdapter
 from database.config_models import (
+    ArtistConcertHiddenEvent,
     ArtistEvent,
     ArtistEventRefresh,
     ArtistEventSource,
@@ -24,6 +26,7 @@ from database.database import get_database_manager
 from services.config_service import config_service
 from utils.event_ingest import persist_normalized_events
 from utils.http_client import QuotaExceededError
+from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
 
 
 class ArtistEventsRefreshCommand(BaseCommand):
@@ -79,13 +82,35 @@ class ArtistEventsRefreshCommand(BaseCommand):
         session = db.get_config_session_sync()
         now = datetime.now(UTC)
         try:
+            hidden_past_pruned, hidden_orphans_removed = self._prune_stale_hidden_single_events(
+                session, now
+            )
             past_events_purged = self._delete_past_events(session, now, past_event_retention_days)
             session.commit()
-            if past_events_purged:
+            if hidden_past_pruned or hidden_orphans_removed or past_events_purged:
                 log.info(
-                    "Purged %s past event row(s) older than %s day(s) before refresh",
+                    "Event cleanup: %s past per-event hide(s) removed, %s orphan hide(s) removed, "
+                    "%s concert row(s) purged (retention %s day(s))",
+                    hidden_past_pruned,
+                    hidden_orphans_removed,
                     past_events_purged,
                     past_event_retention_days,
+                )
+
+            cached_artists = session.query(func.count(LidarrArtist.id)).scalar() or 0
+            if cached_artists == 0:
+                log.info(
+                    "Lidarr artist cache (lidarr_artist) is empty; fetching library from Lidarr API"
+                )
+                async with LidarrClient(cfg) as lidarr_client:
+                    lidarr_rows = await lidarr_client.get_all_artists()
+                inserted, updated = upsert_lidarr_artists_from_payload(session, lidarr_rows, now=now)
+                session.commit()
+                log.info(
+                    "Populated lidarr_artist: %s artists from Lidarr (%s inserted, %s updated)",
+                    len(lidarr_rows),
+                    inserted,
+                    updated,
                 )
 
             q = (
@@ -116,6 +141,10 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     "artists_processed": 0,
                     "new_events": 0,
                     "sources_added": 0,
+                    "past_events_purged": past_events_purged,
+                    "past_event_retention_days": past_event_retention_days,
+                    "hidden_past_single_events_pruned": hidden_past_pruned,
+                    "hidden_single_event_orphans_removed": hidden_orphans_removed,
                 }
                 return True
 
@@ -208,6 +237,8 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 "provider_errors": provider_error_counts,
                 "past_events_purged": past_events_purged,
                 "past_event_retention_days": past_event_retention_days,
+                "hidden_past_single_events_pruned": hidden_past_pruned,
+                "hidden_single_event_orphans_removed": hidden_orphans_removed,
                 "quota_locked_providers": sorted(self._quota_locked.keys()),
             }
             log.info(
@@ -232,6 +263,37 @@ class ArtistEventsRefreshCommand(BaseCommand):
             return False
         finally:
             session.close()
+
+    def _prune_stale_hidden_single_events(self, session, now: datetime) -> tuple[int, int]:
+        """Remove per-event hides that no longer matter: old past shows and broken FK refs.
+
+        The upcoming list only shows ``starts_at_utc >= now``, but ``artist_concert_hidden_event``
+        rows would otherwise linger (with joined details in Hidden) until concert rows are
+        purged. We keep hides for **24 hours after** ``starts_at_utc`` so the Hidden list still
+        reflects “day of” through the following calendar day in practice. Orphans can appear if
+        SQLite FKs were off when a ``concert_event`` was removed.
+
+        Returns:
+            (n_pruned_for_past_show, n_orphan_rows_removed)
+        """
+        hide_prune_cutoff = now - timedelta(days=1)
+        n_past = (
+            session.query(ArtistConcertHiddenEvent)
+            .filter(
+                ArtistConcertHiddenEvent.event_id.in_(
+                    session.query(ArtistEvent.id).filter(
+                        ArtistEvent.starts_at_utc < hide_prune_cutoff
+                    )
+                )
+            )
+            .delete(synchronize_session=False)
+        )
+        n_orphan = (
+            session.query(ArtistConcertHiddenEvent)
+            .filter(~ArtistConcertHiddenEvent.event_id.in_(session.query(ArtistEvent.id)))
+            .delete(synchronize_session=False)
+        )
+        return int(n_past or 0), int(n_orphan or 0)
 
     def _delete_past_events(self, session, now: datetime, retention_days: int) -> int:
         """Remove canonical events whose start time is older than `retention_days` ago.

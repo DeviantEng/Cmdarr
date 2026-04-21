@@ -982,7 +982,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
 @router.post("/new-releases/sync-lidarr-artists")
 async def sync_lidarr_artists(db: Annotated[Session, Depends(get_config_db)]):
     """Sync Lidarr artists into lidarr_artist table for autocomplete."""
-    from database.config_models import LidarrArtist
+    from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
 
     config = ConfigAdapter()
     if not config.LIDARR_API_KEY or not config.LIDARR_URL:
@@ -992,27 +992,6 @@ async def sync_lidarr_artists(db: Annotated[Session, Depends(get_config_db)]):
         artists = await lidarr_client.get_all_artists()
 
     now = datetime.now(UTC)
-    updated = 0
-    for a in artists:
-        mbid = a.get("musicBrainzId")
-        if not mbid:
-            continue
-        existing = db.query(LidarrArtist).filter(LidarrArtist.artist_mbid == mbid).first()
-        if existing:
-            existing.artist_name = a.get("artistName", "")
-            existing.lidarr_id = a.get("id")
-            existing.spotify_artist_id = a.get("spotifyArtistId")
-            existing.last_synced_at = now
-            updated += 1
-        else:
-            db.add(
-                LidarrArtist(
-                    artist_mbid=mbid,
-                    artist_name=a.get("artistName", ""),
-                    lidarr_id=a.get("id"),
-                    spotify_artist_id=a.get("spotifyArtistId"),
-                    last_synced_at=now,
-                )
-            )
+    _, updated = upsert_lidarr_artists_from_payload(db, artists, now=now)
     db.commit()
     return {"success": True, "synced": len(artists), "updated": updated}

@@ -466,6 +466,8 @@ class ApiClient {
     max_miles?: number;
     include_hidden?: boolean;
     interested_only?: boolean;
+    /** Omit Ticketmaster-style festival / tour_package rows so the list cap fills with regular shows. */
+    exclude_festivals?: boolean;
     limit?: number;
   }): Promise<{
     success: boolean;
@@ -496,11 +498,14 @@ class ApiClient {
       label: string;
       radius_miles: number;
     };
+    /** Total upcoming rows in DB; list is still capped and filtered (location, hides, etc.). */
+    upcoming_stored_count?: number;
   }> {
     const searchParams = new URLSearchParams();
     if (params?.max_miles !== undefined) searchParams.set("max_miles", String(params.max_miles));
     if (params?.include_hidden) searchParams.set("include_hidden", "true");
     if (params?.interested_only) searchParams.set("interested_only", "true");
+    if (params?.exclude_festivals) searchParams.set("exclude_festivals", "true");
     if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
     const q = searchParams.toString();
     return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);

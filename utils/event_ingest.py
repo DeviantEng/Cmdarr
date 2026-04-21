@@ -60,8 +60,19 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
                 existing.venue_lon = item.get("venue_lon")
             if item.get("event_kind"):
                 existing.event_kind = merge_event_kind(existing.event_kind, item.get("event_kind"))
-            if item.get("festival_key") and not existing.festival_key:
-                existing.festival_key = item["festival_key"]
+            new_fk = item.get("festival_key")
+            if new_fk:
+                old_fk = existing.festival_key
+                if not old_fk:
+                    existing.festival_key = new_fk
+                elif (
+                    isinstance(new_fk, str)
+                    and new_fk.startswith("tmfest:")
+                    and isinstance(old_fk, str)
+                    and old_fk.startswith("tm:")
+                ):
+                    # Upgrade per-TM-event ids to venue+year+title grouping after ingest changes.
+                    existing.festival_key = new_fk
             if item.get("tm_event_name") and not existing.tm_event_name:
                 existing.tm_event_name = (item["tm_event_name"] or "")[:500]
 

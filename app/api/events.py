@@ -28,6 +28,8 @@ from utils.logger import get_logger
 
 router = APIRouter()
 
+_FESTIVAL_EVENT_KINDS = ("festival", "tour_package")
+
 
 def _log():
     return get_logger("cmdarr.api.events")
@@ -127,10 +129,19 @@ async def list_upcoming_events(
     max_miles: Annotated[float | None, Query(ge=0)] = None,
     include_hidden: bool = False,
     interested_only: bool = False,
+    exclude_festivals: bool = False,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
     """Upcoming artist events; optional distance filter from user location in config."""
     now = datetime.now(UTC)
+    count_q = db.query(func.count(ArtistEvent.id)).filter(ArtistEvent.starts_at_utc >= now)
+    if interested_only:
+        count_q = count_q.filter(ArtistEvent.user_interested.is_(True))
+    if exclude_festivals:
+        count_q = count_q.filter(
+            func.coalesce(ArtistEvent.event_kind, "show").notin_(_FESTIVAL_EVENT_KINDS)
+        )
+    upcoming_stored_count = int(count_q.scalar() or 0)
     lat_s = config_service.get("ARTIST_EVENTS_USER_LAT", "") or ""
     lon_s = config_service.get("ARTIST_EVENTS_USER_LON", "") or ""
     radius = float(config_service.get("ARTIST_EVENTS_RADIUS_MILES", 100) or 100)
@@ -151,6 +162,10 @@ async def list_upcoming_events(
     base = db.query(ArtistEvent).filter(ArtistEvent.starts_at_utc >= now)
     if interested_only:
         base = base.filter(ArtistEvent.user_interested.is_(True))
+    if exclude_festivals:
+        base = base.filter(
+            func.coalesce(ArtistEvent.event_kind, "show").notin_(_FESTIVAL_EVENT_KINDS)
+        )
     if use_geo_filter:
         lat_min, lat_max, lon_min, lon_max = lat_lon_deg_bounds_for_radius_miles(
             user_lat, user_lon, use_miles
@@ -229,6 +244,7 @@ async def list_upcoming_events(
     return {
         "success": True,
         "events": out,
+        "upcoming_stored_count": int(upcoming_stored_count),
         "user_location": {
             "lat": user_lat,
             "lon": user_lon,

@@ -102,6 +102,62 @@ def pick_best_ticketmaster_url(ev: dict[str, Any], artist_name: str) -> str | No
     return best[:1024] if best else None
 
 
+def _group_title_for_festival_key(name: str) -> str:
+    """Strip per-lineup / day suffixes so one festival shares one group key across TM event ids."""
+    n = (name or "").strip()
+    if not n:
+        return ""
+    if ":" in n:
+        left = n.split(":", 1)[0].strip()
+        if len(left) >= 4:
+            n = left
+    n = re.sub(
+        r"\s+-\s+(?:day\s*\d+|friday|saturday|sunday|thursday|wednesday|monday|tuesday)\s*$",
+        "",
+        n,
+        flags=re.I,
+    ).strip()
+    n = re.sub(r"\s*\([^)]*\)\s*$", "", n).strip()
+    return n
+
+
+def stable_festival_group_key(ev: dict[str, Any]) -> str | None:
+    """Stable id across TM Discovery events that refer to the same festival/tour stop.
+
+    TM returns a different `id` per keyword hit (e.g. each headliner day). We group by
+    venue + calendar year + normalized title prefix instead of `tm:<event_id>`.
+    """
+    ext_id = str(ev.get("id") or "").strip()
+    emb = ev.get("_embedded") or {}
+    venues = emb.get("venues") or []
+    venue_id = ""
+    if venues and isinstance(venues[0], dict):
+        venue_id = str(venues[0].get("id") or "").strip()
+    dates = ev.get("dates") or {}
+    start = dates.get("start") or {}
+    local_date = str(start.get("localDate") or "")[:10]
+    year = local_date[:4] if len(local_date) >= 4 else ""
+    if not year:
+        dt_raw = str(start.get("dateTime") or "")
+        if len(dt_raw) >= 4 and dt_raw[:4].isdigit():
+            year = dt_raw[:4]
+    if not year:
+        year = "0000"
+    raw_name = (ev.get("name") or "").strip()
+    title = _group_title_for_festival_key(raw_name)
+    if not title:
+        return f"tm:{ext_id}" if ext_id else None
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower())
+    slug = re.sub(r"-+", "-", slug).strip("-")[:96]
+    if not slug:
+        return f"tm:{ext_id}" if ext_id else None
+    if venue_id:
+        return f"tmfest:{venue_id}:{year}:{slug}"
+    if ext_id:
+        return f"tm:{ext_id}"
+    return None
+
+
 _FESTIVAL_NAME_HINTS = (
     "festival",
     "sonic temple",
@@ -118,7 +174,23 @@ _FESTIVAL_NAME_HINTS = (
     "ohana",
     "download festival",
     "tortuga",
+    "louder than life",
 )
+
+# TM appends "presented by …" tails; a hint there (e.g. "Riot Fest") is a sponsor, not the event name.
+_SPONSOR_TAIL_START = re.compile(
+    r"\b(?:presented by|presented in partnership with|brought to you by)\b",
+    re.I,
+)
+
+
+def _festival_name_hint_matches(name_lower: str, hint: str) -> bool:
+    if hint not in name_lower:
+        return False
+    m = _SPONSOR_TAIL_START.search(name_lower)
+    if m is not None and name_lower.find(hint) >= m.start():
+        return False
+    return True
 
 
 def classify_ticketmaster_event(ev: dict[str, Any]) -> tuple[str, str | None, str | None]:
@@ -126,12 +198,10 @@ def classify_ticketmaster_event(ev: dict[str, Any]) -> tuple[str, str | None, st
     Returns (event_kind, festival_key, tm_event_name).
 
     event_kind: show | festival | tour_package
-    festival_key: stable id for UI grouping (tm:<discovery_event_id>) when not a plain show.
+    festival_key: stable id for UI grouping (tmfest:… from venue+year+title) when not a plain show.
     """
     name = (ev.get("name") or "").strip()
     name_lower = name.lower()
-    ext_id = str(ev.get("id") or "").strip()
-    key_base = f"tm:{ext_id}" if ext_id else None
 
     emb = ev.get("_embedded") or {}
     attractions = emb.get("attractions") or []
@@ -145,14 +215,18 @@ def classify_ticketmaster_event(ev: dict[str, Any]) -> tuple[str, str | None, st
     url_l = (ev.get("url") or "").lower()
     is_fgtix = "fgtix.com" in url_l or "/trk/" in url_l
 
-    if any(h in name_lower for h in _FESTIVAL_NAME_HINTS) or "festival" in venue_lower:
-        return ("festival", key_base, name or None)
+    if (
+        any(_festival_name_hint_matches(name_lower, h) for h in _FESTIVAL_NAME_HINTS)
+        or "festival" in venue_lower
+    ):
+        return ("festival", stable_festival_group_key(ev), name or None)
 
+    # Large multi-act TM events only: headliner + a few openers often yields 5–7 attractions.
     if n_attr >= 10 or (n_attr >= 6 and is_fgtix):
-        return ("tour_package", key_base, name or None)
+        return ("tour_package", stable_festival_group_key(ev), name or None)
 
-    if n_attr >= 5:
-        return ("tour_package", key_base, name or None)
+    if n_attr >= 8:
+        return ("tour_package", stable_festival_group_key(ev), name or None)
 
     return ("show", None, name or None)
 

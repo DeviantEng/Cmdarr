@@ -552,14 +552,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": (
-                    "Bandsintown Public API app_id (query param on rest.bandsintown.com). "
-                    "Must be a valid key from Bandsintown; the placeholder 'test' may work for spot checks only. "
-                    "Artist-manager API keys are scoped to that artist—bulk scans over a whole library often need "
-                    "Bandsintown partnership approval; HTTP 403 with an AWS-style 'explicit deny' policy message "
-                    "usually means the key is not permitted for this traffic pattern. "
-                    "User-Agent for HTTP is Application → CMDARR_USER_AGENT (not this field)."
-                ),
+                "description": "Bandsintown Public API app_id (required when enabled)",
             },
             {
                 "key": "ARTIST_EVENTS_SONGKICK_ENABLED",

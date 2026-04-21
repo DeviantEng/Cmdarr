@@ -84,12 +84,29 @@ export function EventsPage() {
     { key: string; label: string; event_kind: string; count: number }[]
   >([]);
   const [festivalsLoading, setFestivalsLoading] = useState(false);
+  const [festivalBulkHiding, setFestivalBulkHiding] = useState(false);
   const [hiddenFestivalKeys, setHiddenFestivalKeys] = useState<string[]>([]);
   const [artistFilter, setArtistFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [interestFilter, setInterestFilter] = useState<"all" | "interested">("all");
   const [confirmHideArtist, setConfirmHideArtist] = useState<ArtistEventRow | null>(null);
   const [confirmHideEvent, setConfirmHideEvent] = useState<ArtistEventRow | null>(null);
+  const [upcomingStoredCount, setUpcomingStoredCount] = useState<number | null>(null);
+  const [excludeFestivals, setExcludeFestivals] = useState(() => {
+    try {
+      return localStorage.getItem("cmdarr.events.excludeFestivals") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cmdarr.events.excludeFestivals", excludeFestivals ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [excludeFestivals]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +117,7 @@ export function EventsPage() {
         api.getUpcomingEvents({
           limit: 200,
           interested_only: interestFilter === "interested",
+          exclude_festivals: excludeFestivals,
         }),
         api.getHiddenEventArtists(),
         api.getHiddenEvents(),
@@ -108,6 +126,7 @@ export function EventsPage() {
       setSettings(st);
       setHiddenFestivalKeys(st.hidden_festival_keys ?? []);
       setEvents(ev.events);
+      setUpcomingStoredCount(ev.upcoming_stored_count ?? null);
       setRadiusInput(String(st.radius_miles ?? 100));
       setLocationQuery(st.user_label ?? "");
       setHiddenArtistCount(hA.items.length);
@@ -119,11 +138,16 @@ export function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, [interestFilter]);
+  }, [interestFilter, excludeFestivals]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const festivalCatalogHasUnhidden = useMemo(
+    () => festivalCatalog.some((i) => !hiddenFestivalKeys.includes(i.key)),
+    [festivalCatalog, hiddenFestivalKeys],
+  );
 
   const filteredEvents = useMemo(() => {
     let list = events;
@@ -212,6 +236,31 @@ export function EventsPage() {
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
+    }
+  };
+
+  const hideAllFestivalsInCatalog = async () => {
+    if (festivalCatalog.length === 0) return;
+    const next = new Set(hiddenFestivalKeys);
+    let added = 0;
+    for (const item of festivalCatalog) {
+      if (!next.has(item.key)) {
+        next.add(item.key);
+        added += 1;
+      }
+    }
+    if (added === 0) return;
+    const arr = [...next].sort();
+    setFestivalBulkHiding(true);
+    try {
+      await api.putFestivalHidden(arr);
+      setHiddenFestivalKeys(arr);
+      toast.success(`Hidden ${added} festival / tour group(s) from the upcoming list`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setFestivalBulkHiding(false);
     }
   };
 
@@ -390,8 +439,12 @@ export function EventsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
         <p className="text-muted-foreground mt-1">
           Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
-          from enabled providers. Sync Lidarr artists from New Releases first, then run the refresh
-          command on a schedule or manually.
+          from enabled providers. Refreshes use cmdarr&apos;s cached Lidarr artist list; if that
+          cache is empty, the command loads it from Lidarr before querying providers.{" "}
+          <Link to="/new-releases" className="underline font-medium text-foreground">
+            New Releases
+          </Link>{" "}
+          → Sync Lidarr artists updates the same cache anytime.
         </p>
       </div>
 
@@ -505,7 +558,8 @@ export function EventsPage() {
         <CardHeader className="space-y-1 px-4 py-3">
           <CardTitle className="text-base">Location and radius</CardTitle>
           <CardDescription className="text-xs leading-snug">
-            ZIP or city/state is saved as coordinates. Radius filters distance on this page.
+            ZIP or city/state is saved as coordinates. With a saved location, shows without venue
+            coordinates or outside your radius are omitted from the list below.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
@@ -615,13 +669,41 @@ export function EventsPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex min-w-[14rem] items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Switch
+                id="exclude-festivals"
+                checked={excludeFestivals}
+                onCheckedChange={(c) => setExcludeFestivals(Boolean(c))}
+              />
+              <Label htmlFor="exclude-festivals" className="cursor-pointer text-xs font-normal leading-snug">
+                Exclude festivals &amp; tour packages
+                <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                  Frees list slots (max 200) for regular shows
+                </span>
+              </Label>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Showing {filteredEvents.length} of {events.length} loaded events
+            Showing {filteredEvents.length} of {events.length} in this loaded page
             {artistFilter.trim() || sourceFilter !== "all" || interestFilter === "interested"
-              ? " (filtered)"
+              ? " (search/source/interest filters)"
               : ""}
-            .
+            . Up to 200 rows are returned per load.
+            {upcomingStoredCount != null && upcomingStoredCount > events.length ? (
+              <>
+                {" "}
+                {upcomingStoredCount.toLocaleString()} upcoming rows match your filters (interest +
+                festival toggle); this response is capped at 200. A tight radius or many hidden items
+                also reduce the list.
+                {!excludeFestivals ? (
+                  <>
+                    {" "}
+                    If the cap is mostly festivals/tours, turn on <strong>Exclude festivals</strong>{" "}
+                    above.
+                  </>
+                ) : null}
+              </>
+            ) : null}
           </p>
           {events.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -774,13 +856,46 @@ export function EventsPage() {
 
       <Dialog open={festivalDialogOpen} onOpenChange={setFestivalDialogOpen}>
         <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Festivals & tour packages</DialogTitle>
-            <DialogDescription>
-              Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming
-              list. Events you marked interested still appear. Labels fill in after a refresh with
-              the new metadata.
-            </DialogDescription>
+          <DialogHeader className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <DialogTitle>Festivals & tour packages</DialogTitle>
+                <DialogDescription>
+                  Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming
+                  list. Events you marked interested still appear. Labels fill in after a refresh
+                  with the new metadata.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 self-start sm:self-center"
+                disabled={
+                  festivalsLoading ||
+                  festivalCatalog.length === 0 ||
+                  festivalBulkHiding ||
+                  !festivalCatalogHasUnhidden
+                }
+                title={
+                  festivalCatalog.length > 0 && !festivalCatalogHasUnhidden
+                    ? "All groups in this list are already hidden"
+                    : undefined
+                }
+                onClick={() => void hideAllFestivalsInCatalog()}
+              >
+                {festivalBulkHiding ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Hide all festivals"
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              <strong>Hide all festivals</strong> adds every group in this list (festivals and tour
+              packages) to your hidden set. Groups beyond this dialog (catalog is capped) can still
+              be hidden from the main list or after they appear here.
+            </p>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {festivalsLoading ? (
