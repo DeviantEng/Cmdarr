@@ -863,7 +863,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("name")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Name <CommandsSortIcon column="name" sortField={sortField} sortDirection={sortDirection} />
+                      Name{" "}
+                      <CommandsSortIcon
+                        column="name"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -871,7 +876,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("status")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Status <CommandsSortIcon column="status" sortField={sortField} sortDirection={sortDirection} />
+                      Status{" "}
+                      <CommandsSortIcon
+                        column="status"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -879,7 +889,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("type")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Type <CommandsSortIcon column="type" sortField={sortField} sortDirection={sortDirection} />
+                      Type{" "}
+                      <CommandsSortIcon
+                        column="type"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -887,7 +902,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("schedule")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Schedule <CommandsSortIcon column="schedule" sortField={sortField} sortDirection={sortDirection} />
+                      Schedule{" "}
+                      <CommandsSortIcon
+                        column="schedule"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -895,7 +915,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("last_run")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Last Run <CommandsSortIcon column="last_run" sortField={sortField} sortDirection={sortDirection} />
+                      Last Run{" "}
+                      <CommandsSortIcon
+                        column="last_run"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
