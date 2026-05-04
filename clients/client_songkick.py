@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,14 +24,21 @@ class SongkickClient(BaseAPIClient):
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] on no-results, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        Songkick had no upcoming events for this artist".
+        """
         if not artist_name or not self._api_key:
             return []
         search = await self._get(
             "/search/artists.json",
             params={"query": artist_name, "apikey": self._api_key},
         )
-        if not search or not isinstance(search, dict):
+        if search is None:
+            return None
+        if not isinstance(search, dict):
             return []
         results = (search.get("resultsPage") or {}).get("results")
         if not isinstance(results, dict):
@@ -47,7 +55,9 @@ class SongkickClient(BaseAPIClient):
             f"/artists/{sk_id}/calendar.json",
             params={"apikey": self._api_key},
         )
-        if not cal or not isinstance(cal, dict):
+        if cal is None:
+            return None
+        if not isinstance(cal, dict):
             return []
         res = (cal.get("resultsPage") or {}).get("results")
         if not isinstance(res, dict):
@@ -96,7 +106,12 @@ class SongkickClient(BaseAPIClient):
         except TypeError, ValueError:
             lat_f, lon_f = None, None
 
-        local_date = starts.date().isoformat()
+        provider_local = str(start.get("date") or "")[:10]
+        local_date = (
+            provider_local
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", provider_local)
+            else starts.date().isoformat()
+        )
         ext_id = str(ev.get("id") or "")
 
         ma = venue.get("metroArea") if isinstance(venue.get("metroArea"), dict) else {}

@@ -7,11 +7,9 @@ check-frontend:
 	cd frontend && npm run lint && npm run format:check
 check-audit:
 	cd frontend && npm audit --audit-level=high
-	@# Audit app dependency tree only (not pip-audit’s own env). Ignore CVE-2026-4539 until
-	@# Pygments >2.19.2 is on PyPI (transitive: spotifyscraper → rich → pygments); then add
-	@# Pygments>=2.19.3 to requirements.txt and drop --ignore-vuln.
-	pip-audit -r requirements.txt --cache-dir .pip-audit-cache --ignore-vuln CVE-2026-4539 2>/dev/null \
-		|| uv run pip-audit -r requirements.txt --cache-dir .pip-audit-cache --ignore-vuln CVE-2026-4539
+	@# Audit project requirements only (pinned/fixed vulns handled in requirements.txt).
+	pip-audit -r requirements.txt --cache-dir .pip-audit-cache 2>/dev/null \
+		|| uv run pip-audit -r requirements.txt --cache-dir .pip-audit-cache
 
 fix: fix-python fix-frontend
 fix-python:

@@ -56,6 +56,28 @@ export function StatusPage() {
   const [artistEventsStats, setArtistEventsStats] = useState<ArtistEventsStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const loadStatus = async () => {
+    setError(null);
+    try {
+      const [bundle, healthData, cacheData, nrdData] = await Promise.all([
+        api.getStatus(),
+        api.healthCheck(),
+        api.getCacheStatus().catch(() => null),
+        api.getNrdMetrics().catch(() => null),
+      ]);
+      setStatus(bundle.system);
+      setArtistEventsStats(bundle.artist_events);
+      setHealth(healthData);
+      setCacheStatus(cacheData);
+      setNrdMetrics(nrdData);
+    } catch {
+      setError("Failed to load status");
+      toast.error("Failed to load status");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadStatus();
     const interval = setInterval(loadStatus, 30000); // Refresh every 30 seconds
@@ -125,28 +147,6 @@ export function StatusPage() {
       toast.error("Failed to clear artist events cache");
     } finally {
       setConfirmActionLoading(null);
-    }
-  };
-
-  const loadStatus = async () => {
-    setError(null);
-    try {
-      const [bundle, healthData, cacheData, nrdData] = await Promise.all([
-        api.getStatus(),
-        api.healthCheck(),
-        api.getCacheStatus().catch(() => null),
-        api.getNrdMetrics().catch(() => null),
-      ]);
-      setStatus(bundle.system);
-      setArtistEventsStats(bundle.artist_events);
-      setHealth(healthData);
-      setCacheStatus(cacheData);
-      setNrdMetrics(nrdData);
-    } catch {
-      setError("Failed to load status");
-      toast.error("Failed to load status");
-    } finally {
-      setLoading(false);
     }
   };
 

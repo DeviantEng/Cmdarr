@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
@@ -26,8 +27,12 @@ class BandsintownClient(BaseAPIClient):
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
-        """Return normalized event dicts for ingest."""
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] on no-results, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        Bandsintown had no upcoming events for this artist".
+        """
         if not artist_name or not self._app_id:
             return []
         path = f"/artists/{quote(artist_name, safe='')}/events"
@@ -35,8 +40,8 @@ class BandsintownClient(BaseAPIClient):
             path,
             params={"app_id": self._app_id, "date": "upcoming"},
         )
-        if not data:
-            return []
+        if data is None:
+            return None
         if not isinstance(data, list):
             return []
         out: list[dict[str, Any]] = []
@@ -73,7 +78,12 @@ class BandsintownClient(BaseAPIClient):
         except TypeError, ValueError:
             lat_f, lon_f = None, None
 
-        local_date = starts.date().isoformat()
+        provider_local = str(ev.get("date") or dt_raw)[:10]
+        local_date = (
+            provider_local
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", provider_local)
+            else starts.date().isoformat()
+        )
         vname = coerce_location_str(venue.get("name")) or ""
         ext_id = str(ev.get("id") or ev.get("url") or f"{artist_mbid}-{local_date}-{vname}")
 

@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Calendar,
+  ChevronDown,
   ExternalLink,
   EyeOff,
   Loader2,
-  MapPin,
   MinusCircle,
-  Music,
   RefreshCw,
   RotateCcw,
   Search,
@@ -35,8 +33,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
+import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
 import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
@@ -73,12 +78,35 @@ export function EventsPage() {
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false);
   const [confirmRestoreAllEvents, setConfirmRestoreAllEvents] = useState(false);
   const [refreshRunning, setRefreshRunning] = useState(false);
-  const [confirmRefreshAllDue, setConfirmRefreshAllDue] = useState(false);
+  const [confirmForceRefreshAll, setConfirmForceRefreshAll] = useState(false);
+  const [festivalDialogOpen, setFestivalDialogOpen] = useState(false);
+  const [festivalCatalog, setFestivalCatalog] = useState<
+    { key: string; label: string; event_kind: string; count: number }[]
+  >([]);
+  const [festivalsLoading, setFestivalsLoading] = useState(false);
+  const [festivalBulkHiding, setFestivalBulkHiding] = useState(false);
+  const [hiddenFestivalKeys, setHiddenFestivalKeys] = useState<string[]>([]);
   const [artistFilter, setArtistFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [interestFilter, setInterestFilter] = useState<"all" | "interested">("all");
   const [confirmHideArtist, setConfirmHideArtist] = useState<ArtistEventRow | null>(null);
   const [confirmHideEvent, setConfirmHideEvent] = useState<ArtistEventRow | null>(null);
+  const [upcomingStoredCount, setUpcomingStoredCount] = useState<number | null>(null);
+  const [excludeFestivals, setExcludeFestivals] = useState(() => {
+    try {
+      return localStorage.getItem("cmdarr.events.excludeFestivals") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cmdarr.events.excludeFestivals", excludeFestivals ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [excludeFestivals]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,13 +117,16 @@ export function EventsPage() {
         api.getUpcomingEvents({
           limit: 200,
           interested_only: interestFilter === "interested",
+          exclude_festivals: excludeFestivals,
         }),
         api.getHiddenEventArtists(),
         api.getHiddenEvents(),
       ]);
       setProviderStatus(ps);
       setSettings(st);
+      setHiddenFestivalKeys(st.hidden_festival_keys ?? []);
       setEvents(ev.events);
+      setUpcomingStoredCount(ev.upcoming_stored_count ?? null);
       setRadiusInput(String(st.radius_miles ?? 100));
       setLocationQuery(st.user_label ?? "");
       setHiddenArtistCount(hA.items.length);
@@ -107,11 +138,16 @@ export function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, [interestFilter]);
+  }, [interestFilter, excludeFestivals]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const festivalCatalogHasUnhidden = useMemo(
+    () => festivalCatalog.some((i) => !hiddenFestivalKeys.includes(i.key)),
+    [festivalCatalog, hiddenFestivalKeys]
+  );
 
   const filteredEvents = useMemo(() => {
     let list = events;
@@ -172,6 +208,62 @@ export function EventsPage() {
     }
   };
 
+  const openFestivals = async () => {
+    setFestivalDialogOpen(true);
+    setFestivalsLoading(true);
+    try {
+      const c = await api.getFestivalCatalog();
+      setFestivalCatalog(c.items);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load festivals");
+    } finally {
+      setFestivalsLoading(false);
+    }
+  };
+
+  const toggleFestivalHidden = async (key: string, hide: boolean) => {
+    const next = new Set(hiddenFestivalKeys);
+    if (hide) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    const arr = [...next].sort();
+    try {
+      await api.putFestivalHidden(arr);
+      setHiddenFestivalKeys(arr);
+      toast.success(hide ? "Hidden from list" : "Shown in list");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    }
+  };
+
+  const hideAllFestivalsInCatalog = async () => {
+    if (festivalCatalog.length === 0) return;
+    const next = new Set(hiddenFestivalKeys);
+    let added = 0;
+    for (const item of festivalCatalog) {
+      if (!next.has(item.key)) {
+        next.add(item.key);
+        added += 1;
+      }
+    }
+    if (added === 0) return;
+    const arr = [...next].sort();
+    setFestivalBulkHiding(true);
+    try {
+      await api.putFestivalHidden(arr);
+      setHiddenFestivalKeys(arr);
+      toast.success(`Hidden ${added} festival / tour group(s) from the upcoming list`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setFestivalBulkHiding(false);
+    }
+  };
+
   const openHidden = async () => {
     setHiddenOpen(true);
     try {
@@ -185,11 +277,14 @@ export function EventsPage() {
     }
   };
 
-  const runRefresh = async () => {
+  const runRefreshAllDue = async () => {
     setRefreshRunning(true);
     try {
-      await api.executeCommand("artist_events_refresh", { triggered_by: "api" });
-      toast.success("Artist events refresh started — check Commands for progress");
+      await api.executeCommand("artist_events_refresh", {
+        triggered_by: "api",
+        config_override: { refresh_all_due: true },
+      });
+      toast.success("Refreshing every due artist in one run — see Commands for progress.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start refresh");
     } finally {
@@ -197,16 +292,16 @@ export function EventsPage() {
     }
   };
 
-  const runRefreshAllDue = async () => {
-    setConfirmRefreshAllDue(false);
+  const runForceRefreshAll = async () => {
+    setConfirmForceRefreshAll(false);
     setRefreshRunning(true);
     try {
       await api.executeCommand("artist_events_refresh", {
         triggered_by: "api",
-        config_override: { refresh_all_due: true },
+        config_override: { force_refresh_all: true },
       });
       toast.success(
-        "Full refresh started — every due artist will be processed in one run. See Commands for progress."
+        "Force refresh started — every Lidarr artist will be re-queried regardless of TTL. See Commands for progress."
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start refresh");
@@ -344,31 +439,32 @@ export function EventsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
         <p className="text-muted-foreground mt-1">
           Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
-          from enabled providers. Sync Lidarr artists from New Releases first, then run the refresh
-          command on a schedule or manually.
+          from enabled providers. Refreshes use cmdarr&apos;s cached Lidarr artist list; if that
+          cache is empty, the command loads it from Lidarr before querying providers.{" "}
+          <Link to="/new-releases" className="underline font-medium text-foreground">
+            New Releases
+          </Link>{" "}
+          → Sync Lidarr artists updates the same cache anytime.
         </p>
       </div>
 
       <Card>
         <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Music className="h-4 w-4" />
-            Providers
-          </CardTitle>
+          <CardTitle className="text-base">Providers</CardTitle>
           <CardDescription className="text-xs leading-snug">
             Toggle sources; credentials in{" "}
             <Link to="/config" className="underline font-medium text-foreground">
-              Configuration → Event Sources
+              Configuration &gt; Event Sources
             </Link>
-            . Bandsintown <code className="text-[10px]">app_id</code> ≠ User-Agent (
-            <code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
+            . Bandsintown <code className="text-[10px]">app_id</code> is not the same as User-Agent
+            (<code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
             ready before refresh.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              No provider fully configured — add keys in{" "}
+              No provider fully configured - add keys in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
               </Link>
@@ -414,30 +510,45 @@ export function EventsPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={runRefresh}
-              disabled={refreshRunning || !providerStatus?.any_ready}
-            >
-              {refreshRunning ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Run scheduled batch
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmRefreshAllDue(true)}
-              disabled={refreshRunning || !providerStatus?.any_ready}
-            >
-              Refresh all due artists
-            </Button>
+            <div className="inline-flex">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={runRefreshAllDue}
+                disabled={refreshRunning || !providerStatus?.any_ready}
+                className="rounded-r-none"
+              >
+                {refreshRunning ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Refresh all artists
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={refreshRunning || !providerStatus?.any_ready}
+                    className="rounded-l-none border-l border-background/40 px-2"
+                    aria-label="More refresh options"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setConfirmForceRefreshAll(true)}>
+                    Force refresh all artists
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <p className="text-[11px] leading-snug text-muted-foreground max-w-xl">
-              Batch size: Commands → Artist Events Refresh (default 20). “All due” processes every
-              artist past interval in one run; large libraries may need a higher command timeout.
+              <strong>Refresh all artists</strong> processes every artist past their interval (or
+              never scanned). <strong>Force refresh all artists</strong> ignores the interval and
+              re-queries every Lidarr artist - use after config changes or to recover from a partial
+              scan; large libraries may need a higher command timeout.
             </p>
           </div>
         </CardContent>
@@ -445,12 +556,10 @@ export function EventsPage() {
 
       <Card>
         <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MapPin className="h-4 w-4" />
-            Location & radius
-          </CardTitle>
+          <CardTitle className="text-base">Location and radius</CardTitle>
           <CardDescription className="text-xs leading-snug">
-            ZIP or city/state → saved as coordinates. Radius filters distance on this page.
+            ZIP or city/state is saved as coordinates. With a saved location, shows without venue
+            coordinates or outside your radius are omitted from the list below.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
@@ -490,35 +599,42 @@ export function EventsPage() {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Upcoming events
-            </CardTitle>
+            <CardTitle>Upcoming events</CardTitle>
             <CardDescription>
               Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync
               here.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
-            <EyeOff className="mr-2 h-4 w-4" />
-            Hidden
-            {hiddenTotal > 0 ? (
-              <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-                {hiddenArtistCount > 0 &&
-                  `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
-                {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " · " : ""}
-                {hiddenEventCount > 0 &&
-                  `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
-              </span>
-            ) : null}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openFestivals()}
+              className="shrink-0"
+            >
+              Festivals
+            </Button>
+            <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+              <EyeOff className="mr-2 h-4 w-4" />
+              Hidden
+              {hiddenTotal > 0 ? (
+                <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
+                  {hiddenArtistCount > 0 &&
+                    `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
+                  {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
+                  {hiddenEventCount > 0 &&
+                    `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
+                </span>
+              ) : null}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="relative min-w-[12rem] flex-1">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search artist or venue…"
+                placeholder="Search artist or venue..."
                 value={artistFilter}
                 onChange={(e) => setArtistFilter(e.target.value)}
                 className="h-9 pl-9"
@@ -553,13 +669,46 @@ export function EventsPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex min-w-[14rem] items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Switch
+                id="exclude-festivals"
+                checked={excludeFestivals}
+                onCheckedChange={(c) => setExcludeFestivals(Boolean(c))}
+              />
+              <Label
+                htmlFor="exclude-festivals"
+                className="cursor-pointer text-xs font-normal leading-snug"
+              >
+                Exclude festivals &amp; tour packages
+                <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                  Frees list slots (max 200) for regular shows
+                </span>
+              </Label>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Showing {filteredEvents.length} of {events.length} loaded events
+            Showing {filteredEvents.length} of {events.length} in this loaded page
             {artistFilter.trim() || sourceFilter !== "all" || interestFilter === "interested"
-              ? " (filtered)"
+              ? " (search/source/interest filters)"
               : ""}
-            .
+            . Up to 200 rows are returned per load.
+            {upcomingStoredCount != null && upcomingStoredCount > events.length ? (
+              <>
+                {" "}
+                {upcomingStoredCount.toLocaleString()} upcoming rows match your filters (interest +
+                festival toggle); this response is capped at 200. A tight radius or many hidden
+                items also reduce the list.
+                {!excludeFestivals ? (
+                  <>
+                    {" "}
+                    If the cap is mostly festivals/tours, turn on <strong>
+                      Exclude festivals
+                    </strong>{" "}
+                    above.
+                  </>
+                ) : null}
+              </>
+            ) : null}
           </p>
           {events.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -573,11 +722,12 @@ export function EventsPage() {
               {filteredEvents.map((ev) => {
                 const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
                   .filter(Boolean)
-                  .join(" · ");
-                const sourceRows =
+                  .join(" | ");
+                const rawSourceRows =
                   ev.source_links && ev.source_links.length > 0
                     ? ev.source_links
                     : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
+                const sourceRows = collapseSourceLinksForDisplay(rawSourceRows, ev.artist_name);
                 return (
                   <li
                     key={`${ev.id}-${ev.starts_at_utc}`}
@@ -617,16 +767,34 @@ export function EventsPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                         <span>{formatEventDate(ev)}</span>
+                        {ev.event_kind === "festival" && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] font-normal"
+                            title={ev.tm_event_name || "Festival or multi-day event"}
+                          >
+                            Festival
+                          </Badge>
+                        )}
+                        {ev.event_kind === "tour_package" && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] font-normal"
+                            title={ev.tm_event_name || "Multi-act tour or package listing"}
+                          >
+                            Tour
+                          </Badge>
+                        )}
                         {ev.distance_miles != null && (
-                          <span className="tabular-nums">· {ev.distance_miles} mi</span>
+                          <span className="tabular-nums">| {ev.distance_miles} mi</span>
                         )}
                         <span className="flex flex-wrap gap-1">
-                          {sourceRows.map((row, i) => {
+                          {sourceRows.map((row) => {
                             const label = sourceBadge(row.provider);
                             if (row.url) {
                               return (
                                 <a
-                                  key={`${row.provider}-${i}`}
+                                  key={row.provider}
                                   href={row.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -638,7 +806,7 @@ export function EventsPage() {
                             }
                             return (
                               <Badge
-                                key={`${row.provider}-${i}`}
+                                key={row.provider}
                                 variant="secondary"
                                 className="px-1.5 py-0 text-[10px] font-normal"
                               >
@@ -690,6 +858,87 @@ export function EventsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={festivalDialogOpen} onOpenChange={setFestivalDialogOpen}>
+        <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
+          <DialogHeader className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <DialogTitle>Festivals & tour packages</DialogTitle>
+                <DialogDescription>
+                  Turn on Hide to remove that Ticketmaster tour or festival group from the upcoming
+                  list. Events you marked interested still appear. Labels fill in after a refresh
+                  with the new metadata.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 self-start sm:self-center"
+                disabled={
+                  festivalsLoading ||
+                  festivalCatalog.length === 0 ||
+                  festivalBulkHiding ||
+                  !festivalCatalogHasUnhidden
+                }
+                title={
+                  festivalCatalog.length > 0 && !festivalCatalogHasUnhidden
+                    ? "All groups in this list are already hidden"
+                    : undefined
+                }
+                onClick={() => void hideAllFestivalsInCatalog()}
+              >
+                {festivalBulkHiding ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Hide all festivals"
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              <strong>Hide all festivals</strong> adds every group in this list (festivals and tour
+              packages) to your hidden set. Groups beyond this dialog (catalog is capped) can still
+              be hidden from the main list or after they appear here.
+            </p>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {festivalsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : festivalCatalog.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No grouped tour or festival rows yet. After the next artist refresh, large multi-act
+                Ticketmaster events appear here for bulk hiding.
+              </p>
+            ) : (
+              festivalCatalog.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex items-start justify-between gap-3 rounded border px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-2 font-medium leading-tight">{item.label}</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {item.count} listing{item.count === 1 ? "" : "s"} | {item.event_kind}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                      Hide
+                    </span>
+                    <Switch
+                      checked={hiddenFestivalKeys.includes(item.key)}
+                      onCheckedChange={(v) => void toggleFestivalHidden(item.key, v)}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={hiddenOpen} onOpenChange={setHiddenOpen}>
         <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
@@ -768,7 +1017,7 @@ export function EventsPage() {
                       <div className="min-w-0">
                         <div className="font-medium">{h.artist_name}</div>
                         <div className="text-muted-foreground text-xs">
-                          {[h.venue_name, h.venue_city].filter(Boolean).join(" · ")} ·{" "}
+                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} |{" "}
                           {h.local_date}
                         </div>
                       </div>
@@ -795,7 +1044,7 @@ export function EventsPage() {
             <DialogTitle>Hide all shows for this artist?</DialogTitle>
             <DialogDescription>
               {confirmHideArtist
-                ? `“${confirmHideArtist.artist_name}” will disappear from this list until you restore the artist from Hidden → Artists.`
+                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden > Artists.`
                 : null}
             </DialogDescription>
           </DialogHeader>
@@ -857,23 +1106,23 @@ export function EventsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmRefreshAllDue} onOpenChange={setConfirmRefreshAllDue}>
+      <Dialog open={confirmForceRefreshAll} onOpenChange={setConfirmForceRefreshAll}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Refresh all due artists?</DialogTitle>
+            <DialogTitle>Force refresh every artist?</DialogTitle>
             <DialogDescription>
-              This single run processes <strong>every</strong> Lidarr artist that has no event-scan
-              record yet or is past the per-artist refresh interval — not just the usual batch size.
-              It can take several minutes for large libraries. If the run times out, increase{" "}
-              <strong>Timeout</strong> for this command under Commands, or rely on smaller scheduled
-              batches instead.
+              This single run queries <strong>every</strong> Lidarr artist, including ones that were
+              scanned recently, ignoring the per-artist refresh interval. Useful after changing
+              providers or recovering from a partial scan. Large libraries will take several minutes
+              and may need a higher <strong>Timeout</strong> under Commands &gt; Artist Events
+              Refresh.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmRefreshAllDue(false)}>
+            <Button variant="outline" onClick={() => setConfirmForceRefreshAll(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void runRefreshAllDue()}>Start full refresh</Button>
+            <Button onClick={() => void runForceRefreshAll()}>Start force refresh</Button>
           </div>
         </DialogContent>
       </Dialog>

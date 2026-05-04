@@ -428,8 +428,26 @@ class ApiClient {
     user_lon: string;
     user_label: string;
     radius_miles: number;
+    hidden_festival_keys: string[];
   }> {
     return this.request("/api/events/settings");
+  }
+
+  async getFestivalCatalog(): Promise<{
+    success: boolean;
+    items: { key: string; label: string; event_kind: string; count: number }[];
+  }> {
+    return this.request("/api/events/festivals/catalog");
+  }
+
+  async putFestivalHidden(hidden_keys: string[]): Promise<{
+    success: boolean;
+    hidden_festival_keys: string[];
+  }> {
+    return this.request("/api/events/festival-hidden", {
+      method: "PUT",
+      body: JSON.stringify({ hidden_keys }),
+    });
   }
 
   async geocodeEventsLocation(query: string): Promise<{
@@ -448,6 +466,8 @@ class ApiClient {
     max_miles?: number;
     include_hidden?: boolean;
     interested_only?: boolean;
+    /** Omit Ticketmaster-style festival / tour_package rows so the list cap fills with regular shows. */
+    exclude_festivals?: boolean;
     limit?: number;
   }): Promise<{
     success: boolean;
@@ -465,6 +485,9 @@ class ApiClient {
       local_date: string;
       sources: string[];
       source_links: { provider: string; url: string | null }[];
+      event_kind?: string;
+      festival_key?: string | null;
+      tm_event_name?: string | null;
       interested: boolean;
       distance_miles: number | null;
       last_fm_events_url: string;
@@ -475,11 +498,14 @@ class ApiClient {
       label: string;
       radius_miles: number;
     };
+    /** Total upcoming rows in DB; list is still capped and filtered (location, hides, etc.). */
+    upcoming_stored_count?: number;
   }> {
     const searchParams = new URLSearchParams();
     if (params?.max_miles !== undefined) searchParams.set("max_miles", String(params.max_miles));
     if (params?.include_hidden) searchParams.set("include_hidden", "true");
     if (params?.interested_only) searchParams.set("interested_only", "true");
+    if (params?.exclude_festivals) searchParams.set("exclude_festivals", "true");
     if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
     const q = searchParams.toString();
     return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);

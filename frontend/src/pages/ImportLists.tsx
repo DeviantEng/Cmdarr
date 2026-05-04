@@ -41,10 +41,6 @@ export function ImportListsPage() {
   const [resetDialogOpen, setResetDialogOpen] = useState<ResetListId | null>(null);
   const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
-    loadMetrics();
-  }, []);
-
   const loadMetrics = async () => {
     try {
       setError(null);
@@ -58,6 +54,10 @@ export function ImportListsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadMetrics();
+  }, []);
 
   const handleReset = async (listId: ResetListId) => {
     try {

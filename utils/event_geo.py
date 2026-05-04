@@ -49,12 +49,40 @@ def coerce_location_str(val: Any) -> str | None:
     return str(val).strip() or None
 
 
-def normalize_venue_name(name: str | None) -> str:
+def normalize_city_name(city: str | None) -> str:
+    """Normalize US city names for dedupe: expand St./Mt./Ft., strip punctuation, lowercase."""
+    if not city:
+        return ""
+    s = str(city).strip().lower()
+    s = re.sub(r"\bst\.?\s+", "saint ", s)
+    s = re.sub(r"\bmt\.?\s+", "mount ", s)
+    s = re.sub(r"\bft\.?\s+", "fort ", s)
+    s = re.sub(r"[^a-z0-9\s]+", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def normalize_venue_name(name: str | None, city: str | None = None) -> str:
+    """
+    Normalize a venue name for dedupe. Examples this collapses:
+      "The Basement East"      -> "basement east"
+      "Roxy Theatre-CA"        -> "roxy theatre"
+      "Madison Live (734)"     -> "madison live"
+      "Madison Live - Covington" (city=Covington) -> "madison live"
+    """
     if not name:
         return ""
-    s = name.strip().lower()
+    s = str(name).strip().lower()
     s = re.sub(r"^the\s+", "", s)
-    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s*\([^)]*\)\s*$", "", s)
+    s = re.sub(r"\s*[-–]\s*[a-z]{2,3}\s*$", "", s)
+    if city:
+        city_norm = normalize_city_name(city)
+        if city_norm:
+            s = re.sub(rf"\s*[-–]\s*{re.escape(city_norm)}\s*$", "", s)
+    s = re.sub(r"\s*[-–]\s*[a-z][a-z\s]*$", "", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 
@@ -65,17 +93,28 @@ def venue_fingerprint(
     lat: float | None,
     lon: float | None,
 ) -> str:
-    """Stable string for dedupe heuristics."""
-    vn = normalize_venue_name(coerce_location_str(venue_name))
-    c = (coerce_location_str(city) or "").strip().lower()
-    r = (coerce_location_str(region) or "").strip().lower()
-    # Coarser than raw API coords so two responses for the same venue (slightly different
-    # lat/lon) still share a fingerprint. ~0.01° is ~1.1 km — fine for stadium-level dedupe.
-    if lat is not None and lon is not None:
-        geo = f"{round(lat, 2)},{round(lon, 2)}"
+    """
+    Stable string for dedupe heuristics.
+
+    When a venue name is present, it is authoritative together with normalized city/region
+    and geo is IGNORED — two TM/BIT/SK responses for the same venue often disagree on
+    coordinates by 0.01°–0.05° (venue centroid vs. street address geocode), and letting
+    that drive dedupe splits one show into multiple canonical rows.
+
+    When no venue name is available, fall back to geo (rounded to ~11 km) plus city/region
+    so events sharing a city/date with no venue info still merge.
+    """
+    c_norm = normalize_city_name(coerce_location_str(city))
+    r_norm = (coerce_location_str(region) or "").strip().lower()
+    vn = normalize_venue_name(coerce_location_str(venue_name), c_norm)
+    if vn:
+        raw = f"v|{vn}|{c_norm}|{r_norm}"
     else:
-        geo = ""
-    raw = f"{vn}|{c}|{r}|{geo}"
+        if lat is not None and lon is not None:
+            geo = f"{round(lat, 1)},{round(lon, 1)}"
+        else:
+            geo = ""
+        raw = f"g|{c_norm}|{r_norm}|{geo}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 

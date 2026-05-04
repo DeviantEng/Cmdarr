@@ -61,7 +61,7 @@ class VersionMigrationRunner:
 
             return __version__
         except ImportError:
-            return "0.1.5"  # Fallback version
+            return "0.3.13"  # Fallback when __version__ missing
 
     def add_migration(self, migration: VersionMigration):
         """Add a migration to the runner"""
@@ -179,114 +179,6 @@ def create_version_migration_runner() -> VersionMigrationRunner:
     config_db_path = str(Path(_get_data_dir()) / "cmdarr_config.db")
     runner = VersionMigrationRunner(config_db_path=config_db_path)
 
-    # Migration for v0.1.5: Database split
-    def migrate_database_split(cursor):
-        """Migrate from single database to split databases"""
-        get_migrations_logger().info("Running database split migration...")
-
-        from database.database import _get_data_dir
-
-        # Check if we're running on the old single database
-        old_db_path = str(Path(_get_data_dir()) / "cmdarr.db")
-        if not Path(old_db_path).exists():
-            get_migrations_logger().info("Old database not found, skipping split migration")
-            return
-
-        # Import and run the simplified migration
-        try:
-            from database.migrate_split_simple import main as run_split_migration
-
-            run_split_migration()
-            get_migrations_logger().info("Database split migration completed")
-        except Exception as e:
-            get_migrations_logger().error(f"Database split migration failed: {e}")
-            raise
-
-    runner.add_migration(
-        VersionMigration(
-            version="0.1.5",
-            name="database_split",
-            description="Split single database into config and cache databases",
-            up_func=migrate_database_split,
-        )
-    )
-
-    def migrate_dismissed_artist_name(cursor):
-        """Add artist_name to dismissed_artist_album for restore UI"""
-        cursor.execute("PRAGMA table_info(dismissed_artist_album)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if "artist_name" not in cols:
-            cursor.execute("ALTER TABLE dismissed_artist_album ADD COLUMN artist_name VARCHAR(500)")
-
-    runner.add_migration(
-        VersionMigration(
-            version="0.2.4",
-            name="dismissed_artist_name",
-            description="Add artist_name to dismissed_artist_album",
-            up_func=migrate_dismissed_artist_name,
-        )
-    )
-
-    def migrate_scheduler_cron(cursor):
-        """Replace schedule_hours with schedule_cron for cron-only scheduler"""
-        cursor.execute("PRAGMA table_info(command_configs)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if "schedule_cron" not in cols:
-            cursor.execute("ALTER TABLE command_configs ADD COLUMN schedule_cron VARCHAR(100)")
-        if "schedule_hours" in cols:
-            cursor.execute("ALTER TABLE command_configs DROP COLUMN schedule_hours")
-
-    runner.add_migration(
-        VersionMigration(
-            version="0.3.2",
-            name="scheduler_cron",
-            description="Replace schedule_hours with schedule_cron for cron-only scheduler",
-            up_func=migrate_scheduler_cron,
-        )
-    )
-
-    def migrate_command_aggregate_stats(cursor):
-        """Add aggregate execution stats to command_configs"""
-        cursor.execute("PRAGMA table_info(command_configs)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if "total_execution_count" not in cols:
-            cursor.execute(
-                "ALTER TABLE command_configs ADD COLUMN total_execution_count INTEGER NOT NULL DEFAULT 0"
-            )
-        if "total_success_count" not in cols:
-            cursor.execute(
-                "ALTER TABLE command_configs ADD COLUMN total_success_count INTEGER NOT NULL DEFAULT 0"
-            )
-        if "total_failure_count" not in cols:
-            cursor.execute(
-                "ALTER TABLE command_configs ADD COLUMN total_failure_count INTEGER NOT NULL DEFAULT 0"
-            )
-
-    runner.add_migration(
-        VersionMigration(
-            version="0.3.6",
-            name="command_aggregate_stats",
-            description="Add total_execution_count, total_success_count, total_failure_count to command_configs",
-            up_func=migrate_command_aggregate_stats,
-        )
-    )
-
-    def migrate_command_deleted_at(cursor):
-        """Add deleted_at for soft-delete (keeps execution history for 7 days)"""
-        cursor.execute("PRAGMA table_info(command_configs)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if "deleted_at" not in cols:
-            cursor.execute("ALTER TABLE command_configs ADD COLUMN deleted_at DATETIME NULL")
-
-    runner.add_migration(
-        VersionMigration(
-            version="0.3.7",
-            name="command_deleted_at",
-            description="Add deleted_at for soft-delete of commands",
-            up_func=migrate_command_deleted_at,
-        )
-    )
-
     def migrate_artist_events_naming(cursor):
         """Rename CONCERT_EVENTS_* config keys and concert_events_refresh command."""
         key_map = [
@@ -339,15 +231,6 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                 """
             )
 
-    runner.add_migration(
-        VersionMigration(
-            version="0.3.15",
-            name="artist_events_naming",
-            description="Rename concert event config keys to ARTIST_EVENTS_* and command to artist_events_refresh",
-            up_func=migrate_artist_events_naming,
-        )
-    )
-
     def migrate_concert_event_user_interested(cursor):
         """Add user_interested flag for Artist events page."""
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='concert_event'")
@@ -360,9 +243,18 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                 "ALTER TABLE concert_event ADD COLUMN user_interested BOOLEAN NOT NULL DEFAULT 0"
             )
 
+    # v0.3.14: artist events (finder) — run in order when upgrading from ≤0.3.13
     runner.add_migration(
         VersionMigration(
-            version="0.3.14-dev",
+            version="0.3.14",
+            name="artist_events_naming",
+            description="Rename concert event config keys to ARTIST_EVENTS_* and command to artist_events_refresh",
+            up_func=migrate_artist_events_naming,
+        )
+    )
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.14",
             name="concert_event_user_interested",
             description="Add user_interested to concert_event for Artist Events page",
             up_func=migrate_concert_event_user_interested,
@@ -371,9 +263,11 @@ def create_version_migration_runner() -> VersionMigrationRunner:
 
     def migrate_concert_event_dedupe_coalesce(cursor):
         """
-        Recompute venue fingerprints with coarser geo (see utils.event_geo.venue_fingerprint),
-        merge duplicate concert_event rows that now share the same dedupe key, then refresh
-        dedupe_key for all rows.
+        Recompute venue fingerprints using the current `utils.event_geo.venue_fingerprint`
+        (name-first dedupe with normalized venue/city/region), merge duplicate
+        concert_event rows that now share the same dedupe key — preserving per-source
+        links, user-interested state, and per-event hides — then refresh dedupe_key for
+        all remaining rows.
         """
         from collections import defaultdict
 
@@ -485,12 +379,39 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                 (new_dk, eid),
             )
 
+    def migrate_concert_event_festival_fields(cursor):
+        """TM event display name, festival/tour classification, festival grouping key."""
+        cursor.execute("PRAGMA table_info(concert_event)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "tm_event_name" not in cols:
+            cursor.execute("ALTER TABLE concert_event ADD COLUMN tm_event_name VARCHAR(500)")
+        if "event_kind" not in cols:
+            cursor.execute(
+                "ALTER TABLE concert_event ADD COLUMN event_kind VARCHAR(32) NOT NULL DEFAULT 'show'"
+            )
+        if "festival_key" not in cols:
+            cursor.execute("ALTER TABLE concert_event ADD COLUMN festival_key VARCHAR(256)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_concert_event_event_kind ON concert_event(event_kind)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_concert_event_festival_key ON concert_event(festival_key)"
+        )
+
     runner.add_migration(
         VersionMigration(
-            version="0.3.14-dev",
+            version="0.3.14",
             name="concert_event_dedupe_coalesce",
-            description="Merge duplicate concert_event rows after coarser venue fingerprinting",
+            description="Recompute venue fingerprints (name-first dedupe) and merge duplicate concert_event rows",
             up_func=migrate_concert_event_dedupe_coalesce,
+        )
+    )
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.14",
+            name="concert_event_festival_fields",
+            description="Add tm_event_name, event_kind, festival_key for festival UX and TM ingest",
+            up_func=migrate_concert_event_festival_fields,
         )
     )
 

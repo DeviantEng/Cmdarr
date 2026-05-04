@@ -24,7 +24,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install Ruff
-        run: pip install ruff==0.15.4
+        run: pip install ruff==0.15.12
 
       - name: Lint
         run: ruff check .
@@ -152,7 +152,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -163,10 +163,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit
-        run: |
-          # CVE-2026-4539: no Pygments release >2.19.2 on PyPI yet (transitive via spotifyscraper→rich).
-          # Remove --ignore-vuln after pinning Pygments>=2.19.3 in requirements.txt.
-          pip-audit -r requirements.txt --ignore-vuln CVE-2026-4539
+        run: pip-audit -r requirements.txt
 
   zap-full-scan:
     name: ZAP Full Scan

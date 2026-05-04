@@ -112,3 +112,25 @@ def test_persist_keeps_events_for_different_artists_separate(session):
     session.commit()
 
     assert session.query(ArtistEvent).count() == 2
+
+
+def test_persist_upgrades_festival_key_from_tm_id_to_tmfest(session):
+    old = _item(
+        festival_key="tm:legacyevt",
+        event_kind="festival",
+        tm_event_name="Louder Than Life: Band",
+    )
+    persist_normalized_events(session, [old])
+    session.commit()
+    row = session.query(ArtistEvent).one()
+    assert row.festival_key == "tm:legacyevt"
+
+    newer = _item(
+        festival_key="tmfest:venue1:2026:louder-than-life-2026",
+        event_kind="festival",
+        tm_event_name="Louder Than Life: Band",
+    )
+    persist_normalized_events(session, [newer])
+    session.commit()
+    row = session.query(ArtistEvent).one()
+    assert row.festival_key == "tmfest:venue1:2026:louder-than-life-2026"

@@ -67,10 +67,6 @@ export function ConfigPage() {
   const [apiKeyGenerated, setApiKeyGenerated] = useState<string | null>(null);
   const [generatingApiKey, setGeneratingApiKey] = useState(false);
 
-  useEffect(() => {
-    loadConfiguration();
-  }, []);
-
   const loadConfiguration = async () => {
     setError(null);
     try {
@@ -99,6 +95,10 @@ export function ConfigPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadConfiguration();
+  }, []);
 
   const handleSettingChange = (key: string, value: unknown) => {
     setSettings((prev) => prev.map((s) => (s.key === key ? { ...s, value } : s)));
@@ -440,7 +440,7 @@ export function ConfigPage() {
 
       {/* Tabbed Configuration */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
           {categoryGroups.map((group) => (
             <TabsTrigger
               key={group.name.toLowerCase()}

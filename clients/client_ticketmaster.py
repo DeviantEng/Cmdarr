@@ -3,12 +3,30 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from utils.event_geo import coerce_location_str
+from utils.tm_event_meta import classify_ticketmaster_event, pick_best_ticketmaster_url
 
 from .client_base import BaseAPIClient
+
+_TOKEN_RE = re.compile(r"[a-z0-9']+")
+
+
+def _tokens(text: str) -> list[str]:
+    return _TOKEN_RE.findall((text or "").lower())
+
+
+def _contains_phrase(haystack_tokens: list[str], needle_tokens: list[str]) -> bool:
+    if not needle_tokens or len(needle_tokens) > len(haystack_tokens):
+        return False
+    n = len(needle_tokens)
+    for i in range(len(haystack_tokens) - n + 1):
+        if haystack_tokens[i : i + n] == needle_tokens:
+            return True
+    return False
 
 
 class TicketmasterClient(BaseAPIClient):
@@ -17,13 +35,18 @@ class TicketmasterClient(BaseAPIClient):
             config=config,
             client_name="ticketmaster",
             base_url="https://app.ticketmaster.com/discovery/v2",
-            rate_limit=0.5,
+            rate_limit=0.33,
         )
         self._api_key = api_key
 
     async def fetch_upcoming_events(
         self, artist_name: str, artist_mbid: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | None:
+        """Return normalized events, [] if TM returned no matches, or None on provider error.
+
+        Callers must treat None as "unknown" (do not advance scan TTL) and [] as "scanned OK,
+        TM had no events for this keyword right now".
+        """
         if not artist_name or not self._api_key:
             return []
         data = await self._get(
@@ -37,7 +60,9 @@ class TicketmasterClient(BaseAPIClient):
                 "sort": "date,asc",
             },
         )
-        if not data or not isinstance(data, dict):
+        if data is None:
+            return None
+        if not isinstance(data, dict):
             return []
         emb = data.get("_embedded") or {}
         evs = emb.get("events") or []
@@ -46,7 +71,7 @@ class TicketmasterClient(BaseAPIClient):
         out: list[dict[str, Any]] = []
         now = datetime.now(UTC)
         for ev in evs:
-            if not self._event_matches_artist(ev, artist_name):
+            if not self._event_matches_artist(ev, artist_name, artist_mbid):
                 continue
             norm = self._normalize_event(ev, artist_mbid, artist_name, now)
             if norm:
@@ -54,18 +79,45 @@ class TicketmasterClient(BaseAPIClient):
         return out
 
     @staticmethod
-    def _event_matches_artist(ev: dict[str, Any], artist_name: str) -> bool:
-        an = artist_name.lower().strip()
-        if not an:
+    def _event_matches_artist(ev: dict[str, Any], artist_name: str, artist_mbid: str = "") -> bool:
+        """
+        Decide whether a TM keyword-search event genuinely features this artist.
+
+        Prefer MBID match via `_embedded.attractions[*].externalLinks.musicbrainz[*].id`.
+        If TM provides MBIDs for any attraction on the event and none match our MBID, the
+        event is rejected outright — this kills the "substring of artist name matches some
+        unrelated short attraction title" false positives we were seeing.
+
+        Fall back to whole-phrase, token-aligned match of the artist name inside an
+        attraction name (or the event title if the event has no attractions at all).
+        """
+        artist_tokens = _tokens(artist_name)
+        if not artist_tokens:
             return False
-        en = (ev.get("name") or "").lower()
-        if an in en or en in an:
-            return True
         emb = ev.get("_embedded") or {}
-        for att in emb.get("attractions") or []:
-            n = (att.get("name") or "").lower()
-            if an in n or n in an:
+        attractions = emb.get("attractions") or []
+
+        if artist_mbid:
+            mb_target = artist_mbid.lower().strip()
+            any_mbid_seen = False
+            for att in attractions:
+                mbs = (att.get("externalLinks") or {}).get("musicbrainz") or []
+                for mb in mbs:
+                    mid = (mb.get("id") or "").lower().strip()
+                    if not mid:
+                        continue
+                    any_mbid_seen = True
+                    if mid == mb_target:
+                        return True
+            if any_mbid_seen:
+                return False
+
+        for att in attractions:
+            if _contains_phrase(_tokens(att.get("name") or ""), artist_tokens):
                 return True
+
+        if not attractions:
+            return _contains_phrase(_tokens(ev.get("name") or ""), artist_tokens)
         return False
 
     def _normalize_event(
@@ -111,13 +163,19 @@ class TicketmasterClient(BaseAPIClient):
         if country_raw is None:
             country_raw = "US"
 
-        local_date = starts.date().isoformat()
+        provider_local = str(start.get("localDate") or "")[:10]
+        local_date = provider_local if provider_local else starts.date().isoformat()
         ext_id = str(ev.get("id") or "")
+        event_kind, festival_key, tm_event_name = classify_ticketmaster_event(ev)
+        best_url = pick_best_ticketmaster_url(ev, artist_name)
 
         return {
             "provider": "ticketmaster",
             "external_id": ext_id[:256] if ext_id else f"tm-{artist_mbid}-{local_date}",
-            "source_url": (ev.get("url") or "")[:1024] or None,
+            "source_url": best_url or ((ev.get("url") or "")[:1024] or None),
+            "event_kind": event_kind,
+            "festival_key": festival_key,
+            "tm_event_name": (tm_event_name or "")[:500] or None,
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
             "venue_name": coerce_location_str(venue.get("name")),

@@ -226,6 +226,10 @@ class ArtistEvent(ConfigBase):
     local_date = Column(String(20), nullable=False, index=True)
     dedupe_key = Column(String(64), nullable=False, unique=True, index=True)
     user_interested = Column(Boolean, nullable=False, default=False)
+    # Ticketmaster-only metadata (BIT/Songkick leave null / show)
+    tm_event_name = Column(String(500), nullable=True)
+    event_kind = Column(String(32), nullable=False, default="show", index=True)
+    festival_key = Column(String(256), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

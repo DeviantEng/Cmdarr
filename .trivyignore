@@ -1,10 +1,38 @@
-# Ignored OS-layer CVEs — revisit when Debian / base image ships fixes.
-# Use "exp:YYYY-MM-DD" so Trivy reports the CVE again after that date (forces CI review).
-# CVE-2026-4105: systemd RegisterMachine D-Bus (trixie <no-dsa>; fix in newer systemd, not in trixie yet)
-CVE-2026-4105 exp:2026-06-01
-# CVE-2026-29111: systemd spurious IPC (libsystemd0, libudev1)
-CVE-2026-29111 exp:2026-06-01
-# CVE-2025-69720: ncurses (libtinfo6, libncursesw6, ncurses-*); headless container low exposure
-CVE-2025-69720 exp:2026-06-01
-# CVE-2026-27135: nghttp2 DoS (libnghttp2-14)
-CVE-2026-27135 exp:2026-06-01
+# OS-layer CVEs in python/node slim-trixie images (Debian 13).
+# Audit: revisit when Dependabot bumps the Dockerfile digest or Debian publishes trixie
+# security uploads; verify with `trivy image --severity HIGH,CRITICAL <image>` after rebuild.
+#
+# Tracker hub: https://security-tracker.debian.org/
+# Typical removal check (in a built container):
+#   dpkg-query -W systemd libsystemd0 libudev1 nghttp2 libnghttp2-14 libncursesw6 libtinfo6
+# ---------------------------------------------------------------------------
+#
+# CVE-2026-4105 — systemd-machined RegisterMachine / D-Bus (privilege escalation)
+#   Debian trixie: open / no-dsa (narrow exploitability; requires permissive polkit).
+#   Upstream fixes: systemd 257.12+ / 259.4 / 260.x; Debian sid builds use 260.1-1+.
+#   Our image does not run systemd as PID 1; residual risk from libraries only.
+CVE-2026-4105 exp:2026-09-01
+#
+# CVE-2026-29111 — systemd IPC / assert or stack issue on crafted unprivileged IPC
+#   Debian trixie: open (systemd 257.9-1~deb13u1); patches in upstream 257.11+ etc., sid fixed.
+CVE-2026-29111 exp:2026-09-01
+#
+# CVE-2025-69720 — ncurses infocmp stack overflow (CLI tool mitigations)
+#   Debian trixie: open (no-dsa); fixed in Debian sid ncurses source 6.6+20251231-1 onward.
+#   Headless CMDARR workload does not run infocmp; exposure is incidental library install.
+CVE-2025-69720 exp:2026-09-01
+#
+# CVE-2026-27135 — nghttp2 DoS via session termination / malformed frame assertion
+#   Debian trixie: open with libnghttp2-14 1.64.x; upstream fix nghttp2 1.68.1+,
+#   Debian sid package nghttp2 1.69.0-1+. No trixie DSA yet.
+CVE-2026-27135 exp:2026-09-01
+#
+# CVE-2026-4878 — libcap: TOCTOU / privilege escalation in cap_set_file()
+#   Debian trixie: open (libcap2); other distros backported sooner; wait for security.debian.org.
+#   EPSS low; CMDARR does not use cap_set_file() in normal operation.
+CVE-2026-4878 exp:2026-09-01
+#
+# CVE-2026-33845 — GnuTLS: DTLS denial of service via zero-length fragment
+#   Debian trixie: open (libgnutls30t64); few GA distros ship fix yet (scanner shows no fixed version).
+#   EPSS moderate; workload is primarily TLS client/server via common stacks; revisit when Debian ships.
+CVE-2026-33845 exp:2026-09-01

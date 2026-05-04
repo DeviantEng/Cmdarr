@@ -5,12 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.14-dev] - 2026-04-17
+## [0.3.14] - 2026-05-04
 
 ### Features
 - **Artist Events**: New `/events` page aggregating upcoming shows from optional Bandsintown, Songkick, and Ticketmaster Discovery; scheduled `artist_events_refresh` command batches Lidarr artists with TTL, dedupes across providers, US geocoding (Nominatim) for distance filter, per-artist and per-event hide with restore, Last.fm links, and an **Interested** star with filter.
-- **Artist Events command**: Configurable `artists_per_run` (default 20, max 50) and `refresh_ttl_days` (default 14); optional **refresh all due** run from the page processes every eligible artist.
+- **Artist Events command**: Configurable `artists_per_run` (default 20, max 50), `refresh_ttl_days` (default 14), and new `force_refresh_all` to re-query every Lidarr artist regardless of TTL; per-run stats report per-provider error counts and artists-with-errors.
+- **Artist Events refresh UI**: Single split button on `/events` — *Refresh all artists* (every due/unscanned artist in one run) with a dropdown for *Force refresh all artists* (ignores TTL, for recovery after provider errors or config changes).
 - **Status page**: Artist Events card (scan coverage, upcoming stored, hidden counts) with a **Clear event cache** action that wipes stored events and makes every Lidarr artist due on the next refresh.
+- **Naming**: Artist events renamed for clarity — API module `events`, REST prefix `/api/events`, config keys `ARTIST_EVENTS_*`, command `artist_events_refresh`, helpers `event_geo` / `event_ingest`; migration renames existing `CONCERT_EVENTS_*` settings and the `concert_events_refresh` command row.
+
+### Housekeeping
+- **Dependencies**: Pin **Pygments>=2.20.0** (CVE-2026-4539); remove **pip-audit** `--ignore-vuln` in Makefile and PR checks; bump **Ruff** to **0.15.12**; refresh **npm** (React 19.2.x, Tailwind 4.2.x, Vite plugin, typescript-eslint, Prettier, Postcss, ESLint 9.39.x patches); update **Dockerfile** digests for **node:24-trixie-slim** and **python:3.14-slim-trixie** from Docker Hub.
+- **Major dependency upgrades**: Python — **FastAPI ≥0.136** (Starlette 1.x), **Uvicorn ≥0.46**, explicit **Rich ≥15** alongside spotifyscraper. Frontend — **TypeScript ~6** (remove deprecated `baseUrl` from `tsconfig.app.json`), **Vite 8**, **ESLint 10** with `eslint-plugin-react-hooks` flat `recommended-latest` and **`react-hooks/set-state-in-effect` off** until data-fetch resets are refactored for React Compiler guidance; **lucide-react 1.x**. UI lint cleanups — declare table sort icon at module scope, move initial `useEffect` loaders below their `async` helpers where needed (**Commands**, **Config**, **Import lists**, **Status**).
 
 ### Fixes
 - **Security headers (plain HTTP)**: Dropped CSP `upgrade-insecure-requests` so browsers do not upgrade asset URLs to HTTPS when the app is only served over HTTP (fixes blank UI / `ERR_SSL_PROTOCOL_ERROR` on LAN). Removed deprecated Permissions-Policy `interest-cohort`. `Cross-Origin-Opener-Policy` is only sent for HTTPS, localhost, or when `X-Forwarded-Proto: https` (reverse proxy TLS).
