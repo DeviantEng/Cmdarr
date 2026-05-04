@@ -67,10 +67,6 @@ export function ConfigPage() {
   const [apiKeyGenerated, setApiKeyGenerated] = useState<string | null>(null);
   const [generatingApiKey, setGeneratingApiKey] = useState(false);
 
-  useEffect(() => {
-    loadConfiguration();
-  }, []);
-
   const loadConfiguration = async () => {
     setError(null);
     try {
@@ -99,6 +95,10 @@ export function ConfigPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadConfiguration();
+  }, []);
 
   const handleSettingChange = (key: string, value: unknown) => {
     setSettings((prev) => prev.map((s) => (s.key === key ? { ...s, value } : s)));

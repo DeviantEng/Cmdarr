@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Housekeeping
 - **Dependencies**: Pin **Pygments>=2.20.0** (CVE-2026-4539); remove **pip-audit** `--ignore-vuln` in Makefile and PR checks; bump **Ruff** to **0.15.12**; refresh **npm** (React 19.2.x, Tailwind 4.2.x, Vite plugin, typescript-eslint, Prettier, Postcss, ESLint 9.39.x patches); update **Dockerfile** digests for **node:24-trixie-slim** and **python:3.14-slim-trixie** from Docker Hub.
+- **Major dependency upgrades**: Python — **FastAPI ≥0.136** (Starlette 1.x), **Uvicorn ≥0.46**, explicit **Rich ≥15** alongside spotifyscraper. Frontend — **TypeScript ~6** (remove deprecated `baseUrl` from `tsconfig.app.json`), **Vite 8**, **ESLint 10** with `eslint-plugin-react-hooks` flat `recommended-latest` and **`react-hooks/set-state-in-effect` off** until data-fetch resets are refactored for React Compiler guidance; **lucide-react 1.x**. UI lint cleanups — declare table sort icon at module scope, move initial `useEffect` loaders below their `async` helpers where needed (**Commands**, **Config**, **Import lists**, **Status**).
 
 ### Fixes
 - **Security headers (plain HTTP)**: Dropped CSP `upgrade-insecure-requests` so browsers do not upgrade asset URLs to HTTPS when the app is only served over HTTP (fixes blank UI / `ERR_SSL_PROTOCOL_ERROR` on LAN). Removed deprecated Permissions-Policy `interest-cohort`. `Cross-Origin-Opener-Policy` is only sent for HTTPS, localhost, or when `X-Forwarded-Proto: https` (reverse proxy TLS).
