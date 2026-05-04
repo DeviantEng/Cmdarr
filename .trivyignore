@@ -26,3 +26,13 @@ CVE-2025-69720 exp:2026-09-01
 #   Debian trixie: open with libnghttp2-14 1.64.x; upstream fix nghttp2 1.68.1+,
 #   Debian sid package nghttp2 1.69.0-1+. No trixie DSA yet.
 CVE-2026-27135 exp:2026-09-01
+#
+# CVE-2026-4878 — libcap: TOCTOU / privilege escalation in cap_set_file()
+#   Debian trixie: open (libcap2); other distros backported sooner; wait for security.debian.org.
+#   EPSS low; CMDARR does not use cap_set_file() in normal operation.
+CVE-2026-4878 exp:2026-09-01
+#
+# CVE-2026-33845 — GnuTLS: DTLS denial of service via zero-length fragment
+#   Debian trixie: open (libgnutls30t64); few GA distros ship fix yet (scanner shows no fixed version).
+#   EPSS moderate; workload is primarily TLS client/server via common stacks; revisit when Debian ships.
+CVE-2026-33845 exp:2026-09-01
