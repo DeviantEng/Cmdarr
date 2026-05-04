@@ -146,7 +146,7 @@ export function EventsPage() {
 
   const festivalCatalogHasUnhidden = useMemo(
     () => festivalCatalog.some((i) => !hiddenFestivalKeys.includes(i.key)),
-    [festivalCatalog, hiddenFestivalKeys],
+    [festivalCatalog, hiddenFestivalKeys]
   );
 
   const filteredEvents = useMemo(() => {
@@ -675,7 +675,10 @@ export function EventsPage() {
                 checked={excludeFestivals}
                 onCheckedChange={(c) => setExcludeFestivals(Boolean(c))}
               />
-              <Label htmlFor="exclude-festivals" className="cursor-pointer text-xs font-normal leading-snug">
+              <Label
+                htmlFor="exclude-festivals"
+                className="cursor-pointer text-xs font-normal leading-snug"
+              >
                 Exclude festivals &amp; tour packages
                 <span className="mt-0.5 block text-[10px] text-muted-foreground">
                   Frees list slots (max 200) for regular shows
@@ -693,12 +696,14 @@ export function EventsPage() {
               <>
                 {" "}
                 {upcomingStoredCount.toLocaleString()} upcoming rows match your filters (interest +
-                festival toggle); this response is capped at 200. A tight radius or many hidden items
-                also reduce the list.
+                festival toggle); this response is capped at 200. A tight radius or many hidden
+                items also reduce the list.
                 {!excludeFestivals ? (
                   <>
                     {" "}
-                    If the cap is mostly festivals/tours, turn on <strong>Exclude festivals</strong>{" "}
+                    If the cap is mostly festivals/tours, turn on <strong>
+                      Exclude festivals
+                    </strong>{" "}
                     above.
                   </>
                 ) : null}

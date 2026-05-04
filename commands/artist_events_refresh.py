@@ -104,7 +104,9 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 )
                 async with LidarrClient(cfg) as lidarr_client:
                     lidarr_rows = await lidarr_client.get_all_artists()
-                inserted, updated = upsert_lidarr_artists_from_payload(session, lidarr_rows, now=now)
+                inserted, updated = upsert_lidarr_artists_from_payload(
+                    session, lidarr_rows, now=now
+                )
                 session.commit()
                 log.info(
                     "Populated lidarr_artist: %s artists from Lidarr (%s inserted, %s updated)",

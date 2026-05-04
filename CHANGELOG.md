@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Status page**: Artist Events card (scan coverage, upcoming stored, hidden counts) with a **Clear event cache** action that wipes stored events and makes every Lidarr artist due on the next refresh.
 - **Naming**: Artist events renamed for clarity — API module `events`, REST prefix `/api/events`, config keys `ARTIST_EVENTS_*`, command `artist_events_refresh`, helpers `event_geo` / `event_ingest`; migration renames existing `CONCERT_EVENTS_*` settings and the `concert_events_refresh` command row.
 
+### Housekeeping
+- **Dependencies**: Pin **Pygments>=2.20.0** (CVE-2026-4539); remove **pip-audit** `--ignore-vuln` in Makefile and PR checks; bump **Ruff** to **0.15.12**; refresh **npm** (React 19.2.x, Tailwind 4.2.x, Vite plugin, typescript-eslint, Prettier, Postcss, ESLint 9.39.x patches); update **Dockerfile** digests for **node:24-trixie-slim** and **python:3.14-slim-trixie** from Docker Hub.
+
 ### Fixes
 - **Security headers (plain HTTP)**: Dropped CSP `upgrade-insecure-requests` so browsers do not upgrade asset URLs to HTTPS when the app is only served over HTTP (fixes blank UI / `ERR_SSL_PROTOCOL_ERROR` on LAN). Removed deprecated Permissions-Policy `interest-cohort`. `Cross-Origin-Opener-Policy` is only sent for HTTPS, localhost, or when `X-Forwarded-Proto: https` (reverse proxy TLS).
 

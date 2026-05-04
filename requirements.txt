@@ -36,8 +36,8 @@ tzdata>=2024.1
 
 # Spotify playlist scraping (no credentials required for public playlists)
 spotifyscraper>=2.1.0
-# Transitive: spotifyscraper → rich → pygments. When PyPI has a fixed release, pin e.g.:
-# Pygments>=2.19.3  # CVE-2026-4539 / GHSA-5239-wwwm-4pmq; then remove pip-audit --ignore-vuln in Makefile + CI
+# Direct pin: transitive spotifyscraper → rich → pygments (CVE-2026-4539 / GHSA-5239-wwwm-4pmq)
+Pygments>=2.20.0
 
 # Password hashing for access control (bcrypt directly; passlib unmaintained, incompatible with bcrypt 4.1+)
 bcrypt>=4.0.0
