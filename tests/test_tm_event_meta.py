@@ -1,6 +1,9 @@
 """Tests for Ticketmaster URL selection and festival classification."""
 
+from urllib.parse import urlparse
+
 from utils.tm_event_meta import (
+    _hostname_is_domain_or_subdomain,
     classify_ticketmaster_event,
     merge_event_kind,
     pick_best_ticketmaster_url,
@@ -26,7 +29,10 @@ def test_pick_best_prefers_artist_slug():
             }
         ],
     }
-    assert "ticketmaster.com" in (pick_best_ticketmaster_url(ev, "Lorna Shore") or "")
+    picked = pick_best_ticketmaster_url(ev, "Lorna Shore")
+    assert picked
+    host = urlparse(picked).hostname or ""
+    assert _hostname_is_domain_or_subdomain(host, "ticketmaster.com")
 
 
 def test_pick_best_single_url():

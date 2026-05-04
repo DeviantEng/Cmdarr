@@ -9,6 +9,13 @@ from urllib.parse import urlparse
 _TOKEN_RE = re.compile(r"[a-z0-9']+", re.I)
 
 
+def _hostname_is_domain_or_subdomain(hostname: str, domain: str) -> bool:
+    """True for `ticketmaster.com` or `www.ticketmaster.com`, not `evilticketmaster.com`."""
+    h = hostname.lower()
+    d = domain.lower()
+    return h == d or h.endswith("." + d)
+
+
 def _tokens(text: str) -> list[str]:
     return _TOKEN_RE.findall((text or "").lower())
 
@@ -30,24 +37,23 @@ def _artist_slug_score(path_lower: str, artist_name: str) -> float:
     return 0.0
 
 
+_KNOWN_EVENT_DOMAINS: tuple[tuple[str, float], ...] = (
+    ("ticketmaster.com", 100.0),
+    ("livenation.com", 88.0),
+    ("ticketweb.com", 72.0),
+    ("axs.com", 65.0),
+    ("etix.com", 58.0),
+    ("universe.com", 52.0),
+    ("gracelandlive.com", 44.0),
+    ("fgtix.com", 6.0),
+)
+
+
 def _domain_score(hostname: str) -> float:
     h = hostname.lower()
-    if h.endswith("ticketmaster.com"):
-        return 100.0
-    if h.endswith("livenation.com"):
-        return 88.0
-    if h.endswith("ticketweb.com"):
-        return 72.0
-    if h.endswith("axs.com"):
-        return 65.0
-    if h.endswith("etix.com"):
-        return 58.0
-    if h.endswith("universe.com"):
-        return 52.0
-    if "fgtix.com" in h:
-        return 6.0
-    if h.endswith("gracelandlive.com"):
-        return 44.0
+    for domain, score in _KNOWN_EVENT_DOMAINS:
+        if _hostname_is_domain_or_subdomain(h, domain):
+            return score
     return 36.0
 
 
