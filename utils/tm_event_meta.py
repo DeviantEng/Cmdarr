@@ -218,8 +218,19 @@ def classify_ticketmaster_event(ev: dict[str, Any]) -> tuple[str, str | None, st
     if venues and isinstance(venues[0], dict):
         venue_lower = (venues[0].get("name") or "").lower()
 
-    url_l = (ev.get("url") or "").lower()
-    is_fgtix = "fgtix.com" in url_l or "/trk/" in url_l
+    url_raw = (ev.get("url") or "").strip()
+    is_fgtix = False
+    if url_raw:
+        try:
+            pu = urlparse(url_raw)
+            host = (pu.hostname or "").lower()
+            if _hostname_is_domain_or_subdomain(host, "fgtix.com"):
+                is_fgtix = True
+            else:
+                pl = (pu.path or "").lower()
+                is_fgtix = "/trk/" in pl or pl.startswith("/trk/")
+        except Exception:
+            pass
 
     if (
         any(_festival_name_hint_matches(name_lower, h) for h in _FESTIVAL_NAME_HINTS)
