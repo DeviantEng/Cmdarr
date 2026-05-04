@@ -19,6 +19,11 @@ function hyphenSlug(tokens: string[]): string {
   return tokens.join("-");
 }
 
+/** Subdomain or registrable host: `ticketmaster.com`, `www.ticketmaster.com`, not `evilticketmaster.com`. */
+function hostnameIsDomainOrSubdomain(hostnameLower: string, domainLower: string): boolean {
+  return hostnameLower === domainLower || hostnameLower.endsWith("." + domainLower);
+}
+
 function artistSlugScore(pathLower: string, artistName: string): number {
   const tokens = tokensForArtist(artistName);
   if (tokens.length === 0) return 0;
@@ -36,16 +41,22 @@ function artistSlugScore(pathLower: string, artistName: string): number {
   return 0;
 }
 
+const KNOWN_EVENT_DOMAINS: { domain: string; score: number }[] = [
+  { domain: "ticketmaster.com", score: 100 },
+  { domain: "livenation.com", score: 88 },
+  { domain: "ticketweb.com", score: 72 },
+  { domain: "axs.com", score: 65 },
+  { domain: "etix.com", score: 58 },
+  { domain: "universe.com", score: 52 },
+  { domain: "gracelandlive.com", score: 44 },
+  { domain: "fgtix.com", score: 6 },
+];
+
 function domainScore(hostname: string): number {
   const h = hostname.toLowerCase();
-  if (h.endsWith("ticketmaster.com")) return 100;
-  if (h.endsWith("livenation.com")) return 88;
-  if (h.endsWith("ticketweb.com")) return 72;
-  if (h.endsWith("axs.com")) return 65;
-  if (h.endsWith("etix.com")) return 58;
-  if (h.endsWith("universe.com")) return 52;
-  if (h.includes("fgtix.com")) return 6;
-  if (h.endsWith("gracelandlive.com")) return 44;
+  for (const { domain, score } of KNOWN_EVENT_DOMAINS) {
+    if (hostnameIsDomainOrSubdomain(h, domain)) return score;
+  }
   return 36;
 }
 
