@@ -58,6 +58,23 @@ type ViewMode = "card" | "list";
 type SortField = "name" | "status" | "type" | "schedule" | "last_run";
 type SortDirection = "asc" | "desc";
 
+function CommandsSortIcon({
+  column,
+  sortField,
+  sortDirection,
+}: {
+  column: SortField;
+  sortField: SortField;
+  sortDirection: SortDirection;
+}) {
+  if (sortField !== column) return <span className="inline-block w-4" />;
+  return sortDirection === "asc" ? (
+    <ChevronUp className="ml-1 inline h-4 w-4" />
+  ) : (
+    <ChevronDown className="ml-1 inline h-4 w-4" />
+  );
+}
+
 const BUILTIN_COMMANDS = [
   "discovery_lastfm",
   "library_cache_builder",
@@ -97,14 +114,6 @@ export function CommandsPage() {
     }
   };
 
-  const SortIcon = ({ column }: { column: SortField }) => {
-    if (sortField !== column) return <span className="inline-block w-4" />;
-    return sortDirection === "asc" ? (
-      <ChevronUp className="ml-1 inline h-4 w-4" />
-    ) : (
-      <ChevronDown className="ml-1 inline h-4 w-4" />
-    );
-  };
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false);
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null);
   const [editForm, setEditForm] = useState<CommandEditFormState>({});
@@ -131,6 +140,34 @@ export function CommandsPage() {
   const [nrdSources, setNrdSources] = useState<{ id: string; name: string; configured: boolean }[]>(
     []
   );
+
+  const loadExecutions = async () => {
+    try {
+      const data = await api.getAllExecutions(50);
+      setRecentExecutions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error loading executions:", err);
+    }
+  };
+
+  const loadCommands = async () => {
+    try {
+      setError(null);
+      console.log("Loading commands...");
+      const data = await api.getCommands();
+      console.log("Commands loaded:", data);
+      // Ensure we always have an array
+      setCommands(Array.isArray(data) ? data : []);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load commands";
+      setError(errorMsg);
+      toast.error(errorMsg);
+      console.error("Error loading commands:", error);
+      setCommands([]); // Ensure commands is always an array
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadCommands();
@@ -170,15 +207,6 @@ export function CommandsPage() {
       /* ignore */
     }
   }, [viewMode]);
-
-  const loadExecutions = async () => {
-    try {
-      const data = await api.getAllExecutions(50);
-      setRecentExecutions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Error loading executions:", err);
-    }
-  };
 
   // Poll executions every 10s when commands are running; pause when edit dialog is open
   useEffect(() => {
@@ -241,25 +269,6 @@ export function CommandsPage() {
       loadExecutions();
     } catch {
       toast.error("Failed to cleanup executions");
-    }
-  };
-
-  const loadCommands = async () => {
-    try {
-      setError(null);
-      console.log("Loading commands...");
-      const data = await api.getCommands();
-      console.log("Commands loaded:", data);
-      // Ensure we always have an array
-      setCommands(Array.isArray(data) ? data : []);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Failed to load commands";
-      setError(errorMsg);
-      toast.error(errorMsg);
-      console.error("Error loading commands:", error);
-      setCommands([]); // Ensure commands is always an array
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -854,7 +863,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("name")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Name <SortIcon column="name" />
+                      Name{" "}
+                      <CommandsSortIcon
+                        column="name"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -862,7 +876,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("status")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Status <SortIcon column="status" />
+                      Status{" "}
+                      <CommandsSortIcon
+                        column="status"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -870,7 +889,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("type")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Type <SortIcon column="type" />
+                      Type{" "}
+                      <CommandsSortIcon
+                        column="type"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -878,7 +902,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("schedule")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Schedule <SortIcon column="schedule" />
+                      Schedule{" "}
+                      <CommandsSortIcon
+                        column="schedule"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium">
@@ -886,7 +915,12 @@ export function CommandsPage() {
                       onClick={() => handleSort("last_run")}
                       className="flex items-center cursor-pointer hover:text-foreground"
                     >
-                      Last Run <SortIcon column="last_run" />
+                      Last Run{" "}
+                      <CommandsSortIcon
+                        column="last_run"
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                      />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>

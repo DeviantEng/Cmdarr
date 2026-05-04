@@ -12,11 +12,15 @@ export default defineConfig([
     files: ["**/*.{ts,tsx}"],
     extends: [
       js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs["recommended-latest"],
+      ...tseslint.configs.recommended,
+      reactHooks.configs.flat["recommended-latest"],
       reactRefresh.configs.vite,
       eslintConfigPrettier,
     ],
+    rules: {
+      // Common data-fetch / reset-on-prop patterns; flagged for React Compiler, not actionable here yet.
+      "react-hooks/set-state-in-effect": "off",
+    },
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
