@@ -31,6 +31,7 @@ import {
   Sparkles,
   Radio,
   Users,
+  Mic2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -51,6 +52,7 @@ type PlaylistType =
   | "daylist"
   | "top_tracks"
   | "lfm_similar"
+  | "setlistfm"
   | "local_discovery"
   | "mood_playlist"
   | "xmplaylist";
@@ -70,6 +72,7 @@ const d = commandUiCopy.daylist;
 const ld = commandUiCopy.localDiscovery;
 const tt = commandUiCopy.topTracks;
 const lf = commandUiCopy.lfmSimilar;
+const sf = commandUiCopy.setlistFm;
 const mood = commandUiCopy.moodPlaylist;
 const xm = commandUiCopy.xmplaylist;
 const lb = commandUiCopy.listenbrainz;
@@ -209,6 +212,21 @@ export function CreatePlaylistSyncDialog({
     max_artists: 25,
     include_seeds: true,
     top_x: 5,
+    target: "plex" as "plex" | "jellyfin",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [setlistfmForm, setSetlistfmForm] = useState({
+    artists: "",
+    max_tracks_per_artist: 10,
+    max_setlist_pages: 5,
     target: "plex" as "plex" | "jellyfin",
     use_custom_playlist_name: false,
     custom_playlist_name: "",
@@ -538,6 +556,17 @@ export function CreatePlaylistSyncDialog({
       if (lfmSimilarForm.expires_at_enabled && !lfmSimilarForm.expires_at) return false;
       return true;
     }
+    if (playlistType === "setlistfm") {
+      if (
+        setlistfmForm.artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
+        return false;
+      if (setlistfmForm.expires_at_enabled && !setlistfmForm.expires_at) return false;
+      return true;
+    }
     if (playlistType === "mood_playlist") {
       if (moodPlaylistForm.moods.length === 0) return false;
       if (moodPlaylistForm.expires_at_enabled && !moodPlaylistForm.expires_at) return false;
@@ -632,6 +661,29 @@ export function CreatePlaylistSyncDialog({
           { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "Last.fm Similar command created");
+      } else if (playlistType === "setlistfm") {
+        const payload: Record<string, unknown> = {
+          artists: setlistfmForm.artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
+          max_tracks_per_artist: Math.max(3, Math.min(30, setlistfmForm.max_tracks_per_artist)),
+          max_setlist_pages: Math.max(1, Math.min(20, setlistfmForm.max_setlist_pages)),
+          target: setlistfmForm.target,
+          use_custom_playlist_name: setlistfmForm.use_custom_playlist_name,
+          custom_playlist_name: setlistfmForm.custom_playlist_name,
+          schedule_cron: setlistfmForm.schedule_override ? setlistfmForm.schedule_cron : undefined,
+          enabled: setlistfmForm.enabled,
+        };
+        if (setlistfmForm.expires_at_enabled && setlistfmForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(setlistfmForm.expires_at);
+          payload.expires_at_delete_playlist = setlistfmForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/setlistfm/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Setlist.fm command created");
       } else if (playlistType === "daylist") {
         const time_periods: Record<string, number[]> = {};
         for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
@@ -791,15 +843,17 @@ export function CreatePlaylistSyncDialog({
                   ? cw.titleArtistEssentials
                   : playlistType === "lfm_similar"
                     ? cw.titleLfmSimilar
-                    : playlistType === "local_discovery"
-                      ? cw.titleLocalDiscovery
-                      : playlistType === "mood_playlist"
-                        ? cw.titleMoodPlaylist
-                        : playlistType === "xmplaylist"
-                          ? cw.titleXmplaylist
-                          : playlistType === "listenbrainz"
-                            ? cw.titleListenbrainz
-                            : cw.titleExternal}
+                    : playlistType === "setlistfm"
+                      ? cw.titleSetlistFm
+                      : playlistType === "local_discovery"
+                        ? cw.titleLocalDiscovery
+                        : playlistType === "mood_playlist"
+                          ? cw.titleMoodPlaylist
+                          : playlistType === "xmplaylist"
+                            ? cw.titleXmplaylist
+                            : playlistType === "listenbrainz"
+                              ? cw.titleListenbrainz
+                              : cw.titleExternal}
           </DialogTitle>
           <DialogDescription>
             {step === "type"
@@ -810,13 +864,15 @@ export function CreatePlaylistSyncDialog({
                   ? cw.descTopTracks
                   : playlistType === "lfm_similar"
                     ? cw.descLfmSimilar
-                    : playlistType === "local_discovery"
-                      ? cw.descLocalDiscovery
-                      : playlistType === "mood_playlist"
-                        ? cw.descMoodPlaylist
-                        : playlistType === "xmplaylist"
-                          ? cw.descXmplaylist
-                          : cw.descDefault}
+                    : playlistType === "setlistfm"
+                      ? cw.descSetlistFm
+                      : playlistType === "local_discovery"
+                        ? cw.descLocalDiscovery
+                        : playlistType === "mood_playlist"
+                          ? cw.descMoodPlaylist
+                          : playlistType === "xmplaylist"
+                            ? cw.descXmplaylist
+                            : cw.descDefault}
           </DialogDescription>
         </DialogHeader>
 
@@ -903,6 +959,20 @@ export function CreatePlaylistSyncDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="font-semibold">{cw.cardLfmSimilarTitle}</h3>
                 <p className="text-xs text-muted-foreground">{cw.cardLfmSimilarBlurb}</p>
+              </div>
+            </button>
+
+            {/* Setlist.fm */}
+            <button
+              onClick={() => handleSelectType("setlistfm")}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900">
+                <Mic2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold">{cw.cardSetlistFmTitle}</h3>
+                <p className="text-xs text-muted-foreground">{cw.cardSetlistFmBlurb}</p>
               </div>
             </button>
 
@@ -1891,6 +1961,178 @@ export function CreatePlaylistSyncDialog({
                   }
                 />
               </>
+            ) : playlistType === "setlistfm" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>{sf.artistsLabel}</Label>
+                  <textarea
+                    className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder={sf.artistsPlaceholder}
+                    value={setlistfmForm.artists}
+                    onChange={(e) =>
+                      setSetlistfmForm((prev) => ({ ...prev, artists: e.target.value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">{sf.artistsHelp}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{sf.maxTracksPerArtistLabel}</Label>
+                    <NumericInput
+                      placeholder="10"
+                      value={setlistfmForm.max_tracks_per_artist}
+                      onChange={(v) =>
+                        setSetlistfmForm((prev) => ({
+                          ...prev,
+                          max_tracks_per_artist: v ?? 10,
+                        }))
+                      }
+                      min={3}
+                      max={30}
+                      defaultValue={10}
+                    />
+                    <p className="text-xs text-muted-foreground">{sf.maxTracksPerArtistHelp}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{sf.maxSetlistPagesLabel}</Label>
+                    <NumericInput
+                      placeholder="5"
+                      value={setlistfmForm.max_setlist_pages}
+                      onChange={(v) =>
+                        setSetlistfmForm((prev) => ({
+                          ...prev,
+                          max_setlist_pages: v ?? 5,
+                        }))
+                      }
+                      min={1}
+                      max={20}
+                      defaultValue={5}
+                    />
+                    <p className="text-xs text-muted-foreground">{sf.maxSetlistPagesHelp}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{sf.targetLabel}</Label>
+                  <Select
+                    value={setlistfmForm.target}
+                    onValueChange={(v: "plex" | "jellyfin") =>
+                      setSetlistfmForm((prev) => ({ ...prev, target: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plex">Plex</SelectItem>
+                      <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{sf.targetWhereHelp}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{sf.setlistNote}</p>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={setlistfmForm.use_custom_playlist_name}
+                    onChange={(e) =>
+                      setSetlistfmForm((prev) => ({
+                        ...prev,
+                        use_custom_playlist_name: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{sf.useCustomPlaylistName}</span>
+                </label>
+                {setlistfmForm.use_custom_playlist_name && (
+                  <div className="space-y-2">
+                    <Label>{sf.customPlaylistNameLabel}</Label>
+                    <Input
+                      value={setlistfmForm.custom_playlist_name}
+                      onChange={(e) =>
+                        setSetlistfmForm((prev) => ({
+                          ...prev,
+                          custom_playlist_name: e.target.value,
+                        }))
+                      }
+                      placeholder={sf.customPlaylistPlaceholder}
+                    />
+                    <p className="text-xs text-muted-foreground">{sf.customPlaylistNameHelper}</p>
+                  </div>
+                )}
+                {!setlistfmForm.use_custom_playlist_name && (
+                  <p className="text-xs text-muted-foreground">{sf.autoNameHelp}</p>
+                )}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="create-sf-schedule-override"
+                      checked={setlistfmForm.schedule_override}
+                      onChange={(e) =>
+                        setSetlistfmForm((prev) => ({
+                          ...prev,
+                          schedule_override: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="create-sf-schedule-override">{sch.overrideLabel}</Label>
+                  </div>
+                  {setlistfmForm.schedule_override && (
+                    <>
+                      <div className="space-y-2 rounded-lg border p-4">
+                        <Input
+                          placeholder={sch.createCronPlaceholder}
+                          value={setlistfmForm.schedule_cron}
+                          onChange={(e) =>
+                            setSetlistfmForm((prev) => ({
+                              ...prev,
+                              schedule_cron: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
+                    </>
+                  )}
+                  {!setlistfmForm.schedule_override && (
+                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
+                  )}
+                </div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={setlistfmForm.enabled}
+                    onChange={(e) =>
+                      setSetlistfmForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{cw.enableAfterCreation}</span>
+                </label>
+                <ExpirationFields
+                  idPrefix="create-sf"
+                  enabled={setlistfmForm.expires_at_enabled}
+                  onEnabledChange={(v) =>
+                    setSetlistfmForm((prev) => ({
+                      ...prev,
+                      expires_at_enabled: v,
+                      expires_at: v && !prev.expires_at ? "" : prev.expires_at,
+                    }))
+                  }
+                  value={setlistfmForm.expires_at}
+                  onValueChange={(v) => setSetlistfmForm((prev) => ({ ...prev, expires_at: v }))}
+                  showDeletePlaylistOption={true}
+                  deletePlaylistOnExpiry={setlistfmForm.expires_at_delete_playlist ?? true}
+                  onDeletePlaylistChange={(v) =>
+                    setSetlistfmForm((prev) => ({
+                      ...prev,
+                      expires_at_delete_playlist: v,
+                    }))
+                  }
+                />
+              </>
             ) : playlistType === "mood_playlist" ? (
               <>
                 <div className="space-y-2">
@@ -2588,6 +2830,8 @@ export function CreatePlaylistSyncDialog({
                 cw.submitArtistEssentials
               ) : playlistType === "lfm_similar" ? (
                 cw.submitLfmSimilar
+              ) : playlistType === "setlistfm" ? (
+                cw.submitSetlistFm
               ) : playlistType === "local_discovery" ? (
                 cw.submitLocalDiscovery
               ) : playlistType === "xmplaylist" ? (

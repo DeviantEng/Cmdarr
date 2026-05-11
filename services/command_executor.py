@@ -67,6 +67,7 @@ class CommandExecutor:
             # Load dynamic top tracks commands from database
             self._load_dynamic_top_tracks_commands()
             self._load_dynamic_lfm_similar_commands()
+            self._load_dynamic_setlistfm_commands()
             # Load dynamic mood playlist commands from database
             self._load_dynamic_mood_playlist_commands()
             # Load dynamic local discovery commands from database
@@ -459,6 +460,8 @@ class CommandExecutor:
             return self._build_top_tracks_summary(stats, duration)
         elif command_name.startswith("lfm_similar_") and stats:
             return self._build_lfm_similar_summary(stats, duration)
+        elif command_name.startswith("setlistfm_") and stats:
+            return self._build_setlistfm_summary(stats, duration)
         elif command_name.startswith("xmplaylist_") and stats:
             return self._build_xmplaylist_summary(stats, duration)
 
@@ -538,6 +541,21 @@ class CommandExecutor:
         summary = " • ".join(parts)
         if invalid:
             summary += "\n\nNot in library:\n• " + "\n• ".join(invalid)
+        return summary
+
+    def _build_setlistfm_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Setlist.fm playlist generator summary."""
+        ap = stats.get("artists_processed", 0)
+        ae = stats.get("artists_empty", 0)
+        found = stats.get("tracks_found", 0)
+        total = stats.get("tracks_total", 0)
+        invalid = stats.get("invalid_artists") or []
+        parts = [f"Setlist.fm completed in {duration:.1f}s"]
+        parts.append(f"{found}/{total} tracks in library")
+        parts.append(f"{ap} artist block(s) with setlist data" + (f", {ae} empty" if ae else ""))
+        summary = " • ".join(parts)
+        if invalid:
+            summary += "\n\nNot in library:\n• " + "\n• ".join(str(x) for x in invalid[:5])
         return summary
 
     def _build_maintenance_summary(self, stats: dict[str, Any], duration: float) -> str:
@@ -965,6 +983,33 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic lfm_similar commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_setlistfm_commands(self):
+        """Load dynamic Setlist.fm playlist commands from database."""
+        try:
+            self._ensure_initialized()
+            from commands.playlist_generator_setlistfm import PlaylistGeneratorSetlistfmCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                rows = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("setlistfm_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in rows:
+                    command_name = command_config.command_name
+                    self.command_classes[command_name] = PlaylistGeneratorSetlistfmCommand
+                    self.logger.debug(f"Loaded dynamic Setlist.fm command: {command_name}")
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load dynamic setlistfm commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

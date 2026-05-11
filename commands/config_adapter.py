@@ -51,6 +51,10 @@ class ConfigAdapter:
         self.LASTFM_SIMILAR_COUNT = config_service.get("LASTFM_SIMILAR_COUNT", 1)
         self.LASTFM_MIN_MATCH_SCORE = config_service.get("LASTFM_MIN_MATCH_SCORE", 0.0)
 
+        # Setlist.fm (concert setlists)
+        self.SETLIST_FM_API_KEY = config_service.get("SETLIST_FM_API_KEY", "")
+        self.SETLIST_FM_RATE_LIMIT = float(config_service.get("SETLIST_FM_RATE_LIMIT", 1.0))
+
         # ListenBrainz Configuration
         self.LISTENBRAINZ_TOKEN = config_service.get("LISTENBRAINZ_TOKEN", "")
         self.LISTENBRAINZ_USERNAME = config_service.get("LISTENBRAINZ_USERNAME", "")

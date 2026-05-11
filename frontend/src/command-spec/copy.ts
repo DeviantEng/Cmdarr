@@ -223,6 +223,26 @@ export const commandUiCopy = {
     targetWhereHelp: "Where to create the playlist. Charts always come from Last.fm.",
     lastfmNote: "Track list uses Last.fm top tracks, matched to your library.",
   },
+  setlistFm: {
+    targetReadOnlyHelp: "Create a new command to change Plex or Jellyfin.",
+    artistsLabel: "Artists (one per line, in order)",
+    artistsHelp:
+      "Artists must exist in your library. Each line becomes one block of recent setlist.fm tracks in that order.",
+    artistsPlaceholder: "Artist One\nArtist Two\nArtist Three",
+    maxTracksPerArtistLabel: "Max tracks per artist (per block)",
+    maxTracksPerArtistHelp: "From recent setlists. Min: 3, max: 30.",
+    maxSetlistPagesLabel: "Max setlist.fm pages to scan per artist",
+    maxSetlistPagesHelp: "Pagination cap when searching setlists. Min: 1, max: 20.",
+    setlistNote: "Requires SETLIST_FM_API_KEY in Config (Music Sources → setlist.fm).",
+    useCustomPlaylistName: "Use custom playlist name",
+    customPlaylistNameLabel: "Custom playlist name",
+    customPlaylistPlaceholder: "e.g. Summer Tour 2024",
+    customPlaylistNameHelper: "Override auto-generated name. Shown as [Cmdarr] Setlist: <name>.",
+    autoNameHelp:
+      "Playlist title uses artist names from your list (e.g. Artist1 · Artist2 + 1 More).",
+    targetLabel: "Target",
+    targetWhereHelp: "Where to create the playlist.",
+  },
   xmplaylist: {
     sourceLockedHint: "Source mode is fixed after creation.",
     targetReadOnlyLabel: "Target",
@@ -258,6 +278,7 @@ export const commandUiCopy = {
     titleDaylist: "Configure Daylist",
     titleArtistEssentials: "Configure Artist Essentials",
     titleLfmSimilar: "Configure Last.fm Similar",
+    titleSetlistFm: "Configure Setlist.fm Playlist",
     titleLocalDiscovery: "Configure Local Discovery",
     titleMoodPlaylist: "Configure Mood Playlist",
     titleXmplaylist: "Configure XMPlaylist (SiriusXM History)",
@@ -268,6 +289,8 @@ export const commandUiCopy = {
     descTopTracks: "Artists must exist in your library. One artist per line.",
     descLfmSimilar:
       "Seed artists → Last.fm similar → top tracks per artist. Requires Last.fm API key in config.",
+    descSetlistFm:
+      "Ordered artist list → recent setlist.fm songs per artist → matched to your library. Requires Setlist.fm API key.",
     descLocalDiscovery: "Top artists from play history + sonically similar tracks. Fresh each run.",
     descMoodPlaylist:
       "Select moods from Plex Sonic Analysis. Tracks matching multiple moods rank higher.",
@@ -290,6 +313,9 @@ export const commandUiCopy = {
     cardLfmSimilarTitle: "Last.fm Similar",
     cardLfmSimilarBlurb:
       "Expand seed artists with Last.fm similar, then top tracks per library-matched artist.",
+    cardSetlistFmTitle: "Setlist.fm",
+    cardSetlistFmBlurb:
+      "Build a playlist from recent live setlists on setlist.fm, one ordered block per artist.",
     cardXmplaylistTitle: "XMPlaylist (SiriusXM History)",
     cardXmplaylistBlurb:
       "Newest or most-played tracks per station via xmplaylist.com → Plex or Jellyfin.",
@@ -300,6 +326,7 @@ export const commandUiCopy = {
     submitDaylist: "Create Daylist",
     submitArtistEssentials: "Create Artist Essentials",
     submitLfmSimilar: "Create Last.fm Similar",
+    submitSetlistFm: "Create Setlist.fm Playlist",
     submitLocalDiscovery: "Create Local Discovery",
     submitXmplaylist: "Create XMPlaylist",
     submitPlaylistSync: "Create Playlist Sync",

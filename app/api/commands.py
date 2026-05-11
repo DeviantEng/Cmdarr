@@ -403,6 +403,20 @@ async def update_command(
                     merged.pop("last_playlist_title", None)
                     command.config_json = merged
                 command.display_name = new_title
+            elif command_name.startswith("setlistfm_"):
+                from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
+                from services.command_cleanup import CommandCleanupService
+
+                merged = dict(command.config_json or {})
+                new_title = compute_setlistfm_playlist_title(merged)
+                old_last = prev_config_snapshot.get("last_playlist_title")
+                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
+                new_target = str(merged.get("target", "plex")).lower()
+                if old_last and (old_last != new_title or old_target != new_target):
+                    CommandCleanupService()._delete_playlist_if_exists(old_target, old_last)
+                    merged.pop("last_playlist_title", None)
+                    command.config_json = merged
+                command.display_name = new_title
             # display_name for daylist/local_discovery: sync when plex_history_account_id changes
             elif command_name.startswith("daylist_") or command_name.startswith("local_discovery_"):
                 plex_account_id = request.config_json.get("plex_history_account_id")
@@ -1334,6 +1348,132 @@ async def create_lfm_similar(request: dict, db: Annotated[Session, Depends(get_c
         raise HTTPException(
             status_code=500, detail="Failed to create Last.fm Similar command"
         ) from None
+
+
+@router.get("/setlistfm/exists")
+async def setlistfm_exists(db: Annotated[Session, Depends(get_config_db)]):
+    """Check if any Setlist.fm playlist command exists."""
+    existing = (
+        db.query(CommandConfig)
+        .filter(CommandConfig.command_name.like("setlistfm_%"))
+        .filter(CommandConfig.deleted_at.is_(None))
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
+@router.post("/setlistfm/create")
+async def create_setlistfm(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a Setlist.fm–based playlist generator command."""
+    try:
+        from services.config_service import config_service
+
+        if not (config_service.get("SETLIST_FM_API_KEY") or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Configure SETLIST_FM_API_KEY in Config (Music Sources → setlist.fm).",
+            )
+
+        artists_raw = request.get("artists", [])
+        if isinstance(artists_raw, str):
+            artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+        if not artists_raw:
+            raise HTTPException(
+                status_code=400,
+                detail="artists is required (list or newline-separated, one artist per line)",
+            )
+
+        max_tracks_per_artist = int(request.get("max_tracks_per_artist", 10))
+        max_tracks_per_artist = max(3, min(30, max_tracks_per_artist))
+        max_setlist_pages = int(request.get("max_setlist_pages", 5))
+        max_setlist_pages = max(1, min(20, max_setlist_pages))
+
+        target = str(request.get("target", "plex")).lower()
+        if target not in ("plex", "jellyfin"):
+            target = "plex"
+
+        use_custom_playlist_name = bool(request.get("use_custom_playlist_name", False))
+        custom_playlist_name = (request.get("custom_playlist_name") or "").strip()
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        schedule_override = bool(schedule_cron)
+        enabled = bool(request.get("enabled", True))
+
+        from commands.config_adapter import Config
+        from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
+
+        config = Config()
+        library_key = None
+        if target == "plex":
+            from clients.client_plex import PlexClient
+
+            pc = PlexClient(config)
+            library_key = pc.get_resolved_library_key()
+        elif target == "jellyfin":
+            from clients.client_jellyfin import JellyfinClient
+
+            jc = JellyfinClient(config)
+            library_key = jc.get_resolved_library_key()
+
+        if not library_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resolve target library. Configure PLEX_LIBRARY_NAME or JELLYFIN_LIBRARY_NAME, or add a music library.",
+            )
+
+        existing = (
+            db.query(CommandConfig).filter(CommandConfig.command_name.like("setlistfm_%")).all()
+        )
+        used_ids = set()
+        for cmd in existing:
+            try:
+                used_ids.add(int(cmd.command_name.split("_")[-1]))
+            except ValueError, IndexError:
+                pass
+        next_id = 1
+        while next_id in used_ids:
+            next_id += 1
+        command_name = f"setlistfm_{next_id:05d}"
+
+        config_json = {
+            "artists": artists_raw,
+            "max_tracks_per_artist": max_tracks_per_artist,
+            "max_setlist_pages": max_setlist_pages,
+            "target": target,
+            "target_library_key": str(library_key),
+            "use_custom_playlist_name": use_custom_playlist_name,
+            "custom_playlist_name": custom_playlist_name,
+        }
+        if request.get("expires_at"):
+            config_json["expires_at"] = request.get("expires_at")
+            config_json["expires_at_delete_playlist"] = request.get(
+                "expires_at_delete_playlist", True
+            )
+
+        display_title = compute_setlistfm_playlist_title(config_json)
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_title,
+            description="Generate playlist from setlist.fm per artist (ordered blocks).",
+            enabled=enabled,
+            schedule_cron=schedule_cron if schedule_override else None,
+            timeout_minutes=30,
+            config_json=config_json,
+            command_type="playlist_generator",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_setlistfm_commands()
+
+        return {"message": "Setlist.fm command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create setlistfm: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create Setlist.fm command") from None
 
 
 @router.get("/mood-playlist/moods")

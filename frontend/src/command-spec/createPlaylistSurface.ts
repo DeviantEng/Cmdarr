@@ -7,6 +7,7 @@ export const PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS = [
   "daylist",
   "top_tracks",
   "lfm_similar",
+  "setlistfm",
   "local_discovery",
   "mood_playlist",
   "xmplaylist",

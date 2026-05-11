@@ -15,6 +15,7 @@ export type CommandEditSectionId =
   | "local_discovery"
   | "top_tracks"
   | "lfm_similar"
+  | "setlist_fm"
   | "xmplaylist"
   | "schedule"
   | "expiration"
@@ -66,6 +67,10 @@ export function getCommandEditSectionOrder(cmd: CommandConfig): CommandEditSecti
 
   if (name.startsWith("lfm_similar_")) {
     return [...base, "lfm_similar", "schedule", "expiration", "last_run", "last_status"];
+  }
+
+  if (name.startsWith("setlistfm_")) {
+    return [...base, "setlist_fm", "schedule", "expiration", "last_run", "last_status"];
   }
 
   if (name.startsWith("xmplaylist_")) {

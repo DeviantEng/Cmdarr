@@ -10,6 +10,7 @@ SEP = " · "
 MAX_ARTIST_LEN = 40
 PLAYLIST_TITLE_TOP_TRACKS_PREFIX = "[Cmdarr] Artist Essentials"
 PLAYLIST_TITLE_LFM_SIMILAR_PREFIX = "[Cmdarr] Last.fm Similar"
+PLAYLIST_TITLE_SETLIST_PREFIX = "[Cmdarr] Setlist"
 
 
 def build_auto_playlist_suffix(artist_names: list[str]) -> str:
@@ -153,6 +154,21 @@ def compute_lfm_similar_playlist_title(config: dict[str, Any]) -> str:
         seed_display = [s.strip() for s in seeds if s.strip()]
         suffix = build_auto_playlist_suffix(seed_display) if seed_display else "Mix"
     return f"{PLAYLIST_TITLE_LFM_SIMILAR_PREFIX}: {suffix}"
+
+
+def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
+    """Playlist title from config; uses ordered artist list for auto suffix."""
+    artists_raw = config.get("artists", [])
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    use_custom = config.get("use_custom_playlist_name", False)
+    custom = (config.get("custom_playlist_name") or "").strip()
+    if use_custom and custom:
+        suffix = custom
+    else:
+        suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
+    return f"{PLAYLIST_TITLE_SETLIST_PREFIX}: {suffix}"
 
 
 def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:

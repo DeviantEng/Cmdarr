@@ -11,6 +11,7 @@ import { MoodPlaylistSection } from "./sections/MoodPlaylistSection";
 import { LocalDiscoverySection } from "./sections/LocalDiscoverySection";
 import { TopTracksSection } from "./sections/TopTracksSection";
 import { LfmSimilarSection } from "./sections/LfmSimilarSection";
+import { SetlistFmSection } from "./sections/SetlistFmSection";
 import { XmplaylistSection } from "./sections/XmplaylistSection";
 import { ScheduleSection } from "./sections/ScheduleSection";
 import { ExpirationSection } from "./sections/ExpirationSection";
@@ -49,6 +50,8 @@ export function CommandEditSection({
       return <TopTracksSection ctx={ctx} />;
     case "lfm_similar":
       return <LfmSimilarSection ctx={ctx} />;
+    case "setlist_fm":
+      return <SetlistFmSection ctx={ctx} />;
     case "xmplaylist":
       return <XmplaylistSection ctx={ctx} />;
     case "schedule":
