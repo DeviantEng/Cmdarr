@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 - **Setlist Playlist Generator**: Going to a show soon?  Create a new playlist that uses data from setlist.fm to make a custom playlist for selected artists for what they will likely be playing.  New client for setlist.fm, along with new UI elements to support this new command.
 
+### Housekeeping
+- **Dependencies**: Updated python/urllib3 to address CVEs; Updated docker base images with new SHA256 digest; Added new debian-based CVEs to trivyignore to be reviewed in the future
+
 ## [0.3.14] - 2026-05-04
 
 ### Features
