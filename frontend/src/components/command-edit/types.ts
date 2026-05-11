@@ -36,8 +36,6 @@ export type CommandEditFormState = {
   top_x?: number;
   /** setlist.fm: cap tracks per artist block */
   max_tracks_per_artist?: number;
-  /** setlist.fm: API pagination depth */
-  max_setlist_pages?: number;
   source?: string;
   target?: string;
   use_custom_playlist_name?: boolean;

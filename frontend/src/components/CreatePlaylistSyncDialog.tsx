@@ -225,8 +225,7 @@ export function CreatePlaylistSyncDialog({
 
   const [setlistfmForm, setSetlistfmForm] = useState({
     artists: "",
-    max_tracks_per_artist: 10,
-    max_setlist_pages: 5,
+    max_tracks_per_artist: 25,
     target: "plex" as "plex" | "jellyfin",
     use_custom_playlist_name: false,
     custom_playlist_name: "",
@@ -668,7 +667,6 @@ export function CreatePlaylistSyncDialog({
             .split("\n")
             .filter((a) => a.trim()),
           max_tracks_per_artist: Math.max(3, Math.min(30, setlistfmForm.max_tracks_per_artist)),
-          max_setlist_pages: Math.max(1, Math.min(20, setlistfmForm.max_setlist_pages)),
           target: setlistfmForm.target,
           use_custom_playlist_name: setlistfmForm.use_custom_playlist_name,
           custom_playlist_name: setlistfmForm.custom_playlist_name,
@@ -1975,41 +1973,23 @@ export function CreatePlaylistSyncDialog({
                   />
                   <p className="text-xs text-muted-foreground">{sf.artistsHelp}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>{sf.maxTracksPerArtistLabel}</Label>
-                    <NumericInput
-                      placeholder="10"
-                      value={setlistfmForm.max_tracks_per_artist}
-                      onChange={(v) =>
-                        setSetlistfmForm((prev) => ({
-                          ...prev,
-                          max_tracks_per_artist: v ?? 10,
-                        }))
-                      }
-                      min={3}
-                      max={30}
-                      defaultValue={10}
-                    />
-                    <p className="text-xs text-muted-foreground">{sf.maxTracksPerArtistHelp}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{sf.maxSetlistPagesLabel}</Label>
-                    <NumericInput
-                      placeholder="5"
-                      value={setlistfmForm.max_setlist_pages}
-                      onChange={(v) =>
-                        setSetlistfmForm((prev) => ({
-                          ...prev,
-                          max_setlist_pages: v ?? 5,
-                        }))
-                      }
-                      min={1}
-                      max={20}
-                      defaultValue={5}
-                    />
-                    <p className="text-xs text-muted-foreground">{sf.maxSetlistPagesHelp}</p>
-                  </div>
+                <div className="space-y-2">
+                  <Label>{sf.maxTracksPerArtistLabel}</Label>
+                  <NumericInput
+                    placeholder="25"
+                    value={setlistfmForm.max_tracks_per_artist}
+                    onChange={(v) =>
+                      setSetlistfmForm((prev) => ({
+                        ...prev,
+                        max_tracks_per_artist: v ?? 25,
+                      }))
+                    }
+                    min={3}
+                    max={30}
+                    defaultValue={25}
+                  />
+                  <p className="text-xs text-muted-foreground">{sf.maxTracksPerArtistHelp}</p>
+                  <p className="text-xs text-muted-foreground">{sf.setlistDiscoveryHelp}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>{sf.targetLabel}</Label>

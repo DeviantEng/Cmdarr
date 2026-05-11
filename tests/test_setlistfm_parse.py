@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from commands.setlistfm_parse import (
+    STUB_TRACK_THRESHOLD,
+    TARGET_SUBSTANTIAL_SETLISTS,
+    choose_repr_setlist_for_playlist,
+    dedupe_by_event_key,
+    event_within_lookback_days,
     extract_ordered_songs_from_setlist,
+    finalize_candidate_pool_after_scan,
     first_non_empty_setlist,
+    pick_best_setlist_for_block,
     pick_setlist_for_block,
 )
 
@@ -129,3 +138,72 @@ def test_setlist_page_accepts_dict_or_list_setlist(raw_setlist_field, expected_t
     picked = first_non_empty_setlist(page)
     assert picked is not None
     assert extract_ordered_songs_from_setlist(picked) == expected_titles
+
+
+def _sl_with_date(event_date: str, n_songs: int) -> dict:
+    return {
+        "eventDate": event_date,
+        "sets": {"set": {"song": [_song(f"T{i}") for i in range(n_songs)]}},
+    }
+
+
+def test_pick_best_prefers_newer_event_date():
+    older = _sl_with_date("15-04-2026", 6)
+    newer = _sl_with_date("01-05-2026", 12)
+    page = {"setlist": [older, newer]}
+    assert pick_best_setlist_for_block(page) == newer
+
+
+def test_pick_best_same_day_prefers_longer_setlist():
+    shorter = _sl_with_date("01-05-2026", 6)
+    longer = _sl_with_date("01-05-2026", 12)
+    page = {"setlist": [shorter, longer]}
+    assert pick_best_setlist_for_block(page) == longer
+
+
+def test_pick_best_orders_independent_of_list_order():
+    newer = _sl_with_date("01-05-2026", 12)
+    older = _sl_with_date("15-04-2026", 6)
+    page = {"setlist": [newer, older]}
+    assert pick_best_setlist_for_block(page) == newer
+
+
+def test_pick_best_returns_none_when_no_songs():
+    page = {"setlist": [{"eventDate": "01-05-2026", "sets": {"set": {}}}]}
+    assert pick_best_setlist_for_block(page) is None
+
+
+def test_event_within_lookback():
+    today = date(2026, 7, 1)
+    ok = {"eventDate": "01-05-2026", "sets": {"set": {"song": [_song("A")]}}}
+    old = {"eventDate": "01-05-2024", "sets": {"set": {"song": [_song("A")]}}}
+    future = {"eventDate": "01-06-2030", "sets": {"set": {"song": [_song("A")]}}}
+    assert event_within_lookback_days(ok, today=today)
+    assert not event_within_lookback_days(old, today=today)
+    assert not event_within_lookback_days(future, today=today)
+
+
+def test_finalize_prefers_stub_full_pool_empty():
+    substantial: list = []
+    stub = [_sl_with_date("02-06-2026", 3), _sl_with_date("01-06-2026", 3)]
+    pool = finalize_candidate_pool_after_scan(substantial, stub)
+    assert pool[0]["eventDate"] == "02-06-2026"
+
+
+def test_choose_repr_median_prefers_near_typical_depth():
+    p10 = _sl_with_date("01-01-2026", 10)
+    p12 = _sl_with_date("02-01-2026", 12)
+    p14 = _sl_with_date("03-01-2026", 14)
+    # median 12; 12 wins over 10 distance 2 vs 14 distance 2 then longer ordinal — same dist pick longer
+    assert choose_repr_setlist_for_playlist([p10, p12, p14]) == p12
+
+
+def test_dedupe_by_event_id_keeps_single():
+    a = dict(_sl_with_date("01-05-2026", 4), **{"id": "abc"})
+    b = dict(_sl_with_date("01-05-2026", 4), **{"id": "abc"})
+    assert len(dedupe_by_event_key([a, b])) == 1
+
+
+def test_stub_threshold_constant_aligned_with_resolver():
+    assert STUB_TRACK_THRESHOLD == 3
+    assert TARGET_SUBSTANTIAL_SETLISTS == 5

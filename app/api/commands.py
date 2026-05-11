@@ -1383,10 +1383,8 @@ async def create_setlistfm(request: dict, db: Annotated[Session, Depends(get_con
                 detail="artists is required (list or newline-separated, one artist per line)",
             )
 
-        max_tracks_per_artist = int(request.get("max_tracks_per_artist", 10))
+        max_tracks_per_artist = int(request.get("max_tracks_per_artist", 25))
         max_tracks_per_artist = max(3, min(30, max_tracks_per_artist))
-        max_setlist_pages = int(request.get("max_setlist_pages", 5))
-        max_setlist_pages = max(1, min(20, max_setlist_pages))
 
         target = str(request.get("target", "plex")).lower()
         if target not in ("plex", "jellyfin"):
@@ -1437,7 +1435,6 @@ async def create_setlistfm(request: dict, db: Annotated[Session, Depends(get_con
         config_json = {
             "artists": artists_raw,
             "max_tracks_per_artist": max_tracks_per_artist,
-            "max_setlist_pages": max_setlist_pages,
             "target": target,
             "target_library_key": str(library_key),
             "use_custom_playlist_name": use_custom_playlist_name,

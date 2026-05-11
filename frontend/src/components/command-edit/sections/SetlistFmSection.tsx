@@ -19,31 +19,18 @@ export function SetlistFmSection({ ctx }: { ctx: CommandEditRenderContext }) {
         />
         <p className="text-xs text-muted-foreground">{t.artistsHelp}</p>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>{t.maxTracksPerArtistLabel}</Label>
-          <NumericInput
-            placeholder="10"
-            value={editForm.max_tracks_per_artist ?? 10}
-            onChange={(v) => setEditForm((f) => ({ ...f, max_tracks_per_artist: v ?? 10 }))}
-            min={3}
-            max={30}
-            defaultValue={10}
-          />
-          <p className="text-xs text-muted-foreground">{t.maxTracksPerArtistHelp}</p>
-        </div>
-        <div className="space-y-2">
-          <Label>{t.maxSetlistPagesLabel}</Label>
-          <NumericInput
-            placeholder="5"
-            value={editForm.max_setlist_pages ?? 5}
-            onChange={(v) => setEditForm((f) => ({ ...f, max_setlist_pages: v ?? 5 }))}
-            min={1}
-            max={20}
-            defaultValue={5}
-          />
-          <p className="text-xs text-muted-foreground">{t.maxSetlistPagesHelp}</p>
-        </div>
+      <div className="space-y-2">
+        <Label>{t.maxTracksPerArtistLabel}</Label>
+        <NumericInput
+          placeholder="25"
+          value={editForm.max_tracks_per_artist ?? 25}
+          onChange={(v) => setEditForm((f) => ({ ...f, max_tracks_per_artist: v ?? 25 }))}
+          min={3}
+          max={30}
+          defaultValue={25}
+        />
+        <p className="text-xs text-muted-foreground">{t.maxTracksPerArtistHelp}</p>
+        <p className="text-xs text-muted-foreground">{t.setlistDiscoveryHelp}</p>
       </div>
       <div className="space-y-2">
         <Label>{t.targetLabel}</Label>

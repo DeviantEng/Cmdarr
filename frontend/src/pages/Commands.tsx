@@ -394,8 +394,7 @@ export function CommandsPage() {
       include_seeds: cfg.include_seeds !== false,
       top_x: typeof cfg.top_x === "number" ? cfg.top_x : 5,
       max_tracks_per_artist:
-        typeof cfg.max_tracks_per_artist === "number" ? cfg.max_tracks_per_artist : 10,
-      max_setlist_pages: typeof cfg.max_setlist_pages === "number" ? cfg.max_setlist_pages : 5,
+        typeof cfg.max_tracks_per_artist === "number" ? cfg.max_tracks_per_artist : 25,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
       use_custom_playlist_name: Boolean(
@@ -1472,16 +1471,13 @@ export function CommandsPage() {
                         artists,
                         max_tracks_per_artist: Math.max(
                           3,
-                          Math.min(30, editForm.max_tracks_per_artist ?? 10)
-                        ),
-                        max_setlist_pages: Math.max(
-                          1,
-                          Math.min(20, editForm.max_setlist_pages ?? 5)
+                          Math.min(30, editForm.max_tracks_per_artist ?? 25)
                         ),
                         target: editForm.target ?? "plex",
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
                       };
+                      delete cfg.max_setlist_pages;
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
                         cfg.expires_at_delete_playlist =

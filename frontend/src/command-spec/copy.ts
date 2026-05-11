@@ -230,9 +230,9 @@ export const commandUiCopy = {
       "Artists must exist in your library. Each line becomes one block of recent setlist.fm tracks in that order.",
     artistsPlaceholder: "Artist One\nArtist Two\nArtist Three",
     maxTracksPerArtistLabel: "Max tracks per artist (per block)",
-    maxTracksPerArtistHelp: "From recent setlists. Min: 3, max: 30.",
-    maxSetlistPagesLabel: "Max setlist.fm pages to scan per artist",
-    maxSetlistPagesHelp: "Pagination cap when searching setlists. Min: 1, max: 20.",
+    maxTracksPerArtistHelp: "From the chosen gig’s setlist. Min: 3, max: 30.",
+    setlistDiscoveryHelp:
+      "Uses recent gigs only (~past year): we gather up to five full setlists (usually 20 API pages max), skip tiny 1–3 song stubs when possible, then pick the night closest to a typical headline length.",
     setlistNote: "Requires SETLIST_FM_API_KEY in Config (Music Sources → setlist.fm).",
     useCustomPlaylistName: "Use custom playlist name",
     customPlaylistNameLabel: "Custom playlist name",

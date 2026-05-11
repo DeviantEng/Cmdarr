@@ -3,12 +3,25 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from clients.client_jellyfin import JellyfinClient
 from clients.client_plex import PlexClient
 from clients.client_setlistfm import SetlistFmClient
-from commands.setlistfm_parse import extract_ordered_songs_from_setlist, pick_setlist_for_block
+from commands.setlistfm_parse import (
+    MAX_ARTIST_SETLIST_PAGES,
+    SHOW_LOOKBACK_DAYS,
+    STUB_TRACK_THRESHOLD,
+    TARGET_SUBSTANTIAL_SETLISTS,
+    choose_repr_setlist_for_playlist,
+    dedupe_by_event_key,
+    event_within_lookback_days,
+    extract_ordered_songs_from_setlist,
+    finalize_candidate_pool_after_scan,
+    setlists_from_api_page,
+    track_count_nonempty,
+)
 from utils.library_cache_manager import get_library_cache_manager
 from utils.text_normalizer import normalize_text
 
@@ -109,28 +122,44 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
         self,
         client: SetlistFmClient,
         search_name: str,
-        max_setlist_pages: int,
         max_tracks: int,
     ) -> list[str]:
-        """Fetch one setlist-derived ordered song list for an artist (may be empty)."""
+        """Fetch one setlist-derived ordered song list: recent-year pool, median-depth pick."""
         search = await client.search_artists(search_name, page=1)
         mbid = _mbid_from_search(search)
         if not mbid:
             self.logger.warning(f"setlist.fm: no MBID for artist search '{search_name}'")
             return []
 
-        for page in range(1, max(1, max_setlist_pages) + 1):
+        today = date.today()
+        substantial: list[dict[str, Any]] = []
+        stub: list[dict[str, Any]] = []
+
+        for page in range(1, MAX_ARTIST_SETLIST_PAGES + 1):
             page_data = await client.get_artist_setlists(mbid, page=page)
             if not page_data:
                 continue
-            sl = pick_setlist_for_block(page_data, prefer_non_empty=True)
-            if not sl:
-                continue
-            titles = extract_ordered_songs_from_setlist(sl)
+            for sl in setlists_from_api_page(page_data):
+                if track_count_nonempty(sl) == 0:
+                    continue
+                if not event_within_lookback_days(sl, today=today, days=SHOW_LOOKBACK_DAYS):
+                    continue
+                n = track_count_nonempty(sl)
+                if n <= STUB_TRACK_THRESHOLD:
+                    stub.append(sl)
+                else:
+                    substantial.append(sl)
+            if len(dedupe_by_event_key(substantial)) >= TARGET_SUBSTANTIAL_SETLISTS:
+                break
+
+        pool = finalize_candidate_pool_after_scan(substantial, stub)
+        chosen = choose_repr_setlist_for_playlist(pool)
+        if chosen:
+            titles = extract_ordered_songs_from_setlist(chosen)
             if titles:
                 return titles[:max_tracks]
         self.logger.warning(
-            f"setlist.fm: no setlists with songs found for '{search_name}' (mbid={mbid})"
+            f"setlist.fm: no suitable recent setlist for '{search_name}' (mbid={mbid})"
         )
         return []
 
@@ -150,10 +179,8 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                 self.logger.error("No artists configured")
                 return False
 
-            max_tracks = int(config.get("max_tracks_per_artist", 10))
+            max_tracks = int(config.get("max_tracks_per_artist", 25))
             max_tracks = max(3, min(30, max_tracks))
-            max_setlist_pages = int(config.get("max_setlist_pages", 5))
-            max_setlist_pages = max(1, min(20, max_setlist_pages))
 
             target_client, target_name = self._get_target_client()
             library_key = None
@@ -203,7 +230,6 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     songs = await self._resolve_songs_for_artist(
                         sclient,
                         display_name,
-                        max_setlist_pages=max_setlist_pages,
                         max_tracks=max_tracks,
                     )
                     if not songs:
