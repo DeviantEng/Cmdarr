@@ -39,4 +39,9 @@ class SetlistFmClient(BaseAPIClient):
         mbid = (mbid or "").strip()
         if not mbid:
             return None
-        return await self._get(f"artist/{mbid}/setlists", {"p": str(page)})
+        # Pagination past last page returns 404 "page does not exist"; avoid ERROR spam in shared HTTP util.
+        return await self._get(
+            f"artist/{mbid}/setlists",
+            {"p": str(page)},
+            suppress_error_log_statuses=frozenset({404}),
+        )

@@ -56,7 +56,10 @@ def _setlist_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_setlist_event_date(event_date: str) -> tuple[int, int, int] | None:
-    """Parse setlist.fm REST eventDate (typically dd-MM-yyyy). Returns (year, month, day) or None."""
+    """Parse setlist.fm REST eventDate.
+
+    Docs describe dd-MM-yyyy; API payloads sometimes use yyyy-MM-dd. Returns (year, month, day) or None.
+    """
     s = (event_date or "").strip()
     if not s:
         return None
@@ -64,9 +67,14 @@ def _parse_setlist_event_date(event_date: str) -> tuple[int, int, int] | None:
     if len(parts) != 3:
         return None
     try:
-        day, month, year = (int(parts[0]), int(parts[1]), int(parts[2]))
+        a, b, c = int(parts[0]), int(parts[1]), int(parts[2])
     except ValueError:
         return None
+    # Four-digit first field is unambiguous ISO-style yyyy-MM-dd (day/month cannot be >= 1900).
+    if len(parts[0]) == 4 and 1900 <= a <= 2100:
+        year, month, day = a, b, c
+    else:
+        day, month, year = a, b, c
     if not (1 <= month <= 12 and 1 <= day <= 31 and 1900 <= year <= 2100):
         return None
     return (year, month, day)

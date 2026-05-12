@@ -138,7 +138,7 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
         for page in range(1, MAX_ARTIST_SETLIST_PAGES + 1):
             page_data = await client.get_artist_setlists(mbid, page=page)
             if not page_data:
-                continue
+                break
             for sl in setlists_from_api_page(page_data):
                 if track_count_nonempty(sl) == 0:
                     continue

@@ -183,6 +183,26 @@ def test_event_within_lookback():
     assert not event_within_lookback_days(future, today=today)
 
 
+def test_event_within_lookback_accepts_iso_event_date():
+    today = date(2026, 7, 1)
+    ok = {"eventDate": "2026-05-01", "sets": {"set": {"song": [_song("A")]}}}
+    assert event_within_lookback_days(ok, today=today)
+
+
+def test_pick_best_prefers_newer_event_date_iso_format():
+    older = _sl_with_date("2026-04-15", 6)
+    newer = _sl_with_date("2026-05-01", 12)
+    page = {"setlist": [older, newer]}
+    assert pick_best_setlist_for_block(page) == newer
+
+
+def test_pick_best_iso_vs_dd_mm_orders_by_calendar_day():
+    iso_newer = _sl_with_date("2026-06-01", 8)
+    dd_mm = _sl_with_date("15-05-2026", 20)
+    page = {"setlist": [dd_mm, iso_newer]}
+    assert pick_best_setlist_for_block(page) == iso_newer
+
+
 def test_finalize_prefers_stub_full_pool_empty():
     substantial: list = []
     stub = [_sl_with_date("02-06-2026", 3), _sl_with_date("01-06-2026", 3)]

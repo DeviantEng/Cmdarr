@@ -67,6 +67,7 @@ class HTTPClientUtils:
         json: dict[str, Any] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        suppress_error_log_statuses: frozenset[int] | set[int] | None = None,
     ) -> dict[str, Any] | None:
         """
         Make an async HTTP request with common error handling and retry logic
@@ -175,8 +176,16 @@ class HTTPClientUtils:
                         continue
                     else:
                         error_text = await response.text()
+                        quiet = suppress_error_log_statuses or set()
                         if logger:
-                            logger.error(f"HTTP error {response.status}: {error_text}")
+                            if response.status not in quiet:
+                                logger.error(f"HTTP error {response.status}: {error_text}")
+                            else:
+                                logger.debug(
+                                    "HTTP %s (suppressed client error log): %s",
+                                    response.status,
+                                    error_text[:300],
+                                )
                             if response.status == 403 and "bandsintown" in url.lower():
                                 logger.error(
                                     "Bandsintown 403: app_id may be invalid, revoked, or not allowed for "
