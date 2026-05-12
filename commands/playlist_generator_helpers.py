@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Shared helpers for playlist generator commands (Artist Essentials, Last.fm Similar, etc.)."""
 
+from collections import defaultdict
+from collections.abc import Iterable
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -62,6 +64,38 @@ def validate_artists_against_cache(
         else:
             invalid.append(name)
     return valid, invalid
+
+
+def index_lidarr_artist_mbids_by_norm(
+    name_mbid_pairs: Iterable[tuple[str, str]],
+) -> dict[str, list[str]]:
+    """Map normalized artist name → sorted distinct MBIDs (Lidarr / MusicBrainz)."""
+    by_norm: dict[str, set[str]] = defaultdict(set)
+    for name, mbid in name_mbid_pairs:
+        n = normalize_text(name or "")
+        mb = (mbid or "").strip()
+        if n and mb:
+            by_norm[n].add(mb)
+    return {k: sorted(v) for k, v in by_norm.items()}
+
+
+def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:
+    """Load ``lidarr_artist`` rows into norm → MBIDs. Returns {} if DB/query fails."""
+
+    try:
+        from database.config_models import LidarrArtist
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            rows = session.query(LidarrArtist).all()
+            pairs = [(r.artist_name or "", r.artist_mbid or "") for r in rows]
+            return index_lidarr_artist_mbids_by_norm(pairs)
+        finally:
+            session.close()
+    except Exception:
+        return {}
 
 
 def merge_similar_round_robin(

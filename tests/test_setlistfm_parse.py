@@ -15,6 +15,7 @@ from commands.setlistfm_parse import (
     extract_ordered_songs_from_setlist,
     finalize_candidate_pool_after_scan,
     first_non_empty_setlist,
+    mbids_from_artist_search,
     pick_best_setlist_for_block,
     pick_setlist_for_block,
 )
@@ -227,3 +228,37 @@ def test_dedupe_by_event_id_keeps_single():
 def test_stub_threshold_constant_aligned_with_resolver():
     assert STUB_TRACK_THRESHOLD == 3
     assert TARGET_SUBSTANTIAL_SETLISTS == 5
+
+
+def test_mbids_from_artist_search_collects_duplicate_names_in_order():
+    data = {
+        "artist": [
+            {"name": "The Home Team", "mbid": "canadian-wrong-era"},
+            {"name": "The Home Team", "mbid": "seattle-good"},
+            {"name": "The Home Team feat. Guest", "mbid": "should-not-match"},
+        ]
+    }
+    assert mbids_from_artist_search(data, "The Home Team") == [
+        "canadian-wrong-era",
+        "seattle-good",
+    ]
+
+
+def test_mbids_from_artist_search_exact_match_is_case_insensitive():
+    data = {"artist": [{"name": " Muse ", "mbid": "m-id"}]}
+    assert mbids_from_artist_search(data, " muse") == ["m-id"]
+
+
+def test_mbids_from_artist_search_dedupes_mbid():
+    data = {
+        "artist": [
+            {"name": "Dup", "mbid": "same"},
+            {"name": "Dup", "mbid": "same"},
+        ]
+    }
+    assert mbids_from_artist_search(data, "Dup") == ["same"]
+
+
+def test_mbids_from_artist_search_falls_back_to_first_row_when_no_exact_name_match():
+    data = {"artist": [{"name": "The Home Team & Broadside", "mbid": "collab"}, {"mbid": ""}]}
+    assert mbids_from_artist_search(data, "The Home Team") == ["collab"]

@@ -19,6 +19,7 @@ from commands.setlistfm_parse import (
     event_within_lookback_days,
     extract_ordered_songs_from_setlist,
     finalize_candidate_pool_after_scan,
+    mbids_from_artist_search,
     setlists_from_api_page,
     track_count_nonempty,
 )
@@ -28,23 +29,9 @@ from utils.text_normalizer import normalize_text
 from .command_base import BaseCommand
 from .playlist_generator_helpers import (
     compute_setlistfm_playlist_title,
+    load_lidarr_artist_norm_mbid_index_sync,
     validate_artists_against_cache,
 )
-
-
-def _mbid_from_search(data: dict[str, Any] | None) -> str | None:
-    if not data:
-        return None
-    artists = data.get("artist")
-    if isinstance(artists, dict):
-        artists = [artists]
-    if not artists:
-        return None
-    first = artists[0]
-    if not isinstance(first, dict):
-        return None
-    mbid = (first.get("mbid") or "").strip()
-    return mbid or None
 
 
 class PlaylistGeneratorSetlistfmCommand(BaseCommand):
@@ -122,44 +109,62 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
         self,
         client: SetlistFmClient,
         search_name: str,
+        norm: str,
         max_tracks: int,
+        lidarr_mbids_by_norm: dict[str, list[str]],
     ) -> list[str]:
         """Fetch one setlist-derived ordered song list: recent-year pool, median-depth pick."""
-        search = await client.search_artists(search_name, page=1)
-        mbid = _mbid_from_search(search)
-        if not mbid:
-            self.logger.warning(f"setlist.fm: no MBID for artist search '{search_name}'")
-            return []
+        lidarr_mbids = lidarr_mbids_by_norm.get(norm) or []
+        if lidarr_mbids:
+            mbids = list(lidarr_mbids)
+            if len(mbids) == 1:
+                self.logger.info(
+                    f"setlist.fm: using Lidarr MusicBrainz ID for '{search_name}' ({mbids[0]})"
+                )
+            else:
+                self.logger.warning(
+                    f"setlist.fm: multiple Lidarr MBIDs for '{search_name}' "
+                    f"(norm={norm}): {mbids} — trying each"
+                )
+        else:
+            search = await client.search_artists(search_name, page=1)
+            mbids = mbids_from_artist_search(search, search_name)
+            if not mbids:
+                self.logger.warning(f"setlist.fm: no MBID for artist search '{search_name}'")
+                return []
 
         today = date.today()
-        substantial: list[dict[str, Any]] = []
-        stub: list[dict[str, Any]] = []
+        for mbid in mbids:
+            substantial: list[dict[str, Any]] = []
+            stub: list[dict[str, Any]] = []
 
-        for page in range(1, MAX_ARTIST_SETLIST_PAGES + 1):
-            page_data = await client.get_artist_setlists(mbid, page=page)
-            if not page_data:
-                break
-            for sl in setlists_from_api_page(page_data):
-                if track_count_nonempty(sl) == 0:
-                    continue
-                if not event_within_lookback_days(sl, today=today, days=SHOW_LOOKBACK_DAYS):
-                    continue
-                n = track_count_nonempty(sl)
-                if n <= STUB_TRACK_THRESHOLD:
-                    stub.append(sl)
-                else:
-                    substantial.append(sl)
-            if len(dedupe_by_event_key(substantial)) >= TARGET_SUBSTANTIAL_SETLISTS:
-                break
+            for page in range(1, MAX_ARTIST_SETLIST_PAGES + 1):
+                page_data = await client.get_artist_setlists(mbid, page=page)
+                if not page_data:
+                    break
+                for sl in setlists_from_api_page(page_data):
+                    if track_count_nonempty(sl) == 0:
+                        continue
+                    if not event_within_lookback_days(sl, today=today, days=SHOW_LOOKBACK_DAYS):
+                        continue
+                    n = track_count_nonempty(sl)
+                    if n <= STUB_TRACK_THRESHOLD:
+                        stub.append(sl)
+                    else:
+                        substantial.append(sl)
+                if len(dedupe_by_event_key(substantial)) >= TARGET_SUBSTANTIAL_SETLISTS:
+                    break
 
-        pool = finalize_candidate_pool_after_scan(substantial, stub)
-        chosen = choose_repr_setlist_for_playlist(pool)
-        if chosen:
-            titles = extract_ordered_songs_from_setlist(chosen)
-            if titles:
-                return titles[:max_tracks]
+            pool = finalize_candidate_pool_after_scan(substantial, stub)
+            chosen = choose_repr_setlist_for_playlist(pool)
+            if chosen:
+                titles = extract_ordered_songs_from_setlist(chosen)
+                if titles:
+                    return titles[:max_tracks]
+
+        mbid_note = ", ".join(mbids)
         self.logger.warning(
-            f"setlist.fm: no suitable recent setlist for '{search_name}' (mbid={mbid})"
+            f"setlist.fm: no suitable recent setlist for '{search_name}' (tried mbid(s)={mbid_note})"
         )
         return []
 
@@ -216,6 +221,13 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                 self.logger.error("No listed artists matched the library cache")
                 return False
 
+            lidarr_mbids_by_norm = load_lidarr_artist_norm_mbid_index_sync()
+            if lidarr_mbids_by_norm:
+                self.logger.debug(
+                    "Loaded %s Lidarr artist name entries for Setlist.fm MBID resolution",
+                    len(lidarr_mbids_by_norm),
+                )
+
             playlist_title = compute_setlistfm_playlist_title(config)
             last_playlist_title = config.get("last_playlist_title")
             if last_playlist_title and last_playlist_title != playlist_title:
@@ -230,7 +242,9 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     songs = await self._resolve_songs_for_artist(
                         sclient,
                         display_name,
+                        norm,
                         max_tracks=max_tracks,
+                        lidarr_mbids_by_norm=lidarr_mbids_by_norm,
                     )
                     if not songs:
                         artists_empty += 1

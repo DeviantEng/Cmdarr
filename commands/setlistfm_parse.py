@@ -96,6 +96,47 @@ def setlists_from_api_page(page: dict[str, Any]) -> list[dict[str, Any]]:
     return _setlist_entries(page)
 
 
+def mbids_from_artist_search(data: dict[str, Any] | None, search_name: str) -> list[str]:
+    """MBIDs from ``search/artists`` suitable for querying ``artist/{mbid}/setlists``.
+
+    Search often returns multiple artists with identical names and different MBIDs (e.g.
+    two \"The Home Team\" bands). Return every MBID whose ``name`` matches ``search_name``
+    (stripped, case-insensitive), in API order, deduplicated.
+
+    If no row matches exactly by name, fall back to the first hit so legacy substring-style
+    results still behave like the old \"first artist only\" logic.
+    """
+    if not data:
+        return []
+    artists = data.get("artist")
+    if isinstance(artists, dict):
+        artists = [artists]
+    if not isinstance(artists, list):
+        return []
+    want = search_name.strip().lower()
+    out: list[str] = []
+    seen: set[str] = set()
+    for a in artists:
+        if not isinstance(a, dict):
+            continue
+        nm = (a.get("name") or "").strip().lower()
+        if nm != want:
+            continue
+        mbid = (a.get("mbid") or "").strip()
+        if mbid and mbid not in seen:
+            seen.add(mbid)
+            out.append(mbid)
+    if out:
+        return out
+    for a in artists:
+        if isinstance(a, dict):
+            mbid = (a.get("mbid") or "").strip()
+            if mbid:
+                return [mbid]
+            break
+    return []
+
+
 def _stable_event_key(sl: dict[str, Any]) -> str:
     sid = str(sl.get("id") or "").strip()
     if sid:
