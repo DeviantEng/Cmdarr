@@ -144,10 +144,10 @@ class ConfigService:
             },
             {
                 "key": "SETLIST_FM_RATE_LIMIT",
-                "default_value": "1.0",
+                "default_value": "0.8",
                 "data_type": "float",
                 "category": "setlistfm",
-                "description": "Rate limit in requests per second for setlist.fm",
+                "description": "Max requests per second for setlist.fm (0.8 ≈ 1.25s between requests; reduces burst 429s)",
             },
             # ListenBrainz Configuration
             {

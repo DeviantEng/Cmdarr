@@ -15,7 +15,7 @@ class SetlistFmClient(BaseAPIClient):
             "Accept": "application/json",
             "x-api-key": api_key,
         }
-        rate = float(getattr(config, "SETLIST_FM_RATE_LIMIT", 1.0) or 1.0)
+        rate = float(getattr(config, "SETLIST_FM_RATE_LIMIT", 0.8) or 0.8)
         super().__init__(
             config=config,
             client_name="setlistfm",

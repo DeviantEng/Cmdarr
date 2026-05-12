@@ -53,7 +53,7 @@ class ConfigAdapter:
 
         # Setlist.fm (concert setlists)
         self.SETLIST_FM_API_KEY = config_service.get("SETLIST_FM_API_KEY", "")
-        self.SETLIST_FM_RATE_LIMIT = float(config_service.get("SETLIST_FM_RATE_LIMIT", 1.0))
+        self.SETLIST_FM_RATE_LIMIT = float(config_service.get("SETLIST_FM_RATE_LIMIT", 0.8))
 
         # ListenBrainz Configuration
         self.LISTENBRAINZ_TOKEN = config_service.get("LISTENBRAINZ_TOKEN", "")
