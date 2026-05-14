@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":dependencyDashboard",
+    ":disableDependencyDashboardAutoclose"
+  ],
+  "enabledManagers": ["dockerfile", "github-actions"],
+  "baseBranches": ["develop"],
+  "timezone": "Etc/UTC",
+  "schedule": ["before 8am every monday"],
+  "labels": ["dependencies"],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "internalChecksFilter": "strict",
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 2,
+  "packageRules": [
+    {
+      "description": "One weekly PR combining Dockerfile digest bumps + pinned GitHub Actions",
+      "matchManagers": ["dockerfile", "github-actions"],
+      "groupName": "deps: Docker pins + Actions SHAs",
+      "groupSlug": "docker-actions-digests"
+    },
+    {
+      "description": "No semver tag bumps for Docker images — digest-only for pinned FROM lines",
+      "matchManagers": ["dockerfile"],
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "enabled": false
+    },
+    {
+      "description": "No semver major bumps for pinned actions (prefer SHA churn on existing tag)",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}

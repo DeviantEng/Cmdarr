@@ -1,10 +1,11 @@
 # OS-layer CVEs in python/node slim-trixie images (Debian 13).
-# Audit: revisit when Dependabot bumps the Dockerfile digest or Debian publishes trixie
+# Audit: revisit when Renovate bumps the Dockerfile digest or Debian publishes trixie
+
 # security uploads; verify with `trivy image --severity HIGH,CRITICAL <image>` after rebuild.
 #
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
-#   dpkg-query -W systemd libsystemd0 libudev1 nghttp2 libnghttp2-14 libncursesw6 libtinfo6
+#   dpkg-query -W systemd libsystemd0 libudev1 nghttp2 libnghttp2-14 libncursesw6 libtinfo6 libgnutls30t64 libssh2-1t64
 # ---------------------------------------------------------------------------
 #
 # CVE-2026-4105 — systemd-machined RegisterMachine / D-Bus (privilege escalation)
@@ -36,3 +37,26 @@ CVE-2026-4878 exp:2026-09-01
 #   Debian trixie: open (libgnutls30t64); few GA distros ship fix yet (scanner shows no fixed version).
 #   EPSS moderate; workload is primarily TLS client/server via common stacks; revisit when Debian ships.
 CVE-2026-33845 exp:2026-09-01
+#
+# CVE-2026-33846 — GnuTLS: heap OOB write in DTLS handshake fragment merge (same trixie gnutls epoch)
+#   Debian trixie: vulnerable 3.8.9-3+deb13u2; fixed sid gnutls28 3.8.13-1 (bundled with GNUTLS-SA-2026-04-29)
+CVE-2026-33846 exp:2026-09-01
+#
+# CVE-2026-3833 — GnuTLS: case-sensitive nameConstraints vs policy mismatch
+CVE-2026-3833 exp:2026-09-01
+#
+# CVE-2026-42010 — GnuTLS: auth bypass via NUL character in username
+CVE-2026-42010 exp:2026-09-01
+#
+# CVE-2026-42011 — GnuTLS: security bypass (name constraint handling)
+CVE-2026-42011 exp:2026-09-01
+#
+# CVE-2026-7598 — libssh2: integer overflow in userauth_password (username/password lengths)
+#   Debian trixie: open (libssh2 1.11.1-1); sid 1.11.1-3 fixed per tracker. CMDARR does not expose SSH client to untrusted callers.
+CVE-2026-7598 exp:2026-09-01
+#
+# CVE-2026-5773 — libcurl: wrongful SMBConnection reuse loads wrong SMB share/path
+#   Debian trixie: vulnerable curl 8.14.1-2+deb13u2 / libcurl4t64; fixed in Debian sid curl 8.20.0-2 onward (no trixie DSA yet).
+#   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-5773
+CVE-2026-5773 exp:2026-09-01

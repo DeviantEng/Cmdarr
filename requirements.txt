@@ -6,6 +6,8 @@ curl-cffi>=0.7.0
 
 # Synchronous HTTP client for Plex API (proven working approach)
 requests>=2.28.0
+# Explicit floor: transitive CVEs CVE-2026-44431, CVE-2026-44432 (Trivy) fixed in urllib3>=2.7.0
+urllib3>=2.7.0
 
 # Additional aiohttp components for SSL/TLS handling
 aiofiles>=23.0.0

@@ -1,0 +1,36 @@
+name: Scheduled image rebuild (develop + main, no cache)
+
+# Refreshes images without touching Dockerfile digests — forces a full Docker build so
+# `apt-get update && apt-get upgrade` layers pull current distro patches.
+#
+# Renovate proposes digest bumps separately (weekly grouped PR → develop).
+
+on:
+  schedule:
+    # Mondays 06:45 UTC (~ late Sunday US / Monday morning overlap for weekday review).
+    - cron: "45 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        ref:
+          - develop
+          - main
+    steps:
+      - name: Trigger docker-publish on ${{ matrix.ref }} (no cache)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run docker-publish.yml
+          --repo "${{ github.repository }}"
+          --ref "${{ matrix.ref }}"
+          -f no_cache=true
