@@ -1,0 +1,12 @@
+# https://pre-commit.com
+# One-time setup: pipx install pre-commit  (or: uv tool install pre-commit)
+#                 pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: make-check
+        name: make check (full gate)
+        entry: make check
+        language: system
+        pass_filenames: false
+        always_run: true
