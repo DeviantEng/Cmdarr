@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Shared helpers for playlist generator commands (Artist Essentials, Last.fm Similar, etc.)."""
 
+from collections import defaultdict
+from collections.abc import Iterable
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -10,6 +12,7 @@ SEP = " · "
 MAX_ARTIST_LEN = 40
 PLAYLIST_TITLE_TOP_TRACKS_PREFIX = "[Cmdarr] Artist Essentials"
 PLAYLIST_TITLE_LFM_SIMILAR_PREFIX = "[Cmdarr] Last.fm Similar"
+PLAYLIST_TITLE_SETLIST_PREFIX = "[Cmdarr] Setlist"
 
 
 def build_auto_playlist_suffix(artist_names: list[str]) -> str:
@@ -61,6 +64,38 @@ def validate_artists_against_cache(
         else:
             invalid.append(name)
     return valid, invalid
+
+
+def index_lidarr_artist_mbids_by_norm(
+    name_mbid_pairs: Iterable[tuple[str, str]],
+) -> dict[str, list[str]]:
+    """Map normalized artist name → sorted distinct MBIDs (Lidarr / MusicBrainz)."""
+    by_norm: dict[str, set[str]] = defaultdict(set)
+    for name, mbid in name_mbid_pairs:
+        n = normalize_text(name or "")
+        mb = (mbid or "").strip()
+        if n and mb:
+            by_norm[n].add(mb)
+    return {k: sorted(v) for k, v in by_norm.items()}
+
+
+def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:
+    """Load ``lidarr_artist`` rows into norm → MBIDs. Returns {} if DB/query fails."""
+
+    try:
+        from database.config_models import LidarrArtist
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            rows = session.query(LidarrArtist).all()
+            pairs = [(r.artist_name or "", r.artist_mbid or "") for r in rows]
+            return index_lidarr_artist_mbids_by_norm(pairs)
+        finally:
+            session.close()
+    except Exception:
+        return {}
 
 
 def merge_similar_round_robin(
@@ -153,6 +188,21 @@ def compute_lfm_similar_playlist_title(config: dict[str, Any]) -> str:
         seed_display = [s.strip() for s in seeds if s.strip()]
         suffix = build_auto_playlist_suffix(seed_display) if seed_display else "Mix"
     return f"{PLAYLIST_TITLE_LFM_SIMILAR_PREFIX}: {suffix}"
+
+
+def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
+    """Playlist title from config; uses ordered artist list for auto suffix."""
+    artists_raw = config.get("artists", [])
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    use_custom = config.get("use_custom_playlist_name", False)
+    custom = (config.get("custom_playlist_name") or "").strip()
+    if use_custom and custom:
+        suffix = custom
+    else:
+        suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
+    return f"{PLAYLIST_TITLE_SETLIST_PREFIX}: {suffix}"
 
 
 def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:

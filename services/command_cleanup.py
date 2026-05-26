@@ -269,6 +269,14 @@ class CommandCleanupService:
                 else:
                     pl_title = "[Cmdarr] Last.fm Similar: Mix"
             self._delete_playlist_if_exists(target, pl_title)
+        elif name.startswith("setlistfm_"):
+            target = str(cfg.get("target", "plex")).lower()
+            pl_title = cfg.get("last_playlist_title")
+            if not pl_title:
+                from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
+
+                pl_title = compute_setlistfm_playlist_title(dict(cfg))
+            self._delete_playlist_if_exists(target, pl_title)
         elif name.startswith("daylist_"):
             token = self._get_user_token_for_playlist_delete(cfg)
             self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist", token_override=token)

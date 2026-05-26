@@ -134,6 +134,21 @@ class ConfigService:
                 "category": "lastfm",
                 "description": "Rate limit in requests per second",
             },
+            {
+                "key": "SETLIST_FM_API_KEY",
+                "default_value": "",
+                "data_type": "string",
+                "category": "setlistfm",
+                "description": "setlist.fm API key (https://api.setlist.fm/)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "SETLIST_FM_RATE_LIMIT",
+                "default_value": "0.8",
+                "data_type": "float",
+                "category": "setlistfm",
+                "description": "Max requests per second for setlist.fm (0.8 ≈ 1.25s between requests; reduces burst 429s)",
+            },
             # ListenBrainz Configuration
             {
                 "key": "LISTENBRAINZ_TOKEN",

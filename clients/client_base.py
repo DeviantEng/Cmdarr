@@ -98,6 +98,7 @@ class BaseAPIClient(ABC):
         if not self.session:
             self.session = aiohttp.ClientSession(headers=self.headers)
 
+        suppress_log = kwargs.pop("suppress_error_log_statuses", None)
         # Use HTTP utilities for the actual request
         return await HTTPClientUtils.make_async_request(
             session=self.session,
@@ -108,6 +109,7 @@ class BaseAPIClient(ABC):
             timeout=30,
             logger=self.logger,
             json=kwargs.get("json"),  # Pass JSON data if provided
+            suppress_error_log_statuses=suppress_log,
         )
 
     def _get_cache_key(self, operation: str, *args) -> str:

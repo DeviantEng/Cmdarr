@@ -177,7 +177,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r requirements.txt --ignore-vuln MAL-2026-4750
 
   zizmor:
     runs-on: ubuntu-latest

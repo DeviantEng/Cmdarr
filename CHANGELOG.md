@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.15] - 2026-05-26
+
+### Features
+- **Setlist Playlist Generator**: Going to a show soon?  Create a new playlist that uses data from setlist.fm to make a custom playlist for selected artists for what they will likely be playing.  New client for setlist.fm, along with new UI elements to support this new command.
+
+### Housekeeping
+- **Dependencies**: Updated python/urllib3 to address CVEs; Updated docker base images with new SHA256 digest; Added new debian-based CVEs to trivyignore to be reviewed in the future
+- **Other various updates**
+
 ## [0.3.14] - 2026-05-04
 
 ### Features
