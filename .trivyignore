@@ -60,3 +60,11 @@ CVE-2026-7598 exp:2026-09-01
 #   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-5773
 CVE-2026-5773 exp:2026-09-01
+#
+# CVE-2026-6276 - libcurl: Information disclosure due to cookie leak when reusing connections
+#   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64
+CVE-2026-6276 exp:2026-09-01
+#
+# CVE-2026-40356 - krb5: MIT Kerberos 5 (krb5): Denial of Service via integer underflow
+#   Debian trixie: vulnerable libkrb5 1.21.3-5+deb13u1
+CVE-2026-40356 exp:2026-09-01
