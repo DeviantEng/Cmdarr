@@ -5,10 +5,10 @@ name: Scheduled image rebuild (develop + main, no cache)
 #
 # Renovate proposes digest bumps separately (weekly grouped PR → develop).
 
-on:
-  schedule:
+#on:
+#  schedule:
     # Mondays 06:45 UTC (~ late Sunday US / Monday morning overlap for weekday review).
-    - cron: "45 6 * * 1"
+#    - cron: "45 6 * * 1"
   workflow_dispatch:
 
 permissions:
