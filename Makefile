@@ -1,5 +1,7 @@
 # Keep in sync with `.github/workflows/pr-checks.yml` (pip install zizmor==…).
 ZIZMOR_VERSION = 1.24.1
+# OSV pip-audit false positive for fastapi; remove when retracted/fixed upstream.
+PIPAUDIT_IGNORES = --ignore-vuln MAL-2026-4750
 
 .PHONY: check check-python check-zizmor check-test test check-frontend check-audit fix fix-python fix-zizmor fix-frontend
 
@@ -16,8 +18,8 @@ check-frontend:
 check-audit:
 	cd frontend && npm audit --audit-level=high
 	@# Audit project requirements only (pinned/fixed vulns handled in requirements.txt).
-	pip-audit -r requirements.txt --cache-dir .pip-audit-cache 2>/dev/null \
-		|| uv run pip-audit -r requirements.txt --cache-dir .pip-audit-cache
+	pip-audit -r requirements.txt --cache-dir .pip-audit-cache $(PIPAUDIT_IGNORES) 2>/dev/null \
+		|| uv run pip-audit -r requirements.txt --cache-dir .pip-audit-cache $(PIPAUDIT_IGNORES)
 
 fix: fix-python fix-zizmor fix-frontend
 fix-python:
