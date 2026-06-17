@@ -480,7 +480,11 @@ export function EventsPage() {
                   onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_BANDSINTOWN_ENABLED", c)}
                 />
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.bandsintown.enabled ? "ready" : "needs app ID"}
+                  {providerStatus?.bandsintown.enabled
+                    ? "ready"
+                    : providerStatus?.bandsintown.registration_open
+                      ? "needs app ID"
+                      : "partner only"}
                 </span>
               </div>
             </div>
@@ -492,7 +496,11 @@ export function EventsPage() {
                   onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SONGKICK_ENABLED", c)}
                 />
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.songkick.enabled ? "ready" : "needs key"}
+                  {providerStatus?.songkick.enabled
+                    ? "ready"
+                    : providerStatus?.songkick.registration_open
+                      ? "needs key"
+                      : "partner only"}
                 </span>
               </div>
             </div>
@@ -509,6 +517,15 @@ export function EventsPage() {
               </div>
             </div>
           </div>
+          {providerStatus &&
+            (!providerStatus.bandsintown.registration_open ||
+              !providerStatus.songkick.registration_open) && (
+              <p className="text-xs text-muted-foreground leading-snug">
+                Songkick and Bandsintown are partner-only (no new public API keys). Ticketmaster is
+                the recommended source for new setups. Details:{" "}
+                <code className="text-[10px]">docs/artist-events-providers.md</code>
+              </p>
+            )}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <div className="inline-flex">
               <Button

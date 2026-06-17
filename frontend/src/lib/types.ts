@@ -111,6 +111,15 @@ export interface ArtistEventsStats {
   hidden_events: number;
 }
 
+export interface EventsProviderInfo {
+  enabled: boolean;
+  configured: boolean;
+  registration_open: boolean;
+  status: "available" | "partner_only" | string;
+  status_message: string;
+  docs_url?: string;
+}
+
 export interface StatusInfo {
   app_name: string;
   version: string;
