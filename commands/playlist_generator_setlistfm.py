@@ -183,7 +183,9 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     len(lidarr_mbids_by_norm),
                 )
 
-            playlist_title = compute_setlistfm_playlist_title(config)
+            playlist_title = compute_setlistfm_playlist_title(
+                config, artist_display_names=[line for line, _ in ordered_valid_lines]
+            )
             last_playlist_title = config.get("last_playlist_title")
             last_playlist_id = config.get("last_playlist_id")
             title_changed = last_playlist_title and last_playlist_title != playlist_title

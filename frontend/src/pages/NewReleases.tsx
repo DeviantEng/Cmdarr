@@ -16,6 +16,7 @@ import type { NewReleasePendingItem } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
 /** Returns display label for release URL based on hostname (avoids substring matching). */
@@ -62,6 +63,10 @@ export function NewReleasesPage() {
     }[];
   } | null>(null);
   const [artistScanning, setArtistScanning] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [ignoreTarget, setIgnoreTarget] = useState<NewReleasePendingItem | null>(null);
+  const [clearAllLoading, setClearAllLoading] = useState(false);
+  const [ignoreLoading, setIgnoreLoading] = useState(false);
 
   const toggleAdHocAlbumType = (id: string) => {
     setAdHocAlbumTypes((prev) => {
@@ -135,39 +140,42 @@ export function NewReleasesPage() {
     }
   };
 
-  const handleClearAll = async () => {
-    if (
-      !confirm(
-        `Clear all ${total} pending releases? They will reappear on next scan if still not in MusicBrainz.`
-      )
-    ) {
-      return;
-    }
+  const handleClearAll = () => {
+    setConfirmClearAll(true);
+  };
+
+  const doClearAll = async () => {
+    setClearAllLoading(true);
     try {
       const res = await api.clearAllPendingReleases();
       setPending([]);
       setTotal(0);
+      setConfirmClearAll(false);
       toast.success(res.cleared != null ? `Cleared ${res.cleared} items` : "Cleared all");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Clear all failed");
+    } finally {
+      setClearAllLoading(false);
     }
   };
 
-  const handleIgnore = async (item: NewReleasePendingItem) => {
-    if (
-      !confirm(
-        `Ignore "${item.album_title}" by ${item.artist_name}? It won't reappear. Restore from Status if needed.`
-      )
-    ) {
-      return;
-    }
+  const handleIgnore = (item: NewReleasePendingItem) => {
+    setIgnoreTarget(item);
+  };
+
+  const doIgnore = async () => {
+    if (!ignoreTarget) return;
+    setIgnoreLoading(true);
     try {
-      await api.ignoreRelease(item.id);
-      setPending((prev) => prev.filter((p) => p.id !== item.id));
+      await api.ignoreRelease(ignoreTarget.id);
+      setPending((prev) => prev.filter((p) => p.id !== ignoreTarget.id));
       setTotal((t) => Math.max(0, t - 1));
+      setIgnoreTarget(null);
       toast.success("Ignored");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Ignore failed");
+    } finally {
+      setIgnoreLoading(false);
     }
   };
 
@@ -570,6 +578,28 @@ export function NewReleasesPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmClearAll}
+        onOpenChange={setConfirmClearAll}
+        title="Clear all pending releases?"
+        description={`Clear all ${total} pending releases? They will reappear on next scan if still not in MusicBrainz.`}
+        confirmLabel="Clear all"
+        onConfirm={doClearAll}
+        isLoading={clearAllLoading}
+      />
+      <ConfirmDialog
+        open={ignoreTarget !== null}
+        onOpenChange={(open) => !open && setIgnoreTarget(null)}
+        title="Ignore this release?"
+        description={
+          ignoreTarget
+            ? `Ignore "${ignoreTarget.album_title}" by ${ignoreTarget.artist_name}? It won't reappear. Restore from Status if needed.`
+            : null
+        }
+        confirmLabel="Ignore"
+        onConfirm={doIgnore}
+        isLoading={ignoreLoading}
+      />
     </div>
   );
 }

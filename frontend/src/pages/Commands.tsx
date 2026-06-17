@@ -34,16 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
+import { CommandEditDialog } from "@/components/CommandEditDialog";
 import { DeleteCommandDialog } from "@/components/DeleteCommandDialog";
-import { fromExpiresAtIso, toExpiresAtIso } from "@/lib/expiration";
+import { fromExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -52,8 +46,12 @@ import {
   hoursToRange,
 } from "@/components/command-edit/daylistTime";
 import { CommandEditFormBody } from "@/components/command-edit/CommandEditFormBody";
+import {
+  applyExpiryToConfig,
+  buildScheduleAndExpiryConfig,
+  buildSchedulePayload,
+} from "@/components/command-edit/saveHelpers";
 import type { CommandEditFormState, XmplaylistStationRow } from "@/components/command-edit/types";
-import { commandUiCopy } from "@/command-spec";
 
 type ViewMode = "card" | "list";
 type SortField = "name" | "status" | "type" | "schedule" | "last_run";
@@ -1204,203 +1202,164 @@ export function CommandsPage() {
         onSuccess={loadCommands}
       />
 
-      {/* Edit Command Dialog */}
-      <Dialog open={!!editingCommand} onOpenChange={(open) => !open && setEditingCommand(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              <span>Edit Command: {editingCommand?.display_name}</span>
-              {editingCommand && (
-                <Badge variant={editingCommand.enabled ? "default" : "secondary"}>
-                  {editingCommand.enabled ? "Enabled" : "Disabled"}
-                </Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>{commandUiCopy.base.dialogDescription}</DialogDescription>
-          </DialogHeader>
-          {editingCommand && (
+      <CommandEditDialog
+        command={editingCommand}
+        onOpenChange={(open) => !open && setEditingCommand(null)}
+        formBody={
+          editingCommand ? (
+            <CommandEditFormBody
+              ctx={{
+                editingCommand,
+                editForm,
+                setEditForm,
+                plexAccounts,
+                daylistUsedIds,
+                localDiscoveryUsedIds,
+                moodsList,
+                xmplaylistEditFilter,
+                setXmplaylistEditFilter,
+                xmplaylistEditLoading,
+                filteredXmEditStations,
+                nrdSources,
+              }}
+            />
+          ) : null
+        }
+        footer={
+          editingCommand ? (
             <>
-              <CommandEditFormBody
-                ctx={{
-                  editingCommand,
-                  editForm,
-                  setEditForm,
-                  plexAccounts,
-                  daylistUsedIds,
-                  localDiscoveryUsedIds,
-                  moodsList,
-                  xmplaylistEditFilter,
-                  setXmplaylistEditFilter,
-                  xmplaylistEditLoading,
-                  filteredXmEditStations,
-                  nrdSources,
-                }}
-              />
-              <div className="flex-shrink-0 flex justify-end gap-2 px-6 py-4 border-t bg-background">
-                <Button variant="outline" onClick={() => setEditingCommand(null)}>
-                  Close
+              <Button variant="outline" onClick={() => setEditingCommand(null)}>
+                Close
+              </Button>
+              {editingCommand.command_name === "new_releases_discovery" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_per_run: editForm.artists_per_run,
+                        album_types: (editForm.album_types ?? ["album"]).join(","),
+                        new_releases_source: editForm.new_releases_source ?? "deezer",
+                      },
+                    })
+                  }
+                >
+                  Save
                 </Button>
-                {editingCommand.command_name === "new_releases_discovery" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_per_run: editForm.artists_per_run,
-                          album_types: (editForm.album_types ?? ["album"]).join(","),
-                          new_releases_source: editForm.new_releases_source ?? "deezer",
-                        },
-                      })
+              )}
+              {editingCommand.command_name === "discovery_lastfm" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_to_query: editForm.artists_to_query ?? 3,
+                        similar_per_artist: editForm.similar_per_artist ?? 1,
+                        artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
+                        limit: editForm.limit ?? 5,
+                        min_match_score: editForm.min_match_score ?? 0.9,
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name === "artist_events_refresh" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_per_run: Math.min(50, Math.max(1, editForm.artists_per_run ?? 20)),
+                        refresh_ttl_days: Math.min(
+                          365,
+                          Math.max(1, editForm.refresh_ttl_days ?? 14)
+                        ),
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("playlist_sync_") && (
+                <Button
+                  disabled={
+                    (editingCommand.config_json?.source as string) !== "listenbrainz" &&
+                    (editingCommand.config_json?.target as string) === "plex" &&
+                    !!editForm.sync_to_multiple_plex_users &&
+                    (editForm.plex_account_ids ?? []).length === 0
+                  }
+                  onClick={() => {
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                      artist_discovery_max_per_run:
+                        editForm.artist_discovery_max_per_run ??
+                        (editForm.enable_artist_discovery ? 2 : 0),
+                    };
+                    if ((editingCommand.config_json?.source as string) === "listenbrainz") {
+                      cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 3;
+                      cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
+                      cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
+                      cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
                     }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name === "discovery_lastfm" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_to_query: editForm.artists_to_query ?? 3,
-                          similar_per_artist: editForm.similar_per_artist ?? 1,
-                          artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
-                          limit: editForm.limit ?? 5,
-                          min_match_score: editForm.min_match_score ?? 0.9,
-                        },
-                      })
-                    }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name === "artist_events_refresh" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_per_run: Math.min(
-                            50,
-                            Math.max(1, editForm.artists_per_run ?? 20)
-                          ),
-                          refresh_ttl_days: Math.min(
-                            365,
-                            Math.max(1, editForm.refresh_ttl_days ?? 14)
-                          ),
-                        },
-                      })
-                    }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("playlist_sync_") && (
-                  <Button
-                    disabled={
+                    if (
                       (editingCommand.config_json?.source as string) !== "listenbrainz" &&
-                      (editingCommand.config_json?.target as string) === "plex" &&
-                      !!editForm.sync_to_multiple_plex_users &&
-                      (editForm.plex_account_ids ?? []).length === 0
+                      (editingCommand.config_json?.target as string) === "plex"
+                    ) {
+                      cfg.plex_account_ids = editForm.sync_to_multiple_plex_users
+                        ? (editForm.plex_account_ids ?? [])
+                        : [];
                     }
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
-                        artist_discovery_max_per_run:
-                          editForm.artist_discovery_max_per_run ??
-                          (editForm.enable_artist_discovery ? 2 : 0),
-                      };
-                      if ((editingCommand.config_json?.source as string) === "listenbrainz") {
-                        cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 3;
-                        cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
-                        cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
-                        cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
-                      }
-                      if (
-                        (editingCommand.config_json?.source as string) !== "listenbrainz" &&
-                        (editingCommand.config_json?.target as string) === "plex"
-                      ) {
-                        cfg.plex_account_ids = editForm.sync_to_multiple_plex_users
-                          ? (editForm.plex_account_ids ?? [])
-                          : [];
-                      }
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("daylist_") && (
-                  <Button
-                    onClick={() => {
-                      const time_periods: Record<string, number[]> = {};
-                      for (const [period, { start, end }] of Object.entries(
-                        editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS
-                      )) {
-                        time_periods[period] = hoursFromRange(start, end);
-                      }
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        schedule_minute: editForm.schedule_minute ?? 0,
-                        plex_history_account_id: editForm.plex_history_account_id ?? "",
-                        exclude_played_days: editForm.exclude_played_days ?? 3,
-                        history_lookback_days: editForm.history_lookback_days ?? 45,
-                        max_tracks: editForm.max_tracks ?? 50,
-                        sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
-                        sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
-                        sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
-                        historical_ratio: editForm.historical_ratio ?? 0.3,
-                        timezone: editForm.timezone || undefined,
-                        time_periods,
-                        use_primary_mood: editForm.use_primary_mood ?? false,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({ config_json: cfg });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("top_tracks_") && (
-                  <Button
-                    onClick={() => {
-                      const artistsRaw = (editForm.artists ?? "").trim().split("\n");
-                      const artists = artistsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, cfg));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("daylist_") && (
+                <Button
+                  onClick={() => {
+                    const time_periods: Record<string, number[]> = {};
+                    for (const [period, { start, end }] of Object.entries(
+                      editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS
+                    )) {
+                      time_periods[period] = hoursFromRange(start, end);
+                    }
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      schedule_minute: editForm.schedule_minute ?? 0,
+                      plex_history_account_id: editForm.plex_history_account_id ?? "",
+                      exclude_played_days: editForm.exclude_played_days ?? 3,
+                      history_lookback_days: editForm.history_lookback_days ?? 45,
+                      max_tracks: editForm.max_tracks ?? 50,
+                      sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
+                      sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
+                      sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
+                      historical_ratio: editForm.historical_ratio ?? 0.3,
+                      timezone: editForm.timezone || undefined,
+                      time_periods,
+                      use_primary_mood: editForm.use_primary_mood ?? false,
+                    };
+                    applyExpiryToConfig(cfg, editForm);
+                    handleSaveCommand({ config_json: cfg });
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("top_tracks_") && (
+                <Button
+                  onClick={() => {
+                    const artistsRaw = (editForm.artists ?? "").trim().split("\n");
+                    const artists = artistsRaw.filter((a: string) => a.trim());
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         artists,
                         top_x: editForm.top_x ?? 5,
@@ -1408,33 +1367,20 @@ export function CommandsPage() {
                         target: editForm.target ?? "plex",
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("lfm_similar_") && (
-                  <Button
-                    onClick={() => {
-                      const seedsRaw = (editForm.seed_artists ?? "").trim().split("\n");
-                      const seed_artists = seedsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
+                      })
+                    );
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lfm_similar_") && (
+                <Button
+                  onClick={() => {
+                    const seedsRaw = (editForm.seed_artists ?? "").trim().split("\n");
+                    const seed_artists = seedsRaw.filter((a: string) => a.trim());
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         seed_artists,
                         similar_per_seed: Math.max(1, Math.min(50, editForm.similar_per_seed ?? 5)),
@@ -1445,68 +1391,41 @@ export function CommandsPage() {
                         target: editForm.target ?? "plex",
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("setlistfm_") && (
-                  <Button
-                    onClick={() => {
-                      const artistsRaw = (editForm.artists ?? "").trim().split("\n");
-                      const artists = artistsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        artists,
-                        max_tracks_per_artist: Math.max(
-                          3,
-                          Math.min(30, editForm.max_tracks_per_artist ?? 25)
-                        ),
-                        target: editForm.target ?? "plex",
-                        use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
-                        custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      delete cfg.max_setlist_pages;
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("local_discovery_") && (
-                  <Button
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
+                      })
+                    );
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("setlistfm_") && (
+                <Button
+                  onClick={() => {
+                    const artistsRaw = (editForm.artists ?? "").trim().split("\n");
+                    const artists = artistsRaw.filter((a: string) => a.trim());
+                    const base: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      artists,
+                      max_tracks_per_artist: Math.max(
+                        3,
+                        Math.min(30, editForm.max_tracks_per_artist ?? 25)
+                      ),
+                      target: editForm.target ?? "plex",
+                      use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
+                      custom_playlist_name: editForm.custom_playlist_name ?? "",
+                    };
+                    delete base.max_setlist_pages;
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, base));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("local_discovery_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         plex_history_account_id: editForm.plex_history_account_id ?? "",
                         lookback_days: editForm.lookback_days ?? 90,
@@ -1517,31 +1436,18 @@ export function CommandsPage() {
                         sonic_similar_limit: editForm.sonic_similar_limit ?? 15,
                         sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.25,
                         historical_ratio: editForm.historical_ratio ?? 0.3,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("mood_playlist_") && (
-                  <Button
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
+                      })
+                    )
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("mood_playlist_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         moods: editForm.moods ?? [],
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
@@ -1557,117 +1463,79 @@ export function CommandsPage() {
                           editForm.limit_by_year && editForm.max_year != null
                             ? Math.max(1800, Math.min(2100, editForm.max_year))
                             : undefined,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("xmplaylist_") && (
-                  <Button
-                    disabled={
-                      editForm.target === "plex" &&
-                      !!editForm.sync_to_multiple_plex_users &&
-                      (editForm.plex_account_ids ?? []).length === 0
-                    }
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        station_deeplink: (editForm.xm_station_deeplink ?? "").trim(),
-                        station_display_name: (
-                          editForm.xm_station_display_name ??
-                          editForm.xm_station_deeplink ??
-                          ""
-                        ).trim(),
-                        playlist_kind: editForm.xm_playlist_kind ?? "newest",
-                        most_heard_days: editForm.xm_most_heard_days ?? 30,
-                        max_tracks: Math.max(1, Math.min(50, editForm.max_tracks ?? 50)),
-                        target: editForm.target ?? "plex",
-                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
-                        artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
-                      };
-                      const tgt = (editForm.target ?? "plex") as string;
-                      if (tgt === "plex") {
-                        const multi = !!editForm.sync_to_multiple_plex_users;
-                        const ids = editForm.plex_account_ids ?? [];
-                        if (multi && ids.length > 0) {
-                          cfg.plex_account_ids = ids;
-                          delete cfg.plex_playlist_account_id;
-                        } else {
-                          delete cfg.plex_account_ids;
-                          delete cfg.plex_playlist_account_id;
-                        }
+                      })
+                    )
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("xmplaylist_") && (
+                <Button
+                  disabled={
+                    editForm.target === "plex" &&
+                    !!editForm.sync_to_multiple_plex_users &&
+                    (editForm.plex_account_ids ?? []).length === 0
+                  }
+                  onClick={() => {
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      station_deeplink: (editForm.xm_station_deeplink ?? "").trim(),
+                      station_display_name: (
+                        editForm.xm_station_display_name ??
+                        editForm.xm_station_deeplink ??
+                        ""
+                      ).trim(),
+                      playlist_kind: editForm.xm_playlist_kind ?? "newest",
+                      most_heard_days: editForm.xm_most_heard_days ?? 30,
+                      max_tracks: Math.max(1, Math.min(50, editForm.max_tracks ?? 50)),
+                      target: editForm.target ?? "plex",
+                      enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                      artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
+                    };
+                    const tgt = (editForm.target ?? "plex") as string;
+                    if (tgt === "plex") {
+                      const multi = !!editForm.sync_to_multiple_plex_users;
+                      const ids = editForm.plex_account_ids ?? [];
+                      if (multi && ids.length > 0) {
+                        cfg.plex_account_ids = ids;
+                        delete cfg.plex_playlist_account_id;
                       } else {
                         delete cfg.plex_account_ids;
                         delete cfg.plex_playlist_account_id;
                       }
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
+                    } else {
+                      delete cfg.plex_account_ids;
+                      delete cfg.plex_playlist_account_id;
+                    }
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, cfg));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name !== "new_releases_discovery" &&
+                editingCommand.command_name !== "discovery_lastfm" &&
+                editingCommand.command_name !== "artist_events_refresh" &&
+                !editingCommand.command_name.startsWith("playlist_sync_") &&
+                !editingCommand.command_name.startsWith("daylist_") &&
+                !editingCommand.command_name.startsWith("top_tracks_") &&
+                !editingCommand.command_name.startsWith("lfm_similar_") &&
+                !editingCommand.command_name.startsWith("setlistfm_") &&
+                !editingCommand.command_name.startsWith("mood_playlist_") &&
+                !editingCommand.command_name.startsWith("xmplaylist_") &&
+                !editingCommand.command_name.startsWith("local_discovery_") && (
+                  <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
                     Save
                   </Button>
                 )}
-                {editingCommand.command_name !== "new_releases_discovery" &&
-                  editingCommand.command_name !== "discovery_lastfm" &&
-                  editingCommand.command_name !== "artist_events_refresh" &&
-                  !editingCommand.command_name.startsWith("playlist_sync_") &&
-                  !editingCommand.command_name.startsWith("daylist_") &&
-                  !editingCommand.command_name.startsWith("top_tracks_") &&
-                  !editingCommand.command_name.startsWith("lfm_similar_") &&
-                  !editingCommand.command_name.startsWith("setlistfm_") &&
-                  !editingCommand.command_name.startsWith("mood_playlist_") &&
-                  !editingCommand.command_name.startsWith("xmplaylist_") &&
-                  !editingCommand.command_name.startsWith("local_discovery_") && (
-                    <Button
-                      onClick={() =>
-                        handleSaveCommand({
-                          schedule_override: editForm.schedule_override,
-                          schedule_cron: editForm.schedule_override
-                            ? editForm.schedule_cron
-                            : undefined,
-                        })
-                      }
-                    >
-                      Save
-                    </Button>
-                  )}
-                <Button onClick={() => handleToggleEnabled(editingCommand)}>
-                  {editingCommand.enabled ? "Disable" : "Enable"}
-                </Button>
-              </div>
+              <Button onClick={() => handleToggleEnabled(editingCommand)}>
+                {editingCommand.enabled ? "Disable" : "Enable"}
+              </Button>
             </>
-          )}
-        </DialogContent>
-      </Dialog>
+          ) : null
+        }
+      />
       <DeleteCommandDialog
         open={deleteCommandTarget !== null}
         commandName={deleteCommandTarget}

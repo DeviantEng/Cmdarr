@@ -190,12 +190,17 @@ def compute_lfm_similar_playlist_title(config: dict[str, Any]) -> str:
     return f"{PLAYLIST_TITLE_LFM_SIMILAR_PREFIX}: {suffix}"
 
 
-def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
-    """Playlist title from config; uses ordered artist list for auto suffix."""
-    artists_raw = config.get("artists", [])
-    if isinstance(artists_raw, str):
-        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
-    names = [a.strip() for a in artists_raw if (a or "").strip()]
+def compute_setlistfm_playlist_title(
+    config: dict[str, Any], *, artist_display_names: list[str] | None = None
+) -> str:
+    """Playlist title from config; uses library-validated artist names when provided."""
+    if artist_display_names is not None:
+        names = [a.strip() for a in artist_display_names if (a or "").strip()]
+    else:
+        artists_raw = config.get("artists", [])
+        if isinstance(artists_raw, str):
+            artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+        names = [a.strip() for a in artists_raw if (a or "").strip()]
     use_custom = config.get("use_custom_playlist_name", False)
     custom = (config.get("custom_playlist_name") or "").strip()
     if use_custom and custom:
@@ -205,19 +210,63 @@ def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
     return f"{PLAYLIST_TITLE_SETLIST_PREFIX}: {suffix}"
 
 
-def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:
-    """Playlist title from stored config (all listed artists in auto suffix). Used on save/API."""
-    artists_raw = config.get("artists", [])
-    if isinstance(artists_raw, str):
-        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
-    names = [a.strip() for a in artists_raw if (a or "").strip()]
+def compute_top_tracks_playlist_title(
+    artist_display_names: list[str], config: dict[str, Any]
+) -> str:
+    """Playlist title from validated artist display names and naming options."""
     use_custom = config.get("use_custom_playlist_name", False)
     custom = (config.get("custom_playlist_name") or "").strip()
     if use_custom and custom:
         suffix = custom
     else:
+        names = [a.strip() for a in artist_display_names if (a or "").strip()]
         suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
     return f"{PLAYLIST_TITLE_TOP_TRACKS_PREFIX}: {suffix}"
+
+
+def ordered_library_validated_artist_names(
+    artists_raw: list[str] | str,
+    cached_data: dict[str, Any] | None,
+) -> list[str]:
+    """Ordered display names for title; library-validated when cache is available."""
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    if not cached_data or "artist_index" not in cached_data:
+        return names
+    valid_norms, _ = validate_artists_against_cache(names, cached_data)
+    valid_set = set(valid_norms)
+    return [a.strip() for a in names if normalize_text(a.lower()) in valid_set]
+
+
+def get_library_cache_for_target_config(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Load library cache for a playlist generator target config (best-effort)."""
+    try:
+        from commands.config_adapter import Config
+        from utils.library_cache_manager import get_library_cache_manager
+
+        target = str(config.get("target", "plex")).lower()
+        library_key = config.get("target_library_key")
+        cache_manager = get_library_cache_manager(Config())
+        return cache_manager.get_library_cache(target, str(library_key) if library_key else None)
+    except Exception:
+        return None
+
+
+def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:
+    """Playlist title from stored config; validates artists when library cache is available."""
+    cached_data = get_library_cache_for_target_config(config)
+    artists_raw = config.get("artists", [])
+    names = ordered_library_validated_artist_names(artists_raw, cached_data)
+    return compute_top_tracks_playlist_title(names, config)
+
+
+def compute_setlistfm_playlist_title_from_config(config: dict[str, Any]) -> str:
+    """Playlist title from stored config; validates artists when library cache is available."""
+    cached_data = get_library_cache_for_target_config(config)
+    artists_raw = config.get("artists", [])
+    names = ordered_library_validated_artist_names(artists_raw, cached_data)
+    return compute_setlistfm_playlist_title(config, artist_display_names=names)
 
 
 def persist_playlist_identity(

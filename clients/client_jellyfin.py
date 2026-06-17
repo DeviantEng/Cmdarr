@@ -1605,6 +1605,8 @@ class JellyfinClient(BaseAPIClient):
                 return {
                     "success": True,
                     "action": "skipped_empty",
+                    "playlist_id": None,
+                    "playlist_title": title,
                     "total_tracks": len(tracks),
                     "found_tracks": 0,
                     "unmatched_tracks": unmatched_tracks,
@@ -1656,6 +1658,8 @@ class JellyfinClient(BaseAPIClient):
             return {
                 "success": False,
                 "action": "failed",
+                "playlist_id": None,
+                "playlist_title": title,
                 "total_tracks": len(tracks),
                 "found_tracks": 0,
                 "unmatched_tracks": [
