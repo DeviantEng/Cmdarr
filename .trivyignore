@@ -4,7 +4,7 @@
 #
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
-#   dpkg-query -W libssh2-1t64 curl libcurl4t64 libncursesw6
+#   dpkg-query -W libssh2-1t64 curl libcurl4t64 libncursesw6 libsqlite3-0 perl-base
 # ---------------------------------------------------------------------------
 #
 # CVE-2025-69720 — ncurses infocmp stack overflow (CLI tool mitigations)
@@ -25,3 +25,19 @@ CVE-2026-5773 exp:2026-09-01
 # CVE-2026-6276 - libcurl: Information disclosure due to cookie leak when reusing connections
 #   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64
 CVE-2026-6276 exp:2026-09-01
+#
+# CVE-2026-11822 / CVE-2026-11824 — libsqlite3-0: SQLite memory corruption / heap overflow (< 3.53.2)
+#   Debian trixie: libsqlite3-0 3.46.1-7+deb13u1; no trixie security upload yet. CMDARR uses SQLite
+#   only for its local application database, not for parsing untrusted SQLite files from external sources.
+CVE-2026-11822 exp:2026-09-01
+CVE-2026-11824 exp:2026-09-01
+#
+# perl-base — incidental Debian base-image package (python:3.14-slim-trixie); CMDARR runtime is Python-only.
+#   Archive::Tar / IO::Compress issues require attacker-controlled tar/zip extraction; not in app workload.
+#   Debian trixie: perl-base 5.40.1-6; fixes deferred / not yet in trixie-security.
+CVE-2026-42496 exp:2026-09-01
+CVE-2026-8376 exp:2026-09-01
+CVE-2026-42497 exp:2026-09-01
+CVE-2026-48959 exp:2026-09-01
+CVE-2026-48962 exp:2026-09-01
+CVE-2026-9538 exp:2026-09-01
