@@ -120,9 +120,13 @@ export interface MigrationStatus {
   success?: boolean;
   current_version: string;
   last_run_version: string | null;
-  applicable_versions: string[];
+  applied_migrations: {
+    name: string;
+    version: string;
+    description: string;
+    applied_at: string;
+  }[];
   pending_migrations: { name: string; version: string; description: string }[];
-  auto_skipped: boolean;
   dev_manual_available: boolean;
 }
 

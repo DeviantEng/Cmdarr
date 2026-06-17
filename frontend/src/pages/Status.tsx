@@ -369,13 +369,13 @@ export function StatusPage() {
                   Database migrations
                 </CardTitle>
                 <CardDescription className="text-xs leading-snug">
-                  Dev build only. Startup skips migrations when the app version is unchanged (
-                  {migrationStatus.current_version}
+                  Dev build only. Pending migrations run automatically on startup and are recorded
+                  in a per-migration ledger ({migrationStatus.current_version}
                   {migrationStatus.last_run_version
-                    ? `, last run ${migrationStatus.last_run_version}`
+                    ? `, last recorded ${migrationStatus.last_run_version}`
                     : ""}
-                  ). Use this after pulling schema changes on the same{" "}
-                  <code className="text-[10px]">-dev</code> version.
+                  ). Use this button to apply any still-pending migrations after pulling schema
+                  changes on the same <code className="text-[10px]">-dev</code> version.
                 </CardDescription>
               </div>
               <Button
@@ -394,25 +394,37 @@ export function StatusPage() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="pt-0 space-y-2">
-            {migrationStatus.auto_skipped && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Automatic startup migration was skipped (version unchanged).
-              </p>
-            )}
+          <CardContent className="pt-0 space-y-3">
             {migrationStatus.pending_migrations.length > 0 ? (
-              <ul className="text-xs text-muted-foreground space-y-1">
-                {migrationStatus.pending_migrations.map((m) => (
-                  <li key={m.name}>
-                    <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
-                    {m.description}
-                  </li>
-                ))}
-              </ul>
+              <div>
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                  Pending ({migrationStatus.pending_migrations.length})
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {migrationStatus.pending_migrations.map((m) => (
+                    <li key={m.name}>
+                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
+                      {m.description}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                No migrations registered for this version.
-              </p>
+              <p className="text-xs text-muted-foreground">No pending migrations.</p>
+            )}
+            {migrationStatus.applied_migrations.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">
+                  Applied ({migrationStatus.applied_migrations.length})
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {migrationStatus.applied_migrations.map((m) => (
+                    <li key={m.name}>
+                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </CardContent>
         </Card>
