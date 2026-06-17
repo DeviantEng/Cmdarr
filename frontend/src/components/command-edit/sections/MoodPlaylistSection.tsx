@@ -39,6 +39,7 @@ export function MoodPlaylistSection({ ctx }: { ctx: CommandEditRenderContext }) 
             </div>
           )}
         </div>
+        <p className="text-xs text-muted-foreground">{m.rankingHelper}</p>
       </div>
       <label className="flex items-center space-x-2">
         <input
