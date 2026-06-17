@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.16-dev] - TBD
+
+### Features
+- **Playlist identity**: Plex/Jellyfin playlists are now tracked by stored ID as well as title, so overlapping names no longer collide; command delete now offers ability to also delete the playlist in Plex/Jellyfin via optional checkbox.
+
+### Fixes
+- **N/A**
+
+### Housekeeping
+- **Security & CI**: Frontend bumps for vite and react-router; `.trivyignore` updates for new CVEs without fix, cleanup of other items that have been fixed.
+- **UI & maintainability**: Command edit/create forms aligned (expiry saves, defaults, section order); shared confirm/edit components, `make check` TypeScript typecheck, and save-time Artist Essentials / Setlist titles matched to library-validated artists.
+
 ## [0.3.15] - 2026-05-26
 
 ### Features
