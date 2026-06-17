@@ -399,13 +399,7 @@ export function EventsPage() {
     }
   };
 
-  const toggleProvider = async (
-    key:
-      | "ARTIST_EVENTS_BANDSINTOWN_ENABLED"
-      | "ARTIST_EVENTS_SONGKICK_ENABLED"
-      | "ARTIST_EVENTS_TICKETMASTER_ENABLED",
-    checked: boolean
-  ) => {
+  const toggleProvider = async (key: "ARTIST_EVENTS_TICKETMASTER_ENABLED", checked: boolean) => {
     try {
       await saveConfig(key, { value: checked, data_type: "bool" });
       const ps = await api.getEventsProviderStatus();
@@ -417,10 +411,8 @@ export function EventsPage() {
   };
 
   const sourceBadge = (p: string) => {
-    if (p === "bandsintown") return "BIT";
-    if (p === "songkick") return "SK";
     if (p === "ticketmaster") return "TM";
-    return p;
+    return p.slice(0, 3).toUpperCase();
   };
 
   const hiddenTotal = hiddenArtistCount + hiddenEventCount;
@@ -452,19 +444,17 @@ export function EventsPage() {
         <CardHeader className="space-y-1 px-4 py-3">
           <CardTitle className="text-base">Providers</CardTitle>
           <CardDescription className="text-xs leading-snug">
-            Toggle sources; credentials in{" "}
+            Enable Ticketmaster Discovery; add your Consumer Key in{" "}
             <Link to="/config" className="underline font-medium text-foreground">
               Configuration &gt; Event Sources
             </Link>
-            . Bandsintown <code className="text-[10px]">app_id</code> is not the same as User-Agent
-            (<code className="text-[10px]">CMDARR_USER_AGENT</code>). At least one source must be
-            ready before refresh.
+            . Ticketmaster must be ready before refresh runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              No provider fully configured - add keys in{" "}
+              Ticketmaster not configured — add your Consumer Key in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
               </Link>
@@ -472,38 +462,6 @@ export function EventsPage() {
             </p>
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
-            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
-              <Label className="text-xs font-normal">Bandsintown</Label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={settings?.bandsintown_enabled ?? false}
-                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_BANDSINTOWN_ENABLED", c)}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.bandsintown.enabled
-                    ? "ready"
-                    : providerStatus?.bandsintown.registration_open
-                      ? "needs app ID"
-                      : "partner only"}
-                </span>
-              </div>
-            </div>
-            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
-              <Label className="text-xs font-normal">Songkick</Label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={settings?.songkick_enabled ?? false}
-                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SONGKICK_ENABLED", c)}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.songkick.enabled
-                    ? "ready"
-                    : providerStatus?.songkick.registration_open
-                      ? "needs key"
-                      : "partner only"}
-                </span>
-              </div>
-            </div>
             <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
               <Label className="text-xs font-normal">Ticketmaster</Label>
               <div className="flex items-center gap-2">
@@ -517,15 +475,6 @@ export function EventsPage() {
               </div>
             </div>
           </div>
-          {providerStatus &&
-            (!providerStatus.bandsintown.registration_open ||
-              !providerStatus.songkick.registration_open) && (
-              <p className="text-xs text-muted-foreground leading-snug">
-                Songkick and Bandsintown are partner-only (no new public API keys). Ticketmaster is
-                the recommended source for new setups. Details:{" "}
-                <code className="text-[10px]">docs/artist-events-providers.md</code>
-              </p>
-            )}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <div className="inline-flex">
               <Button
@@ -681,8 +630,6 @@ export function EventsPage() {
                 <SelectContent>
                   <SelectItem value="all">All sources</SelectItem>
                   <SelectItem value="ticketmaster">Ticketmaster</SelectItem>
-                  <SelectItem value="bandsintown">Bandsintown</SelectItem>
-                  <SelectItem value="songkick">Songkick</SelectItem>
                 </SelectContent>
               </Select>
             </div>

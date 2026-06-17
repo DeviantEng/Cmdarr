@@ -208,14 +208,14 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 ### Event Sources (artist events)
 
-Upcoming shows are aggregated on **Artist events** (`/events`) from optional **Ticketmaster Discovery** (recommended), plus legacy **Bandsintown** and **Songkick** support for deployments with existing partner keys. See `docs/artist-events-providers.md` for provider availability.
+Upcoming shows are aggregated on **Artist events** (`/events`) from **Ticketmaster Discovery** when enabled.
 
 **Where to configure what**
 
 | What | Where |
 |------|--------|
-| **Enable each provider** (on/off) | **Artist events** page only — not duplicated under Config. |
-| **Credentials** (Bandsintown `app_id`, Songkick API key, Ticketmaster Consumer Key) | **Config → Event Sources** (`artist_events`), or environment variables. |
+| **Enable Ticketmaster** (on/off) | **Artist events** page only — not duplicated under Config. |
+| **Ticketmaster Consumer Key** | **Config → Event Sources** (`artist_events`), or environment variables. |
 | **Batch size & per-artist TTL** | **Commands → Artist Events Refresh** → Edit: `artists_per_run` (default **20**, range 1–50), `refresh_ttl_days` (default **14** days). These live in the command’s `config_json`, not global Config. |
 | **Location & radius** (distance filter on `/events`) | **Artist events** page (stored as `ARTIST_EVENTS_USER_*` / radius; those keys are hidden on the Config page). |
 
@@ -223,16 +223,10 @@ Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run s
 
 | Setting | Required? | Notes |
 |---------|-----------|--------|
-| `ARTIST_EVENTS_BANDSINTOWN_ENABLED` | No | Default off. Toggled on **Artist events**; omitted from Config UI to avoid duplication (still settable via env/DB). |
-| `ARTIST_EVENTS_BANDSINTOWN_APP_ID` | **Legacy only** | Partner-issued `app_id`; new self-serve access is not available. |
-| `ARTIST_EVENTS_SONGKICK_ENABLED` | No | Default off. Legacy only — see provider doc. |
-| `ARTIST_EVENTS_SONGKICK_API_KEY` | **Legacy only** | Songkick is not issuing new API keys; paid partnership required for new access. |
 | `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. Toggled on **Artist events** only. |
 | `ARTIST_EVENTS_TICKETMASTER_API_KEY` | **Yes if Ticketmaster enabled** | [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/getting-started/) uses a single `apikey` query parameter. Paste your **Consumer Key** here. The **Consumer Secret** is for other OAuth-style flows and is **not** used by Cmdarr’s Discovery GET requests. |
 | `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | **No** | Distance filter only; set from **Artist events**. Hidden on Config. |
 | `ARTIST_EVENTS_RADIUS_MILES` | — | Default `100`. Set from **Artist events**; hidden on Config. |
-
-**Bandsintown `app_id` vs HTTP User-Agent:** `ARTIST_EVENTS_BANDSINTOWN_APP_ID` is only the Bandsintown **`app_id`** parameter. Outbound HTTP requests to Bandsintown (and the User-Agent used for geocoding) follow **`CMDARR_USER_AGENT`**, configured under **Config → Application** (visible; not a hidden field). It is the same style of client identifier used for MusicBrainz / ListenBrainz.
 
 REST API: `GET /api/events/...` (see OpenAPI docs in the running app).
 
@@ -291,11 +285,7 @@ SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 MUSICBRAINZ_ENABLED=true
 NEW_RELEASES_CACHE_DAYS=14
 
-# Artist events (Event Sources in UI; optional providers)
-ARTIST_EVENTS_BANDSINTOWN_ENABLED=false
-ARTIST_EVENTS_BANDSINTOWN_APP_ID=cmdarr
-ARTIST_EVENTS_SONGKICK_ENABLED=false
-ARTIST_EVENTS_SONGKICK_API_KEY=
+# Artist events (Event Sources in UI; Ticketmaster Discovery)
 ARTIST_EVENTS_TICKETMASTER_ENABLED=false
 ARTIST_EVENTS_TICKETMASTER_API_KEY=
 # Optional: distance filter on /events (not required for artist_events_refresh)

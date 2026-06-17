@@ -56,17 +56,17 @@ def test_persist_inserts_new_canonical_event_and_source(session):
 
 def test_persist_merges_duplicate_rows_across_providers_with_noisy_coords(session):
     tm = _item(provider="ticketmaster", external_id="tm-1")
-    bit = _item(
-        provider="bandsintown",
-        external_id="bit-xyz",
-        source_url="https://bandsintown.example/bit-xyz",
+    other = _item(
+        provider="other_feed",
+        external_id="other-xyz",
+        source_url="https://example.com/other-xyz",
         venue_lat=36.16284,
         venue_lon=-86.77112,
     )
 
     n1, s1 = persist_normalized_events(session, [tm])
     session.commit()
-    n2, s2 = persist_normalized_events(session, [bit])
+    n2, s2 = persist_normalized_events(session, [other])
     session.commit()
 
     assert (n1, s1) == (1, 1)
@@ -74,7 +74,7 @@ def test_persist_merges_duplicate_rows_across_providers_with_noisy_coords(sessio
     assert s2 == 1
     assert session.query(ArtistEvent).count() == 1
     providers = sorted(r.provider for r in session.query(ArtistEventSource).all())
-    assert providers == ["bandsintown", "ticketmaster"]
+    assert providers == ["other_feed", "ticketmaster"]
 
 
 def test_persist_is_idempotent_for_same_provider_external_id(session):

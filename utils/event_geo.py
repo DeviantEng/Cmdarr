@@ -97,7 +97,7 @@ def venue_fingerprint(
     Stable string for dedupe heuristics.
 
     When a venue name is present, it is authoritative together with normalized city/region
-    and geo is IGNORED — two TM/BIT/SK responses for the same venue often disagree on
+    and geo is IGNORED — two provider responses for the same venue often disagree on
     coordinates by 0.01°–0.05° (venue centroid vs. street address geocode), and letting
     that drive dedupe splits one show into multiple canonical rows.
 

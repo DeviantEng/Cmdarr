@@ -28,13 +28,7 @@ class _FakeClient:
         return self._result
 
 
-def _install_fake(monkeypatch: pytest.MonkeyPatch, bit: Any, sk: Any, tm: Any) -> None:
-    monkeypatch.setattr(
-        aer_module, "BandsintownClient", lambda *_a, **_kw: _FakeClient(bit), raising=True
-    )
-    monkeypatch.setattr(
-        aer_module, "SongkickClient", lambda *_a, **_kw: _FakeClient(sk), raising=True
-    )
+def _install_fake(monkeypatch: pytest.MonkeyPatch, tm: Any) -> None:
     monkeypatch.setattr(
         aer_module, "TicketmasterClient", lambda *_a, **_kw: _FakeClient(tm), raising=True
     )
@@ -54,8 +48,6 @@ def _make_event() -> dict[str, Any]:
 def _run_fetch(
     cmd: ArtistEventsRefreshCommand,
     *,
-    bit_on: bool,
-    sk_on: bool,
     tm_on: bool,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     return asyncio.run(
@@ -63,72 +55,58 @@ def _run_fetch(
             cmd.config_adapter,
             "Artist Name",
             "mbid",
-            bit_on,
-            "app-id" if bit_on else "",
-            sk_on,
-            "sk-key" if sk_on else "",
             tm_on,
             "tm-key" if tm_on else "",
         )
     )
 
 
-def test_fetch_all_success_no_errors(monkeypatch):
+def test_fetch_success_no_errors(monkeypatch):
     ev = _make_event()
-    _install_fake(monkeypatch, bit=[ev], sk=[], tm=[ev, ev])
+    _install_fake(monkeypatch, [ev, ev])
     cmd = ArtistEventsRefreshCommand()
 
-    merged, errored = _run_fetch(cmd, bit_on=True, sk_on=True, tm_on=True)
+    merged, errored = _run_fetch(cmd, tm_on=True)
 
-    assert len(merged) == 3
+    assert len(merged) == 2
     assert errored == []
 
 
 def test_fetch_provider_returning_none_is_reported_as_error(monkeypatch):
-    _install_fake(monkeypatch, bit=None, sk=[], tm=[_make_event()])
+    _install_fake(monkeypatch, None)
     cmd = ArtistEventsRefreshCommand()
 
-    merged, errored = _run_fetch(cmd, bit_on=True, sk_on=True, tm_on=True)
+    merged, errored = _run_fetch(cmd, tm_on=True)
 
-    assert len(merged) == 1
-    assert errored == ["bandsintown"]
+    assert merged == []
+    assert errored == ["ticketmaster"]
 
 
 def test_fetch_raising_provider_is_reported_as_error(monkeypatch):
-    _install_fake(monkeypatch, bit=[], sk=RuntimeError("boom"), tm=[_make_event()])
+    _install_fake(monkeypatch, RuntimeError("boom"))
     cmd = ArtistEventsRefreshCommand()
 
-    merged, errored = _run_fetch(cmd, bit_on=True, sk_on=True, tm_on=True)
+    merged, errored = _run_fetch(cmd, tm_on=True)
 
-    assert len(merged) == 1
-    assert errored == ["songkick"]
+    assert merged == []
+    assert errored == ["ticketmaster"]
 
 
 def test_fetch_empty_list_is_not_an_error(monkeypatch):
-    _install_fake(monkeypatch, bit=[], sk=[], tm=[])
+    _install_fake(monkeypatch, [])
     cmd = ArtistEventsRefreshCommand()
 
-    merged, errored = _run_fetch(cmd, bit_on=True, sk_on=True, tm_on=True)
+    merged, errored = _run_fetch(cmd, tm_on=True)
 
     assert merged == []
     assert errored == []
 
 
-def test_fetch_disabled_providers_are_not_errors(monkeypatch):
-    _install_fake(monkeypatch, bit=None, sk=None, tm=[_make_event()])
+def test_fetch_disabled_provider_is_not_an_error(monkeypatch):
+    _install_fake(monkeypatch, None)
     cmd = ArtistEventsRefreshCommand()
 
-    merged, errored = _run_fetch(cmd, bit_on=False, sk_on=False, tm_on=True)
+    merged, errored = _run_fetch(cmd, tm_on=False)
 
-    assert len(merged) == 1
+    assert merged == []
     assert errored == []
-
-
-def test_fetch_multiple_providers_can_error_in_one_pass(monkeypatch):
-    _install_fake(monkeypatch, bit=None, sk=None, tm=[_make_event()])
-    cmd = ArtistEventsRefreshCommand()
-
-    merged, errored = _run_fetch(cmd, bit_on=True, sk_on=True, tm_on=True)
-
-    assert len(merged) == 1
-    assert sorted(errored) == ["bandsintown", "songkick"]

@@ -71,32 +71,17 @@ class FestivalHiddenRequest(BaseModel):
 
 @router.get("/provider-status")
 async def provider_status():
-    """Which providers are enabled and configured."""
-    from utils.artist_events_providers import provider_status_payload
-
-    bit = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
-    bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
-    sk = config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False)
-    sk_key = (config_service.get("ARTIST_EVENTS_SONGKICK_API_KEY", "") or "").strip()
+    """Whether Ticketmaster is enabled and configured."""
     tm = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
     tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
-    bandsintown = provider_status_payload(
-        enabled=bool(bit and bit_app), configured=bool(bit_app), provider_id="bandsintown"
-    )
-    songkick = provider_status_payload(
-        enabled=bool(sk and sk_key), configured=bool(sk_key), provider_id="songkick"
-    )
-    ticketmaster = provider_status_payload(
-        enabled=bool(tm and tm_key), configured=bool(tm_key), provider_id="ticketmaster"
-    )
-    any_ready = bandsintown["enabled"] or songkick["enabled"] or ticketmaster["enabled"]
+    ticketmaster = {
+        "enabled": bool(tm and tm_key),
+        "configured": bool(tm_key),
+    }
     return {
         "success": True,
-        "bandsintown": bandsintown,
-        "songkick": songkick,
         "ticketmaster": ticketmaster,
-        "any_ready": any_ready,
-        "recommended_provider": "ticketmaster",
+        "any_ready": ticketmaster["enabled"],
     }
 
 
@@ -456,8 +441,6 @@ async def get_events_settings():
         hidden_festival_keys = []
     return {
         "success": True,
-        "bandsintown_enabled": config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False),
-        "songkick_enabled": config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False),
         "ticketmaster_enabled": config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False),
         "user_lat": config_service.get("ARTIST_EVENTS_USER_LAT", "") or "",
         "user_lon": config_service.get("ARTIST_EVENTS_USER_LON", "") or "",

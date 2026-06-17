@@ -9,9 +9,7 @@ from typing import Any
 
 from sqlalchemy import case, func, or_
 
-from clients.client_bandsintown import BandsintownClient
 from clients.client_lidarr import LidarrClient
-from clients.client_songkick import SongkickClient
 from clients.client_ticketmaster import TicketmasterClient
 from commands.command_base import BaseCommand
 from commands.config_adapter import ConfigAdapter
@@ -39,7 +37,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         self._quota_locked: dict[str, float] = {}
 
     def get_description(self) -> str:
-        return "Refresh artist events for Lidarr library (Bandsintown / Songkick / Ticketmaster)"
+        return "Refresh artist events for Lidarr library (Ticketmaster Discovery)"
 
     def get_logger_name(self) -> str:
         return "cmdarr.artist_events_refresh"
@@ -58,19 +56,14 @@ class ArtistEventsRefreshCommand(BaseCommand):
         error_retry_minutes = max(5, min(24 * 60, int(cj.get("error_retry_minutes", 60))))
         past_event_retention_days = max(0, min(365, int(cj.get("past_event_retention_days", 1))))
 
-        bit_on = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
-        bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
-        sk_on = config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False)
-        sk_key = (config_service.get("ARTIST_EVENTS_SONGKICK_API_KEY", "") or "").strip()
         tm_on = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
         tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
 
-        providers_ok = (
-            (bit_on and bool(bit_app)) or (sk_on and bool(sk_key)) or (tm_on and bool(tm_key))
-        )
-        if not providers_ok:
-            log.error("No event provider enabled with valid credentials")
-            self.last_run_stats = {"error": "Configure at least one event provider in Config"}
+        if not (tm_on and tm_key):
+            log.error("Ticketmaster not enabled with valid credentials")
+            self.last_run_stats = {
+                "error": "Enable Ticketmaster and add Consumer Key in Config → Event Sources"
+            }
             return False
 
         if not cfg.LIDARR_API_KEY or not cfg.LIDARR_URL:
@@ -154,11 +147,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
             total_sources = 0
             processed = 0
             artists_with_errors = 0
-            provider_error_counts: dict[str, int] = {
-                "bandsintown": 0,
-                "songkick": 0,
-                "ticketmaster": 0,
-            }
+            provider_error_counts: dict[str, int] = {"ticketmaster": 0}
             self._quota_locked = {}
 
             for la in rows:
@@ -166,10 +155,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     cfg,
                     la.artist_name,
                     la.artist_mbid,
-                    bit_on,
-                    bit_app,
-                    sk_on,
-                    sk_key,
                     tm_on,
                     tm_key,
                 )
@@ -189,11 +174,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     .first()
                 )
                 if had_error:
-                    # Retry sooner than the normal TTL; never stamp last_fetched_at on a failure
-                    # so "never succeeded" remains observable in the UI / DB.
-                    # If any provider is quota-locked, push the retry to the quota-reset
-                    # horizon so we don't burn a second wave of rejections as soon as the
-                    # scheduler fires again.
                     retry_due = now + timedelta(minutes=error_retry_minutes)
                     if self._quota_locked:
                         max_lock_seconds = max(self._quota_locked.values())
@@ -245,7 +225,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
             }
             log.info(
                 "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
-                "%s new events, %s new sources, %s artists had provider errors (bit=%s sk=%s tm=%s)",
+                "%s new events, %s new sources, %s artists had provider errors (tm=%s)",
                 processed,
                 force_refresh_all,
                 refresh_all_due,
@@ -253,8 +233,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 total_new,
                 total_sources,
                 artists_with_errors,
-                provider_error_counts["bandsintown"],
-                provider_error_counts["songkick"],
                 provider_error_counts["ticketmaster"],
             )
             return True
@@ -326,10 +304,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
         cfg: ConfigAdapter,
         artist_name: str,
         artist_mbid: str,
-        bit_on: bool,
-        bit_app: str,
-        sk_on: bool,
-        sk_key: str,
         tm_on: bool,
         tm_key: str,
     ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -340,18 +314,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
         providers are treated as success and are NOT reported as errors.
         """
 
-        async def run_bit():
-            if not bit_on or not bit_app or "bandsintown" in self._quota_locked:
-                return []
-            async with BandsintownClient(cfg, bit_app) as c:
-                return await c.fetch_upcoming_events(artist_name, artist_mbid)
-
-        async def run_sk():
-            if not sk_on or not sk_key or "songkick" in self._quota_locked:
-                return []
-            async with SongkickClient(cfg, sk_key) as c:
-                return await c.fetch_upcoming_events(artist_name, artist_mbid)
-
         async def run_tm():
             if not tm_on or not tm_key or "ticketmaster" in self._quota_locked:
                 return []
@@ -360,19 +322,13 @@ class ArtistEventsRefreshCommand(BaseCommand):
 
         merged: list[dict[str, Any]] = []
         errored: list[str] = []
-        provider_order = ["bandsintown", "songkick", "ticketmaster"]
+        provider_order = ["ticketmaster"]
         results = await asyncio.gather(
-            run_bit(),
-            run_sk(),
             run_tm(),
             return_exceptions=True,
         )
         for provider_name, res in zip(provider_order, results, strict=False):
             if isinstance(res, QuotaExceededError):
-                # Long-window quota lockout: stop using this provider for the rest of the run.
-                # Every subsequent request would also be rejected and would further delay the
-                # scheduler's eventual unblock. Record the lock-until horizon so the per-artist
-                # next_due_at can be pushed past the quota window.
                 retry_after = res.retry_after_seconds or 3600.0
                 self._quota_locked[provider_name] = retry_after
                 self.logger.error(
