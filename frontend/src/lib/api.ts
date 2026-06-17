@@ -1,5 +1,6 @@
 import type {
   ArtistEventsStats,
+  EventsProviderInfo,
   CommandConfig,
   CommandExecution,
   CommandUpdateRequest,
@@ -415,10 +416,11 @@ class ApiClient {
   // Artist events (live shows, festivals, etc.)
   async getEventsProviderStatus(): Promise<{
     success: boolean;
-    bandsintown: { enabled: boolean; configured: boolean };
-    songkick: { enabled: boolean; configured: boolean };
-    ticketmaster: { enabled: boolean; configured: boolean };
+    bandsintown: EventsProviderInfo;
+    songkick: EventsProviderInfo;
+    ticketmaster: EventsProviderInfo;
     any_ready: boolean;
+    recommended_provider?: string;
   }> {
     return this.request("/api/events/provider-status");
   }

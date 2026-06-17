@@ -567,7 +567,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Bandsintown Public API app_id (required when enabled)",
+                "description": "Bandsintown app_id (partner approval required for new access; legacy only)",
             },
             {
                 "key": "ARTIST_EVENTS_SONGKICK_ENABLED",
@@ -582,7 +582,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "artist_events",
-                "description": "Songkick API key (required when enabled)",
+                "description": "Songkick API key (new keys not issued; paid partnership required; legacy only)",
                 "is_sensitive": True,
             },
             {

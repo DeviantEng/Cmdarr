@@ -1,12 +1,15 @@
 """Unit tests for the TicketmasterClient._event_matches_artist heuristic.
 
-These exercise the MBID-first rejection logic and the whole-phrase, token-aligned
-name fallback, which together should block the category of false positives we saw
-after 0.3.14-dev (e.g. TM returning an unrelated event whose attraction name was a
-substring of 'Pop Evil' or contained the word 'Unprocessed' for unrelated reasons).
+Per-attraction matching: MBID is authoritative only on the attraction whose name matches
+the artist; co-headliner MBIDs must not block openers. Whole-phrase name fallback when
+TM omits MusicBrainz links.
 """
 
 from clients.client_ticketmaster import TicketmasterClient
+
+AUTUMN_KINGS_MBID = "941109b5-51c5-4f4f-9d15-b8ae3ceb98bc"
+BVB_MBID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+ARCHERS_MBID = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
 
 
 def _match(ev, name, mbid=""):
@@ -115,3 +118,75 @@ def test_multi_word_artist_name_must_match_as_contiguous_phrase():
         "_embedded": {"attractions": [{"name": "Pop and Evil Cover Band"}]},
     }
     assert _match(ev, "Pop Evil") is False
+
+
+def test_coheadliner_mbids_do_not_block_opener_name_match():
+    """Openers on a bill must match by attraction name when their attraction has no MBID."""
+    ev = {
+        "name": "Black Veil Brides: Vindicatour US 2026",
+        "_embedded": {
+            "attractions": [
+                {
+                    "name": "Black Veil Brides",
+                    "externalLinks": {"musicbrainz": [{"id": BVB_MBID}]},
+                },
+                {
+                    "name": "Archers",
+                    "externalLinks": {"musicbrainz": [{"id": ARCHERS_MBID}]},
+                },
+                {"name": "Autumn Kings"},
+            ]
+        },
+    }
+    assert _match(ev, "Autumn Kings", AUTUMN_KINGS_MBID) is True
+
+
+def test_coheadliner_mbids_accept_opener_with_matching_mbid_on_its_attraction():
+    ev = {
+        "name": "Black Veil Brides: Vindicatour US 2026",
+        "_embedded": {
+            "attractions": [
+                {
+                    "name": "Black Veil Brides",
+                    "externalLinks": {"musicbrainz": [{"id": BVB_MBID}]},
+                },
+                {
+                    "name": "Autumn Kings",
+                    "externalLinks": {"musicbrainz": [{"id": AUTUMN_KINGS_MBID}]},
+                },
+            ]
+        },
+    }
+    assert _match(ev, "Autumn Kings", AUTUMN_KINGS_MBID) is True
+
+
+def test_wrong_mbid_on_name_matched_attraction_rejects():
+    ev = {
+        "name": "Black Veil Brides: Vindicatour US 2026",
+        "_embedded": {
+            "attractions": [
+                {
+                    "name": "Autumn Kings",
+                    "externalLinks": {
+                        "musicbrainz": [{"id": "deadbeef-0000-0000-0000-000000000000"}]
+                    },
+                },
+            ]
+        },
+    }
+    assert _match(ev, "Autumn Kings", AUTUMN_KINGS_MBID) is False
+
+
+def test_global_mbid_match_without_name_phrase_on_attraction():
+    ev = {
+        "name": "Some Festival",
+        "_embedded": {
+            "attractions": [
+                {
+                    "name": "The Band TM Calls Them",
+                    "externalLinks": {"musicbrainz": [{"id": AUTUMN_KINGS_MBID}]},
+                },
+            ]
+        },
+    }
+    assert _match(ev, "Autumn Kings", AUTUMN_KINGS_MBID) is True

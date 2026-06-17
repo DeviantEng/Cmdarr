@@ -83,38 +83,40 @@ class TicketmasterClient(BaseAPIClient):
         """
         Decide whether a TM keyword-search event genuinely features this artist.
 
-        Prefer MBID match via `_embedded.attractions[*].externalLinks.musicbrainz[*].id`.
-        If TM provides MBIDs for any attraction on the event and none match our MBID, the
-        event is rejected outright — this kills the "substring of artist name matches some
-        unrelated short attraction title" false positives we were seeing.
-
-        Fall back to whole-phrase, token-aligned match of the artist name inside an
-        attraction name (or the event title if the event has no attractions at all).
+        Matching is per attraction on multi-artist bills:
+        - If an attraction name matches the artist (whole-phrase token match), accept when
+          that attraction has no MusicBrainz ID or its MBID matches Lidarr.
+          Reject only when that same attraction has a conflicting TM MBID.
+        - Co-headliner MBIDs do not veto an opener/support act matched by name.
+        - If no attraction name matches, accept when any attraction MBID matches Lidarr.
+        - If the event has no attractions, fall back to the event title phrase match.
         """
         artist_tokens = _tokens(artist_name)
         if not artist_tokens:
             return False
         emb = ev.get("_embedded") or {}
         attractions = emb.get("attractions") or []
-
-        if artist_mbid:
-            mb_target = artist_mbid.lower().strip()
-            any_mbid_seen = False
-            for att in attractions:
-                mbs = (att.get("externalLinks") or {}).get("musicbrainz") or []
-                for mb in mbs:
-                    mid = (mb.get("id") or "").lower().strip()
-                    if not mid:
-                        continue
-                    any_mbid_seen = True
-                    if mid == mb_target:
-                        return True
-            if any_mbid_seen:
-                return False
+        mb_target = artist_mbid.lower().strip() if artist_mbid else ""
 
         for att in attractions:
-            if _contains_phrase(_tokens(att.get("name") or ""), artist_tokens):
-                return True
+            att_name = att.get("name") or ""
+            if not _contains_phrase(_tokens(att_name), artist_tokens):
+                continue
+            att_mbids: list[str] = []
+            for mb in (att.get("externalLinks") or {}).get("musicbrainz") or []:
+                mid = (mb.get("id") or "").strip().lower()
+                if mid:
+                    att_mbids.append(mid)
+            if mb_target and att_mbids:
+                return mb_target in att_mbids
+            return True
+
+        if mb_target:
+            for att in attractions:
+                for mb in (att.get("externalLinks") or {}).get("musicbrainz") or []:
+                    mid = (mb.get("id") or "").strip().lower()
+                    if mid and mid == mb_target:
+                        return True
 
         if not attractions:
             return _contains_phrase(_tokens(ev.get("name") or ""), artist_tokens)

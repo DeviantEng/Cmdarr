@@ -208,7 +208,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 ### Event Sources (artist events)
 
-Upcoming shows are aggregated on **Artist events** (`/events`) from optional **Bandsintown**, **Songkick**, and **Ticketmaster Discovery**.
+Upcoming shows are aggregated on **Artist events** (`/events`) from optional **Ticketmaster Discovery** (recommended), plus legacy **Bandsintown** and **Songkick** support for deployments with existing partner keys. See `docs/artist-events-providers.md` for provider availability.
 
 **Where to configure what**
 
@@ -224,9 +224,9 @@ Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run s
 | Setting | Required? | Notes |
 |---------|-----------|--------|
 | `ARTIST_EVENTS_BANDSINTOWN_ENABLED` | No | Default off. Toggled on **Artist events**; omitted from Config UI to avoid duplication (still settable via env/DB). |
-| `ARTIST_EVENTS_BANDSINTOWN_APP_ID` | **Yes if Bandsintown enabled** | Bandsintown’s public API **`app_id`** query parameter: any stable string you choose (e.g. `cmdarr`). **Not** the HTTP User-Agent (see below). |
-| `ARTIST_EVENTS_SONGKICK_ENABLED` | No | Default off. Toggled on **Artist events** only. |
-| `ARTIST_EVENTS_SONGKICK_API_KEY` | **Yes if Songkick enabled** | Commercial/partnership keys are common; availability varies. |
+| `ARTIST_EVENTS_BANDSINTOWN_APP_ID` | **Legacy only** | Partner-issued `app_id`; new self-serve access is not available. |
+| `ARTIST_EVENTS_SONGKICK_ENABLED` | No | Default off. Legacy only — see provider doc. |
+| `ARTIST_EVENTS_SONGKICK_API_KEY` | **Legacy only** | Songkick is not issuing new API keys; paid partnership required for new access. |
 | `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. Toggled on **Artist events** only. |
 | `ARTIST_EVENTS_TICKETMASTER_API_KEY` | **Yes if Ticketmaster enabled** | [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/getting-started/) uses a single `apikey` query parameter. Paste your **Consumer Key** here. The **Consumer Secret** is for other OAuth-style flows and is **not** used by Cmdarr’s Discovery GET requests. |
 | `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | **No** | Distance filter only; set from **Artist events**. Hidden on Config. |
