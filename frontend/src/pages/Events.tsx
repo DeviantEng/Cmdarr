@@ -423,12 +423,6 @@ export function EventsPage() {
     return p.slice(0, 3).toUpperCase();
   };
 
-  const deezerEnabledInList = events.some((ev) =>
-    (ev.source_links?.length ? ev.source_links : ev.sources.map((s) => ({ provider: s }))).some(
-      (r) => r.provider === "deezer"
-    )
-  );
-
   const hiddenTotal = hiddenArtistCount + hiddenEventCount;
 
   if (loading && !settings) {
@@ -445,12 +439,8 @@ export function EventsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
         <p className="text-muted-foreground mt-1">
           Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
-          from enabled providers. Refreshes use cmdarr&apos;s cached Lidarr artist list; if that
-          cache is empty, the command loads it from Lidarr before querying providers.{" "}
-          <Link to="/new-releases" className="underline font-medium text-foreground">
-            New Releases
-          </Link>{" "}
-          → Sync Lidarr artists updates the same cache anytime.
+          from enabled providers. Refresh syncs your Lidarr library automatically before querying
+          event sources.
         </p>
       </div>
 
@@ -517,16 +507,6 @@ export function EventsPage() {
             <p className="text-xs text-muted-foreground leading-snug">
               SeatGeek free tier allows roughly 500 API requests per day. Large libraries may need a
               longer refresh interval.
-            </p>
-          )}
-          {(settings?.deezer_enabled || deezerEnabledInList) && (
-            <p className="text-xs text-muted-foreground leading-snug">
-              Deezer concert data uses an unofficial GraphQL API (Songkick-sourced). Set your ARL
-              cookie in{" "}
-              <Link to="/config" className="underline font-medium text-foreground">
-                Configuration
-              </Link>
-              ; it may stop working if Deezer changes their API.
             </p>
           )}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">

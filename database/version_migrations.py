@@ -440,7 +440,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
 
     runner.add_migration(
         VersionMigration(
-            version="0.3.17",
+            version="0.3.17-dev",
             name="lidarr_artist_deezer_id",
             description="Add deezer_artist_id cache column on lidarr_artist",
             up_func=migrate_lidarr_artist_deezer_id,
