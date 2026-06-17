@@ -414,11 +414,13 @@ async def update_command(
                     command.config_json = merged
                 command.display_name = new_title
             elif command_name.startswith("setlistfm_"):
-                from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
+                from commands.playlist_generator_helpers import (
+                    compute_setlistfm_playlist_title_from_config,
+                )
                 from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_setlistfm_playlist_title(merged)
+                new_title = compute_setlistfm_playlist_title_from_config(merged)
                 old_last = prev_config_snapshot.get("last_playlist_title")
                 old_target = str(prev_config_snapshot.get("target", "plex")).lower()
                 new_target = str(merged.get("target", "plex")).lower()
@@ -1412,7 +1414,7 @@ async def create_setlistfm(request: dict, db: Annotated[Session, Depends(get_con
         enabled = bool(request.get("enabled", True))
 
         from commands.config_adapter import Config
-        from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
+        from commands.playlist_generator_helpers import compute_setlistfm_playlist_title_from_config
 
         config = Config()
         library_key = None
@@ -1461,7 +1463,7 @@ async def create_setlistfm(request: dict, db: Annotated[Session, Depends(get_con
                 "expires_at_delete_playlist", True
             )
 
-        display_title = compute_setlistfm_playlist_title(config_json)
+        display_title = compute_setlistfm_playlist_title_from_config(config_json)
 
         cmd = CommandConfig(
             command_name=command_name,

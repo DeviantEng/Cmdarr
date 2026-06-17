@@ -858,6 +858,8 @@ class PlexClient(BaseAPIClient):
                     return {
                         "success": True,
                         "action": "skipped_empty",
+                        "playlist_id": None,
+                        "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
                         "message": f"Skipped creating empty playlist '{title}'",
@@ -869,6 +871,8 @@ class PlexClient(BaseAPIClient):
                     return {
                         "success": True,
                         "action": "skipped_empty",
+                        "playlist_id": None,
+                        "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
                         "message": f"Skipped creating empty playlist '{title}'",
@@ -916,6 +920,8 @@ class PlexClient(BaseAPIClient):
             return {
                 "success": False,
                 "action": "error",
+                "playlist_id": None,
+                "playlist_title": title,
                 "total_tracks": len(tracks),
                 "found_tracks": 0,
                 "unmatched_tracks": [

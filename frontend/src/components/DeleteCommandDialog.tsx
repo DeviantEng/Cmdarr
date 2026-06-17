@@ -1,13 +1,5 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Label } from "@/components/ui/label";
 
 function commandCreatesPlaylist(commandName: string): boolean {
@@ -48,46 +40,35 @@ export function DeleteCommandDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete command</DialogTitle>
-          <DialogDescription>
-            {commandName
-              ? `Are you sure you want to delete "${commandName}"? This cannot be undone.`
-              : "Are you sure you want to delete this command? This cannot be undone."}
-          </DialogDescription>
-        </DialogHeader>
-        {showPlaylistOption && (
-          <div className="flex items-start gap-2 py-2">
-            <input
-              type="checkbox"
-              id="delete-playlist-on-command-delete"
-              checked={deletePlaylist}
-              onChange={(e) => setDeletePlaylist(e.target.checked)}
-              className="mt-1 rounded border-input"
-            />
-            <Label
-              htmlFor="delete-playlist-on-command-delete"
-              className="cursor-pointer font-normal"
-            >
-              Also delete playlist from Plex/Jellyfin
-            </Label>
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={isDeleting}
-            onClick={() => void onConfirm(deletePlaylist)}
-          >
-            {isDeleting ? "Deleting…" : "Delete"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Delete command"
+      description={
+        commandName
+          ? `Are you sure you want to delete "${commandName}"? This cannot be undone.`
+          : "Are you sure you want to delete this command? This cannot be undone."
+      }
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      variant="destructive"
+      isLoading={isDeleting}
+      onConfirm={() => onConfirm(deletePlaylist)}
+    >
+      {showPlaylistOption && (
+        <div className="flex items-start gap-2 py-2">
+          <input
+            type="checkbox"
+            id="delete-playlist-on-command-delete"
+            checked={deletePlaylist}
+            onChange={(e) => setDeletePlaylist(e.target.checked)}
+            className="mt-1 rounded border-input"
+          />
+          <Label htmlFor="delete-playlist-on-command-delete" className="cursor-pointer font-normal">
+            Also delete playlist from Plex/Jellyfin
+          </Label>
+        </div>
+      )}
+    </ConfirmDialog>
   );
 }

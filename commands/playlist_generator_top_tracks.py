@@ -14,13 +14,11 @@ from utils.text_normalizer import normalize_text
 
 from .command_base import BaseCommand
 from .playlist_generator_helpers import (
-    build_auto_playlist_suffix,
+    compute_top_tracks_playlist_title,
     delete_playlist_on_target,
     persist_playlist_identity,
     validate_artists_against_cache,
 )
-
-PLAYLIST_TITLE_PREFIX = "[Cmdarr] Artist Essentials"
 
 
 class PlaylistGeneratorTopTracksCommand(BaseCommand):
@@ -100,13 +98,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 if (a or "").strip() and normalize_text((a or "").strip().lower()) in valid_norms
             ]
 
-            use_custom = config.get("use_custom_playlist_name", False)
-            custom_name = (config.get("custom_playlist_name") or "").strip()
-            if use_custom and custom_name:
-                suffix = custom_name
-            else:
-                suffix = build_auto_playlist_suffix(ordered_display_names)
-            playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
+            playlist_title = compute_top_tracks_playlist_title(ordered_display_names, config)
             last_playlist_title = config.get("last_playlist_title")
             last_playlist_id = config.get("last_playlist_id")
             title_changed = last_playlist_title and last_playlist_title != playlist_title
