@@ -9,6 +9,7 @@ import type {
   ConfigUpdateRequest,
   ConnectivityTestResult,
   StatusInfo,
+  MigrationStatus,
   NrdMetrics,
   NewReleasesResponse,
   PendingReleasesResponse,
@@ -250,6 +251,21 @@ class ApiClient {
 
   async getNrdMetrics(): Promise<NrdMetrics> {
     return await this.request("/api/status/nrd-metrics");
+  }
+
+  async getMigrationStatus(): Promise<MigrationStatus> {
+    return await this.request("/api/status/migrations");
+  }
+
+  async runDbMigrationsManual(): Promise<{
+    success: boolean;
+    ran: boolean;
+    reason: string;
+    migrations_run: number;
+    migration_names: string[];
+    failed_migration?: string;
+  }> {
+    return await this.request("/api/status/migrations/run", { method: "POST" });
   }
 
   async getCacheStatus(): Promise<{

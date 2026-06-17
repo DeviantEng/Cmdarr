@@ -118,58 +118,133 @@ class VersionMigrationRunner:
         except Exception as e:
             get_migrations_logger().error(f"Failed to update last run version: {e}")
 
-    def run_migrations_if_needed(self):
-        """Run migrations only if the version has changed"""
+    def _applicable_versions(self) -> list[str]:
+        """App version plus release base when developing on a -dev suffix (e.g. 0.3.16-dev → 0.3.16)."""
+        versions = [self.current_version]
+        if self.current_version.endswith("-dev"):
+            base = self.current_version[:-4]
+            if base and base not in versions:
+                versions.append(base)
+        return versions
+
+    def _migration_applies(self, migration: VersionMigration) -> bool:
+        return migration.version in self._applicable_versions()
+
+    def get_migration_status(self) -> dict:
+        """Snapshot for status API / dev manual migration UI."""
+        last_version = self.get_last_run_version()
+        applicable = self._applicable_versions()
+        pending = [
+            {
+                "name": m.name,
+                "version": m.version,
+                "description": m.description,
+            }
+            for m in self.migrations
+            if self._migration_applies(m)
+        ]
+        dev_manual_available = "-dev" in self.current_version
+        skipped = last_version == self.current_version
+        return {
+            "current_version": self.current_version,
+            "last_run_version": last_version,
+            "applicable_versions": applicable,
+            "pending_migrations": pending,
+            "auto_skipped": skipped,
+            "dev_manual_available": dev_manual_available,
+        }
+
+    def run_migrations(self, *, force: bool = False) -> dict:
+        """Run migrations for applicable versions. When force=True, ignore unchanged version."""
         last_version = self.get_last_run_version()
         current_version = self.current_version
+        log = get_migrations_logger()
 
-        get_migrations_logger().info(
-            f"Current version: {current_version}, Last run version: {last_version}"
+        log.info(
+            "Current version: %s, Last run version: %s%s",
+            current_version,
+            last_version,
+            " (manual force)" if force else "",
         )
 
-        if last_version == current_version:
-            get_migrations_logger().info("Version unchanged, skipping migrations")
-            return
+        if not force and last_version == current_version:
+            log.info("Version unchanged, skipping migrations")
+            return {
+                "ran": False,
+                "reason": "version_unchanged",
+                "migrations_run": 0,
+                "migration_names": [],
+            }
 
         if not Path(self.config_db_path).exists():
-            get_migrations_logger().info("Config database does not exist, skipping migrations")
-            return
+            log.info("Config database does not exist, skipping migrations")
+            return {
+                "ran": False,
+                "reason": "no_database",
+                "migrations_run": 0,
+                "migration_names": [],
+            }
 
-        get_migrations_logger().info(
-            f"Version changed from {last_version} to {current_version}, running migrations..."
-        )
+        if not force:
+            log.info(
+                "Version changed from %s to %s, running migrations...",
+                last_version,
+                current_version,
+            )
 
         try:
             conn = sqlite3.connect(self.config_db_path)
             cursor = conn.cursor()
 
-            # Run migrations for the current version
             migrations_run = 0
+            migration_names: list[str] = []
             for migration in self.migrations:
-                if migration.version == current_version:
-                    if migration.apply(cursor):
-                        migrations_run += 1
-                    else:
-                        get_migrations_logger().error(
-                            f"Migration {migration.name} failed, stopping"
-                        )
-                        conn.rollback()
-                        conn.close()
-                        return
+                if not self._migration_applies(migration):
+                    continue
+                if migration.apply(cursor):
+                    migrations_run += 1
+                    migration_names.append(migration.name)
+                else:
+                    log.error("Migration %s failed, stopping", migration.name)
+                    conn.rollback()
+                    conn.close()
+                    return {
+                        "ran": False,
+                        "reason": "migration_failed",
+                        "failed_migration": migration.name,
+                        "migrations_run": migrations_run,
+                        "migration_names": migration_names,
+                    }
 
             conn.commit()
             conn.close()
 
-            # Update the last run version
-            self.update_last_run_version(current_version)
+            if not force or last_version != current_version:
+                self.update_last_run_version(current_version)
 
-            get_migrations_logger().info(
-                f"Successfully ran {migrations_run} migrations for version {current_version}"
+            log.info(
+                "Successfully ran %s migrations for version %s",
+                migrations_run,
+                current_version,
             )
+            return {
+                "ran": True,
+                "reason": "manual_force" if force else "version_changed",
+                "migrations_run": migrations_run,
+                "migration_names": migration_names,
+            }
 
         except Exception as e:
-            get_migrations_logger().error(f"Migration failed: {e}")
+            log.error("Migration failed: %s", e)
             raise
+
+    def run_migrations_if_needed(self):
+        """Run migrations only if the version has changed."""
+        self.run_migrations(force=False)
+
+    def run_migrations_manual(self) -> dict:
+        """Dev-only: re-run applicable migrations even when app version is unchanged."""
+        return self.run_migrations(force=True)
 
 
 def create_version_migration_runner() -> VersionMigrationRunner:
@@ -440,7 +515,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
 
     runner.add_migration(
         VersionMigration(
-            version="0.3.17-dev",
+            version="0.3.16",
             name="lidarr_artist_deezer_id",
             description="Add deezer_artist_id cache column on lidarr_artist",
             up_func=migrate_lidarr_artist_deezer_id,
@@ -454,6 +529,17 @@ def run_version_migrations():
     """Run version-based migrations"""
     runner = create_version_migration_runner()
     runner.run_migrations_if_needed()
+
+
+def get_migration_status() -> dict:
+    runner = create_version_migration_runner()
+    return runner.get_migration_status()
+
+
+def run_version_migrations_manual() -> dict:
+    """Re-run applicable migrations (dev builds with unchanged version)."""
+    runner = create_version_migration_runner()
+    return runner.run_migrations_manual()
 
 
 if __name__ == "__main__":

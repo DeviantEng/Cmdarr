@@ -116,6 +116,16 @@ export interface EventsProviderInfo {
   configured: boolean;
 }
 
+export interface MigrationStatus {
+  success?: boolean;
+  current_version: string;
+  last_run_version: string | null;
+  applicable_versions: string[];
+  pending_migrations: { name: string; version: string; description: string }[];
+  auto_skipped: boolean;
+  dev_manual_available: boolean;
+}
+
 export interface StatusInfo {
   app_name: string;
   version: string;
