@@ -399,7 +399,13 @@ export function EventsPage() {
     }
   };
 
-  const toggleProvider = async (key: "ARTIST_EVENTS_TICKETMASTER_ENABLED", checked: boolean) => {
+  const toggleProvider = async (
+    key:
+      | "ARTIST_EVENTS_TICKETMASTER_ENABLED"
+      | "ARTIST_EVENTS_SEATGEEK_ENABLED"
+      | "ARTIST_EVENTS_DEEZER_ENABLED",
+    checked: boolean
+  ) => {
     try {
       await saveConfig(key, { value: checked, data_type: "bool" });
       const ps = await api.getEventsProviderStatus();
@@ -412,8 +418,16 @@ export function EventsPage() {
 
   const sourceBadge = (p: string) => {
     if (p === "ticketmaster") return "TM";
+    if (p === "seatgeek") return "SG";
+    if (p === "deezer") return "DZ";
     return p.slice(0, 3).toUpperCase();
   };
+
+  const deezerEnabledInList = events.some((ev) =>
+    (ev.source_links?.length ? ev.source_links : ev.sources.map((s) => ({ provider: s }))).some(
+      (r) => r.provider === "deezer"
+    )
+  );
 
   const hiddenTotal = hiddenArtistCount + hiddenEventCount;
 
@@ -444,17 +458,17 @@ export function EventsPage() {
         <CardHeader className="space-y-1 px-4 py-3">
           <CardTitle className="text-base">Providers</CardTitle>
           <CardDescription className="text-xs leading-snug">
-            Enable Ticketmaster Discovery; add your Consumer Key in{" "}
+            Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in{" "}
             <Link to="/config" className="underline font-medium text-foreground">
               Configuration &gt; Event Sources
             </Link>
-            . Ticketmaster must be ready before refresh runs.
+            . At least one provider must be ready before refresh runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4 pb-3 pt-0">
           {!providerStatus?.any_ready && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              Ticketmaster not configured — add your Consumer Key in{" "}
+              No provider configured — add API keys in{" "}
               <Link to="/config" className="underline font-medium">
                 Configuration
               </Link>
@@ -474,7 +488,47 @@ export function EventsPage() {
                 </span>
               </div>
             </div>
+            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+              <Label className="text-xs font-normal">SeatGeek</Label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={settings?.seatgeek_enabled ?? false}
+                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SEATGEEK_ENABLED", c)}
+                />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {providerStatus?.seatgeek.enabled ? "ready" : "needs client_id"}
+                </span>
+              </div>
+            </div>
+            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+              <Label className="text-xs font-normal">Deezer</Label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={settings?.deezer_enabled ?? false}
+                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_DEEZER_ENABLED", c)}
+                />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {providerStatus?.deezer.enabled ? "ready" : "needs ARL"}
+                </span>
+              </div>
+            </div>
           </div>
+          {providerStatus?.seatgeek.configured && (
+            <p className="text-xs text-muted-foreground leading-snug">
+              SeatGeek free tier allows roughly 500 API requests per day. Large libraries may need a
+              longer refresh interval.
+            </p>
+          )}
+          {(settings?.deezer_enabled || deezerEnabledInList) && (
+            <p className="text-xs text-muted-foreground leading-snug">
+              Deezer concert data uses an unofficial GraphQL API (Songkick-sourced). Set your ARL
+              cookie in{" "}
+              <Link to="/config" className="underline font-medium text-foreground">
+                Configuration
+              </Link>
+              ; it may stop working if Deezer changes their API.
+            </p>
+          )}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <div className="inline-flex">
               <Button
@@ -630,6 +684,8 @@ export function EventsPage() {
                 <SelectContent>
                   <SelectItem value="all">All sources</SelectItem>
                   <SelectItem value="ticketmaster">Ticketmaster</SelectItem>
+                  <SelectItem value="seatgeek">SeatGeek</SelectItem>
+                  <SelectItem value="deezer">Deezer</SelectItem>
                 </SelectContent>
               </Select>
             </div>

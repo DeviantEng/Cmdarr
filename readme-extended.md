@@ -208,23 +208,27 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 ### Event Sources (artist events)
 
-Upcoming shows are aggregated on **Artist events** (`/events`) from **Ticketmaster Discovery** when enabled.
+Upcoming shows are aggregated on **Artist events** (`/events`) from **Ticketmaster Discovery** (primary), **SeatGeek** (secondary), and/or **Deezer** (tertiary, unofficial GraphQL) when enabled. The same show from multiple providers appears once in the list with separate **TM**, **SG**, and **DZ** ticket links.
 
 **Where to configure what**
 
 | What | Where |
 |------|--------|
-| **Enable Ticketmaster** (on/off) | **Artist events** page only — not duplicated under Config. |
-| **Ticketmaster Consumer Key** | **Config → Event Sources** (`artist_events`), or environment variables. |
+| **Enable Ticketmaster / SeatGeek / Deezer** (on/off) | **Artist events** page only — not duplicated under Config. |
+| **Credentials** (Ticketmaster Consumer Key, SeatGeek client_id, Deezer ARL cookie) | **Config → Event Sources** (`artist_events`), or environment variables. |
 | **Batch size & per-artist TTL** | **Commands → Artist Events Refresh** → Edit: `artists_per_run` (default **20**, range 1–50), `refresh_ttl_days` (default **14** days). These live in the command’s `config_json`, not global Config. |
 | **Location & radius** (distance filter on `/events`) | **Artist events** page (stored as `ARTIST_EVENTS_USER_*` / radius; those keys are hidden on the Config page). |
 
-Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run scheduled batch** or **Refresh all due artists** on the Artist events page, or Commands → Run). An ad-hoc run can pass **`refresh_all_due: true`** (via the “Refresh all due artists” button) to process every due artist in one execution instead of the usual batch cap.
+Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run scheduled batch** or **Refresh all due artists** on the Artist events page, or Commands → Run). Providers run in parallel per artist. An ad-hoc run can pass **`refresh_all_due: true`** (via the “Refresh all due artists” button) to process every due artist in one execution instead of the usual batch cap.
 
 | Setting | Required? | Notes |
 |---------|-----------|--------|
-| `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. Toggled on **Artist events** only. |
+| `ARTIST_EVENTS_TICKETMASTER_ENABLED` | No | Default off. Toggled on **Artist events** only. Primary US source. |
 | `ARTIST_EVENTS_TICKETMASTER_API_KEY` | **Yes if Ticketmaster enabled** | [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/getting-started/) uses a single `apikey` query parameter. Paste your **Consumer Key** here. The **Consumer Secret** is for other OAuth-style flows and is **not** used by Cmdarr’s Discovery GET requests. |
+| `ARTIST_EVENTS_SEATGEEK_ENABLED` | No | Default off. Toggled on **Artist events** only. Secondary source. |
+| `ARTIST_EVENTS_SEATGEEK_CLIENT_ID` | **Yes if SeatGeek enabled** | Free [SeatGeek API](https://seatgeek.com/account/develop) `client_id`. Starter tier is ~**500 requests/day**. |
+| `ARTIST_EVENTS_DEEZER_ENABLED` | No | Default off. Tertiary source via unofficial Pipe GraphQL. |
+| `ARTIST_EVENTS_DEEZER_ARL` | **Yes if Deezer enabled** | Deezer **ARL** cookie for JWT auth against `pipe.deezer.com`. Concert data is Songkick-sourced and may break without notice. |
 | `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | **No** | Distance filter only; set from **Artist events**. Hidden on Config. |
 | `ARTIST_EVENTS_RADIUS_MILES` | — | Default `100`. Set from **Artist events**; hidden on Config. |
 
@@ -285,9 +289,13 @@ SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 MUSICBRAINZ_ENABLED=true
 NEW_RELEASES_CACHE_DAYS=14
 
-# Artist events (Event Sources in UI; Ticketmaster Discovery)
+# Artist events (Event Sources in UI)
 ARTIST_EVENTS_TICKETMASTER_ENABLED=false
 ARTIST_EVENTS_TICKETMASTER_API_KEY=
+ARTIST_EVENTS_SEATGEEK_ENABLED=false
+ARTIST_EVENTS_SEATGEEK_CLIENT_ID=
+ARTIST_EVENTS_DEEZER_ENABLED=false
+ARTIST_EVENTS_DEEZER_ARL=
 # Optional: distance filter on /events (not required for artist_events_refresh)
 ARTIST_EVENTS_USER_LAT=
 ARTIST_EVENTS_USER_LON=

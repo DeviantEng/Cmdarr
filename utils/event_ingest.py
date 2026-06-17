@@ -75,6 +75,9 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
                     existing.festival_key = new_fk
             if item.get("tm_event_name") and not existing.tm_event_name:
                 existing.tm_event_name = (item["tm_event_name"] or "")[:500]
+            jb_display = item.get("provider_event_name") or item.get("jb_event_name")
+            if jb_display and not existing.tm_event_name:
+                existing.tm_event_name = (jb_display or "")[:500]
 
         ext = (item.get("external_id") or "")[:256]
         prov = item["provider"]

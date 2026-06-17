@@ -54,19 +54,32 @@ def test_persist_inserts_new_canonical_event_and_source(session):
     assert session.query(ArtistEventSource).count() == 1
 
 
-def test_persist_merges_duplicate_rows_across_providers_with_noisy_coords(session):
-    tm = _item(provider="ticketmaster", external_id="tm-1")
-    other = _item(
-        provider="other_feed",
-        external_id="other-xyz",
-        source_url="https://example.com/other-xyz",
+def test_persist_merges_ticketmaster_and_seatgeek_same_show(session):
+    tm = _item(
+        provider="ticketmaster",
+        external_id="tm-1",
+        venue_name="Brooklyn Bowl",
+        venue_city="Nashville",
+        venue_region="TN",
+        venue_lat=36.16251,
+        venue_lon=-86.77148,
+        tm_event_name="Black Veil Brides at Brooklyn Bowl",
+    )
+    sg = _item(
+        provider="seatgeek",
+        external_id="sg-801255",
+        source_url="https://seatgeek.com/autumn-kings-tickets/nashville-20260918",
+        venue_name="Brooklyn Bowl",
+        venue_city="Nashville",
+        venue_region="TN",
         venue_lat=36.16284,
         venue_lon=-86.77112,
+        provider_event_name="Autumn Kings at Brooklyn Bowl",
     )
 
     n1, s1 = persist_normalized_events(session, [tm])
     session.commit()
-    n2, s2 = persist_normalized_events(session, [other])
+    n2, s2 = persist_normalized_events(session, [sg])
     session.commit()
 
     assert (n1, s1) == (1, 1)
@@ -74,7 +87,7 @@ def test_persist_merges_duplicate_rows_across_providers_with_noisy_coords(sessio
     assert s2 == 1
     assert session.query(ArtistEvent).count() == 1
     providers = sorted(r.provider for r in session.query(ArtistEventSource).all())
-    assert providers == ["other_feed", "ticketmaster"]
+    assert providers == ["seatgeek", "ticketmaster"]
 
 
 def test_persist_is_idempotent_for_same_provider_external_id(session):

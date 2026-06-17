@@ -187,6 +187,7 @@ class LidarrArtist(ConfigBase):
     artist_name = Column(String(500), nullable=False, index=True)
     lidarr_id = Column(Integer, nullable=True)
     spotify_artist_id = Column(String(100), nullable=True)
+    deezer_artist_id = Column(String(64), nullable=True)
     last_synced_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
@@ -226,7 +227,7 @@ class ArtistEvent(ConfigBase):
     local_date = Column(String(20), nullable=False, index=True)
     dedupe_key = Column(String(64), nullable=False, unique=True, index=True)
     user_interested = Column(Boolean, nullable=False, default=False)
-    # Ticketmaster-only metadata
+    # Provider display names (Ticketmaster / secondary provider event titles)
     tm_event_name = Column(String(500), nullable=True)
     event_kind = Column(String(32), nullable=False, default="show", index=True)
     festival_key = Column(String(256), nullable=True, index=True)

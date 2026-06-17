@@ -71,17 +71,32 @@ class FestivalHiddenRequest(BaseModel):
 
 @router.get("/provider-status")
 async def provider_status():
-    """Whether Ticketmaster is enabled and configured."""
+    """Which event providers are enabled and configured."""
     tm = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
     tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
+    sg = config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False)
+    sg_id = (config_service.get("ARTIST_EVENTS_SEATGEEK_CLIENT_ID", "") or "").strip()
+    dz = config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False)
+    dz_arl = (config_service.get("ARTIST_EVENTS_DEEZER_ARL", "") or "").strip()
     ticketmaster = {
         "enabled": bool(tm and tm_key),
         "configured": bool(tm_key),
     }
+    seatgeek = {
+        "enabled": bool(sg and sg_id),
+        "configured": bool(sg_id),
+    }
+    deezer = {
+        "enabled": bool(dz and dz_arl),
+        "configured": bool(dz_arl),
+    }
+    any_ready = ticketmaster["enabled"] or seatgeek["enabled"] or deezer["enabled"]
     return {
         "success": True,
         "ticketmaster": ticketmaster,
-        "any_ready": ticketmaster["enabled"],
+        "seatgeek": seatgeek,
+        "deezer": deezer,
+        "any_ready": any_ready,
     }
 
 
@@ -442,6 +457,8 @@ async def get_events_settings():
     return {
         "success": True,
         "ticketmaster_enabled": config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False),
+        "seatgeek_enabled": config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False),
+        "deezer_enabled": config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False),
         "user_lat": config_service.get("ARTIST_EVENTS_USER_LAT", "") or "",
         "user_lon": config_service.get("ARTIST_EVENTS_USER_LON", "") or "",
         "user_label": config_service.get("ARTIST_EVENTS_USER_LABEL", "") or "",
