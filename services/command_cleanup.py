@@ -209,11 +209,14 @@ class CommandCleanupService:
         Only deletes playlist when expires_at_delete_playlist is True (default).
         """
         cfg = command_config.config_json or {}
-        name = command_config.command_name or ""
-        delete_playlist = cfg.get("expires_at_delete_playlist", True)
-
-        if not delete_playlist:
+        if not cfg.get("expires_at_delete_playlist", True):
             return
+        self.delete_playlist_for_command(command_config)
+
+    def delete_playlist_for_command(self, command_config: CommandConfig) -> None:
+        """Delete the target playlist associated with a command (if any)."""
+        cfg = command_config.config_json or {}
+        name = command_config.command_name or ""
 
         if name.startswith("playlist_sync_"):
             target = str(cfg.get("target", "plex")).lower()
@@ -249,7 +252,9 @@ class CommandCleanupService:
                     pl_title = f"[Cmdarr] Artist Essentials: {suffix}"
                 else:
                     pl_title = "[Cmdarr] Artist Essentials: Mix"
-            self._delete_playlist_if_exists(target, pl_title)
+            self._delete_playlist_if_exists(
+                target, pl_title, playlist_id=cfg.get("last_playlist_id")
+            )
         elif name.startswith("lfm_similar_"):
             target = str(cfg.get("target", "plex")).lower()
             pl_title = cfg.get("last_playlist_title")
@@ -268,7 +273,9 @@ class CommandCleanupService:
                     pl_title = f"[Cmdarr] Last.fm Similar: {suffix}"
                 else:
                     pl_title = "[Cmdarr] Last.fm Similar: Mix"
-            self._delete_playlist_if_exists(target, pl_title)
+            self._delete_playlist_if_exists(
+                target, pl_title, playlist_id=cfg.get("last_playlist_id")
+            )
         elif name.startswith("setlistfm_"):
             target = str(cfg.get("target", "plex")).lower()
             pl_title = cfg.get("last_playlist_title")
@@ -276,7 +283,9 @@ class CommandCleanupService:
                 from commands.playlist_generator_helpers import compute_setlistfm_playlist_title
 
                 pl_title = compute_setlistfm_playlist_title(dict(cfg))
-            self._delete_playlist_if_exists(target, pl_title)
+            self._delete_playlist_if_exists(
+                target, pl_title, playlist_id=cfg.get("last_playlist_id")
+            )
         elif name.startswith("daylist_"):
             token = self._get_user_token_for_playlist_delete(cfg)
             self._delete_playlist_if_exists("plex", "[Cmdarr] Daylist", token_override=token)
@@ -305,7 +314,9 @@ class CommandCleanupService:
                     pl_title = f"[Cmdarr] Mood: {_build_auto_playlist_suffix(moods)}"
                 else:
                     pl_title = "[Cmdarr] Mood: Mix"
-            self._delete_playlist_if_exists("plex", pl_title)
+            self._delete_playlist_if_exists(
+                "plex", pl_title, playlist_id=cfg.get("last_playlist_id")
+            )
         elif name.startswith("local_discovery_"):
             token = self._get_user_token_for_playlist_delete(cfg)
             self._delete_playlist_if_exists(
@@ -324,14 +335,24 @@ class CommandCleanupService:
                     token = self._get_user_token_for_playlist_delete(
                         {"plex_history_account_id": user_id}
                     )
-                    self._delete_playlist_if_exists(target, pl_title, token_override=token)
+                    self._delete_playlist_if_exists(
+                        target,
+                        pl_title,
+                        playlist_id=cfg.get("last_playlist_id"),
+                        token_override=token,
+                    )
             else:
                 token_override = None
                 if target == "plex":
                     token_override = self._get_user_token_for_playlist_delete(
                         {"plex_history_account_id": cfg.get("plex_playlist_account_id")}
                     )
-                self._delete_playlist_if_exists(target, pl_title, token_override=token_override)
+                self._delete_playlist_if_exists(
+                    target,
+                    pl_title,
+                    playlist_id=cfg.get("last_playlist_id"),
+                    token_override=token_override,
+                )
 
     def _get_user_token_for_playlist_delete(self, cfg: dict) -> str | None:
         """Resolve user token for daylist/local_discovery playlist deletion.
@@ -358,32 +379,41 @@ class CommandCleanupService:
             return None
 
     def _delete_playlist_if_exists(
-        self, target: str, playlist_name: str, token_override: str | None = None
+        self,
+        target: str,
+        playlist_name: str | None = None,
+        *,
+        playlist_id: str | None = None,
+        token_override: str | None = None,
     ):
-        """Delete playlist from Plex or Jellyfin if it exists."""
+        """Delete playlist from Plex or Jellyfin by ID (preferred) or name."""
         try:
             from commands.config_adapter import Config
+            from commands.playlist_generator_helpers import delete_playlist_on_target
 
             config = Config()
             if target == "plex":
                 from clients.client_plex import PlexClient
 
                 client = PlexClient(config, token_override=token_override)
-                pl = client.find_playlist_by_name(playlist_name)
-                if pl and pl.get("ratingKey"):
-                    client.delete_playlist(pl["ratingKey"])
-                    logger.info(f"Deleted expired playlist from Plex: {playlist_name}")
+                delete_playlist_on_target(
+                    client,
+                    playlist_id=playlist_id,
+                    playlist_title=playlist_name,
+                    logger=logger,
+                )
             elif target == "jellyfin":
                 from clients.client_jellyfin import JellyfinClient
 
                 client = JellyfinClient(config)
-                pl = client.find_playlist_by_name(playlist_name)
-                if pl and pl.get("Id"):
-                    if hasattr(client, "delete_playlist_sync"):
-                        client.delete_playlist_sync(pl["Id"])
-                        logger.info(f"Deleted expired playlist from Jellyfin: {playlist_name}")
+                delete_playlist_on_target(
+                    client,
+                    playlist_id=playlist_id,
+                    playlist_title=playlist_name,
+                    logger=logger,
+                )
         except Exception as e:
-            logger.warning(f"Could not delete playlist {playlist_name}: {e}")
+            logger.warning(f"Could not delete playlist: {e}")
 
     async def cleanup_startup_stuck_commands(self) -> list[str]:
         """

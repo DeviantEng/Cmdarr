@@ -383,8 +383,13 @@ async def update_command(
                 old_target = str(prev_config_snapshot.get("target", "plex")).lower()
                 new_target = str(merged.get("target", "plex")).lower()
                 if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(old_target, old_last)
+                    CommandCleanupService()._delete_playlist_if_exists(
+                        old_target,
+                        old_last,
+                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
+                    )
                     merged.pop("last_playlist_title", None)
+                    merged.pop("last_playlist_id", None)
                     command.config_json = merged
                 command.display_name = new_title
             elif command_name.startswith("top_tracks_"):
@@ -399,8 +404,13 @@ async def update_command(
                 old_target = str(prev_config_snapshot.get("target", "plex")).lower()
                 new_target = str(merged.get("target", "plex")).lower()
                 if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(old_target, old_last)
+                    CommandCleanupService()._delete_playlist_if_exists(
+                        old_target,
+                        old_last,
+                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
+                    )
                     merged.pop("last_playlist_title", None)
+                    merged.pop("last_playlist_id", None)
                     command.config_json = merged
                 command.display_name = new_title
             elif command_name.startswith("setlistfm_"):
@@ -413,8 +423,13 @@ async def update_command(
                 old_target = str(prev_config_snapshot.get("target", "plex")).lower()
                 new_target = str(merged.get("target", "plex")).lower()
                 if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(old_target, old_last)
+                    CommandCleanupService()._delete_playlist_if_exists(
+                        old_target,
+                        old_last,
+                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
+                    )
                     merged.pop("last_playlist_title", None)
+                    merged.pop("last_playlist_id", None)
                     command.config_json = merged
                 command.display_name = new_title
             # display_name for daylist/local_discovery: sync when plex_history_account_id changes
@@ -2233,7 +2248,11 @@ async def create_listenbrainz_playlist_sync(request: dict, db: Session = Depends
 
 
 @router.delete("/{command_name}")
-async def delete_command(command_name: str, db: Annotated[Session, Depends(get_config_db)]):
+async def delete_command(
+    command_name: str,
+    db: Annotated[Session, Depends(get_config_db)],
+    delete_playlist: bool = Query(False, description="Also delete playlist from configured target"),
+):
     """Delete a command (enhanced to support playlist_sync_* commands)"""
     try:
         # Validate command_name parameter
@@ -2262,6 +2281,11 @@ async def delete_command(command_name: str, db: Annotated[Session, Depends(get_c
             "playlist_sync_discovery_maintenance",
         ]:
             raise HTTPException(status_code=400, detail="Cannot delete built-in commands")
+
+        if delete_playlist:
+            from services.command_cleanup import CommandCleanupService
+
+            CommandCleanupService().delete_playlist_for_command(command)
 
         # Soft delete: keep for 7 days so execution history retains display_name
         command.deleted_at = datetime.utcnow()

@@ -218,3 +218,84 @@ def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str
     else:
         suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
     return f"{PLAYLIST_TITLE_TOP_TRACKS_PREFIX}: {suffix}"
+
+
+def persist_playlist_identity(
+    command_name: str,
+    command_name_prefix: str,
+    playlist_title: str,
+    playlist_id: str | None,
+    logger: Any,
+    *,
+    update_display_name: bool = True,
+) -> None:
+    """Persist last_playlist_title and last_playlist_id on CommandConfig after a successful sync."""
+    if not command_name or not command_name.startswith(command_name_prefix):
+        return
+    try:
+        from database.config_models import CommandConfig
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            cmd = (
+                session.query(CommandConfig)
+                .filter(CommandConfig.command_name == command_name)
+                .first()
+            )
+            if cmd:
+                cfg = dict(cmd.config_json or {})
+                cfg["last_playlist_title"] = playlist_title
+                if playlist_id:
+                    cfg["last_playlist_id"] = str(playlist_id)
+                else:
+                    cfg.pop("last_playlist_id", None)
+                cmd.config_json = cfg
+                if update_display_name:
+                    cmd.display_name = playlist_title
+                session.commit()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"Could not persist playlist identity: {e}")
+
+
+def delete_playlist_on_target(
+    target_client: Any,
+    *,
+    playlist_id: str | None = None,
+    playlist_title: str | None = None,
+    logger: Any | None = None,
+) -> None:
+    """Delete a playlist by stored ID (preferred) or by name fallback."""
+    log = logger
+    try:
+        if playlist_id:
+            if hasattr(target_client, "get_playlist_by_id"):
+                pl = target_client.get_playlist_by_id(playlist_id)
+                if pl:
+                    if pl.get("ratingKey"):
+                        target_client.delete_playlist(pl["ratingKey"])
+                    elif pl.get("Id"):
+                        target_client.delete_playlist(pl["Id"])
+                    if log:
+                        log.info(f"Deleted playlist by id {playlist_id}")
+                    return
+            if hasattr(target_client, "delete_playlist"):
+                target_client.delete_playlist(playlist_id)
+                if log:
+                    log.info(f"Deleted playlist by id {playlist_id}")
+                return
+        if playlist_title and hasattr(target_client, "find_playlist_by_name"):
+            pl = target_client.find_playlist_by_name(playlist_title)
+            if pl:
+                if pl.get("ratingKey"):
+                    target_client.delete_playlist(pl["ratingKey"])
+                elif pl.get("Id"):
+                    target_client.delete_playlist(pl["Id"])
+                if log:
+                    log.info(f"Deleted playlist '{playlist_title}' (name fallback)")
+    except Exception as e:
+        if log:
+            log.warning(f"Could not delete playlist: {e}")

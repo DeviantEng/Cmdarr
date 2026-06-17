@@ -15,6 +15,7 @@ from utils.library_cache_manager import get_library_cache_manager
 from utils.text_normalizer import normalize_text
 
 from .command_base import BaseCommand
+from .playlist_generator_helpers import delete_playlist_on_target, persist_playlist_identity
 
 
 def _dedupe_tracks(tracks: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -147,50 +148,6 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
             return JellyfinClient(self.config), "jellyfin"
         return self.plex_client, "plex"
 
-    def _delete_playlist_by_name(
-        self, target_client: PlexClient | JellyfinClient, playlist_title: str
-    ) -> None:
-        try:
-            pl = target_client.find_playlist_by_name(playlist_title)
-            if not pl:
-                return
-            if isinstance(target_client, PlexClient):
-                rk = pl.get("ratingKey")
-                if rk:
-                    target_client.delete_playlist(rk)
-            else:
-                pid = pl.get("Id")
-                if pid:
-                    target_client.delete_playlist(pid)
-        except Exception as e:
-            self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
-
-    def _persist_after_success(self, sync_playlist_title: str) -> None:
-        try:
-            from database.config_models import CommandConfig
-            from database.database import get_database_manager
-
-            cmd_name = self.config_json.get("command_name", "")
-            if not cmd_name or not cmd_name.startswith("xmplaylist_"):
-                return
-            db = get_database_manager()
-            session = db.get_config_session_sync()
-            try:
-                cmd = (
-                    session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == cmd_name)
-                    .first()
-                )
-                if cmd:
-                    cfg = dict(cmd.config_json or {})
-                    cfg["last_playlist_title"] = sync_playlist_title
-                    cmd.config_json = cfg
-                    session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            self.logger.warning(f"Could not persist after success: {e}")
-
     def _register_for_library_cache(
         self, target_key: str, register_client: PlexClient | JellyfinClient
     ) -> None:
@@ -279,8 +236,10 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                 return True
 
             sync_title = _build_xmplaylist_sync_title(cfg)
-            last_title = cfg.get("last_playlist_title")
-            if last_title and last_title != sync_title:
+            last_playlist_title = cfg.get("last_playlist_title")
+            last_playlist_id = cfg.get("last_playlist_id")
+            title_changed = last_playlist_title and last_playlist_title != sync_title
+            if title_changed:
                 if multi_plex:
                     from utils.plex_user import get_token_for_user
 
@@ -289,9 +248,19 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                         pc_del = (
                             PlexClient(self.config, token_override=tok) if tok else self.plex_client
                         )
-                        self._delete_playlist_by_name(pc_del, last_title)
+                        delete_playlist_on_target(
+                            pc_del,
+                            playlist_id=str(last_playlist_id) if last_playlist_id else None,
+                            playlist_title=last_playlist_title,
+                            logger=self.logger,
+                        )
                 else:
-                    self._delete_playlist_by_name(target_client, last_title)
+                    delete_playlist_on_target(
+                        target_client,
+                        playlist_id=str(last_playlist_id) if last_playlist_id else None,
+                        playlist_title=last_playlist_title,
+                        logger=self.logger,
+                    )
 
             if kind == "most_heard":
                 summary = f"SiriusXM via xmplaylist.com — most played ({most_days}d)"
@@ -345,6 +314,7 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                         summary=summary,
                         library_cache_manager=self.library_cache_manager,
                         library_key=library_key,
+                        existing_playlist_id=None if title_changed else last_playlist_id,
                     )
                     if not bool(result.get("success")):
                         all_ok = False
@@ -362,6 +332,7 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                     summary=summary,
                     library_cache_manager=self.library_cache_manager,
                     library_key=library_key,
+                    existing_playlist_id=None if title_changed else last_playlist_id,
                 )
 
                 success = bool(result.get("success"))
@@ -428,7 +399,14 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
 
             if success:
                 self.logger.info(f"XM playlist '{sync_title}': {found}/{total} tracks matched")
-                self._persist_after_success(sync_title)
+                persist_playlist_identity(
+                    self.config_json.get("command_name", ""),
+                    "xmplaylist_",
+                    sync_title,
+                    result.get("playlist_id"),
+                    self.logger,
+                    update_display_name=False,
+                )
             else:
                 self.last_run_stats["error"] = result.get("message") or "sync_playlist failed"
 
