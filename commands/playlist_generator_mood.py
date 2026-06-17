@@ -13,6 +13,7 @@ from clients.client_plex import PlexClient
 from utils.library_cache_manager import get_library_cache_manager
 
 from .command_base import BaseCommand
+from .playlist_generator_helpers import delete_playlist_on_target, persist_playlist_identity
 
 PLAYLIST_TITLE_PREFIX = "[Cmdarr] Mood"
 SEP = " · "
@@ -71,44 +72,6 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 session.close()
         except Exception as e:
             self.logger.warning(f"Could not persist last_run_track_ids: {e}")
-
-    def _persist_after_success(self, playlist_title: str) -> None:
-        """Persist last_playlist_title and update display_name to match playlist."""
-        try:
-            from database.config_models import CommandConfig
-            from database.database import get_database_manager
-
-            cmd_name = self.config_json.get("command_name", "")
-            if not cmd_name or not cmd_name.startswith("mood_playlist_"):
-                return
-            db = get_database_manager()
-            session = db.get_config_session_sync()
-            try:
-                cmd = (
-                    session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == cmd_name)
-                    .first()
-                )
-                if cmd:
-                    cfg = dict(cmd.config_json or {})
-                    cfg["last_playlist_title"] = playlist_title
-                    cmd.config_json = cfg
-                    cmd.display_name = playlist_title
-                    session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            self.logger.warning(f"Could not persist after success: {e}")
-
-    def _delete_playlist_by_name(self, playlist_title: str) -> None:
-        """Delete a playlist by name from Plex (mood playlists are Plex-only)."""
-        try:
-            pl = self.plex_client.find_playlist_by_name(playlist_title)
-            if pl and pl.get("ratingKey"):
-                self.plex_client.delete_playlist(pl["ratingKey"])
-                self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
-        except Exception as e:
-            self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
 
     async def execute(self) -> bool:
         try:
@@ -235,8 +198,15 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
             # 4. Create playlist
             playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
             last_playlist_title = config.get("last_playlist_title")
-            if last_playlist_title and last_playlist_title != playlist_title:
-                self._delete_playlist_by_name(last_playlist_title)
+            last_playlist_id = config.get("last_playlist_id")
+            title_changed = last_playlist_title and last_playlist_title != playlist_title
+            if title_changed:
+                delete_playlist_on_target(
+                    self.plex_client,
+                    playlist_id=str(last_playlist_id) if last_playlist_id else None,
+                    playlist_title=last_playlist_title,
+                    logger=self.logger,
+                )
             summary = f"Moods: {', '.join(moods[:5])}{'...' if len(moods) > 5 else ''}"
 
             result = self.plex_client.sync_playlist(
@@ -244,12 +214,19 @@ class PlaylistGeneratorMoodCommand(BaseCommand):
                 tracks=sampled_deduped,
                 summary=summary,
                 library_key=library_key,
+                existing_playlist_id=None if title_changed else last_playlist_id,
             )
 
             success = result.get("success", False)
             if success:
                 self._persist_last_run_track_ids([t["rating_key"] for t in sampled_deduped])
-                self._persist_after_success(playlist_title)
+                persist_playlist_identity(
+                    self.config_json.get("command_name", ""),
+                    "mood_playlist_",
+                    playlist_title,
+                    result.get("playlist_id"),
+                    self.logger,
+                )
                 self.logger.info(
                     f"Created playlist '{playlist_title}': {len(sampled_deduped)} tracks from {len(moods)} moods"
                 )

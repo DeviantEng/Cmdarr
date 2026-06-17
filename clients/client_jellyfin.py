@@ -1015,12 +1015,14 @@ class JellyfinClient(BaseAPIClient):
 
         return len(intersection) / len(union) if union else 0.0
 
-    def create_playlist_sync(self, title: str, track_ids: list[str], summary: str = "") -> bool:
+    def create_playlist_sync(
+        self, title: str, track_ids: list[str], summary: str = ""
+    ) -> str | None:
         """Create a new playlist with the given tracks using synchronous requests (like Plex)"""
         try:
             if not track_ids:
                 self.logger.warning("No tracks provided for playlist creation")
-                return False
+                return None
 
             self.logger.info(f"Creating playlist '{title}' with {len(track_ids)} tracks")
 
@@ -1072,24 +1074,24 @@ class JellyfinClient(BaseAPIClient):
                             self.logger.warning(
                                 f"Failed to clear cache after creating playlist '{title}': {cache_error}"
                             )
-                    return True
+                    return str(playlist_id)
                 else:
                     self.logger.error(f"Failed to create playlist '{title}' - no ID in response")
-                    return False
+                    return None
             else:
                 self.logger.error(
                     f"Failed to create playlist '{title}' - status {response.status_code}"
                 )
-                return False
+                return None
 
         except requests.exceptions.RequestException as e:
             self.logger.error(f"HTTP error creating playlist '{title}': {e}")
-            return False
+            return None
         except Exception as e:
             self.logger.error(f"Failed to create playlist '{title}': {e}")
-            return False
+            return None
 
-    def create_playlist(self, title: str, track_ids: list[str], summary: str = "") -> bool:
+    def create_playlist(self, title: str, track_ids: list[str], summary: str = "") -> str | None:
         """Create a new playlist with the given tracks"""
         # Use synchronous method for reliability (like Plex)
         return self.create_playlist_sync(title, track_ids, summary)
@@ -1252,6 +1254,22 @@ class JellyfinClient(BaseAPIClient):
         """Find a playlist by name"""
         return self.find_playlist_by_name_sync(playlist_name)
 
+    def get_playlist_by_id(self, playlist_id: str) -> dict[str, Any] | None:
+        """Fetch playlist metadata by Jellyfin Id."""
+        try:
+            headers = {"X-Emby-Token": self.token}
+            response = self._session.get(
+                f"{self.base_url}/Items/{playlist_id}", headers=headers, timeout=30
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+            return data if data.get("Id") else None
+        except Exception as e:
+            self.logger.debug(f"Playlist {playlist_id} not found: {e}")
+            return None
+
     def delete_playlist_sync(self, playlist_id: str) -> bool:
         """Delete a playlist by ID using synchronous requests"""
         try:
@@ -1412,12 +1430,15 @@ class JellyfinClient(BaseAPIClient):
             return False
 
     def create_or_update_playlist_sync(
-        self, title: str, track_ids: list[str], summary: str = ""
-    ) -> bool:
+        self,
+        title: str,
+        track_ids: list[str],
+        summary: str = "",
+        existing_playlist_id: str | None = None,
+    ) -> str | None:
         """
         Create a new playlist or update an existing one with the same name.
-        Enhanced with playlist validation to avoid unnecessary recreation.
-        Handles multiple duplicates by deleting ALL existing playlists with the same name.
+        Returns playlist Id on success, None on failure.
         """
         try:
             # Validate input track IDs
@@ -1425,7 +1446,7 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.warning(
                     f"No track IDs provided for playlist '{title}', skipping creation"
                 )
-                return False
+                return None
 
             # Filter out None values and validate track IDs
             valid_track_ids = [tid for tid in track_ids if tid is not None and tid.strip()]
@@ -1433,15 +1454,20 @@ class JellyfinClient(BaseAPIClient):
                 self.logger.warning(
                     f"No valid track IDs provided for playlist '{title}', skipping creation"
                 )
-                return False
+                return None
 
             if len(valid_track_ids) != len(track_ids):
                 self.logger.warning(
                     f"Filtered out {len(track_ids) - len(valid_track_ids)} invalid track IDs for playlist '{title}'"
                 )
 
-            # Check if playlists with this name already exist
-            existing_playlists = self.find_all_playlists_by_name_sync(title)
+            existing_playlists: list[dict[str, Any]] = []
+            if existing_playlist_id:
+                pl = self.get_playlist_by_id(existing_playlist_id)
+                if pl:
+                    existing_playlists = [pl]
+            if not existing_playlists:
+                existing_playlists = self.find_all_playlists_by_name_sync(title)
 
             if existing_playlists:
                 self.logger.info(
@@ -1466,7 +1492,7 @@ class JellyfinClient(BaseAPIClient):
                                     f"Deleting duplicate playlist '{title}' (ID: {other_playlist['Id']})"
                                 )
                                 self.delete_playlist_sync(other_playlist["Id"])
-                        return True
+                        return str(existing_playlist["Id"])
 
                 # Check if any existing playlist has tracks (not empty)
                 has_existing_tracks = False
@@ -1495,7 +1521,8 @@ class JellyfinClient(BaseAPIClient):
                                 f"Deleting empty duplicate playlist '{title}' (ID: {other_playlist['Id']})"
                             )
                             self.delete_playlist_sync(other_playlist["Id"])
-                    return True
+                    kept_id = existing_playlists[0]["Id"]
+                    return str(kept_id)
 
                 # No existing playlist has tracks, delete all existing ones and create new
                 self.logger.info(
@@ -1509,7 +1536,7 @@ class JellyfinClient(BaseAPIClient):
                         self.logger.error(
                             f"Failed to delete existing playlist {existing_playlist['Id']}"
                         )
-                        return False
+                        return None
 
                 # Wait a moment for deletions to complete
                 import time
@@ -1521,7 +1548,7 @@ class JellyfinClient(BaseAPIClient):
 
         except Exception as e:
             self.logger.error(f"Error creating or updating playlist '{title}': {e}")
-            return False
+            return None
 
     def sync_playlist(
         self, title: str, tracks: list[dict[str, Any]], summary: str = "", **kwargs
@@ -1588,9 +1615,12 @@ class JellyfinClient(BaseAPIClient):
             track_ids = [track["id"] for track in found_tracks]
 
             # Use the create_or_update_playlist_sync method for proper playlist management
-            success = self.create_or_update_playlist_sync(title, track_ids, summary)
+            existing_playlist_id = kwargs.get("existing_playlist_id")
+            playlist_id = self.create_or_update_playlist_sync(
+                title, track_ids, summary, existing_playlist_id=existing_playlist_id
+            )
 
-            if success:
+            if playlist_id:
                 # Always report the actual tracks that were processed (like Plex does)
                 match_rate = (len(found_tracks) / len(tracks) * 100) if len(tracks) > 0 else 0
                 self.logger.info(
@@ -1599,6 +1629,8 @@ class JellyfinClient(BaseAPIClient):
                 return {
                     "success": True,
                     "action": "synced",
+                    "playlist_id": playlist_id,
+                    "playlist_title": title,
                     "total_tracks": len(tracks),
                     "found_tracks": len(found_tracks),
                     "unmatched_tracks": unmatched_tracks,
@@ -1608,6 +1640,8 @@ class JellyfinClient(BaseAPIClient):
                 return {
                     "success": False,
                     "action": "failed",
+                    "playlist_id": None,
+                    "playlist_title": title,
                     "total_tracks": len(tracks),
                     "found_tracks": len(found_tracks),
                     "unmatched_tracks": unmatched_tracks,

@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
+import { DeleteCommandDialog } from "@/components/DeleteCommandDialog";
 import { fromExpiresAtIso, toExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -115,6 +116,8 @@ export function CommandsPage() {
   };
 
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false);
+  const [deleteCommandTarget, setDeleteCommandTarget] = useState<string | null>(null);
+  const [deleteCommandDeleting, setDeleteCommandDeleting] = useState(false);
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null);
   const [editForm, setEditForm] = useState<CommandEditFormState>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
@@ -528,22 +531,24 @@ export function CommandsPage() {
     }
   };
 
-  const handleDelete = async (commandName: string) => {
+  const handleDelete = (commandName: string) => {
     if (BUILTIN_COMMANDS.includes(commandName)) return;
-    if (
-      !confirm(
-        `Are you sure you want to delete the command "${commandName}"? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    setDeleteCommandTarget(commandName);
+  };
+
+  const confirmDeleteCommand = async (deletePlaylist: boolean) => {
+    if (!deleteCommandTarget) return;
+    setDeleteCommandDeleting(true);
     try {
-      await api.deleteCommand(commandName);
+      await api.deleteCommand(deleteCommandTarget, { deletePlaylist });
       toast.success("Command deleted");
+      setDeleteCommandTarget(null);
       loadCommands();
     } catch (error) {
       toast.error("Failed to delete command");
       console.error(error);
+    } finally {
+      setDeleteCommandDeleting(false);
     }
   };
 
@@ -1657,6 +1662,15 @@ export function CommandsPage() {
           )}
         </DialogContent>
       </Dialog>
+      <DeleteCommandDialog
+        open={deleteCommandTarget !== null}
+        commandName={deleteCommandTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteCommandTarget(null);
+        }}
+        onConfirm={confirmDeleteCommand}
+        isDeleting={deleteCommandDeleting}
+      />
     </div>
   );
 }

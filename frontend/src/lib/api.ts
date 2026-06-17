@@ -110,8 +110,12 @@ class ApiClient {
     });
   }
 
-  async deleteCommand(commandName: string): Promise<{ message: string }> {
-    return await this.request(`/api/commands/${commandName}`, {
+  async deleteCommand(
+    commandName: string,
+    options?: { deletePlaylist?: boolean }
+  ): Promise<{ message: string }> {
+    const params = options?.deletePlaylist === true ? "?delete_playlist=true" : "";
+    return await this.request(`/api/commands/${commandName}${params}`, {
       method: "DELETE",
     });
   }
