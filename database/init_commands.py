@@ -77,7 +77,7 @@ def init_default_commands():
         {
             "command_name": "artist_events_refresh",
             "display_name": "Artist Events Refresh",
-            "description": "Fetch upcoming events for Lidarr artists (Bandsintown / Songkick / Ticketmaster)",
+            "description": "Fetch upcoming events for Lidarr artists (Ticketmaster Discovery)",
             "enabled": False,
             "timeout_minutes": 60,
             "command_type": "discovery",

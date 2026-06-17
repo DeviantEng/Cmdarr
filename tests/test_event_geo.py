@@ -45,7 +45,7 @@ def test_lat_lon_bounds_contains_center():
 
 
 def test_venue_fingerprint_accepts_dict_region():
-    """Bandsintown may return region as a nested object."""
+    """Some APIs return region as a nested object."""
     fp_str = venue_fingerprint("Venue", "Portland", "Oregon", 45.5, -122.6)
     fp_dict = venue_fingerprint("Venue", "Portland", {"name": "Oregon"}, 45.5, -122.6)
     assert fp_str == fp_dict
@@ -65,7 +65,7 @@ def test_venue_fingerprint_differs_for_distinct_venues():
 
 
 def test_venue_fingerprint_ignores_geo_when_name_present():
-    """Two TM/BIT/SK responses for the same venue routinely disagree on coordinates by
+    """Two provider responses for the same venue routinely disagree on coordinates by
     0.01°–0.05° (building centroid vs. street geocode). When a venue name is present,
     geo drift must NOT split one show into multiple canonical rows."""
     same_name_wildly_different_coords = venue_fingerprint(

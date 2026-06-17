@@ -215,7 +215,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
                 UPDATE command_configs
                 SET command_name = 'artist_events_refresh',
                     display_name = 'Artist Events Refresh',
-                    description = 'Fetch upcoming events for Lidarr artists (Bandsintown / Songkick / Ticketmaster)'
+                    description = 'Fetch upcoming events for Lidarr artists (Ticketmaster Discovery)'
                 WHERE command_name = 'concert_events_refresh'
                 """
             )

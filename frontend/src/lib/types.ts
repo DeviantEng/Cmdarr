@@ -114,10 +114,6 @@ export interface ArtistEventsStats {
 export interface EventsProviderInfo {
   enabled: boolean;
   configured: boolean;
-  registration_open: boolean;
-  status: "available" | "partner_only" | string;
-  status_message: string;
-  docs_url?: string;
 }
 
 export interface StatusInfo {

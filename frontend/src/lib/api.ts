@@ -416,19 +416,14 @@ class ApiClient {
   // Artist events (live shows, festivals, etc.)
   async getEventsProviderStatus(): Promise<{
     success: boolean;
-    bandsintown: EventsProviderInfo;
-    songkick: EventsProviderInfo;
     ticketmaster: EventsProviderInfo;
     any_ready: boolean;
-    recommended_provider?: string;
   }> {
     return this.request("/api/events/provider-status");
   }
 
   async getEventsSettings(): Promise<{
     success: boolean;
-    bandsintown_enabled: boolean;
-    songkick_enabled: boolean;
     ticketmaster_enabled: boolean;
     user_lat: string;
     user_lon: string;
