@@ -417,6 +417,8 @@ class ApiClient {
   async getEventsProviderStatus(): Promise<{
     success: boolean;
     ticketmaster: EventsProviderInfo;
+    seatgeek: EventsProviderInfo;
+    deezer: EventsProviderInfo;
     any_ready: boolean;
   }> {
     return this.request("/api/events/provider-status");
@@ -425,6 +427,8 @@ class ApiClient {
   async getEventsSettings(): Promise<{
     success: boolean;
     ticketmaster_enabled: boolean;
+    seatgeek_enabled: boolean;
+    deezer_enabled: boolean;
     user_lat: string;
     user_lon: string;
     user_label: string;

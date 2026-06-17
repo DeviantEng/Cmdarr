@@ -570,6 +570,38 @@ class ConfigService:
                 "is_sensitive": True,
             },
             {
+                "key": "ARTIST_EVENTS_SEATGEEK_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable SeatGeek (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_SEATGEEK_CLIENT_ID",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "SeatGeek API client_id (free tier from seatgeek.com/account/develop; ~500 requests/day)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_DEEZER_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable Deezer concerts via unofficial GraphQL (toggle on Artist events page)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_DEEZER_ARL",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Deezer ARL cookie for Pipe GraphQL auth (unofficial; concert data from Songkick)",
+                "is_sensitive": True,
+            },
+            {
                 "key": "ARTIST_EVENTS_USER_LAT",
                 "default_value": "",
                 "data_type": "string",
@@ -670,6 +702,8 @@ class ConfigService:
                         session.add(setting)
                     elif default.get("is_hidden") and default["key"] in (
                         "ARTIST_EVENTS_TICKETMASTER_ENABLED",
+                        "ARTIST_EVENTS_SEATGEEK_ENABLED",
+                        "ARTIST_EVENTS_DEEZER_ENABLED",
                         "ARTIST_EVENTS_USER_LAT",
                         "ARTIST_EVENTS_USER_LON",
                         "ARTIST_EVENTS_USER_LABEL",

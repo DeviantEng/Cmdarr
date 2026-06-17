@@ -415,6 +415,38 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_lidarr_artist_jambase_id(cursor):
+        """Cache resolved JamBase artist IDs on Lidarr artist rows."""
+        cursor.execute("PRAGMA table_info(lidarr_artist)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "jambase_artist_id" not in cols:
+            cursor.execute("ALTER TABLE lidarr_artist ADD COLUMN jambase_artist_id VARCHAR(64)")
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.16",
+            name="lidarr_artist_jambase_id",
+            description="Add jambase_artist_id cache column on lidarr_artist",
+            up_func=migrate_lidarr_artist_jambase_id,
+        )
+    )
+
+    def migrate_lidarr_artist_deezer_id(cursor):
+        """Cache Deezer artist IDs from Lidarr links for concert GraphQL lookups."""
+        cursor.execute("PRAGMA table_info(lidarr_artist)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "deezer_artist_id" not in cols:
+            cursor.execute("ALTER TABLE lidarr_artist ADD COLUMN deezer_artist_id VARCHAR(64)")
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.17",
+            name="lidarr_artist_deezer_id",
+            description="Add deezer_artist_id cache column on lidarr_artist",
+            up_func=migrate_lidarr_artist_deezer_id,
+        )
+    )
+
     return runner
 
 

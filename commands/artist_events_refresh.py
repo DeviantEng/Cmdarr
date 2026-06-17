@@ -9,7 +9,9 @@ from typing import Any
 
 from sqlalchemy import case, func, or_
 
+from clients.client_deezer_events import DeezerEventsClient
 from clients.client_lidarr import LidarrClient
+from clients.client_seatgeek import SeatGeekClient
 from clients.client_ticketmaster import TicketmasterClient
 from commands.command_base import BaseCommand
 from commands.config_adapter import ConfigAdapter
@@ -37,7 +39,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         self._quota_locked: dict[str, float] = {}
 
     def get_description(self) -> str:
-        return "Refresh artist events for Lidarr library (Ticketmaster Discovery)"
+        return "Refresh artist events for Lidarr library (Ticketmaster / SeatGeek / Deezer)"
 
     def get_logger_name(self) -> str:
         return "cmdarr.artist_events_refresh"
@@ -58,11 +60,21 @@ class ArtistEventsRefreshCommand(BaseCommand):
 
         tm_on = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
         tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
+        sg_on = config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False)
+        sg_id = (config_service.get("ARTIST_EVENTS_SEATGEEK_CLIENT_ID", "") or "").strip()
+        dz_on = config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False)
+        dz_arl = (config_service.get("ARTIST_EVENTS_DEEZER_ARL", "") or "").strip()
 
-        if not (tm_on and tm_key):
-            log.error("Ticketmaster not enabled with valid credentials")
+        tm_ready = bool(tm_on and tm_key)
+        sg_ready = bool(sg_on and sg_id)
+        dz_ready = bool(dz_on and dz_arl)
+        if not tm_ready and not sg_ready and not dz_ready:
+            log.error("No event provider enabled with valid credentials")
             self.last_run_stats = {
-                "error": "Enable Ticketmaster and add Consumer Key in Config → Event Sources"
+                "error": (
+                    "Enable Ticketmaster, SeatGeek, and/or Deezer with credentials in "
+                    "Config → Event Sources"
+                )
             }
             return False
 
@@ -147,17 +159,28 @@ class ArtistEventsRefreshCommand(BaseCommand):
             total_sources = 0
             processed = 0
             artists_with_errors = 0
-            provider_error_counts: dict[str, int] = {"ticketmaster": 0}
+            provider_error_counts: dict[str, int] = {
+                "ticketmaster": 0,
+                "seatgeek": 0,
+                "deezer": 0,
+            }
             self._quota_locked = {}
 
             for la in rows:
-                merged, provider_errors = await self._fetch_for_artist(
+                merged, provider_errors, resolved_dz_id = await self._fetch_for_artist(
                     cfg,
                     la.artist_name,
                     la.artist_mbid,
+                    la.deezer_artist_id,
                     tm_on,
                     tm_key,
+                    sg_on,
+                    sg_id,
+                    dz_on,
+                    dz_arl,
                 )
+                if resolved_dz_id and resolved_dz_id != la.deezer_artist_id:
+                    la.deezer_artist_id = resolved_dz_id
                 if merged:
                     n, s = persist_normalized_events(session, merged)
                     total_new += n
@@ -225,7 +248,8 @@ class ArtistEventsRefreshCommand(BaseCommand):
             }
             log.info(
                 "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
-                "%s new events, %s new sources, %s artists had provider errors (tm=%s)",
+                "%s new events, %s new sources, %s artists had provider errors "
+                "(tm=%s sg=%s dz=%s)",
                 processed,
                 force_refresh_all,
                 refresh_all_due,
@@ -234,6 +258,8 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 total_sources,
                 artists_with_errors,
                 provider_error_counts["ticketmaster"],
+                provider_error_counts["seatgeek"],
+                provider_error_counts["deezer"],
             )
             return True
         except Exception as e:
@@ -245,17 +271,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
             session.close()
 
     def _prune_stale_hidden_single_events(self, session, now: datetime) -> tuple[int, int]:
-        """Remove per-event hides that no longer matter: old past shows and broken FK refs.
-
-        The upcoming list only shows ``starts_at_utc >= now``, but ``artist_concert_hidden_event``
-        rows would otherwise linger (with joined details in Hidden) until concert rows are
-        purged. We keep hides for **24 hours after** ``starts_at_utc`` so the Hidden list still
-        reflects “day of” through the following calendar day in practice. Orphans can appear if
-        SQLite FKs were off when a ``concert_event`` was removed.
-
-        Returns:
-            (n_pruned_for_past_show, n_orphan_rows_removed)
-        """
+        """Remove per-event hides that no longer matter: old past shows and broken FK refs."""
         hide_prune_cutoff = now - timedelta(days=1)
         n_past = (
             session.query(ArtistConcertHiddenEvent)
@@ -276,14 +292,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         return int(n_past or 0), int(n_orphan or 0)
 
     def _delete_past_events(self, session, now: datetime, retention_days: int) -> int:
-        """Remove canonical events whose start time is older than `retention_days` ago.
-
-        Returns the number of canonical `concert_event` rows deleted. With
-        `PRAGMA foreign_keys=ON` enabled globally (see database.database._enable_sqlite_fk)
-        dependent rows in `concert_event_source` and `artist_concert_hidden_event` cascade
-        automatically. The explicit source delete below is kept as a belt-and-suspenders
-        safeguard so cleanup still works if FK enforcement is ever disabled.
-        """
+        """Remove canonical events whose start time is older than `retention_days` ago."""
         cutoff = now - timedelta(days=max(0, retention_days))
         old_ids = [
             r[0]
@@ -304,15 +313,15 @@ class ArtistEventsRefreshCommand(BaseCommand):
         cfg: ConfigAdapter,
         artist_name: str,
         artist_mbid: str,
+        deezer_artist_id: str | None,
         tm_on: bool,
         tm_key: str,
-    ) -> tuple[list[dict[str, Any]], list[str]]:
-        """Return (merged_events, errored_providers).
-
-        A provider contributes to errored_providers when its client returns None (HTTP / parse
-        failure) or raises. Clients that return an empty list (valid "no events") and disabled
-        providers are treated as success and are NOT reported as errors.
-        """
+        sg_on: bool,
+        sg_client_id: str,
+        dz_on: bool,
+        dz_arl: str,
+    ) -> tuple[list[dict[str, Any]], list[str], str | None]:
+        """Return (merged_events, errored_providers, resolved_deezer_artist_id)."""
 
         async def run_tm():
             if not tm_on or not tm_key or "ticketmaster" in self._quota_locked:
@@ -320,14 +329,34 @@ class ArtistEventsRefreshCommand(BaseCommand):
             async with TicketmasterClient(cfg, tm_key) as c:
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
 
+        async def run_sg():
+            if not sg_on or not sg_client_id or "seatgeek" in self._quota_locked:
+                return []
+            async with SeatGeekClient(cfg, sg_client_id) as c:
+                return await c.fetch_upcoming_events(artist_name, artist_mbid)
+
+        async def run_dz():
+            if not dz_on or not dz_arl or "deezer" in self._quota_locked:
+                return [], deezer_artist_id
+            async with DeezerEventsClient(cfg, dz_arl) as c:
+                return await c.fetch_upcoming_events(
+                    artist_name, artist_mbid, deezer_artist_id=deezer_artist_id
+                )
+
         merged: list[dict[str, Any]] = []
         errored: list[str] = []
-        provider_order = ["ticketmaster"]
+        resolved_dz_id = deezer_artist_id
+        provider_order = ["ticketmaster", "seatgeek", "deezer"]
         results = await asyncio.gather(
             run_tm(),
+            run_sg(),
+            run_dz(),
             return_exceptions=True,
         )
         for provider_name, res in zip(provider_order, results, strict=False):
+            if provider_name == "deezer" and isinstance(res, tuple):
+                events, resolved_dz_id = res
+                res = events
             if isinstance(res, QuotaExceededError):
                 retry_after = res.retry_after_seconds or 3600.0
                 self._quota_locked[provider_name] = retry_after
@@ -355,4 +384,4 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 errored.append(provider_name)
                 continue
             merged.extend(res)
-        return merged, errored
+        return merged, errored, resolved_dz_id

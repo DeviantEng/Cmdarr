@@ -34,6 +34,7 @@ def upsert_lidarr_artists_from_payload(
             existing.artist_name = a.get("artistName", "")
             existing.lidarr_id = a.get("id")
             existing.spotify_artist_id = a.get("spotifyArtistId")
+            existing.deezer_artist_id = a.get("deezerArtistId")
             existing.last_synced_at = now
             updated += 1
         else:
@@ -43,6 +44,7 @@ def upsert_lidarr_artists_from_payload(
                     artist_name=a.get("artistName", ""),
                     lidarr_id=a.get("id"),
                     spotify_artist_id=a.get("spotifyArtistId"),
+                    deezer_artist_id=a.get("deezerArtistId"),
                     last_synced_at=now,
                 )
             )
