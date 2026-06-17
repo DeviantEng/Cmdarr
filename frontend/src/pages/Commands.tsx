@@ -350,7 +350,7 @@ export function CommandsPage() {
 
     setEditForm({
       schedule_override: !!command.schedule_override,
-      schedule_cron: command.schedule_cron || "0 3 * * *",
+      schedule_cron: command.schedule_cron || "0 6 * * *",
       artists_per_run: artistsPerRunVal,
       refresh_ttl_days: typeof cfg.refresh_ttl_days === "number" ? cfg.refresh_ttl_days : 14,
       album_types: typesStr
@@ -428,8 +428,8 @@ export function CommandsPage() {
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
       expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,
       weekly_exploration_keep:
-        typeof cfg.weekly_exploration_keep === "number" ? cfg.weekly_exploration_keep : 2,
-      weekly_jams_keep: typeof cfg.weekly_jams_keep === "number" ? cfg.weekly_jams_keep : 2,
+        typeof cfg.weekly_exploration_keep === "number" ? cfg.weekly_exploration_keep : 3,
+      weekly_jams_keep: typeof cfg.weekly_jams_keep === "number" ? cfg.weekly_jams_keep : 3,
       daily_jams_keep: typeof cfg.daily_jams_keep === "number" ? cfg.daily_jams_keep : 3,
       cleanup_enabled: cfg.cleanup_enabled !== false,
       playlist_types: Array.isArray(cfg.playlist_types) ? cfg.playlist_types : [],
@@ -1324,8 +1324,8 @@ export function CommandsPage() {
                           (editForm.enable_artist_discovery ? 2 : 0),
                       };
                       if ((editingCommand.config_json?.source as string) === "listenbrainz") {
-                        cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 2;
-                        cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 2;
+                        cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 3;
+                        cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
                         cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
                         cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
                       }
@@ -1520,8 +1520,11 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist =
+                          editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,
@@ -1557,8 +1560,11 @@ export function CommandsPage() {
                       };
                       if (editForm.expires_at_enabled && editForm.expires_at) {
                         cfg.expires_at = toExpiresAtIso(editForm.expires_at);
+                        cfg.expires_at_delete_playlist =
+                          editForm.expires_at_delete_playlist ?? true;
                       } else {
                         delete cfg.expires_at;
+                        delete cfg.expires_at_delete_playlist;
                       }
                       handleSaveCommand({
                         schedule_override: editForm.schedule_override,

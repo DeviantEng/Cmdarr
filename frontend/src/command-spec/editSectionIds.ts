@@ -78,11 +78,11 @@ export function getCommandEditSectionOrder(cmd: CommandConfig): CommandEditSecti
   }
 
   if (name === "new_releases_discovery") {
-    return [...base, "schedule", "new_releases_discovery", "last_run", "last_status"];
+    return [...base, "new_releases_discovery", "schedule", "last_run", "last_status"];
   }
 
   if (name === "artist_events_refresh") {
-    return [...base, "schedule", "artist_events_refresh", "last_run", "last_status"];
+    return [...base, "artist_events_refresh", "schedule", "last_run", "last_status"];
   }
 
   return [...base, "schedule", "last_run", "last_status"];

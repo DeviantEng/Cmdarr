@@ -12,8 +12,8 @@ export const commandUiCopy = {
   },
   schedule: {
     overrideLabel: "Override default schedule",
-    cronPlaceholder: "0 3 * * *",
-    cronHelp: "Cron format: minute hour day month weekday (e.g. 0 3 * * * = 3 AM daily)",
+    cronPlaceholder: "0 6 * * *",
+    cronHelp: "Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)",
     usesGlobalDefault: "Uses global default (Config → Scheduler)",
     createCronPlaceholder: "0 6 * * *",
     createCronHelp: "Cron format: minute hour day month weekday (e.g. 0 6 * * * = daily at 6am)",
