@@ -37,7 +37,7 @@ Pillow>=10.0.0
 tzdata>=2024.1
 
 # Spotify playlist scraping (no credentials required for public playlists)
-spotifyscraper>=2.1.0
+spotifyscraper>=2.1.0,<4.0.0
 rich>=15.0.0
 # Direct pin: transitive spotifyscraper → rich → pygments (CVE-2026-4539 / GHSA-5239-wwwm-4pmq)
 Pygments>=2.20.0

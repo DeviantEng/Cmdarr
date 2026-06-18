@@ -9,6 +9,7 @@ Caches API usability (403 Premium required) to avoid repeated token fetch + 403 
 import asyncio
 import base64
 import hashlib
+import inspect
 import json
 import time
 from typing import Any
@@ -17,56 +18,96 @@ import aiohttp
 
 from services.config_service import config_service
 from utils.playlist_parser import parse_playlist_url
+from utils.text_normalizer import normalize_text
 
 from .client_base import BaseAPIClient
 
 
+def _scraper_uses_legacy_init() -> bool:
+    """spotifyscraper 2.x accepts browser_type; 3.x removed it."""
+    from spotify_scraper import SpotifyClient as ScraperClient
+
+    return "browser_type" in inspect.signature(ScraperClient.__init__).parameters
+
+
+def _normalize_scraper_owner(owner: Any) -> str:
+    if hasattr(owner, "to_dict"):
+        owner = owner.to_dict()
+    if not isinstance(owner, dict):
+        return "Unknown"
+    return owner.get("display_name") or owner.get("name") or owner.get("id") or "Unknown"
+
+
+def _normalize_scraper_tracks(raw_tracks: list[Any]) -> list[dict[str, str]]:
+    tracks: list[dict[str, str]] = []
+    for entry in raw_tracks:
+        track = entry.get("track", entry) if isinstance(entry, dict) else entry
+        if hasattr(track, "to_dict"):
+            track = track.to_dict()
+        if not isinstance(track, dict) or not track.get("name"):
+            continue
+
+        artists = track.get("artists", [])
+        artist_name = (
+            artists[0].get("name", "Unknown Artist")
+            if artists and isinstance(artists[0], dict)
+            else "Unknown Artist"
+        )
+        album = track.get("album", {}) or {}
+        album_name = (
+            album.get("name", "Unknown Album") if isinstance(album, dict) else "Unknown Album"
+        )
+        tracks.append(
+            {
+                "artist": normalize_text(artist_name),
+                "track": normalize_text(track.get("name", "Unknown Track")),
+                "album": normalize_text(album_name),
+            }
+        )
+    return tracks
+
+
+def _scraper_playlist_result(data: dict[str, Any]) -> dict[str, Any]:
+    tracks = _normalize_scraper_tracks(data.get("tracks", []))
+    total = data.get("total_tracks") or data.get("track_count") or len(tracks)
+    return {
+        "success": True,
+        "name": data.get("name", "Unknown Playlist"),
+        "description": data.get("description", ""),
+        "owner": _normalize_scraper_owner(data.get("owner", {})),
+        "track_count": len(tracks),
+        "tracks": tracks,
+        "total_tracks": int(total) if isinstance(total, int | float) else len(tracks),
+    }
+
+
+def _scraper_get_playlist_v2(url: str) -> dict[str, Any]:
+    from spotify_scraper import SpotifyClient as ScraperClient
+
+    client = ScraperClient(browser_type="requests")
+    try:
+        return _scraper_playlist_result(client.get_playlist_info(url))
+    finally:
+        client.close()
+
+
+def _scraper_get_playlist_v3(url: str) -> dict[str, Any]:
+    from spotify_scraper import SpotifyClient as ScraperClient
+
+    with ScraperClient() as client:
+        playlist = client.get_playlist(url)
+        data = playlist.to_dict() if hasattr(playlist, "to_dict") else playlist
+    if not isinstance(data, dict):
+        raise TypeError(f"Unexpected scraper playlist payload: {type(data)!r}")
+    return _scraper_playlist_result(data)
+
+
 def _scraper_get_playlist(url: str) -> dict[str, Any]:
     """Sync helper: fetch playlist via SpotifyScraper (no auth). Returns normalized dict."""
-    from utils.text_normalizer import normalize_text
-
     try:
-        from spotify_scraper import SpotifyClient as ScraperClient
-
-        client = ScraperClient(browser_type="requests")
-        try:
-            data = client.get_playlist_info(url)
-            tracks = []
-            for t in data.get("tracks", []):
-                artists = t.get("artists", [])
-                artist_name = (
-                    artists[0].get("name", "Unknown Artist") if artists else "Unknown Artist"
-                )
-                album = t.get("album", {}) or {}
-                album_name = (
-                    album.get("name", "Unknown Album")
-                    if isinstance(album, dict)
-                    else "Unknown Album"
-                )
-                tracks.append(
-                    {
-                        "artist": normalize_text(artist_name),
-                        "track": normalize_text(t.get("name", "Unknown Track")),
-                        "album": normalize_text(album_name),
-                    }
-                )
-            owner = data.get("owner", {}) or {}
-            owner_name = (
-                owner.get("display_name", owner.get("id", "Unknown"))
-                if isinstance(owner, dict)
-                else "Unknown"
-            )
-            return {
-                "success": True,
-                "name": data.get("name", "Unknown Playlist"),
-                "description": data.get("description", ""),
-                "owner": owner_name,
-                "track_count": len(tracks),
-                "tracks": tracks,
-                "total_tracks": len(tracks),
-            }
-        finally:
-            client.close()
+        if _scraper_uses_legacy_init():
+            return _scraper_get_playlist_v2(url)
+        return _scraper_get_playlist_v3(url)
     except Exception as e:
         return {"success": False, "error": f"Scraper failed: {str(e)}"}
 

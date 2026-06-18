@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixes
 - **Artist Events — Ticketmaster matching**: Multi-artist bills no longer reject a show when a co-headliner’s MusicBrainz ID differs from the library artist; matching uses per-attraction MBID/name checks so openers and co-bills resolve correctly.
+- **Spotify playlist sync scraper**: Support spotifyscraper 3.x (removed `browser_type` / `get_playlist_info`) so playlist sync fallback works on fresh installs and Docker rebuilds after API 403 or missing credentials.
 
 ### Housekeeping
 - **Security & CI**: Frontend bumps for vite and react-router; `.trivyignore` updates for new CVEs without fix, cleanup of other items that have been fixed.
