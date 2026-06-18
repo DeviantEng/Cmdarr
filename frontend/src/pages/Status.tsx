@@ -244,9 +244,14 @@ export function StatusPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
-          <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => loadStatus()}>
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-destructive">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={() => loadStatus()}
+          >
             Try Again
           </Button>
         </div>
@@ -255,19 +260,19 @@ export function StatusPage() {
       {/* Overall Health */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <CardTitle>System Health</CardTitle>
               <CardDescription>Overall system status</CardDescription>
             </div>
-            <div>
+            <div className="shrink-0 self-start">
               {isHealthy ? (
-                <Badge variant="default" className="flex items-center gap-1">
+                <Badge variant="default" className="flex items-center gap-1 whitespace-nowrap">
                   <CheckCircle2 className="h-4 w-4" />
                   Healthy
                 </Badge>
               ) : (
-                <Badge variant="destructive" className="flex items-center gap-1">
+                <Badge variant="destructive" className="flex items-center gap-1 whitespace-nowrap">
                   <XCircle className="h-4 w-4" />
                   Unhealthy
                 </Badge>
@@ -504,17 +509,17 @@ export function StatusPage() {
       {cacheStatus && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
+                  <Database className="h-5 w-5 shrink-0" />
                   Library Cache
                 </CardTitle>
                 <CardDescription>
                   Plex and Jellyfin music library cache stats and controls
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex shrink-0 flex-wrap gap-2 self-start">
                 <Button
                   variant="outline"
                   size="sm"
@@ -671,7 +676,7 @@ export function StatusPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -698,7 +703,7 @@ export function StatusPage() {
                 dismissed.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
                       <span className="font-medium">{item.artist_name}</span>
