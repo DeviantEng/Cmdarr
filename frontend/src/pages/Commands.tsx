@@ -10,6 +10,7 @@ import {
   Filter,
   Search,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   X,
   Trash,
@@ -40,6 +41,7 @@ import { DeleteCommandDialog } from "@/components/DeleteCommandDialog";
 import { fromExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isMobileViewport } from "@/lib/use-mobile";
 import {
   DEFAULT_DAYLIST_TIME_PERIODS,
   hoursFromRange,
@@ -82,6 +84,67 @@ const BUILTIN_COMMANDS = [
 ];
 
 const VIEW_MODE_KEY = "cmdarr_commands_view_mode";
+
+function formatCommandLastRun(value: string | null | undefined, compact: boolean): string {
+  if (!value) return "Never";
+  const date = new Date(value);
+  if (!compact) return date.toLocaleString();
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function CommandActionsMenu({
+  command,
+  onExecute,
+  onEdit,
+  onToggleEnabled,
+  onDelete,
+  triggerClassName,
+}: {
+  command: CommandConfig;
+  onExecute: (command: CommandConfig) => void;
+  onEdit: (command: CommandConfig) => void;
+  onToggleEnabled: (command: CommandConfig) => void;
+  onDelete: (commandName: string) => void;
+  triggerClassName?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-9 w-9 shrink-0", triggerClassName)}
+          aria-label={`Actions for ${command.display_name}`}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onExecute(command)}>
+          <Play className="mr-2 h-4 w-4" />
+          Run Now
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit(command)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onToggleEnabled(command)}>
+          {command.enabled ? "Disable" : "Enable"}
+        </DropdownMenuItem>
+        {!BUILTIN_COMMANDS.includes(command.command_name) && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() => onDelete(command.command_name)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function getStoredViewMode(): ViewMode {
   try {
@@ -136,6 +199,9 @@ export function CommandsPage() {
     );
   }, [xmplaylistEditStations, xmplaylistEditFilter]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
+  const [executionsPanelOpen, setExecutionsPanelOpen] = useState(
+    () => !isMobileViewport()
+  );
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
   const [nrdSources, setNrdSources] = useState<{ id: string; name: string; configured: boolean }[]>(
@@ -645,14 +711,16 @@ export function CommandsPage() {
       {/* Controls Row */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Left Controls */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           {/* View Toggle */}
           <div className="flex items-center rounded-lg bg-muted p-1">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setViewMode("card")}
-              className={cn(viewMode === "card" && "bg-background shadow-sm")}
+              className={cn("h-9 w-9", viewMode === "card" && "bg-background shadow-sm")}
+              aria-label="Card view"
+              title="Card view"
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -660,14 +728,16 @@ export function CommandsPage() {
               variant="ghost"
               size="sm"
               onClick={() => setViewMode("list")}
-              className={cn(viewMode === "list" && "bg-background shadow-sm")}
+              className={cn("h-9 w-9", viewMode === "list" && "bg-background shadow-sm")}
+              aria-label="List view"
+              title="List view"
             >
               <List className="h-4 w-4" />
             </Button>
           </div>
 
           {/* Search */}
-          <div className="relative w-64">
+          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search commands..."
@@ -770,63 +840,53 @@ export function CommandsPage() {
           </CardContent>
         </Card>
       ) : viewMode === "card" ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {filteredCommands.map((command) => (
             <Card key={command.id} className="flex flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-base">{command.display_name}</CardTitle>
+              <CardHeader className="space-y-1 p-3 pb-2 md:p-6 md:pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-sm md:text-base">
+                      {command.display_name}
+                    </CardTitle>
                     {command.description && (
-                      <CardDescription className="mt-1 text-xs">
+                      <CardDescription className="mt-1 line-clamp-1 text-xs md:line-clamp-none">
                         {command.description}
                       </CardDescription>
                     )}
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleExecute(command)}>
-                        <Play className="mr-2 h-4 w-4" />
-                        Run Now
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEdit(command)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
-                        {command.enabled ? "Disable" : "Enable"}
-                      </DropdownMenuItem>
-                      {!BUILTIN_COMMANDS.includes(command.command_name) && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(command.command_name)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <CommandActionsMenu
+                    command={command}
+                    onExecute={handleExecute}
+                    onEdit={handleEdit}
+                    onToggleEnabled={handleToggleEnabled}
+                    onDelete={handleDelete}
+                  />
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                <div className="flex items-center gap-2">
-                  <Badge variant={command.enabled ? "default" : "secondary"}>
+              <CardContent className="space-y-1 px-3 pb-3 pt-0 md:space-y-2 md:px-6 md:pb-6">
+                <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                  <Badge
+                    variant={command.enabled ? "default" : "secondary"}
+                    className="text-[10px] md:text-xs"
+                  >
                     {command.enabled ? "Enabled" : "Disabled"}
                   </Badge>
                   {command.command_type && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="max-w-[10rem] truncate text-[10px] md:text-xs">
                       {command.command_type || "unknown"}
                     </Badge>
                   )}
+                  <span className="text-[10px] text-muted-foreground md:hidden">
+                    {command.schedule_override && command.schedule_cron
+                      ? command.schedule_cron
+                      : "Default"}
+                    {command.last_run
+                      ? ` · ${formatCommandLastRun(command.last_run, true)}`
+                      : ""}
+                  </span>
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="hidden text-xs text-muted-foreground md:block">
                   Schedule:{" "}
                   <span className="font-mono">
                     {command.schedule_override && command.schedule_cron
@@ -835,12 +895,12 @@ export function CommandsPage() {
                   </span>
                 </div>
                 {command.last_run && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="hidden text-xs text-muted-foreground md:block">
                     Last run: {new Date(command.last_run).toLocaleString()}
                   </div>
                 )}
                 {command.last_success !== null && (
-                  <div className="text-xs">
+                  <div className="text-[10px] md:text-xs">
                     Status:{" "}
                     <span
                       className={
@@ -859,7 +919,55 @@ export function CommandsPage() {
         </div>
       ) : (
         <Card>
-          <div className="overflow-x-auto">
+          <div className="divide-y md:hidden">
+            {filteredCommands.map((command) => (
+              <div key={command.id} className="flex items-start gap-2 px-3 py-2.5">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug">
+                      {command.display_name}
+                    </span>
+                    <Badge
+                      variant={command.enabled ? "default" : "secondary"}
+                      className="shrink-0 text-[10px]"
+                    >
+                      {command.enabled ? "On" : "Off"}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {command.command_type ? (
+                      <span className="truncate">{command.command_type}</span>
+                    ) : null}
+                    <span className="font-mono">
+                      {command.schedule_override && command.schedule_cron
+                        ? command.schedule_cron
+                        : "Default"}
+                    </span>
+                    <span>{formatCommandLastRun(command.last_run, true)}</span>
+                    {command.last_success !== null && (
+                      <span
+                        className={
+                          command.last_success
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400"
+                        }
+                      >
+                        {command.last_success ? "OK" : "Fail"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <CommandActionsMenu
+                  command={command}
+                  onExecute={handleExecute}
+                  onEdit={handleEdit}
+                  onToggleEnabled={handleToggleEnabled}
+                  onDelete={handleDelete}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead className="border-b">
                 <tr>
@@ -966,36 +1074,14 @@ export function CommandsPage() {
                       {command.last_run ? new Date(command.last_run).toLocaleString() : "Never"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleExecute(command)}>
-                            <Play className="mr-2 h-4 w-4" />
-                            Run Now
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(command)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
-                            {command.enabled ? "Disable" : "Enable"}
-                          </DropdownMenuItem>
-                          {!BUILTIN_COMMANDS.includes(command.command_name) && (
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(command.command_name)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <CommandActionsMenu
+                        command={command}
+                        onExecute={handleExecute}
+                        onEdit={handleEdit}
+                        onToggleEnabled={handleToggleEnabled}
+                        onDelete={handleDelete}
+                        triggerClassName="h-8 w-8"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -1007,21 +1093,44 @@ export function CommandsPage() {
 
       {/* Recent Executions */}
       <Card>
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-medium">Recent Executions</h3>
-          <Button variant="outline" size="sm" onClick={handleCleanupExecutions}>
+        <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <button
+            type="button"
+            onClick={() => setExecutionsPanelOpen((open) => !open)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            aria-expanded={executionsPanelOpen}
+          >
+            {executionsPanelOpen ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <h3 className="text-lg font-medium">Recent Executions</h3>
+            {recentExecutions.length > 0 ? (
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {recentExecutions.length}
+              </Badge>
+            ) : null}
+          </button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={handleCleanupExecutions}
+          >
             <Trash className="mr-2 h-4 w-4" />
             Cleanup Old
           </Button>
         </div>
-        <div className="p-6">
+        {executionsPanelOpen ? (
+        <div className="p-4 md:p-6">
           {recentExecutions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p className="font-medium">No executions yet</p>
               <p className="text-sm mt-1">Command executions will appear here once they run.</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-4">
               {recentExecutions.map((execution) => {
                 const isExpanded = expandedExecutionId === execution.id;
                 const duration = execution.duration ?? execution.duration_seconds;
@@ -1043,9 +1152,9 @@ export function CommandsPage() {
                         : "text-muted-foreground";
 
                 return (
-                  <div key={execution.id} className="p-4 rounded-lg bg-muted/50 border">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                  <div key={execution.id} className="rounded-lg border bg-muted/50 p-3 md:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center ${
                             execution.status === "completed"
@@ -1067,12 +1176,12 @@ export function CommandsPage() {
                             <span className="text-muted-foreground">○</span>
                           )}
                         </div>
-                        <div>
-                          <p className="font-medium">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
                             {execution.display_name ??
                               getCommandDisplayName(execution.command_name)}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground sm:text-sm">
                             {execution.started_at
                               ? new Date(execution.started_at).toLocaleString()
                               : "—"}
@@ -1084,8 +1193,8 @@ export function CommandsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="text-right flex items-center gap-2">
-                        <span className={`font-medium ${statusColor}`}>{statusLabel}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
+                        <span className={`text-sm font-medium ${statusColor}`}>{statusLabel}</span>
                         {execution.status === "running" && (
                           <Button
                             variant="destructive"
@@ -1193,6 +1302,7 @@ export function CommandsPage() {
             </div>
           )}
         </div>
+        ) : null}
       </Card>
 
       {/* New Command Dialog */}

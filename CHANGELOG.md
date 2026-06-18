@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Housekeeping
 - **Security & CI**: Frontend bumps for vite and react-router; `.trivyignore` updates for new CVEs without fix, cleanup of other items that have been fixed.
-- **UI & maintainability**: Command edit/create forms aligned (expiry saves, defaults, section order); shared confirm/edit components, `make check` TypeScript typecheck, and save-time Artist Essentials / Setlist titles matched to library-validated artists; artist-events dedupe, place parsing, and venue geocoding consolidated into shared utils (`event_geo`, `event_dedupe_coalesce`, `venue_geocode`).
+- **UI & maintainability**: Command edit/create forms aligned (expiry saves, defaults, section order); shared confirm/edit components, `make check` TypeScript typecheck, and save-time Artist Essentials / Setlist titles matched to library-validated artists; artist-events dedupe, place parsing, and venue geocoding consolidated into shared utils (`event_geo`, `event_dedupe_coalesce`, `venue_geocode`); mobile-responsive layout pass (collapsible Recent Executions, compact command/event rows, overlay nav drawer, accessibility labels); Import Lists, Status, and Configuration pages fixed for narrow viewports (stacked error banners, wrapping card headers/badges, break-all URLs, flexible action rows).
 - **Schema migration ledger**: Database migrations are tracked per name in a `schema_migration` ledger and run on every startup when pending (not only when the app version changes). Existing installs backfill the ledger from schema checks. Early alpha: jumping between 0.x minors may still require a fresh install; this lays groundwork for reliable upgrades at 1.x.
 
 ## [0.3.15] - 2026-05-26

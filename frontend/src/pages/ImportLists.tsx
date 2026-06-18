@@ -149,14 +149,17 @@ export function ImportListsPage() {
       <div className="space-y-6">
         {/* Last.fm Discovery */}
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Music className="h-5 w-5" />
-                Last.fm Discovery
+          <CardContent className="p-4 md:p-6">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <h2 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
+                <Music className="h-5 w-5 shrink-0" />
+                <span className="min-w-0">Last.fm Discovery</span>
               </h2>
               {metrics?.lastfm && (
-                <Badge variant={getStatusVariant(metrics.lastfm.status)}>
+                <Badge
+                  variant={getStatusVariant(metrics.lastfm.status)}
+                  className="shrink-0 self-start whitespace-nowrap"
+                >
                   {metrics.lastfm.exists ? formatStatus(metrics.lastfm.status) : "Not Available"}
                 </Badge>
               )}
@@ -165,17 +168,18 @@ export function ImportListsPage() {
               Similar artists discovered via Last.fm and MusicBrainz fuzzy matching. When enabled,
               typically adds new artists daily.
             </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Endpoint URL</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={lastfmUrl}
-                  className="flex-1 px-3 py-2 bg-muted border rounded-md text-sm font-mono"
-                />
+            <div className="mb-4 space-y-2">
+              <label className="block text-sm font-medium">Endpoint URL</label>
+              <input
+                type="text"
+                readOnly
+                value={lastfmUrl}
+                title={lastfmUrl}
+                className="w-full min-w-0 truncate rounded-md border bg-muted px-3 py-2 text-xs font-mono sm:text-sm"
+              />
+              <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" size="sm" onClick={() => copyToClipboard(lastfmUrl)}>
-                  <Copy className="h-4 w-4 mr-1" />
+                  <Copy className="mr-1 h-4 w-4" />
                   Copy
                 </Button>
                 <Button
@@ -184,7 +188,7 @@ export function ImportListsPage() {
                   onClick={() => setResetDialogOpen("lastfm")}
                   disabled={!metrics?.lastfm?.exists || metrics.lastfm.entry_count === 0}
                 >
-                  <RotateCcw className="h-4 w-4 mr-1" />
+                  <RotateCcw className="mr-1 h-4 w-4" />
                   Reset
                 </Button>
               </div>
@@ -223,14 +227,17 @@ export function ImportListsPage() {
 
         {/* Playlist Sync Discovery */}
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Disc className="h-5 w-5" />
-                Playlist Sync Discovery
+          <CardContent className="p-4 md:p-6">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <h2 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
+                <Disc className="h-5 w-5 shrink-0" />
+                <span className="min-w-0">Playlist Sync Discovery</span>
               </h2>
               {metrics?.unified && (
-                <Badge variant={getStatusVariant(metrics.unified.status)}>
+                <Badge
+                  variant={getStatusVariant(metrics.unified.status)}
+                  className="shrink-0 self-start whitespace-nowrap"
+                >
                   {metrics.unified.exists ? formatStatus(metrics.unified.status) : "Not Available"}
                 </Badge>
               )}
@@ -241,21 +248,22 @@ export function ImportListsPage() {
               checked in the playlist sync command settings (Commands → Edit). Empty is normal when
               playlists have no new artists to add, or maintenance has already cleaned up.
             </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Endpoint URL</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={playlistsyncUrl}
-                  className="flex-1 px-3 py-2 bg-muted border rounded-md text-sm font-mono"
-                />
+            <div className="mb-4 space-y-2">
+              <label className="block text-sm font-medium">Endpoint URL</label>
+              <input
+                type="text"
+                readOnly
+                value={playlistsyncUrl}
+                title={playlistsyncUrl}
+                className="w-full min-w-0 truncate rounded-md border bg-muted px-3 py-2 text-xs font-mono sm:text-sm"
+              />
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => copyToClipboard(playlistsyncUrl)}
                 >
-                  <Copy className="h-4 w-4 mr-1" />
+                  <Copy className="mr-1 h-4 w-4" />
                   Copy
                 </Button>
                 <Button
@@ -264,7 +272,7 @@ export function ImportListsPage() {
                   onClick={() => setResetDialogOpen("playlistsync")}
                   disabled={!metrics?.unified?.exists || metrics.unified.entry_count === 0}
                 >
-                  <RotateCcw className="h-4 w-4 mr-1" />
+                  <RotateCcw className="mr-1 h-4 w-4" />
                   Reset
                 </Button>
               </div>
@@ -311,57 +319,63 @@ export function ImportListsPage() {
 
       {/* Lidarr Integration Guide */}
       <Card className="border-blue-500/50 bg-blue-500/5">
-        <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Lidarr Integration Guide</h3>
-          <p className="text-muted-foreground mb-4">To add Cmdarr import lists in Lidarr:</p>
+        <CardContent className="p-4 md:p-6">
+          <h3 className="mb-4 text-lg font-semibold">Lidarr Integration Guide</h3>
+          <p className="mb-4 text-muted-foreground">To add Cmdarr import lists in Lidarr:</p>
           <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 1
               </span>
-              <span>
+              <span className="min-w-0 pt-0.5">
                 Go to <strong>Settings → Import Lists</strong>
               </span>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 2
               </span>
-              <span>
+              <span className="min-w-0 pt-0.5">
                 Click <strong>Add → Custom List</strong>
               </span>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 3
               </span>
-              <span>
+              <span className="min-w-0 pt-0.5">
                 Set <strong>URL</strong> to one of:
               </span>
             </div>
-            <div className="ml-9 space-y-2">
-              <div className="flex items-center gap-2">
-                <code className="bg-muted px-2 py-1 rounded text-sm">{lastfmUrl}</code>
+            <div className="space-y-3 sm:ml-9">
+              <div className="min-w-0 space-y-1">
+                <code className="block break-all rounded bg-muted px-2 py-1.5 text-xs font-mono sm:text-sm">
+                  {lastfmUrl}
+                </code>
                 <span className="text-sm text-muted-foreground">(Last.fm similar artists)</span>
               </div>
-              <div className="flex items-center gap-2">
-                <code className="bg-muted px-2 py-1 rounded text-sm">{playlistsyncUrl}</code>
+              <div className="min-w-0 space-y-1">
+                <code className="block break-all rounded bg-muted px-2 py-1.5 text-xs font-mono sm:text-sm">
+                  {playlistsyncUrl}
+                </code>
                 <span className="text-sm text-muted-foreground">
                   (Playlist sync discovered artists)
                 </span>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 4
               </span>
-              <span>Configure sync interval as desired (recommend 24-48 hours)</span>
+              <span className="min-w-0 pt-0.5">
+                Configure sync interval as desired (recommend 24-48 hours)
+              </span>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 5
               </span>
-              <span>Save and test the configuration</span>
+              <span className="min-w-0 pt-0.5">Save and test the configuration</span>
             </div>
           </div>
           <div className="mt-4 p-3 bg-muted rounded-md">

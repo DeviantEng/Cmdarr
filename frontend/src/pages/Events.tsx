@@ -564,13 +564,14 @@ export function EventsPage() {
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
           <div className="flex flex-wrap items-end gap-2 gap-y-2">
-            <div className="min-w-[12rem] flex-1 space-y-1">
+            <div className="min-w-0 flex-1 space-y-1">
               <Label className="text-xs">Location</Label>
               <Input
-                className="h-9"
+                className="h-9 truncate"
                 placeholder="e.g. 97201 or Portland, OR"
                 value={locationQuery}
                 onChange={(e) => setLocationQuery(e.target.value)}
+                title={locationQuery || undefined}
               />
             </div>
             <Button className="h-9" size="sm" onClick={handleGeocode} disabled={geoLoading}>
@@ -597,7 +598,7 @@ export function EventsPage() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between md:gap-4">
           <div>
             <CardTitle>Upcoming events</CardTitle>
             <CardDescription>
@@ -630,8 +631,8 @@ export function EventsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="relative min-w-[12rem] flex-1">
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div className="relative min-w-0 flex-1 md:min-w-[12rem]">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search artist or venue..."
@@ -669,7 +670,7 @@ export function EventsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex min-w-[14rem] items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 md:min-w-[14rem]">
               <Switch
                 id="exclude-festivals"
                 checked={excludeFestivals}
@@ -732,124 +733,159 @@ export function EventsPage() {
                   <li
                     key={`${ev.id}-${ev.starts_at_utc}`}
                     className={cn(
-                      "flex flex-col gap-2 px-2 py-2 pl-1 sm:flex-row sm:items-center sm:gap-2 sm:pl-2",
+                      "px-2 py-1.5 pl-1 md:flex md:flex-row md:items-center md:gap-2 md:py-2 md:pl-2",
                       ev.interested &&
                         "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
                     )}
                   >
-                    <div className="flex shrink-0 items-start pt-0.5 sm:pt-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "h-8 w-8",
-                          ev.interested && "text-amber-600 hover:text-amber-700 dark:text-amber-400"
-                        )}
-                        title={ev.interested ? "Remove from interested" : "Mark interested"}
-                        onClick={() => void toggleInterested(ev)}
-                      >
-                        <Star
-                          className={cn("h-4 w-4", ev.interested && "fill-current")}
-                          aria-hidden
-                        />
-                        <span className="sr-only">
-                          {ev.interested ? "Remove interested" : "Interested"}
-                        </span>
-                      </Button>
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-0">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-semibold leading-tight">{ev.artist_name}</span>
-                        <span className="text-muted-foreground text-sm leading-tight">
+                    <div className="flex min-w-0 items-start gap-1.5 md:contents">
+                      <div className="flex shrink-0 items-start pt-0.5 md:pt-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-9 w-9",
+                            ev.interested &&
+                              "text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                          )}
+                          title={ev.interested ? "Remove from interested" : "Mark interested"}
+                          onClick={() => void toggleInterested(ev)}
+                        >
+                          <Star
+                            className={cn("h-4 w-4", ev.interested && "fill-current")}
+                            aria-hidden
+                          />
+                          <span className="sr-only">
+                            {ev.interested ? "Remove interested" : "Interested"}
+                          </span>
+                        </Button>
+                      </div>
+                      <div className="min-w-0 flex-1 md:space-y-0">
+                        <div className="flex items-start justify-between gap-2 md:flex-wrap md:items-baseline md:gap-x-2 md:gap-y-0.5">
+                          <span className="min-w-0 truncate text-sm font-semibold leading-tight md:text-base md:whitespace-normal">
+                            {ev.artist_name}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground md:hidden">
+                            {formatEventDate(ev)}
+                          </span>
+                          <span className="hidden text-sm leading-tight text-muted-foreground md:inline">
+                            {venueLine}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] leading-snug text-muted-foreground md:hidden">
                           {venueLine}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                        <span>{formatEventDate(ev)}</span>
-                        {ev.event_kind === "festival" && (
-                          <Badge
-                            variant="outline"
-                            className="h-5 px-1.5 text-[10px] font-normal"
-                            title={ev.tm_event_name || "Festival or multi-day event"}
-                          >
-                            Festival
-                          </Badge>
-                        )}
-                        {ev.event_kind === "tour_package" && (
-                          <Badge
-                            variant="outline"
-                            className="h-5 px-1.5 text-[10px] font-normal"
-                            title={ev.tm_event_name || "Multi-act tour or package listing"}
-                          >
-                            Tour
-                          </Badge>
-                        )}
-                        {ev.distance_miles != null && (
-                          <span className="tabular-nums">| {ev.distance_miles} mi</span>
-                        )}
-                        <span className="flex flex-wrap gap-1">
-                          {sourceRows.map((row) => {
-                            const label = sourceBadge(row.provider);
-                            if (row.url) {
-                              return (
-                                <a
-                                  key={row.provider}
-                                  href={row.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center rounded-md border border-transparent bg-secondary px-1.5 py-0 text-[10px] font-normal text-secondary-foreground underline-offset-2 hover:underline"
-                                >
-                                  {label}
-                                </a>
-                              );
-                            }
-                            return (
+                        </p>
+                        <div className="mt-0.5 flex items-center justify-between gap-1 md:mt-0 md:justify-start">
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground md:gap-x-2">
+                            <span className="hidden md:inline">{formatEventDate(ev)}</span>
+                            {ev.event_kind === "festival" && (
                               <Badge
-                                key={row.provider}
-                                variant="secondary"
-                                className="px-1.5 py-0 text-[10px] font-normal"
+                                variant="outline"
+                                className="h-4 px-1 text-[9px] font-normal md:hidden"
+                                title={ev.tm_event_name || "Festival or multi-day event"}
                               >
-                                {label}
+                                Fest
                               </Badge>
-                            );
-                          })}
-                        </span>
+                            )}
+                            {ev.event_kind === "tour_package" && (
+                              <Badge
+                                variant="outline"
+                                className="h-4 px-1 text-[9px] font-normal md:hidden"
+                                title={ev.tm_event_name || "Multi-act tour or package listing"}
+                              >
+                                Tour
+                              </Badge>
+                            )}
+                            {ev.event_kind === "festival" && (
+                              <Badge
+                                variant="outline"
+                                className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
+                                title={ev.tm_event_name || "Festival or multi-day event"}
+                              >
+                                Festival
+                              </Badge>
+                            )}
+                            {ev.event_kind === "tour_package" && (
+                              <Badge
+                                variant="outline"
+                                className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
+                                title={ev.tm_event_name || "Multi-act tour or package listing"}
+                              >
+                                Tour
+                              </Badge>
+                            )}
+                            {ev.distance_miles != null && (
+                              <span className="tabular-nums">{ev.distance_miles} mi</span>
+                            )}
+                            <span className="flex flex-wrap gap-0.5 md:gap-1">
+                              {sourceRows.map((row) => {
+                                const label = sourceBadge(row.provider);
+                                if (row.url) {
+                                  return (
+                                    <a
+                                      key={row.provider}
+                                      href={row.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center rounded-md border border-transparent bg-secondary px-1 py-0 text-[9px] font-normal text-secondary-foreground underline-offset-2 hover:underline md:px-1.5 md:text-[10px]"
+                                    >
+                                      {label}
+                                    </a>
+                                  );
+                                }
+                                return (
+                                  <Badge
+                                    key={row.provider}
+                                    variant="secondary"
+                                    className="px-1 py-0 text-[9px] font-normal md:px-1.5 md:text-[10px]"
+                                  >
+                                    {label}
+                                  </Badge>
+                                );
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5 md:ml-auto md:gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                              asChild
+                              title="Last.fm events"
+                            >
+                              <a
+                                href={ev.last_fm_events_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span className="sr-only md:not-sr-only md:ml-1">Last.fm</span>
+                              </a>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                              title="Hide this show only"
+                              onClick={() => setConfirmHideEvent(ev)}
+                            >
+                              <MinusCircle className="h-3.5 w-3.5" />
+                              <span className="sr-only md:not-sr-only md:ml-1">Hide event</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                              title="Hide all shows for this artist"
+                              onClick={() => setConfirmHideArtist(ev)}
+                            >
+                              <EyeOff className="h-3.5 w-3.5" />
+                              <span className="sr-only md:not-sr-only md:ml-1">Hide artist</span>
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1 sm:justify-end">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2"
-                        asChild
-                        title="Last.fm events"
-                      >
-                        <a href={ev.last_fm_events_url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          <span className="sr-only sm:not-sr-only sm:ml-1">Last.fm</span>
-                        </a>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2"
-                        title="Hide this show only"
-                        onClick={() => setConfirmHideEvent(ev)}
-                      >
-                        <MinusCircle className="h-3.5 w-3.5" />
-                        <span className="ml-1 hidden sm:inline">Hide event</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2"
-                        title="Hide all shows for this artist"
-                        onClick={() => setConfirmHideArtist(ev)}
-                      >
-                        <EyeOff className="h-3.5 w-3.5" />
-                        <span className="ml-1 hidden sm:inline">Hide artist</span>
-                      </Button>
                     </div>
                   </li>
                 );
