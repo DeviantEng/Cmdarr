@@ -54,7 +54,9 @@ def _normalize_scraper_tracks(raw_tracks: list[Any]) -> list[dict[str, str]]:
             else "Unknown Artist"
         )
         album = track.get("album", {}) or {}
-        album_name = album.get("name", "Unknown Album") if isinstance(album, dict) else "Unknown Album"
+        album_name = (
+            album.get("name", "Unknown Album") if isinstance(album, dict) else "Unknown Album"
+        )
         tracks.append(
             {
                 "artist": normalize_text(artist_name),
