@@ -5,12 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 
-from utils.event_geo import (
-    coerce_location_str,
-    make_dedupe_key,
-    parse_place_city_region,
-    venue_fingerprint,
-)
+from utils.event_geo import compute_event_dedupe_key, parse_place_city_region
 
 
 def _row_coords(lat, lon) -> bool:
@@ -40,21 +35,6 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
 
     by_id: dict[int, tuple] = {row[0]: row for row in rows}
 
-    def compute_dedupe_key(
-        artist_mbid: str,
-        local_date: str,
-        venue_name,
-        venue_city,
-        venue_region,
-        venue_lat,
-        venue_lon,
-    ) -> str:
-        v_name = coerce_location_str(venue_name)
-        v_city = coerce_location_str(venue_city)
-        v_region = coerce_location_str(venue_region)
-        fp = venue_fingerprint(v_name, v_city, v_region, venue_lat, venue_lon)
-        return make_dedupe_key(artist_mbid, local_date, fp)
-
     def winner_sort_key(event_id: int) -> tuple:
         row = by_id[event_id]
         _id, _mbid, _an, vn, vc, vr, vlat, vlon, _ld, _ui = row
@@ -65,7 +45,7 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
     groups: dict[str, list[int]] = defaultdict(list)
     for row in rows:
         _id, artist_mbid, _an, vn, vc, vr, vlat, vlon, local_date, _ui = row
-        dk = compute_dedupe_key(artist_mbid, local_date, vn, vc, vr, vlat, vlon)
+        dk = compute_event_dedupe_key(artist_mbid, local_date, vn, vc, vr, vlat, vlon)
         groups[dk].append(_id)
 
     for _dk, ids in groups.items():
@@ -182,7 +162,7 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
     )
     for row in cursor.fetchall():
         eid, artist_mbid, vn, vc, vr, vlat, vlon, local_date = row
-        new_dk = compute_dedupe_key(artist_mbid, local_date, vn, vc, vr, vlat, vlon)
+        new_dk = compute_event_dedupe_key(artist_mbid, local_date, vn, vc, vr, vlat, vlon)
         cursor.execute(
             "UPDATE concert_event SET dedupe_key = ? WHERE id = ?",
             (new_dk, eid),

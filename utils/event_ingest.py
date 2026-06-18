@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from database.config_models import ArtistEvent, ArtistEventSource
-from utils.event_geo import coerce_location_str, make_dedupe_key, venue_fingerprint
+from utils.event_geo import coerce_location_str, compute_event_dedupe_key
 from utils.tm_event_meta import merge_event_kind
 
 
@@ -22,14 +22,15 @@ def persist_normalized_events(session: Session, items: list[dict[str, Any]]) -> 
         v_city = coerce_location_str(item.get("venue_city"))
         v_region = coerce_location_str(item.get("venue_region"))
         v_country = coerce_location_str(item.get("venue_country"))
-        fp = venue_fingerprint(
+        dk = compute_event_dedupe_key(
+            item["artist_mbid"],
+            item["local_date"],
             v_name,
             v_city,
             v_region,
             item.get("venue_lat"),
             item.get("venue_lon"),
         )
-        dk = make_dedupe_key(item["artist_mbid"], item["local_date"], fp)
         existing = session.query(ArtistEvent).filter(ArtistEvent.dedupe_key == dk).first()
         if not existing:
             ek = (item.get("event_kind") or "show").strip() or "show"
