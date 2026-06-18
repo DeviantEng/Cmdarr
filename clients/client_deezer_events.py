@@ -12,7 +12,7 @@ from typing import Any
 import aiohttp
 
 from utils.deezer_gql_auth import DeezerGqlAuth
-from utils.event_geo import coerce_location_str
+from utils.event_geo import coerce_location_str, parse_place_city_region
 
 logger = logging.getLogger("cmdarr.deezer_events")
 
@@ -241,6 +241,9 @@ class DeezerEventsClient:
             source_url = f"https://www.deezer.com/en/artist/{deezer_artist_id}"
 
         ext_id = str(node.get("id") or "")
+        raw_city = coerce_location_str(node.get("cityName"))
+        country = coerce_location_str(node.get("countryCode"))
+        venue_city, venue_region = parse_place_city_region(raw_city, None)
         return {
             "provider": "deezer",
             "external_id": ext_id[:256] if ext_id else f"dz-{artist_mbid}-{local_date}",
@@ -251,9 +254,9 @@ class DeezerEventsClient:
             "artist_mbid": artist_mbid,
             "artist_name": artist_name,
             "venue_name": coerce_location_str(node.get("venue")),
-            "venue_city": coerce_location_str(node.get("cityName")),
-            "venue_region": None,
-            "venue_country": coerce_location_str(node.get("countryCode")),
+            "venue_city": venue_city,
+            "venue_region": venue_region,
+            "venue_country": country,
             "venue_lat": None,
             "venue_lon": None,
             "starts_at_utc": starts,
