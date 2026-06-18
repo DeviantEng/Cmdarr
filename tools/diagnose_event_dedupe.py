@@ -15,7 +15,6 @@ From inside the Cmdarr container (repo mounted or copied):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import sqlite3
 import sys
 from collections import defaultdict
@@ -24,56 +23,7 @@ from pathlib import Path
 # Allow imports from repo root when run as `python tools/diagnose_event_dedupe.py`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.event_geo import (  # noqa: E402
-    coerce_location_str,
-    make_dedupe_key,
-    normalize_city_name,
-    normalize_venue_name,
-    venue_fingerprint,
-)
-
-
-def _venue_fingerprint_old(
-    venue_name: str | None,
-    city: str | None,
-    region: str | None,
-    lat: float | None,
-    lon: float | None,
-) -> str:
-    """Pre-fix fingerprint: region included when venue name is present."""
-    c_norm = normalize_city_name(coerce_location_str(city))
-    r_norm = (coerce_location_str(region) or "").strip().lower()
-    vn = normalize_venue_name(coerce_location_str(venue_name), c_norm)
-    if vn:
-        raw = f"v|{vn}|{c_norm}|{r_norm}"
-    else:
-        if lat is not None and lon is not None:
-            geo = f"{round(lat, 1)},{round(lon, 1)}"
-        else:
-            geo = ""
-        raw = f"g|{c_norm}|{r_norm}|{geo}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
-
-
-def _dedupe_key(
-    artist_mbid: str,
-    local_date: str,
-    venue_name,
-    venue_city,
-    venue_region,
-    venue_lat,
-    venue_lon,
-    *,
-    use_old: bool,
-) -> str:
-    v_name = coerce_location_str(venue_name)
-    v_city = coerce_location_str(venue_city)
-    v_region = coerce_location_str(venue_region)
-    if use_old:
-        fp = _venue_fingerprint_old(v_name, v_city, v_region, venue_lat, venue_lon)
-    else:
-        fp = venue_fingerprint(v_name, v_city, v_region, venue_lat, venue_lon)
-    return make_dedupe_key(artist_mbid, local_date, fp)
+from utils.event_geo import compute_event_dedupe_key  # noqa: E402
 
 
 def _load_events(conn: sqlite3.Connection) -> list[dict]:
@@ -135,7 +85,7 @@ def analyze(events: list[dict]) -> dict:
             continue
         for tm in tm_rows:
             for dz in dz_rows:
-                old_tm = _dedupe_key(
+                old_tm = compute_event_dedupe_key(
                     tm["artist_mbid"],
                     tm["local_date"],
                     tm["venue_name"],
@@ -143,9 +93,9 @@ def analyze(events: list[dict]) -> dict:
                     tm["venue_region"],
                     tm["venue_lat"],
                     tm["venue_lon"],
-                    use_old=True,
+                    legacy_fingerprint=True,
                 )
-                old_dz = _dedupe_key(
+                old_dz = compute_event_dedupe_key(
                     dz["artist_mbid"],
                     dz["local_date"],
                     dz["venue_name"],
@@ -153,9 +103,9 @@ def analyze(events: list[dict]) -> dict:
                     dz["venue_region"],
                     dz["venue_lat"],
                     dz["venue_lon"],
-                    use_old=True,
+                    legacy_fingerprint=True,
                 )
-                new_tm = _dedupe_key(
+                new_tm = compute_event_dedupe_key(
                     tm["artist_mbid"],
                     tm["local_date"],
                     tm["venue_name"],
@@ -163,9 +113,8 @@ def analyze(events: list[dict]) -> dict:
                     tm["venue_region"],
                     tm["venue_lat"],
                     tm["venue_lon"],
-                    use_old=False,
                 )
-                new_dz = _dedupe_key(
+                new_dz = compute_event_dedupe_key(
                     dz["artist_mbid"],
                     dz["local_date"],
                     dz["venue_name"],
@@ -173,7 +122,6 @@ def analyze(events: list[dict]) -> dict:
                     dz["venue_region"],
                     dz["venue_lat"],
                     dz["venue_lon"],
-                    use_old=False,
                 )
                 if old_tm != old_dz and new_tm == new_dz:
                     split_pairs.append(
@@ -197,7 +145,7 @@ def analyze(events: list[dict]) -> dict:
 
     new_groups: dict[str, list[int]] = defaultdict(list)
     for ev in events:
-        nk = _dedupe_key(
+        nk = compute_event_dedupe_key(
             ev["artist_mbid"],
             ev["local_date"],
             ev["venue_name"],
@@ -205,7 +153,6 @@ def analyze(events: list[dict]) -> dict:
             ev["venue_region"],
             ev["venue_lat"],
             ev["venue_lon"],
-            use_old=False,
         )
         new_groups[nk].append(ev["id"])
 

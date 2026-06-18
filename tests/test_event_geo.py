@@ -2,6 +2,7 @@
 
 from utils.event_geo import (
     coerce_location_str,
+    compute_event_dedupe_key,
     haversine_miles,
     lat_lon_deg_bounds_for_radius_miles,
     make_dedupe_key,
@@ -10,6 +11,7 @@ from utils.event_geo import (
     parse_float,
     parse_place_city_region,
     venue_fingerprint,
+    venue_fingerprint_legacy,
 )
 
 
@@ -27,6 +29,29 @@ def test_dedupe_key_stable():
     k2 = make_dedupe_key("mbid-1", "2026-06-01", fp)
     assert k1 == k2
     assert k1 != make_dedupe_key("mbid-2", "2026-06-01", fp)
+
+
+def test_compute_event_dedupe_key_matches_manual():
+    fp = venue_fingerprint("The Fillmore", "San Francisco", "CA", 37.7845, -122.4324)
+    manual = make_dedupe_key("mbid-1", "2026-06-01", fp)
+    assert (
+        compute_event_dedupe_key(
+            "mbid-1",
+            "2026-06-01",
+            "The Fillmore",
+            "San Francisco",
+            "CA",
+            37.7845,
+            -122.4324,
+        )
+        == manual
+    )
+
+
+def test_venue_fingerprint_legacy_differs_when_region_present():
+    new_fp = venue_fingerprint("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
+    old_fp = venue_fingerprint_legacy("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
+    assert new_fp != old_fp
 
 
 def test_coerce_location_str_nested_region():
