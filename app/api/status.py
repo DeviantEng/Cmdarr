@@ -516,6 +516,43 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
         }
 
 
+@router.get("/migrations")
+async def get_db_migrations_status():
+    """Schema migration status (dev builds only expose manual run)."""
+    try:
+        from database.version_migrations import get_migration_status
+
+        return {"success": True, **get_migration_status()}
+    except Exception as e:
+        get_status_logger().error(f"Failed to get migration status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve migration status") from e
+
+
+@router.post("/migrations/run")
+async def run_db_migrations_manual():
+    """Re-run applicable DB migrations without bumping app version (dev builds only)."""
+    if "-dev" not in __version__:
+        raise HTTPException(
+            status_code=403,
+            detail="Manual migrations are only available on -dev builds",
+        )
+    try:
+        from database.version_migrations import run_version_migrations_manual
+
+        result = run_version_migrations_manual()
+        if not result.get("ran") and result.get("reason") == "migration_failed":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Migration failed: {result.get('failed_migration')}",
+            )
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_status_logger().error(f"Manual migration run failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to run migrations") from e
+
+
 @router.post("/cache/reset")
 async def reset_cache_stats():
     """Reset cache statistics for all clients (for testing)"""

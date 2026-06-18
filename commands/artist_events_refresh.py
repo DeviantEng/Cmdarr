@@ -102,23 +102,19 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     past_event_retention_days,
                 )
 
-            cached_artists = session.query(func.count(LidarrArtist.id)).scalar() or 0
-            if cached_artists == 0:
-                log.info(
-                    "Lidarr artist cache (lidarr_artist) is empty; fetching library from Lidarr API"
-                )
-                async with LidarrClient(cfg) as lidarr_client:
-                    lidarr_rows = await lidarr_client.get_all_artists()
-                inserted, updated = upsert_lidarr_artists_from_payload(
-                    session, lidarr_rows, now=now
-                )
-                session.commit()
-                log.info(
-                    "Populated lidarr_artist: %s artists from Lidarr (%s inserted, %s updated)",
-                    len(lidarr_rows),
-                    inserted,
-                    updated,
-                )
+            inserted, updated, lidarr_total = await self._sync_lidarr_artist_cache(
+                cfg, session, now, log
+            )
+            if lidarr_total == 0:
+                log.warning("Lidarr artist cache is empty after sync; nothing to refresh")
+                self.last_run_stats = {
+                    "error": "No Lidarr artists found — check Lidarr connection and library",
+                    "past_events_purged": past_events_purged,
+                    "past_event_retention_days": past_event_retention_days,
+                    "hidden_past_single_events_pruned": hidden_past_pruned,
+                    "hidden_single_event_orphans_removed": hidden_orphans_removed,
+                }
+                return False
 
             q = (
                 session.query(LidarrArtist)
@@ -269,6 +265,25 @@ class ArtistEventsRefreshCommand(BaseCommand):
             return False
         finally:
             session.close()
+
+    async def _sync_lidarr_artist_cache(
+        self, cfg: ConfigAdapter, session, now: datetime, log
+    ) -> tuple[int, int, int]:
+        """Refresh lidarr_artist from Lidarr API. Returns (inserted, updated, total_rows)."""
+        log.info("Syncing Lidarr artist cache before event provider queries")
+        async with LidarrClient(cfg) as lidarr_client:
+            lidarr_rows = await lidarr_client.get_all_artists()
+        inserted, updated = upsert_lidarr_artists_from_payload(session, lidarr_rows, now=now)
+        session.commit()
+        total = session.query(func.count(LidarrArtist.id)).scalar() or 0
+        log.info(
+            "Lidarr artist cache: %s artists from API (%s inserted, %s updated, %s cached rows)",
+            len(lidarr_rows),
+            inserted,
+            updated,
+            total,
+        )
+        return inserted, updated, int(total)
 
     def _prune_stale_hidden_single_events(self, session, now: datetime) -> tuple[int, int]:
         """Remove per-event hides that no longer matter: old past shows and broken FK refs."""

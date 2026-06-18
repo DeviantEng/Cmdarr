@@ -13,9 +13,16 @@ import {
   RefreshCw,
   RotateCw,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ArtistEventsStats, StatusInfo, LibraryCacheStatus, NrdMetrics } from "@/lib/types";
+import type {
+  ArtistEventsStats,
+  MigrationStatus,
+  StatusInfo,
+  LibraryCacheStatus,
+  NrdMetrics,
+} from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,22 +61,26 @@ export function StatusPage() {
     "restore-all" | "reset" | "invalidate-events" | null
   >(null);
   const [artistEventsStats, setArtistEventsStats] = useState<ArtistEventsStats | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
+  const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadStatus = async () => {
     setError(null);
     try {
-      const [bundle, healthData, cacheData, nrdData] = await Promise.all([
+      const [bundle, healthData, cacheData, nrdData, migData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
         api.getCacheStatus().catch(() => null),
         api.getNrdMetrics().catch(() => null),
+        api.getMigrationStatus().catch(() => null),
       ]);
       setStatus(bundle.system);
       setArtistEventsStats(bundle.artist_events);
       setHealth(healthData);
       setCacheStatus(cacheData);
       setNrdMetrics(nrdData);
+      setMigrationStatus(migData);
     } catch {
       setError("Failed to load status");
       toast.error("Failed to load status");
@@ -169,6 +180,26 @@ export function StatusPage() {
       toast.error("Cache operation failed");
     } finally {
       setCacheActionLoading(null);
+    }
+  };
+
+  const handleRunMigrations = async () => {
+    setMigrationRunning(true);
+    try {
+      const res = await api.runDbMigrationsManual();
+      if (res.migrations_run > 0) {
+        toast.success(
+          `Ran ${res.migrations_run} migration(s): ${res.migration_names.join(", ") || "none"}`
+        );
+      } else {
+        toast.success("No migrations needed (already applied)");
+      }
+      const migData = await api.getMigrationStatus();
+      setMigrationStatus(migData);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to run migrations");
+    } finally {
+      setMigrationRunning(false);
     }
   };
 
@@ -326,6 +357,65 @@ export function StatusPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {migrationStatus?.dev_manual_available && (
+        <Card>
+          <CardHeader className="space-y-2 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Database className="h-4 w-4" />
+                  Database migrations
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Dev build only. Startup skips migrations when the app version is unchanged (
+                  {migrationStatus.current_version}
+                  {migrationStatus.last_run_version
+                    ? `, last run ${migrationStatus.last_run_version}`
+                    : ""}
+                  ). Use this after pulling schema changes on the same{" "}
+                  <code className="text-[10px]">-dev</code> version.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={handleRunMigrations}
+                disabled={migrationRunning}
+              >
+                {migrationRunning ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Run migrations
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {migrationStatus.auto_skipped && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Automatic startup migration was skipped (version unchanged).
+              </p>
+            )}
+            {migrationStatus.pending_migrations.length > 0 ? (
+              <ul className="text-xs text-muted-foreground space-y-1">
+                {migrationStatus.pending_migrations.map((m) => (
+                  <li key={m.name}>
+                    <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
+                    {m.description}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No migrations registered for this version.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {artistEventsStats && (
