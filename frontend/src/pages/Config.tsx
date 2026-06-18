@@ -506,7 +506,9 @@ export function ConfigPage() {
                             <span>Type: {setting.data_type}</span>
                           </div>
                         </div>
-                        <div className="flex min-w-0 items-start">{renderSettingInput(setting)}</div>
+                        <div className="flex min-w-0 items-start">
+                          {renderSettingInput(setting)}
+                        </div>
                       </div>
                     </Card>
                   ))}
