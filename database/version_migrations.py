@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Version-based migration system for Cmdarr
+Schema migration system for Cmdarr.
 
-This system tracks the application version in the database and only runs migrations
-when the version changes, avoiding unnecessary migration checks on every startup.
+Each migration is recorded in a ``schema_migration`` ledger by name. On startup
+(and via the dev manual run), any registered migration not yet in the ledger is
+applied in registration order. Version tags on migrations are metadata for release
+notes only.
+
+Early alpha (0.x): jumping between minor versions may still require a fresh install.
+The ledger is the foundation for reliable upgrades once we reach 1.x.
 """
 
 import sqlite3
@@ -23,14 +28,45 @@ def get_migrations_logger():
     return get_logger("cmdarr.migrations")
 
 
-class VersionMigration:
-    """Represents a migration tied to a specific version"""
+def _table_exists(cursor: sqlite3.Cursor, name: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        (name,),
+    )
+    return cursor.fetchone() is not None
 
-    def __init__(self, version: str, name: str, description: str, up_func: Callable):
+
+def _column_exists(cursor: sqlite3.Cursor, table: str, column: str) -> bool:
+    if not _table_exists(cursor, table):
+        return False
+    cursor.execute(f"PRAGMA table_info({table})")
+    return column in [row[1] for row in cursor.fetchall()]
+
+
+def _config_key_exists(cursor: sqlite3.Cursor, key: str) -> bool:
+    if not _table_exists(cursor, "config_settings"):
+        return False
+    cursor.execute("SELECT 1 FROM config_settings WHERE key = ?", (key,))
+    return cursor.fetchone() is not None
+
+
+class VersionMigration:
+    """Represents a registered schema migration."""
+
+    def __init__(
+        self,
+        version: str,
+        name: str,
+        description: str,
+        up_func: Callable,
+        *,
+        applied_check: Callable[[sqlite3.Cursor], bool] | None = None,
+    ):
         self.version = version
         self.name = name
         self.description = description
         self.up_func = up_func
+        self.applied_check = applied_check
 
     def apply(self, cursor: sqlite3.Cursor) -> bool:
         """Apply the migration"""
@@ -47,7 +83,7 @@ class VersionMigration:
 
 
 class VersionMigrationRunner:
-    """Handles version-based database migrations"""
+    """Runs registered schema migrations tracked in a per-migration ledger."""
 
     def __init__(self, config_db_path: str = "data/cmdarr_config.db"):
         self.config_db_path = config_db_path
@@ -67,28 +103,63 @@ class VersionMigrationRunner:
         """Add a migration to the runner"""
         self.migrations.append(migration)
 
+    def _ensure_ledger_table(self, cursor: sqlite3.Cursor) -> None:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migration (
+                name TEXT PRIMARY KEY,
+                version TEXT NOT NULL,
+                description TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_version (
+                id INTEGER PRIMARY KEY,
+                version TEXT UNIQUE NOT NULL,
+                last_run TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+    def _get_applied_names(self, cursor: sqlite3.Cursor) -> set[str]:
+        cursor.execute("SELECT name FROM schema_migration")
+        return {row[0] for row in cursor.fetchall()}
+
+    def _record_migration(self, cursor: sqlite3.Cursor, migration: VersionMigration) -> None:
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO schema_migration (name, version, description)
+            VALUES (?, ?, ?)
+            """,
+            (migration.name, migration.version, migration.description),
+        )
+
+    def _backfill_ledger_if_needed(self, cursor: sqlite3.Cursor) -> None:
+        """Seed ledger rows for migrations already applied before the ledger existed."""
+        if self._get_applied_names(cursor):
+            return
+
+        cursor.execute("SELECT version FROM app_version ORDER BY last_run DESC LIMIT 1")
+        has_app_version = cursor.fetchone() is not None
+        if not has_app_version and not _table_exists(cursor, "config_settings"):
+            return
+
+        log = get_migrations_logger()
+        for migration in self.migrations:
+            if migration.applied_check and migration.applied_check(cursor):
+                self._record_migration(cursor, migration)
+                log.info("Backfilled ledger for already-applied migration %s", migration.name)
+
     def get_last_run_version(self) -> str | None:
-        """Get the last version that ran migrations"""
+        """Legacy app_version row (informational)."""
         if not Path(self.config_db_path).exists():
             return None
 
         try:
             conn = sqlite3.connect(self.config_db_path)
             cursor = conn.cursor()
-
-            # Create version tracking table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS app_version (
-                    id INTEGER PRIMARY KEY,
-                    version TEXT UNIQUE NOT NULL,
-                    last_run TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Get the latest version
+            self._ensure_ledger_table(cursor)
             cursor.execute("SELECT version FROM app_version ORDER BY last_run DESC LIMIT 1")
             result = cursor.fetchone()
-
             conn.close()
             return result[0] if result else None
 
@@ -97,20 +168,18 @@ class VersionMigrationRunner:
             return None
 
     def update_last_run_version(self, version: str):
-        """Update the last run version in the database"""
+        """Update informational app_version after migrations run."""
         try:
             conn = sqlite3.connect(self.config_db_path)
             cursor = conn.cursor()
-
-            # Insert or update the version
+            self._ensure_ledger_table(cursor)
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO app_version (id, version, last_run) 
+                INSERT OR REPLACE INTO app_version (id, version, last_run)
                 VALUES (1, ?, CURRENT_TIMESTAMP)
-            """,
+                """,
                 (version,),
             )
-
             conn.commit()
             conn.close()
             get_migrations_logger().info(f"Updated last run version to {version}")
@@ -118,63 +187,76 @@ class VersionMigrationRunner:
         except Exception as e:
             get_migrations_logger().error(f"Failed to update last run version: {e}")
 
-    def _applicable_versions(self) -> list[str]:
-        """App version plus release base when developing on a -dev suffix (e.g. 0.3.16-dev → 0.3.16)."""
-        versions = [self.current_version]
-        if self.current_version.endswith("-dev"):
-            base = self.current_version[:-4]
-            if base and base not in versions:
-                versions.append(base)
-        return versions
+    def _applied_migrations(self, cursor: sqlite3.Cursor) -> list[dict]:
+        cursor.execute(
+            """
+            SELECT name, version, description, applied_at
+            FROM schema_migration
+            ORDER BY applied_at, name
+            """
+        )
+        return [
+            {
+                "name": row[0],
+                "version": row[1],
+                "description": row[2],
+                "applied_at": row[3],
+            }
+            for row in cursor.fetchall()
+        ]
 
-    def _migration_applies(self, migration: VersionMigration) -> bool:
-        return migration.version in self._applicable_versions()
+    def _pending_migrations(self, applied_names: set[str]) -> list[VersionMigration]:
+        return [m for m in self.migrations if m.name not in applied_names]
 
     def get_migration_status(self) -> dict:
         """Snapshot for status API / dev manual migration UI."""
         last_version = self.get_last_run_version()
-        applicable = self._applicable_versions()
+        dev_manual_available = "-dev" in self.current_version
+
+        if not Path(self.config_db_path).exists():
+            pending = [
+                {
+                    "name": m.name,
+                    "version": m.version,
+                    "description": m.description,
+                }
+                for m in self.migrations
+            ]
+            return {
+                "current_version": self.current_version,
+                "last_run_version": last_version,
+                "applied_migrations": [],
+                "pending_migrations": pending,
+                "dev_manual_available": dev_manual_available,
+            }
+
+        conn = sqlite3.connect(self.config_db_path)
+        cursor = conn.cursor()
+        self._ensure_ledger_table(cursor)
+        applied_names = self._get_applied_names(cursor)
+        applied = self._applied_migrations(cursor)
         pending = [
             {
                 "name": m.name,
                 "version": m.version,
                 "description": m.description,
             }
-            for m in self.migrations
-            if self._migration_applies(m)
+            for m in self._pending_migrations(applied_names)
         ]
-        dev_manual_available = "-dev" in self.current_version
-        skipped = last_version == self.current_version
+        conn.close()
+
         return {
             "current_version": self.current_version,
             "last_run_version": last_version,
-            "applicable_versions": applicable,
+            "applied_migrations": applied,
             "pending_migrations": pending,
-            "auto_skipped": skipped,
             "dev_manual_available": dev_manual_available,
         }
 
-    def run_migrations(self, *, force: bool = False) -> dict:
-        """Run migrations for applicable versions. When force=True, ignore unchanged version."""
-        last_version = self.get_last_run_version()
+    def run_migrations(self) -> dict:
+        """Apply any registered migrations not yet recorded in the ledger."""
         current_version = self.current_version
         log = get_migrations_logger()
-
-        log.info(
-            "Current version: %s, Last run version: %s%s",
-            current_version,
-            last_version,
-            " (manual force)" if force else "",
-        )
-
-        if not force and last_version == current_version:
-            log.info("Version unchanged, skipping migrations")
-            return {
-                "ran": False,
-                "reason": "version_unchanged",
-                "migrations_run": 0,
-                "migration_names": [],
-            }
 
         if not Path(self.config_db_path).exists():
             log.info("Config database does not exist, skipping migrations")
@@ -185,23 +267,31 @@ class VersionMigrationRunner:
                 "migration_names": [],
             }
 
-        if not force:
-            log.info(
-                "Version changed from %s to %s, running migrations...",
-                last_version,
-                current_version,
-            )
-
         try:
             conn = sqlite3.connect(self.config_db_path)
             cursor = conn.cursor()
+            self._ensure_ledger_table(cursor)
+            self._backfill_ledger_if_needed(cursor)
+            conn.commit()
 
+            applied_names = self._get_applied_names(cursor)
+            pending = self._pending_migrations(applied_names)
+            if not pending:
+                conn.close()
+                log.info("No pending schema migrations")
+                return {
+                    "ran": False,
+                    "reason": "none_pending",
+                    "migrations_run": 0,
+                    "migration_names": [],
+                }
+
+            log.info("Running %s pending schema migration(s)", len(pending))
             migrations_run = 0
             migration_names: list[str] = []
-            for migration in self.migrations:
-                if not self._migration_applies(migration):
-                    continue
+            for migration in pending:
                 if migration.apply(cursor):
+                    self._record_migration(cursor, migration)
                     migrations_run += 1
                     migration_names.append(migration.name)
                 else:
@@ -219,17 +309,15 @@ class VersionMigrationRunner:
             conn.commit()
             conn.close()
 
-            if not force or last_version != current_version:
-                self.update_last_run_version(current_version)
-
+            self.update_last_run_version(current_version)
             log.info(
-                "Successfully ran %s migrations for version %s",
+                "Successfully ran %s schema migration(s) for version %s",
                 migrations_run,
                 current_version,
             )
             return {
                 "ran": True,
-                "reason": "manual_force" if force else "version_changed",
+                "reason": "pending_applied",
                 "migrations_run": migrations_run,
                 "migration_names": migration_names,
             }
@@ -239,12 +327,12 @@ class VersionMigrationRunner:
             raise
 
     def run_migrations_if_needed(self):
-        """Run migrations only if the version has changed."""
-        self.run_migrations(force=False)
+        """Run pending migrations on startup."""
+        self.run_migrations()
 
     def run_migrations_manual(self) -> dict:
-        """Dev-only: re-run applicable migrations even when app version is unchanged."""
-        return self.run_migrations(force=True)
+        """Dev-only: apply pending migrations (same as startup)."""
+        return self.run_migrations()
 
 
 def create_version_migration_runner() -> VersionMigrationRunner:
@@ -325,6 +413,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="artist_events_naming",
             description="Rename concert event config keys to ARTIST_EVENTS_* and command to artist_events_refresh",
             up_func=migrate_artist_events_naming,
+            applied_check=lambda c: _config_key_exists(c, "ARTIST_EVENTS_TICKETMASTER_ENABLED"),
         )
     )
     runner.add_migration(
@@ -333,6 +422,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="concert_event_user_interested",
             description="Add user_interested to concert_event for Artist Events page",
             up_func=migrate_concert_event_user_interested,
+            applied_check=lambda c: _column_exists(c, "concert_event", "user_interested"),
         )
     )
 
@@ -479,6 +569,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="concert_event_dedupe_coalesce",
             description="Recompute venue fingerprints (name-first dedupe) and merge duplicate concert_event rows",
             up_func=migrate_concert_event_dedupe_coalesce,
+            applied_check=lambda c: _column_exists(c, "concert_event", "event_kind"),
         )
     )
     runner.add_migration(
@@ -487,6 +578,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="concert_event_festival_fields",
             description="Add tm_event_name, event_kind, festival_key for festival UX and TM ingest",
             up_func=migrate_concert_event_festival_fields,
+            applied_check=lambda c: _column_exists(c, "concert_event", "event_kind"),
         )
     )
 
@@ -503,6 +595,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="lidarr_artist_jambase_id",
             description="Add jambase_artist_id cache column on lidarr_artist",
             up_func=migrate_lidarr_artist_jambase_id,
+            applied_check=lambda c: _column_exists(c, "lidarr_artist", "jambase_artist_id"),
         )
     )
 
@@ -519,6 +612,7 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             name="lidarr_artist_deezer_id",
             description="Add deezer_artist_id cache column on lidarr_artist",
             up_func=migrate_lidarr_artist_deezer_id,
+            applied_check=lambda c: _column_exists(c, "lidarr_artist", "deezer_artist_id"),
         )
     )
 
@@ -537,7 +631,7 @@ def get_migration_status() -> dict:
 
 
 def run_version_migrations_manual() -> dict:
-    """Re-run applicable migrations (dev builds with unchanged version)."""
+    """Apply pending migrations (dev builds expose this via the Status page)."""
     runner = create_version_migration_runner()
     return runner.run_migrations_manual()
 
