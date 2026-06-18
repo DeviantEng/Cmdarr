@@ -62,6 +62,32 @@ def normalize_city_name(city: str | None) -> str:
     return s
 
 
+def parse_place_city_region(
+    city: str | None,
+    region: str | None = None,
+) -> tuple[str | None, str | None]:
+    """
+    Split provider place strings into city and region.
+
+    Deezer often sends ``cityName`` as ``Camden, NJ, US`` while Ticketmaster uses
+    separate city and state fields. When region is already set, city is left as-is.
+    """
+    existing_region = coerce_location_str(region)
+    if existing_region:
+        return coerce_location_str(city), existing_region
+
+    raw = (coerce_location_str(city) or "").strip()
+    if not raw:
+        return None, None
+
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if len(parts) >= 2:
+        maybe_state = parts[1].replace(" ", "")
+        if len(maybe_state) == 2 and maybe_state.isalpha():
+            return parts[0], maybe_state.upper()
+    return raw, None
+
+
 def normalize_venue_name(name: str | None, city: str | None = None) -> str:
     """
     Normalize a venue name for dedupe. Examples this collapses:
@@ -106,9 +132,12 @@ def venue_fingerprint(
     When no venue name is available, fall back to geo (rounded to ~11 km) plus city/region
     so events sharing a city/date with no venue info still merge.
     """
-    c_norm = normalize_city_name(coerce_location_str(city))
-    r_norm = (coerce_location_str(region) or "").strip().lower()
-    vn = normalize_venue_name(coerce_location_str(venue_name), c_norm)
+    parsed_city, parsed_region = parse_place_city_region(
+        coerce_location_str(city), coerce_location_str(region)
+    )
+    c_norm = normalize_city_name(parsed_city)
+    r_norm = (parsed_region or "").strip().lower()
+    vn = normalize_venue_name(coerce_location_str(venue_name), parsed_city)
     if vn:
         raw = f"v|{vn}|{c_norm}"
     else:

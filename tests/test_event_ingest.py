@@ -125,6 +125,48 @@ def test_persist_merges_ticketmaster_and_deezer_same_show(session):
     assert providers == ["deezer", "ticketmaster"]
 
 
+def test_persist_merges_ticketmaster_and_deezer_breaking_benjamin_row(session):
+    """Regression: Deezer cityName 'Camden, NJ, US' must dedupe with TM city+region."""
+    tm = _item(
+        provider="ticketmaster",
+        external_id="tm-bb-1",
+        venue_name="Freedom Mortgage Pavilion",
+        venue_city="Camden",
+        venue_region="NJ",
+        venue_lat=39.9407,
+        venue_lon=-75.1318,
+        local_date="2026-09-02",
+        artist_name="Breaking Benjamin",
+        artist_mbid="mbid-bb",
+    )
+    dz = _item(
+        provider="deezer",
+        external_id="dz-bb-1",
+        source_url="https://www.songkick.com/concerts/example",
+        venue_name="Freedom Mortgage Pavilion",
+        venue_city="Camden, NJ, US",
+        venue_region=None,
+        venue_lat=None,
+        venue_lon=None,
+        local_date="2026-09-02",
+        artist_name="Breaking Benjamin",
+        artist_mbid="mbid-bb",
+    )
+
+    persist_normalized_events(session, [tm])
+    session.commit()
+    n2, s2 = persist_normalized_events(session, [dz])
+    session.commit()
+
+    assert n2 == 0
+    assert s2 == 1
+    assert session.query(ArtistEvent).count() == 1
+    row = session.query(ArtistEvent).one()
+    assert row.venue_lat == 39.9407
+    providers = sorted(r.provider for r in session.query(ArtistEventSource).all())
+    assert providers == ["deezer", "ticketmaster"]
+
+
 def test_persist_is_idempotent_for_same_provider_external_id(session):
     item = _item(provider="ticketmaster", external_id="tm-1")
 

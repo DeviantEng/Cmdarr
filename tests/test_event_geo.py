@@ -8,6 +8,7 @@ from utils.event_geo import (
     normalize_city_name,
     normalize_venue_name,
     parse_float,
+    parse_place_city_region,
     venue_fingerprint,
 )
 
@@ -129,6 +130,24 @@ def test_normalize_city_name_common_patterns():
     assert normalize_city_name("Mt. Vernon") == "mount vernon"
     assert normalize_city_name("Ft. Lauderdale") == "fort lauderdale"
     assert normalize_city_name(None) == ""
+
+
+def test_parse_place_city_region_deezer_comma_format():
+    city, region = parse_place_city_region("Camden, NJ, US", None)
+    assert city == "Camden"
+    assert region == "NJ"
+
+
+def test_parse_place_city_region_keeps_ticketmaster_fields():
+    city, region = parse_place_city_region("Camden", "NJ")
+    assert city == "Camden"
+    assert region == "NJ"
+
+
+def test_venue_fingerprint_merges_tm_and_deezer_place_formats():
+    tm = venue_fingerprint("Freedom Mortgage Pavilion", "Camden", "NJ", 39.94, -75.13)
+    dz = venue_fingerprint("Freedom Mortgage Pavilion", "Camden, NJ, US", None, None, None)
+    assert tm == dz
 
 
 def test_haversine_self_is_zero_and_symmetric():

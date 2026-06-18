@@ -7,6 +7,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import aiohttp
 from sqlalchemy import case, func, or_
 
 from clients.client_deezer_events import DeezerEventsClient
@@ -24,9 +25,11 @@ from database.config_models import (
 )
 from database.database import get_database_manager
 from services.config_service import config_service
+from utils.cmdarr_user_agent import resolve_cmdarr_user_agent
 from utils.event_ingest import persist_normalized_events
 from utils.http_client import QuotaExceededError
 from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
+from utils.venue_geocode import resolve_venue_coordinates
 
 
 class ArtistEventsRefreshCommand(BaseCommand):
@@ -178,9 +181,13 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 if resolved_dz_id and resolved_dz_id != la.deezer_artist_id:
                     la.deezer_artist_id = resolved_dz_id
                 if merged:
+                    await self._geocode_normalized_events(cfg, session, merged, max_lookups=5)
                     n, s = persist_normalized_events(session, merged)
                     total_new += n
                     total_sources += s
+                    await self._geocode_stored_events_for_artist(
+                        cfg, session, la.artist_mbid, max_lookups=2
+                    )
                 for p in provider_errors:
                     provider_error_counts[p] = provider_error_counts.get(p, 0) + 1
                 had_error = bool(provider_errors)
@@ -400,3 +407,78 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 continue
             merged.extend(res)
         return merged, errored, resolved_dz_id
+
+    async def _geocode_normalized_events(
+        self,
+        cfg: ConfigAdapter,
+        session,
+        items: list[dict[str, Any]],
+        *,
+        max_lookups: int,
+    ) -> None:
+        pending = [
+            item
+            for item in items
+            if item.get("venue_lat") is None
+            and item.get("venue_lon") is None
+            and (item.get("venue_name") or item.get("venue_city"))
+        ]
+        if not pending or max_lookups <= 0:
+            return
+        ua = resolve_cmdarr_user_agent(cfg) or "Cmdarr (artist events geocode)"
+        dbapi = session.connection().connection
+        cursor = dbapi.cursor()
+        async with aiohttp.ClientSession() as http:
+            for item in pending[:max_lookups]:
+                coords = await resolve_venue_coordinates(
+                    http,
+                    cursor,
+                    item.get("venue_name"),
+                    item.get("venue_city"),
+                    item.get("venue_region"),
+                    user_agent=ua,
+                    country=(item.get("venue_country") or "US"),
+                )
+                if coords:
+                    item["venue_lat"], item["venue_lon"] = coords
+                await asyncio.sleep(1.05)
+        dbapi.commit()
+
+    async def _geocode_stored_events_for_artist(
+        self,
+        cfg: ConfigAdapter,
+        session,
+        artist_mbid: str,
+        *,
+        max_lookups: int,
+    ) -> None:
+        rows = (
+            session.query(ArtistEvent)
+            .filter(
+                ArtistEvent.artist_mbid == artist_mbid,
+                or_(ArtistEvent.venue_lat.is_(None), ArtistEvent.venue_lon.is_(None)),
+                ArtistEvent.venue_name.isnot(None),
+            )
+            .limit(max_lookups)
+            .all()
+        )
+        if not rows:
+            return
+        ua = resolve_cmdarr_user_agent(cfg) or "Cmdarr (artist events geocode)"
+        dbapi = session.connection().connection
+        cursor = dbapi.cursor()
+        async with aiohttp.ClientSession() as http:
+            for ev in rows:
+                coords = await resolve_venue_coordinates(
+                    http,
+                    cursor,
+                    ev.venue_name,
+                    ev.venue_city,
+                    ev.venue_region,
+                    user_agent=ua,
+                    country=(ev.venue_country or "US"),
+                )
+                if coords:
+                    ev.venue_lat, ev.venue_lon = coords
+                await asyncio.sleep(1.05)
+        dbapi.commit()

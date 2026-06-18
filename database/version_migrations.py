@@ -505,9 +505,13 @@ def create_version_migration_runner() -> VersionMigrationRunner:
     )
 
     def migrate_concert_event_deezer_dedupe_coalesce(cursor):
-        """Re-merge rows after venue fingerprint stops requiring region (Deezer lacks state)."""
-        from utils.event_dedupe_coalesce import coalesce_concert_event_duplicates
+        """Normalize Deezer place fields, re-merge, copy TM coordinates onto winners."""
+        from utils.event_dedupe_coalesce import (
+            coalesce_concert_event_duplicates,
+            normalize_concert_event_place_fields,
+        )
 
+        normalize_concert_event_place_fields(cursor)
         coalesce_concert_event_duplicates(cursor)
 
     runner.add_migration(

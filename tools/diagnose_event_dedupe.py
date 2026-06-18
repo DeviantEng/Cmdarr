@@ -262,8 +262,7 @@ def main() -> int:
     print()
     print("=== Dedupe analysis ===")
     print(
-        f"  TM-only + DZ-only pairs same show under NEW fingerprint, split under OLD: "
-        f"{len(pairs)}"
+        f"  TM-only + DZ-only pairs same show under NEW fingerprint, split under OLD: {len(pairs)}"
     )
     print(
         f"  New-key groups with 2+ rows (would coalesce on migration): "

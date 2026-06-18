@@ -5,7 +5,16 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 
-from utils.event_geo import coerce_location_str, make_dedupe_key, venue_fingerprint
+from utils.event_geo import (
+    coerce_location_str,
+    make_dedupe_key,
+    parse_place_city_region,
+    venue_fingerprint,
+)
+
+
+def _row_coords(lat, lon) -> bool:
+    return lat is not None and lon is not None
 
 
 def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
@@ -29,6 +38,8 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
     if not rows:
         return
 
+    by_id: dict[int, tuple] = {row[0]: row for row in rows}
+
     def compute_dedupe_key(
         artist_mbid: str,
         local_date: str,
@@ -44,6 +55,13 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
         fp = venue_fingerprint(v_name, v_city, v_region, venue_lat, venue_lon)
         return make_dedupe_key(artist_mbid, local_date, fp)
 
+    def winner_sort_key(event_id: int) -> tuple:
+        row = by_id[event_id]
+        _id, _mbid, _an, vn, vc, vr, vlat, vlon, _ld, _ui = row
+        has_coords = 0 if _row_coords(vlat, vlon) else 1
+        has_region = 0 if (parse_place_city_region(vc, vr)[1]) else 1
+        return (has_coords, has_region, event_id)
+
     groups: dict[str, list[int]] = defaultdict(list)
     for row in rows:
         _id, artist_mbid, _an, vn, vc, vr, vlat, vlon, local_date, _ui = row
@@ -51,11 +69,60 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
         groups[dk].append(_id)
 
     for _dk, ids in groups.items():
-        ids.sort()
+        ids.sort(key=winner_sort_key)
         if len(ids) <= 1:
             continue
         winner = ids[0]
+        winner_row = by_id[winner]
+        w_id, w_mbid, w_an, w_vn, w_vc, w_vr, w_vlat, w_vlon, w_ld, w_ui = winner_row
+
         for loser in ids[1:]:
+            loser_row = by_id[loser]
+            _lid, _lmbid, _lan, l_vn, l_vc, l_vr, l_vlat, l_vlon, _lld, _lui = loser_row
+
+            if not _row_coords(w_vlat, w_vlon) and _row_coords(l_vlat, l_vlon):
+                w_vlat, w_vlon = l_vlat, l_vlon
+                cursor.execute(
+                    "UPDATE concert_event SET venue_lat = ?, venue_lon = ? WHERE id = ?",
+                    (w_vlat, w_vlon, winner),
+                )
+                by_id[winner] = (
+                    w_id,
+                    w_mbid,
+                    w_an,
+                    w_vn,
+                    w_vc,
+                    w_vr,
+                    w_vlat,
+                    w_vlon,
+                    w_ld,
+                    w_ui,
+                )
+
+            w_city, w_region = parse_place_city_region(w_vc, w_vr)
+            l_city, l_region = parse_place_city_region(l_vc, l_vr)
+            if not w_region and l_region:
+                w_vc, w_vr = l_city or w_vc, l_region
+                cursor.execute(
+                    """
+                    UPDATE concert_event SET venue_city = ?, venue_region = ?
+                    WHERE id = ?
+                    """,
+                    (w_vc, w_vr, winner),
+                )
+                by_id[winner] = (
+                    w_id,
+                    w_mbid,
+                    w_an,
+                    w_vn,
+                    w_vc,
+                    w_vr,
+                    w_vlat,
+                    w_vlon,
+                    w_ld,
+                    w_ui,
+                )
+
             cursor.execute(
                 "SELECT id, provider, external_id FROM concert_event_source WHERE concert_event_id = ?",
                 (loser,),
@@ -104,6 +171,7 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
                     )
 
             cursor.execute("DELETE FROM concert_event WHERE id = ?", (loser,))
+            del by_id[loser]
 
     cursor.execute(
         """
@@ -119,3 +187,29 @@ def coalesce_concert_event_duplicates(cursor: sqlite3.Cursor) -> None:
             "UPDATE concert_event SET dedupe_key = ? WHERE id = ?",
             (new_dk, eid),
         )
+
+
+def normalize_concert_event_place_fields(cursor: sqlite3.Cursor) -> None:
+    """Rewrite comma-separated venue_city values into city + region columns."""
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='concert_event'")
+    if not cursor.fetchone():
+        return
+    cursor.execute(
+        """
+        SELECT id, venue_city, venue_region
+        FROM concert_event
+        WHERE venue_city LIKE '%,%'
+          AND (venue_region IS NULL OR TRIM(venue_region) = '')
+        """
+    )
+    for eid, city, region in cursor.fetchall():
+        new_city, new_region = parse_place_city_region(city, region)
+        if new_city != city or new_region != region:
+            cursor.execute(
+                """
+                UPDATE concert_event
+                SET venue_city = ?, venue_region = ?
+                WHERE id = ?
+                """,
+                (new_city, new_region, eid),
+            )
