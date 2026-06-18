@@ -96,10 +96,12 @@ def venue_fingerprint(
     """
     Stable string for dedupe heuristics.
 
-    When a venue name is present, it is authoritative together with normalized city/region
-    and geo is IGNORED — two provider responses for the same venue often disagree on
+    When a venue name is present, it is authoritative together with normalized city and
+    geo is IGNORED — two provider responses for the same venue often disagree on
     coordinates by 0.01°–0.05° (venue centroid vs. street address geocode), and letting
-    that drive dedupe splits one show into multiple canonical rows.
+    that drive dedupe splits one show into multiple canonical rows. Region/state is omitted
+    here because some providers (e.g. Deezer liveEvents) do not supply it, which would
+    otherwise prevent merging Ticketmaster and Deezer sources onto one row.
 
     When no venue name is available, fall back to geo (rounded to ~11 km) plus city/region
     so events sharing a city/date with no venue info still merge.
@@ -108,7 +110,7 @@ def venue_fingerprint(
     r_norm = (coerce_location_str(region) or "").strip().lower()
     vn = normalize_venue_name(coerce_location_str(venue_name), c_norm)
     if vn:
-        raw = f"v|{vn}|{c_norm}|{r_norm}"
+        raw = f"v|{vn}|{c_norm}"
     else:
         if lat is not None and lon is not None:
             geo = f"{round(lat, 1)},{round(lon, 1)}"

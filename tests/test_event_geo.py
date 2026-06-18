@@ -95,6 +95,13 @@ def test_venue_fingerprint_merges_saint_vs_st_city():
     assert a == b
 
 
+def test_venue_fingerprint_merges_when_region_missing_on_deezer():
+    """Deezer liveEvents omits state/region; TM rows must still dedupe to the same key."""
+    tm = venue_fingerprint("Brooklyn Bowl", "Nashville", "TN", 36.16251, -86.77148)
+    dz = venue_fingerprint("Brooklyn Bowl", "Nashville", None, None, None)
+    assert tm == dz
+
+
 def test_venue_fingerprint_no_name_falls_back_to_geo():
     """When a venue name is missing, city+region+coarse geo distinguishes events."""
     a = venue_fingerprint(None, "Nashville", "TN", 36.16, -86.77)

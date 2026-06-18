@@ -90,6 +90,41 @@ def test_persist_merges_ticketmaster_and_seatgeek_same_show(session):
     assert providers == ["seatgeek", "ticketmaster"]
 
 
+def test_persist_merges_ticketmaster_and_deezer_same_show(session):
+    tm = _item(
+        provider="ticketmaster",
+        external_id="tm-1",
+        venue_name="Brooklyn Bowl",
+        venue_city="Nashville",
+        venue_region="TN",
+        venue_lat=36.16251,
+        venue_lon=-86.77148,
+    )
+    dz = _item(
+        provider="deezer",
+        external_id="dz-evt-99",
+        source_url="https://www.songkick.com/concerts/12345",
+        venue_name="Brooklyn Bowl",
+        venue_city="Nashville",
+        venue_region=None,
+        venue_lat=None,
+        venue_lon=None,
+        provider_event_name="Autumn Kings at Brooklyn Bowl",
+    )
+
+    n1, s1 = persist_normalized_events(session, [tm])
+    session.commit()
+    n2, s2 = persist_normalized_events(session, [dz])
+    session.commit()
+
+    assert (n1, s1) == (1, 1)
+    assert n2 == 0
+    assert s2 == 1
+    assert session.query(ArtistEvent).count() == 1
+    providers = sorted(r.provider for r in session.query(ArtistEventSource).all())
+    assert providers == ["deezer", "ticketmaster"]
+
+
 def test_persist_is_idempotent_for_same_provider_external_id(session):
     item = _item(provider="ticketmaster", external_id="tm-1")
 
