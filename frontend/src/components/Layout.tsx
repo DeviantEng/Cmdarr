@@ -54,7 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden items-center space-x-6 md:flex">
+            <div className="hidden items-center space-x-4 lg:flex lg:space-x-6">
               {navItems.map((item) => (
                 <Link
                   key={item.path}
@@ -100,7 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 md:hidden"
+                className="h-10 w-10 lg:hidden"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 title={mobileMenuOpen ? "Close menu" : "Open menu"}
                 aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
@@ -115,7 +115,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile overlay drawer */}
       {mobileMenuOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden" role="presentation">
+        <div className="fixed inset-0 z-40 lg:hidden" role="presentation">
           <button
             type="button"
             className="absolute inset-0 bg-black/50"
@@ -145,7 +145,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       ) : null}
 
       {/* Main Content */}
-      <main className="mx-auto max-w-7xl overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto min-w-0 max-w-7xl overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>

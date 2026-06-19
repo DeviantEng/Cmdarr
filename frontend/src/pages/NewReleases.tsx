@@ -316,7 +316,7 @@ export function NewReleasesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">New Releases Discovery</h1>
         <p className="mt-2 text-muted-foreground">
@@ -367,7 +367,7 @@ export function NewReleasesPage() {
                 value={artistUrl}
                 onChange={(e) => setArtistUrl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleScanArtistUrl()}
-                className="flex-1 min-w-[280px]"
+                className="min-w-0 w-full flex-1 sm:min-w-[280px]"
               />
               <Button onClick={handleScanArtistUrl} disabled={!artistUrl.trim() || artistScanning}>
                 {artistScanning ? (
@@ -521,11 +521,17 @@ export function NewReleasesPage() {
       </Card>
 
       {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-destructive">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={() => fetchPending()}
+          >
+            Try Again
+          </Button>
+        </div>
       )}
 
       {/* Pending table */}
@@ -618,11 +624,11 @@ function PendingRow({
   onOpenHarmony: (url: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3">
+    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.artist_name}</span>
         <span className="mx-2 text-muted-foreground">—</span>
-        <span>{item.album_title}</span>
+        <span className="break-words">{item.album_title}</span>
         {item.album_type && (
           <span className="ml-2 text-xs text-muted-foreground capitalize">{item.album_type}</span>
         )}
@@ -630,9 +636,8 @@ function PendingRow({
           <span className="ml-2 text-sm text-muted-foreground">{item.release_date}</span>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {/* Links — open external pages */}
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5">
           {item.lidarr_artist_url && (
             <Button variant="outline" size="sm" asChild>
               <a href={item.lidarr_artist_url} target="_blank" rel="noopener noreferrer">
@@ -662,13 +667,14 @@ function PendingRow({
           )}
         </div>
         {/* Actions — icon-only square buttons with tooltips */}
-        <div className="flex items-center gap-1 border-l pl-2 border-border/60">
+        <div className="flex items-center gap-1 border-border/60 sm:border-l sm:pl-2">
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={onClear}
             title="Clear for now, will reappear on rescan"
+            aria-label="Clear release"
           >
             <EyeOff className="h-4 w-4" />
           </Button>
@@ -678,6 +684,7 @@ function PendingRow({
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={onRecheck}
             title="Verify in MusicBrainz and remove if found"
+            aria-label="Recheck release in MusicBrainz"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -687,6 +694,7 @@ function PendingRow({
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
             onClick={onIgnore}
             title="Never show again"
+            aria-label="Ignore release"
           >
             <Ban className="h-4 w-4" />
           </Button>
