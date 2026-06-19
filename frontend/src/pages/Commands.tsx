@@ -699,7 +699,7 @@ export function CommandsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold">Commands</h1>
@@ -838,9 +838,9 @@ export function CommandsPage() {
           </CardContent>
         </Card>
       ) : viewMode === "card" ? (
-        <div className="grid gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {filteredCommands.map((command) => (
-            <Card key={command.id} className="flex flex-col">
+            <Card key={command.id} className="flex min-w-0 flex-col overflow-hidden">
               <CardHeader className="space-y-1 p-3 pb-2 md:p-6 md:pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">

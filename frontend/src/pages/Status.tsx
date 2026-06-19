@@ -820,26 +820,32 @@ export function StatusPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Health Check</div>
-                <div className="text-sm text-muted-foreground">/health</div>
+                <div className="truncate text-sm text-muted-foreground">/health</div>
               </div>
-              <Badge variant="outline">GET</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                GET
+              </Badge>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Commands API</div>
-                <div className="text-sm text-muted-foreground">/api/commands</div>
+                <div className="truncate text-sm text-muted-foreground">/api/commands</div>
               </div>
-              <Badge variant="outline">REST</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                REST
+              </Badge>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Configuration API</div>
-                <div className="text-sm text-muted-foreground">/api/config</div>
+                <div className="truncate text-sm text-muted-foreground">/api/config</div>
               </div>
-              <Badge variant="outline">REST</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                REST
+              </Badge>
             </div>
           </div>
         </CardContent>
