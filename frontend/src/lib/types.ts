@@ -202,12 +202,21 @@ export interface NewReleasePendingItem {
   status: string;
 }
 
+export type ReleaseWithinFilter = "all" | "30d" | "60d" | "90d" | "180d" | "this_year";
+
 export interface PendingReleasesResponse {
   success: boolean;
   total: number;
   limit: number;
   offset: number;
+  release_within?: ReleaseWithinFilter;
   items: NewReleasePendingItem[];
+}
+
+export interface NewReleaseIgnoredArtist {
+  artist_mbid: string;
+  artist_name: string;
+  ignored_at?: string | null;
 }
 
 export interface ScanArtistUrlAlbum {

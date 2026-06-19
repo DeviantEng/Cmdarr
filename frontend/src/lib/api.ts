@@ -11,6 +11,7 @@ import type {
   StatusInfo,
   MigrationStatus,
   NrdMetrics,
+  NewReleaseIgnoredArtist,
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
@@ -316,11 +317,13 @@ class ApiClient {
     status?: string;
     limit?: number;
     offset?: number;
+    release_within?: string;
   }): Promise<PendingReleasesResponse> {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set("status", params.status);
     if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
     if (params?.offset !== undefined) searchParams.set("offset", String(params.offset));
+    if (params?.release_within) searchParams.set("release_within", params.release_within);
     const query = searchParams.toString();
     return this.request<PendingReleasesResponse>(
       `/api/new-releases/pending${query ? `?${query}` : ""}`
@@ -337,6 +340,30 @@ class ApiClient {
 
   async ignoreRelease(itemId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/ignore/${itemId}`, { method: "POST" });
+  }
+
+  async getIgnoredReleaseArtists(): Promise<{
+    success: boolean;
+    total: number;
+    items: NewReleaseIgnoredArtist[];
+  }> {
+    return this.request("/api/new-releases/ignored-artists");
+  }
+
+  async ignoreReleaseArtist(body: {
+    artist_mbid: string;
+    artist_name?: string;
+  }): Promise<{ success: boolean; pending_removed?: number }> {
+    return this.request("/api/new-releases/ignore-artist", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async unignoreReleaseArtist(artistMbid: string): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/unignore-artist/${encodeURIComponent(artistMbid)}`, {
+      method: "POST",
+    });
   }
 
   async recheckRelease(itemId: number): Promise<{ success: boolean; removed?: boolean }> {
