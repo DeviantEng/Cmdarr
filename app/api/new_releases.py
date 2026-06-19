@@ -25,9 +25,10 @@ from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
 from commands.config_adapter import ConfigAdapter
-from database.config_models import DismissedArtistAlbum, NewReleasePending
+from database.config_models import DismissedArtistAlbum, NewReleaseIgnoredArtist, NewReleasePending
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
+from utils.release_date import RELEASE_WITHIN_CHOICES, release_date_within
 from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 router = APIRouter()
@@ -389,21 +390,43 @@ async def get_pending_releases(
     status: Annotated[
         str | None, Query(description="Filter: pending, recheck_requested, resolved, dismissed")
     ] = "pending",
+    release_within: Annotated[
+        str | None,
+        Query(
+            description="Release date window: all, 30d, 60d, 90d, 180d, this_year",
+        ),
+    ] = "all",
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_config_db),
 ):
     """List pending new releases from DB (paginated)."""
     get_logger("cmdarr.api.new_releases")
+    within = (release_within or "all").strip().lower()
+    if within not in RELEASE_WITHIN_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid release_within; use one of: {', '.join(sorted(RELEASE_WITHIN_CHOICES))}",
+        )
+
+    ignored_mbids = {r.artist_mbid for r in db.query(NewReleaseIgnoredArtist.artist_mbid).all()}
     q = db.query(NewReleasePending).filter(NewReleasePending.status == status)
-    total = q.count()
-    rows = q.order_by(NewReleasePending.added_at.desc()).offset(offset).limit(limit).all()
+    if ignored_mbids:
+        q = q.filter(~NewReleasePending.artist_mbid.in_(ignored_mbids))
+
+    rows = q.order_by(NewReleasePending.added_at.desc()).all()
+    if within != "all":
+        rows = [r for r in rows if release_date_within(r.release_date, within)]
+
+    total = len(rows)
+    page = rows[offset : offset + limit]
     return {
         "success": True,
         "total": total,
         "limit": limit,
         "offset": offset,
-        "items": [_pending_to_dict(r) for r in rows],
+        "release_within": within,
+        "items": [_pending_to_dict(r) for r in page],
     }
 
 
@@ -459,6 +482,86 @@ async def ignore_release(item_id: int, db: Annotated[Session, Depends(get_config
     row.resolved_reason = "manual_ignore"
     db.commit()
     return {"success": True, "message": "Ignored"}
+
+
+class IgnoreArtistRequest(BaseModel):
+    artist_mbid: str
+    artist_name: str | None = None
+
+
+@router.get("/new-releases/ignored-artists")
+async def list_ignored_artists(
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    db: Session = Depends(get_config_db),
+):
+    rows = (
+        db.query(NewReleaseIgnoredArtist)
+        .order_by(NewReleaseIgnoredArtist.ignored_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "success": True,
+        "total": len(rows),
+        "items": [
+            {
+                "artist_mbid": r.artist_mbid,
+                "artist_name": r.artist_name or "",
+                "ignored_at": r.ignored_at.isoformat() if r.ignored_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/new-releases/ignore-artist")
+async def ignore_artist(body: IgnoreArtistRequest, db: Annotated[Session, Depends(get_config_db)]):
+    """Stop tracking new releases for an artist; clears their pending rows."""
+    mbid = (body.artist_mbid or "").strip()
+    if not mbid:
+        raise HTTPException(status_code=400, detail="artist_mbid required")
+
+    existing = (
+        db.query(NewReleaseIgnoredArtist)
+        .filter(NewReleaseIgnoredArtist.artist_mbid == mbid)
+        .first()
+    )
+    if not existing:
+        db.add(
+            NewReleaseIgnoredArtist(
+                artist_mbid=mbid,
+                artist_name=(body.artist_name or "")[:500] or None,
+            )
+        )
+
+    removed = (
+        db.query(NewReleasePending)
+        .filter(
+            NewReleasePending.artist_mbid == mbid,
+            NewReleasePending.status == "pending",
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {
+        "success": True,
+        "message": "Artist will no longer be tracked for new releases",
+        "pending_removed": removed,
+    }
+
+
+@router.post("/new-releases/unignore-artist/{artist_mbid}")
+async def unignore_artist(artist_mbid: str, db: Annotated[Session, Depends(get_config_db)]):
+    row = (
+        db.query(NewReleaseIgnoredArtist)
+        .filter(NewReleaseIgnoredArtist.artist_mbid == artist_mbid)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Artist not on ignore list")
+    db.delete(row)
+    db.commit()
+    return {"success": True, "message": "Artist tracking restored"}
 
 
 @router.post("/new-releases/dismiss/{item_id}")

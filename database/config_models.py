@@ -209,6 +209,16 @@ class DismissedArtistAlbum(ConfigBase):
     )
 
 
+class NewReleaseIgnoredArtist(ConfigBase):
+    """Artists excluded from new release discovery and pending list."""
+
+    __tablename__ = "new_release_ignored_artist"
+
+    artist_mbid = Column(String(100), primary_key=True)
+    artist_name = Column(String(500), nullable=True)
+    ignored_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class ArtistEvent(ConfigBase):
     """Canonical live event row (shows, festivals, meet-and-greets, etc.) after cross-provider dedupe."""
 

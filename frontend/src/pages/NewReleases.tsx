@@ -10,14 +10,40 @@ import {
   RefreshCw,
   Ban,
   Link2,
+  UserX,
+  RotateCcw,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { NewReleasePendingItem } from "@/lib/types";
+import type { NewReleasePendingItem, ReleaseWithinFilter } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+
+const RELEASE_WITHIN_OPTIONS: { value: ReleaseWithinFilter; label: string }[] = [
+  { value: "all", label: "All dates" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "60d", label: "Last 60 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "180d", label: "Last 180 days" },
+  { value: "this_year", label: "This year" },
+];
 
 /** Returns display label for release URL based on hostname (avoids substring matching). */
 function getReleaseUrlLabel(url: string): string {
@@ -65,6 +91,14 @@ export function NewReleasesPage() {
   const [artistScanning, setArtistScanning] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [ignoreTarget, setIgnoreTarget] = useState<NewReleasePendingItem | null>(null);
+  const [dontTrackTarget, setDontTrackTarget] = useState<NewReleasePendingItem | null>(null);
+  const [releaseWithin, setReleaseWithin] = useState<ReleaseWithinFilter>("90d");
+  const [ignoredArtistsOpen, setIgnoredArtistsOpen] = useState(false);
+  const [ignoredArtists, setIgnoredArtists] = useState<
+    { artist_mbid: string; artist_name: string; ignored_at?: string | null }[]
+  >([]);
+  const [ignoredArtistsLoading, setIgnoredArtistsLoading] = useState(false);
+  const [dontTrackLoading, setDontTrackLoading] = useState(false);
   const [clearAllLoading, setClearAllLoading] = useState(false);
   const [ignoreLoading, setIgnoreLoading] = useState(false);
 
@@ -90,7 +124,11 @@ export function NewReleasesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getPendingReleases({ status: "pending", limit: 200 });
+      const data = await api.getPendingReleases({
+        status: "pending",
+        limit: 200,
+        release_within: releaseWithin,
+      });
       setPending(data.items);
       setTotal(data.total);
     } catch (err) {
@@ -104,6 +142,18 @@ export function NewReleasesPage() {
       toast.error(msg);
     } finally {
       setLoading(false);
+    }
+  }, [releaseWithin]);
+
+  const loadIgnoredArtists = useCallback(async () => {
+    setIgnoredArtistsLoading(true);
+    try {
+      const res = await api.getIgnoredReleaseArtists();
+      setIgnoredArtists(res.items);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load ignored artists");
+    } finally {
+      setIgnoredArtistsLoading(false);
     }
   }, []);
 
@@ -156,6 +206,44 @@ export function NewReleasesPage() {
       toast.error(err instanceof Error ? err.message : "Clear all failed");
     } finally {
       setClearAllLoading(false);
+    }
+  };
+
+  const handleDontTrackArtist = (item: NewReleasePendingItem) => {
+    setDontTrackTarget(item);
+  };
+
+  const doDontTrackArtist = async () => {
+    if (!dontTrackTarget) return;
+    setDontTrackLoading(true);
+    try {
+      const res = await api.ignoreReleaseArtist({
+        artist_mbid: dontTrackTarget.artist_mbid,
+        artist_name: dontTrackTarget.artist_name,
+      });
+      setPending((prev) => prev.filter((p) => p.artist_mbid !== dontTrackTarget.artist_mbid));
+      setTotal((t) => Math.max(0, t - (res.pending_removed ?? 0)));
+      setDontTrackTarget(null);
+      toast.success(`${dontTrackTarget.artist_name} will no longer be tracked for new releases`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update artist tracking");
+    } finally {
+      setDontTrackLoading(false);
+    }
+  };
+
+  const openIgnoredArtists = () => {
+    setIgnoredArtistsOpen(true);
+    void loadIgnoredArtists();
+  };
+
+  const restoreIgnoredArtist = async (artistMbid: string) => {
+    try {
+      await api.unignoreReleaseArtist(artistMbid);
+      setIgnoredArtists((prev) => prev.filter((a) => a.artist_mbid !== artistMbid));
+      toast.success("Artist tracking restored");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Restore failed");
     }
   };
 
@@ -537,20 +625,48 @@ export function NewReleasesPage() {
       {/* Pending table */}
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <CardTitle>Pending Releases</CardTitle>
-              <CardDescription>
-                {total} items. Use links to open Lidarr, MusicBrainz, release source
-                (Deezer/Spotify), or Add to MB (Harmony). Actions: Clear (reappears), Recheck
-                (verify MB), Ignore (never show).
-              </CardDescription>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <CardTitle>Pending Releases</CardTitle>
+                <CardDescription>
+                  {total} items matching filters. Links open Lidarr, MusicBrainz, or release source.
+                  Clear reappears on rescan; Ignore hides one album; Don&apos;t track skips the
+                  artist entirely.
+                </CardDescription>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={openIgnoredArtists}>
+                  <UserX className="mr-2 h-4 w-4" />
+                  Don&apos;t track
+                </Button>
+                {pending.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={handleClearAll}>
+                    Clear all
+                  </Button>
+                )}
+              </div>
             </div>
-            {pending.length > 0 && (
-              <Button variant="outline" size="sm" onClick={handleClearAll} className="shrink-0">
-                Clear all
-              </Button>
-            )}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+              <div className="w-full space-y-1.5 sm:w-52">
+                <Label className="text-xs text-muted-foreground">Release date</Label>
+                <Select
+                  value={releaseWithin}
+                  onValueChange={(v) => setReleaseWithin(v as ReleaseWithinFilter)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RELEASE_WITHIN_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -564,7 +680,9 @@ export function NewReleasesPage() {
                 <Disc3 className="mx-auto h-12 w-12 opacity-50" />
                 <p className="mt-2 font-medium">No pending releases</p>
                 <p className="mt-1 text-sm">
-                  Run a batch or scan an artist to discover new releases.
+                  {releaseWithin === "all"
+                    ? "Run a batch or scan an artist to discover new releases."
+                    : "Try a wider release date filter or run a new scan."}
                 </p>
               </div>
             </div>
@@ -577,6 +695,7 @@ export function NewReleasesPage() {
                   onClear={() => handleClear(item)}
                   onRecheck={() => handleRecheck(item)}
                   onIgnore={() => handleIgnore(item)}
+                  onDontTrackArtist={() => handleDontTrackArtist(item)}
                   onOpenHarmony={openHarmony}
                 />
               ))}
@@ -602,10 +721,65 @@ export function NewReleasesPage() {
             ? `Ignore "${ignoreTarget.album_title}" by ${ignoreTarget.artist_name}? It won't reappear. Restore from Status if needed.`
             : null
         }
-        confirmLabel="Ignore"
+        confirmLabel="Ignore release"
         onConfirm={doIgnore}
         isLoading={ignoreLoading}
       />
+      <ConfirmDialog
+        open={dontTrackTarget !== null}
+        onOpenChange={(open) => !open && setDontTrackTarget(null)}
+        title="Don't track this artist?"
+        description={
+          dontTrackTarget
+            ? `"${dontTrackTarget.artist_name}" will be removed from pending and skipped on future discovery scans. Restore from Don't track list on this page.`
+            : null
+        }
+        confirmLabel="Don't track artist"
+        onConfirm={doDontTrackArtist}
+        isLoading={dontTrackLoading}
+      />
+      <Dialog open={ignoredArtistsOpen} onOpenChange={setIgnoredArtistsOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Artists not tracked</DialogTitle>
+            <DialogDescription>
+              These artists are excluded from scheduled discovery and pending list. Restore to scan
+              them again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {ignoredArtistsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : ignoredArtists.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No artists on the don&apos;t-track list.
+              </p>
+            ) : (
+              ignoredArtists.map((artist) => (
+                <div
+                  key={artist.artist_mbid}
+                  className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 font-medium">
+                    {artist.artist_name || artist.artist_mbid}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 self-start sm:self-auto"
+                    onClick={() => restoreIgnoredArtist(artist.artist_mbid)}
+                  >
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -615,12 +789,14 @@ function PendingRow({
   onClear,
   onRecheck,
   onIgnore,
+  onDontTrackArtist,
   onOpenHarmony,
 }: {
   item: NewReleasePendingItem;
   onClear: () => void;
   onRecheck: () => void;
   onIgnore: () => void;
+  onDontTrackArtist: () => void;
   onOpenHarmony: (url: string) => void;
 }) {
   return (
@@ -672,6 +848,16 @@ function PendingRow({
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={onDontTrackArtist}
+            title="Don't track this artist for new releases"
+            aria-label="Don't track artist"
+          >
+            <UserX className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={onClear}
             title="Clear for now, will reappear on rescan"
             aria-label="Clear release"
@@ -693,7 +879,7 @@ function PendingRow({
             size="icon"
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
             onClick={onIgnore}
-            title="Never show again"
+            title="Ignore this album permanently"
             aria-label="Ignore release"
           >
             <Ban className="h-4 w-4" />

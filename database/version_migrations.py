@@ -514,6 +514,25 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         normalize_concert_event_place_fields(cursor)
         coalesce_concert_event_duplicates(cursor)
 
+    def migrate_new_release_ignored_artist(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS new_release_ignored_artist (
+                artist_mbid VARCHAR(100) PRIMARY KEY,
+                artist_name VARCHAR(500),
+                ignored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.16",
+            name="new_release_ignored_artist",
+            description="Add new_release_ignored_artist for do-not-track artist list",
+            up_func=migrate_new_release_ignored_artist,
+            applied_check=lambda c: _table_exists(c, "new_release_ignored_artist"),
+        )
+    )
+
     runner.add_migration(
         VersionMigration(
             version="0.3.16",

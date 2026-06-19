@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 - **Playlist identity**: Plex/Jellyfin playlists are now tracked by stored ID as well as title, so overlapping names no longer collide; command delete now offers ability to also delete the playlist in Plex/Jellyfin via optional checkbox.
 - **Artist Events providers**: Removed Bandsintown and Songkick; added **SeatGeek** (developer API; requires `client_id`) and **Deezer** (unofficial GraphQL via ARL) as secondary/tertiary event sources alongside Ticketmaster. Events page shows per-provider badges and source filters; deduped shows keep links for each provider that matched.
+- **New Releases Discovery**: **Don't track artist** list (like Artist Events hides) skips artists on future scans and clears their pending rows; pending list supports a **release date** filter (30/60/90/180 days or this year) to focus on genuinely recent releases.
 
 ### Fixes
 - **Artist Events — Ticketmaster matching**: Multi-artist bills no longer reject a show when a co-headliner’s MusicBrainz ID differs from the library artist; matching uses per-attraction MBID/name checks so openers and co-bills resolve correctly.
