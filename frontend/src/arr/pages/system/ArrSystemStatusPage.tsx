@@ -1,10 +1,5 @@
-import { ArrPlaceholderPage } from "@/arr/pages/ArrPlaceholderPage";
+import { StatusPage } from "@/pages/Status";
 
 export function ArrSystemStatusPage() {
-  return (
-    <ArrPlaceholderPage
-      title="System Status"
-      description="Health checks, cache metrics, migrations, and administrative actions."
-    />
-  );
+  return <StatusPage />;
 }

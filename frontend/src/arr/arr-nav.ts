@@ -11,6 +11,7 @@ import {
   Timer,
   Zap,
 } from "lucide-react";
+import { configCategoryGroups } from "@/lib/config-categories";
 
 export type ArrNavLink = {
   path: string;
@@ -23,6 +24,8 @@ export type ArrNavLink = {
 export type ArrNavSection = {
   id: string;
   label: string;
+  pathPrefix: string;
+  icon: LucideIcon;
   items: ArrNavLink[];
 };
 
@@ -33,29 +36,47 @@ export const arrPrimaryNav: ArrNavLink[] = [
   { path: "/import-lists", label: "Import Lists", icon: Import },
 ];
 
-export const arrSettingsNav: ArrNavLink[] = [
-  { path: "/settings/application", label: "Application", icon: Settings2 },
-  { path: "/settings/music-sources", label: "Music Sources", icon: Disc3 },
-  { path: "/settings/event-sources", label: "Event Sources", icon: CalendarDays },
-  { path: "/settings/media-servers", label: "Media Servers", icon: Monitor },
-  { path: "/settings/music-management", label: "Music Management", icon: Cog },
-  { path: "/settings/performance", label: "Performance", icon: Zap },
-  { path: "/settings/scheduler", label: "Scheduler", icon: Timer },
-];
+const settingsIcons: Record<string, LucideIcon> = {
+  application: Settings2,
+  "music-sources": Disc3,
+  "event-sources": CalendarDays,
+  "media-servers": Monitor,
+  "music-management": Cog,
+  performance: Zap,
+  scheduler: Timer,
+};
+
+export const arrSettingsNav: ArrNavLink[] = configCategoryGroups.map((group) => ({
+  path: `/settings/${group.slug}`,
+  label: group.name,
+  icon: settingsIcons[group.slug] ?? Settings2,
+}));
 
 export const arrSystemNav: ArrNavLink[] = [
   { path: "/system/status", label: "Status", icon: Gauge },
 ];
 
 export const arrNavSections: ArrNavSection[] = [
-  { id: "settings", label: "Settings", items: arrSettingsNav },
-  { id: "system", label: "System", items: arrSystemNav },
+  {
+    id: "settings",
+    label: "Settings",
+    pathPrefix: "/settings",
+    icon: Settings2,
+    items: arrSettingsNav,
+  },
+  {
+    id: "system",
+    label: "System",
+    pathPrefix: "/system",
+    icon: Gauge,
+    items: arrSystemNav,
+  },
 ];
 
-export const arrSettingsSections = arrSettingsNav.map((item) => ({
-  slug: item.path.replace("/settings/", ""),
-  label: item.label,
-  description: settingsSectionDescription(item.path.replace("/settings/", "")),
+export const arrSettingsSections = configCategoryGroups.map((group) => ({
+  slug: group.slug,
+  label: group.name,
+  description: settingsSectionDescription(group.slug),
 }));
 
 function settingsSectionDescription(slug: string): string {
@@ -72,9 +93,19 @@ function settingsSectionDescription(slug: string): string {
 }
 
 export function arrPageTitle(pathname: string): string {
-  const all = [...arrPrimaryNav, ...arrSettingsNav, ...arrSystemNav];
-  const match = all.find((item) =>
+  const settingsMatch = arrSettingsNav.find((item) => pathname.startsWith(item.path));
+  if (settingsMatch) return settingsMatch.label;
+
+  const systemMatch = arrSystemNav.find((item) => pathname.startsWith(item.path));
+  if (systemMatch) return systemMatch.label;
+
+  const primaryMatch = arrPrimaryNav.find((item) =>
     item.end ? pathname === item.path : pathname.startsWith(item.path)
   );
-  return match?.label ?? "Cmdarr";
+  if (primaryMatch) return primaryMatch.label;
+
+  if (pathname.startsWith("/settings")) return "Settings";
+  if (pathname.startsWith("/system")) return "System";
+
+  return "Cmdarr";
 }

@@ -1,13 +1,79 @@
-import { NavLink } from "react-router-dom";
-import { arrNavSections, arrPrimaryNav, type ArrNavLink } from "@/arr/arr-nav";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { arrNavSections, arrPrimaryNav, type ArrNavLink, type ArrNavSection } from "@/arr/arr-nav";
 import { cn } from "@/lib/utils";
 
-function SidebarLink({ item }: { item: ArrNavLink }) {
+function SidebarLink({ item, nested = false }: { item: ArrNavLink; nested?: boolean }) {
   return (
-    <NavLink to={item.path} end={item.end} className="arr-sidebar-link">
+    <NavLink to={item.path} end={item.end} className={cn("arr-sidebar-link", nested && "pl-3")}>
       <item.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
       <span className="truncate">{item.label}</span>
     </NavLink>
+  );
+}
+
+function CollapsibleNavSection({ section }: { section: ArrNavSection }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isInSection = location.pathname.startsWith(section.pathPrefix);
+  const [expanded, setExpanded] = useState(isInSection);
+
+  useEffect(() => {
+    setExpanded(isInSection);
+  }, [isInSection]);
+
+  const toggleSection = () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (!isInSection && section.items[0]) {
+      navigate(section.items[0].path);
+    }
+  };
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        className={cn(
+          "arr-sidebar-link w-full text-left",
+          isInSection && "text-[var(--arr-sidebar-text)]"
+        )}
+        onClick={toggleSection}
+        aria-expanded={expanded}
+      >
+        <section.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+        <span className="truncate">{section.label}</span>
+        <ChevronDown
+          className={cn(
+            "ml-auto h-4 w-4 shrink-0 opacity-60 transition-transform",
+            expanded && "rotate-180"
+          )}
+        />
+      </button>
+      {expanded ? (
+        <div className="ml-3 space-y-0.5 border-l border-[var(--arr-sidebar-border)] pl-1 pt-0.5">
+          {section.items.map((item) => (
+            <SidebarLink key={item.path} item={item} nested />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ArrBrandMark() {
+  return (
+    <img
+      src="/icon-512.png"
+      alt=""
+      width={32}
+      height={32}
+      className="h-8 w-8 shrink-0 rounded-md"
+    />
   );
 }
 
@@ -23,16 +89,11 @@ export function ArrSidebar({ className }: { className?: string }) {
         borderColor: "var(--arr-sidebar-border)",
       }}
     >
-      <div className="flex h-[var(--arr-header-height)] items-center gap-2 border-b px-3">
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-bold"
-          style={{
-            background: "var(--arr-accent)",
-            color: "var(--arr-accent-foreground)",
-          }}
-        >
-          C
-        </div>
+      <div
+        className="flex h-[var(--arr-header-height)] items-center gap-2 border-b px-3"
+        style={{ borderColor: "var(--arr-sidebar-border)" }}
+      >
+        <ArrBrandMark />
         <div className="min-w-0">
           <div
             className="truncate text-sm font-semibold"
@@ -50,14 +111,7 @@ export function ArrSidebar({ className }: { className?: string }) {
         ))}
 
         {arrNavSections.map((section) => (
-          <div key={section.id} className="pt-2">
-            <div className="arr-section-label">{section.label}</div>
-            <div className="space-y-0.5">
-              {section.items.map((item) => (
-                <SidebarLink key={item.path} item={item} />
-              ))}
-            </div>
-          </div>
+          <CollapsibleNavSection key={section.id} section={section} />
         ))}
       </nav>
     </aside>

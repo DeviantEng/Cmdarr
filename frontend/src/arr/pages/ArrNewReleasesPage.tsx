@@ -1,10 +1,5 @@
-import { ArrPlaceholderPage } from "@/arr/pages/ArrPlaceholderPage";
+import { NewReleasesPage } from "@/pages/NewReleases";
 
 export function ArrNewReleasesPage() {
-  return (
-    <ArrPlaceholderPage
-      title="New Releases"
-      description="Pending releases missing from MusicBrainz, artist scans, and discovery batch runs."
-    />
-  );
+  return <NewReleasesPage />;
 }

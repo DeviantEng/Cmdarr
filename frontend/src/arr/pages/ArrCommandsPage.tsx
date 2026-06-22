@@ -1,10 +1,6 @@
-import { ArrPlaceholderPage } from "@/arr/pages/ArrPlaceholderPage";
+import { CommandsPage } from "@/pages/Commands";
 
+/** Arr presentation wrapper — full Arr-specific layout coming next. */
 export function ArrCommandsPage() {
-  return (
-    <ArrPlaceholderPage
-      title="Commands"
-      description="Scheduled and manual automation commands — playlist sync, discovery, generators, and more."
-    />
-  );
+  return <CommandsPage />;
 }

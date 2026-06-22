@@ -1,48 +1,48 @@
 import { Navigate, useParams } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
-import { arrSettingsSections } from "@/arr/arr-nav";
-import { NavLink } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import {
+  ConfigApiKeyCard,
+  ConfigConnectivityDialog,
+  ConfigSettingsErrorBanner,
+  ConfigSettingsList,
+  ConfigSettingsToolbar,
+} from "@/components/config/ConfigSettingsFields";
+import { getConfigCategoryGroup } from "@/lib/config-categories";
+import { useConfigSettings } from "@/hooks/useConfigSettings";
 
 export function ArrSettingsPage() {
   const { section } = useParams<{ section: string }>();
-  const active = arrSettingsSections.find((s) => s.slug === section);
+  const group = section ? getConfigCategoryGroup(section) : undefined;
+  const controller = useConfigSettings();
 
-  if (!section || !active) {
+  if (!section || !group) {
     return <Navigate to="/settings/application" replace />;
   }
 
-  return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-      <aside className="lg:w-52 lg:shrink-0">
-        <nav className="arr-panel flex flex-row gap-1 overflow-x-auto p-1 lg:flex-col lg:overflow-visible">
-          {arrSettingsSections.map((item) => (
-            <NavLink
-              key={item.slug}
-              to={`/settings/${item.slug}`}
-              className={({ isActive }) =>
-                cn(
-                  "whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="min-w-0 flex-1">
-        <ArrPageHeader title={active.label} description={active.description} />
-        <div className="arr-panel p-6 text-sm text-muted-foreground">
-          Settings fields for <strong className="text-foreground">{active.label}</strong> will be
-          migrated from the classic Configuration page. Use Classic UI to edit settings until this
-          section is complete.
-        </div>
+  if (controller.loading) {
+    return (
+      <div className="flex min-h-[240px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
+
+  const groupSettings = controller.getSettingsByCategories(group.categories);
+
+  return (
+    <div>
+      <ArrPageHeader
+        title={group.name}
+        description={`Configure ${group.name.toLowerCase()} settings.`}
+      />
+      {section === "application" ? <ConfigApiKeyCard controller={controller} /> : null}
+      <ConfigSettingsErrorBanner controller={controller} />
+      <div className="mb-4">
+        <ConfigSettingsToolbar controller={controller} />
+      </div>
+      <ConfigSettingsList controller={controller} groupSettings={groupSettings} useArrPanel />
+      <ConfigConnectivityDialog controller={controller} />
     </div>
   );
 }
