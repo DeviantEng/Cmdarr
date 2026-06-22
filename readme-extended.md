@@ -51,19 +51,7 @@ flowchart LR
 5. When ready to release: create release branch from develop
 6. **Merge release branch into develop first** (not main yet)
 7. Let develop image build and **validate Trivy scan passes**
-8. When develop build is green: create an **annotated tag** with release notes (used for the Discord `#releases` post after merge), then open PR from release to main:
-   ```bash
-   git tag -a v0.3.16 -m "$(cat <<'EOF'
-   ### Features
-   - ...
-
-   ### Fixes
-   - ...
-   EOF
-   )"
-   git push origin v0.3.16
-   ```
-   Copy from [CHANGELOG.md](CHANGELOG.md) for the tag message, or keep them in sync manually.
+8. When develop build is green: create tag (message optional), open PR from release to main. After merge, CI posts release notes to Discord `#releases` from the matching section in [CHANGELOG.md](CHANGELOG.md).
 9. Gate runs on PR to main; all checks must pass
 10. Approve and merge; CI builds prod image; push main back to develop
 
