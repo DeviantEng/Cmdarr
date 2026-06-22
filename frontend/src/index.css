@@ -54,6 +54,12 @@ body {
   color: var(--color-foreground);
 }
 
+/* Radix dialogs portal to document.body — use card surface tokens (not arr shell bg overrides) */
+html.dark [role="dialog"] {
+  background-color: var(--color-card);
+  color: var(--color-card-foreground);
+}
+
 /* Range slider with visible track (works in light and dark mode) */
 .slider-range {
   -webkit-appearance: none;

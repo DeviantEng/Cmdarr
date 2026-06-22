@@ -33,6 +33,9 @@
   --arr-header-border: oklch(26% 0.02 260);
   --arr-accent: oklch(62% 0.14 195);
   --color-card: oklch(19% 0.02 260);
+  --color-card-foreground: oklch(96% 0 0);
+  --color-popover: oklch(19% 0.02 260);
+  --color-popover-foreground: oklch(96% 0 0);
   --color-background: var(--arr-content-bg);
 }
 
