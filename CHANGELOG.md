@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Releases Discovery — Spotify (scraper)**: Optional release source using public Spotify catalog via spotifyscraper — no Spotify API credentials or Premium required. Deezer remains the default; switch in Commands → Edit to compare catalogs (e.g. when Deezer attaches wrong albums to an artist page).
 - **NRD Spotify performance**: Artist discography is fetched in one paginated pass per artist; `get_album` runs only for releases that do not match MusicBrainz, before creating pending rows.
 
+### Fixes
+
+### Housekeeping
+- **Icons** - Generated icons for Cmdarr.
+
 ## [0.3.16] - 2026-06-22
 
 ### Features
