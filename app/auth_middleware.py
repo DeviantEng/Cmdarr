@@ -48,6 +48,10 @@ def _is_public_path(path: str) -> bool:
     # Frontend SPA routes - must be public so users can reach the login screen
     if path in ("/", "/config", "/status", "/import-lists", "/new-releases", "/events"):
         return True
+    if path == "/settings" or path.startswith("/settings/"):
+        return True
+    if path == "/system" or path.startswith("/system/"):
+        return True
     # Import list JSON endpoints - public for Lidarr (no auth headers); content is artist MBIDs only
     if path in ("/import_lists/discovery_lastfm", "/import_lists/discovery_playlistsync"):
         return True

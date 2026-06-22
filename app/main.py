@@ -568,6 +568,12 @@ async def detailed_status_api(db: Annotated[Session, Depends(get_config_db)]):
         raise HTTPException(status_code=500, detail="Status check failed")
 
 
+@app.get("/api/version")
+async def get_app_version():
+    """Lightweight version endpoint for UI display."""
+    return {"version": __version__}
+
+
 # Serve React app for frontend routes
 @app.get("/", response_class=HTMLResponse)
 async def react_app(request: Request):
@@ -629,6 +635,20 @@ def _register_frontend_public_file(filename: str) -> None:
 
 for _filename in FRONTEND_PUBLIC_FILES:
     _register_frontend_public_file(_filename)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+@app.get("/settings/{full_path:path}", response_class=HTMLResponse)
+async def react_settings(request: Request, full_path: str = ""):
+    """Serve React app for modern UI settings routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+@app.get("/system", response_class=HTMLResponse)
+@app.get("/system/{full_path:path}", response_class=HTMLResponse)
+async def react_system(request: Request, full_path: str = ""):
+    """Serve React app for modern UI system routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
 # API Routes - Import after logging is configured
