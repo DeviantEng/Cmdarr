@@ -35,6 +35,7 @@ from database.config_models import (
 )
 from database.database import get_database_manager
 from utils.nrd_release_source import (
+    enrich_scraper_nrd_album,
     normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
@@ -291,7 +292,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 albums_result = await release_client.get_artist_albums(
                                     artist_id,
                                     limit=50,
-                                    include_groups="album,single,compilation,appears_on",
+                                    include_groups="album,ep,single,compilation,appears_on",
                                     fetch_all=True,
                                 )
                                 if not albums_result.get("success") or not albums_result.get(
@@ -315,8 +316,14 @@ class NewReleasesDiscoveryCommand(BaseCommand):
 
                                 had_pending = False
                                 candidates = []
+                                scraper_source = (
+                                    normalize_nrd_source(source_provider) == "spotify_scraper"
+                                )
                                 for album in albums_result["albums"]:
-                                    if album.get("primary_artist_id") != artist_id:
+                                    if (
+                                        not scraper_source
+                                        and album.get("primary_artist_id") != artist_id
+                                    ):
                                         continue
                                     album_type = album.get("album_type", "")
                                     total_tracks = album.get("total_tracks", 0)
@@ -326,12 +333,19 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                         continue
                                     if _is_live_release(album.get("name", "")):
                                         continue
+                                    if _title_matches_mb(album.get("name", ""), mb_titles):
+                                        continue
+
+                                    album = await enrich_scraper_nrd_album(
+                                        release_client, album, source_provider
+                                    )
+                                    if album.get("primary_artist_id") != artist_id:
+                                        continue
+
                                     spotify_url = album.get("spotify_url") or album.get(
                                         "external_url", ""
                                     )
                                     if not spotify_url:
-                                        continue
-                                    if _title_matches_mb(album.get("name", ""), mb_titles):
                                         continue
 
                                     album_title = album.get("name", "Unknown")

@@ -78,6 +78,32 @@ async def test_spotify_client_scraper_get_artist_albums():
     assert len(result["albums"]) == 1
 
 
+@pytest.mark.asyncio
+async def test_enrich_nrd_album_scraper_mode():
+    from clients.client_spotify import SpotifyClient
+
+    config = MagicMock()
+    client = SpotifyClient(config, discography_source="scraper")
+    disc_album = {"id": "a1", "name": "Disc", "primary_artist_id": "art1"}
+    enriched = {"id": "a1", "name": "Full", "primary_artist_id": "art1", "spotify_url": "http://x"}
+    with patch.object(
+        client, "_run_scraper", new=AsyncMock(return_value={"success": True, "album": enriched})
+    ):
+        result = await client.enrich_nrd_album(disc_album)
+    assert result["name"] == "Full"
+
+
+@pytest.mark.asyncio
+async def test_enrich_scraper_nrd_album_skips_deezer():
+    from utils.nrd_release_source import enrich_scraper_nrd_album
+
+    album = {"id": "1", "name": "A"}
+    client = MagicMock()
+    result = await enrich_scraper_nrd_album(client, album, "deezer")
+    assert result is album
+    client.enrich_nrd_album.assert_not_called()
+
+
 def test_new_releases_discovery_source_accepts_spotify_scraper():
     from commands.new_releases_discovery import NewReleasesDiscoveryCommand
 
