@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-RELEASE_WITHIN_CHOICES = frozenset(
-    {"all", "30d", "90d", "180d", "this_year", "previous_year"}
-)
+RELEASE_WITHIN_CHOICES = frozenset({"all", "30d", "90d", "180d", "this_year", "previous_year"})
 
 
 def parse_release_date(value: str | None) -> date | None:
