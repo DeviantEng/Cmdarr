@@ -112,8 +112,86 @@ def _scraper_get_playlist(url: str) -> dict[str, Any]:
         return {"success": False, "error": f"Scraper failed: {str(e)}"}
 
 
-_SCRAPER_ALBUM_BATCH_SIZE = 20
-_SCRAPER_BATCH_DELAY_SEC = 0.35
+_SCRAPER_DISCO_PAGE_SIZE = 50
+
+_SPOTIFY_DISCO_TYPE_MAP = {
+    "ALBUM": "album",
+    "EP": "ep",
+    "SINGLE": "single",
+    "COMPILATION": "compilation",
+}
+
+
+def _spotify_discography_album_type(raw_type: str | None) -> str:
+    key = (raw_type or "ALBUM").upper()
+    return _SPOTIFY_DISCO_TYPE_MAP.get(key, key.lower())
+
+
+def _parse_scraper_discography_date(date_obj: dict[str, Any] | None) -> tuple[str, str]:
+    if not date_obj:
+        return "", "year"
+    precision_raw = (date_obj.get("precision") or "YEAR").upper()
+    precision_map = {"DAY": "day", "MONTH": "month", "YEAR": "year"}
+    precision = precision_map.get(precision_raw, "year")
+    iso = date_obj.get("isoString") or ""
+    if iso and "T" in iso:
+        return iso[:10], precision
+    year = date_obj.get("year")
+    if year is not None:
+        return str(year), "year"
+    return "", "year"
+
+
+def _normalize_scraper_discography_release(
+    release: dict[str, Any], artist_id: str
+) -> dict[str, Any] | None:
+    """Normalize artist discography GraphQL release to NRD album dict shape."""
+    album_id = release.get("id")
+    if not album_id:
+        return None
+    sharing = release.get("sharingInfo") or {}
+    share_url = sharing.get("shareUrl") or f"https://open.spotify.com/album/{album_id}"
+    release_date, precision = _parse_scraper_discography_date(release.get("date"))
+    tracks = release.get("tracks") or {}
+    return {
+        "id": album_id,
+        "name": release.get("name") or "",
+        "release_date": release_date,
+        "release_date_precision": precision,
+        "album_type": _spotify_discography_album_type(release.get("type")),
+        "total_tracks": int(tracks.get("totalCount") or 0),
+        "primary_artist_id": artist_id,
+        "external_url": share_url,
+        "spotify_url": share_url,
+    }
+
+
+def _scraper_iter_discography_releases(client: Any, artist_id: str):
+    """Yield raw release dicts from paginated artist discography (one artist endpoint)."""
+    from spotify_scraper.api import parse_entities as pe
+
+    _, entity_id = client._resolve(artist_id, "artist")
+    offset = 0
+    total: int | None = None
+    while True:
+        union = client._anon_union(
+            "artist_discography",
+            entity_id,
+            "artistUnion",
+            {"offset": offset, "limit": _SCRAPER_DISCO_PAGE_SIZE},
+        )
+        if total is None:
+            total = pe.discography_total(union)
+        count = pe.discography_item_count(union)
+        if count == 0:
+            break
+        for group in union.get("discography", {}).get("all", {}).get("items", []):
+            for release in group.get("releases", {}).get("items", []):
+                if isinstance(release, dict) and release.get("id"):
+                    yield release
+        offset += count
+        if total is not None and offset >= total:
+            break
 
 
 def _scraper_supports_discography() -> bool:
@@ -176,7 +254,34 @@ def _scraper_album_type_in_groups(album_type: str, include_groups: str) -> bool:
     groups = {g.strip().lower() for g in (include_groups or "").split(",") if g.strip()}
     if not groups:
         return True
-    return (album_type or "album").lower() in groups
+    at = (album_type or "album").lower()
+    if at in groups:
+        return True
+    if at == "ep" and "album" in groups:
+        return True
+    return False
+
+
+def _scraper_enrich_nrd_album(
+    album_id: str, fallback_artist_id: str | None = None
+) -> dict[str, Any]:
+    """Fetch one album via get_album for NRD pending metadata."""
+    try:
+        if _scraper_uses_legacy_init():
+            return {
+                "success": False,
+                "error": "Album lookup requires spotifyscraper 3.x",
+                "album": None,
+            }
+        from spotify_scraper import SpotifyClient as ScraperClient
+
+        with ScraperClient() as client:
+            album = client.get_album(album_id)
+            data = _scraper_model_to_dict(album)
+        normalized = _normalize_scraper_album(data, fallback_artist_id=fallback_artist_id)
+        return {"success": True, "album": normalized}
+    except Exception as e:
+        return {"success": False, "error": f"Scraper failed: {e}", "album": None}
 
 
 def _scraper_get_artist(artist_id: str) -> dict[str, Any]:
@@ -275,7 +380,7 @@ def _scraper_get_album(album_id: str) -> dict[str, Any]:
 
 def _scraper_get_artist_albums(
     artist_id: str,
-    include_groups: str = "album,single,compilation,appears_on",
+    include_groups: str = "album,ep,single,compilation,appears_on",
     fetch_all: bool = True,
     limit: int = 50,
 ) -> dict[str, Any]:
@@ -289,34 +394,16 @@ def _scraper_get_artist_albums(
         from spotify_scraper import SpotifyClient as ScraperClient
 
         with ScraperClient() as client:
-            discography = client.get_discography(artist_id)
-            refs = list(discography)
-            if not fetch_all:
-                refs = refs[:limit]
-
-            album_ids: list[str] = []
-            for ref in refs:
-                ref_id = getattr(ref, "id", None)
-                if not ref_id and isinstance(ref, dict):
-                    ref_id = ref.get("id")
-                if ref_id:
-                    album_ids.append(ref_id)
-
             all_albums: list[dict[str, Any]] = []
-            for i in range(0, len(album_ids), _SCRAPER_ALBUM_BATCH_SIZE):
-                chunk = album_ids[i : i + _SCRAPER_ALBUM_BATCH_SIZE]
-                batch = client.get_albums(chunk)
-                for item in batch:
-                    if not getattr(item, "ok", False):
-                        continue
-                    normalized = _normalize_scraper_album(
-                        _scraper_model_to_dict(item.result),
-                        fallback_artist_id=artist_id,
-                    )
-                    if _scraper_album_type_in_groups(normalized["album_type"], include_groups):
-                        all_albums.append(normalized)
-                if i + _SCRAPER_ALBUM_BATCH_SIZE < len(album_ids):
-                    time.sleep(_SCRAPER_BATCH_DELAY_SEC)
+            for release in _scraper_iter_discography_releases(client, artist_id):
+                normalized = _normalize_scraper_discography_release(release, artist_id)
+                if not normalized:
+                    continue
+                if not _scraper_album_type_in_groups(normalized["album_type"], include_groups):
+                    continue
+                all_albums.append(normalized)
+                if not fetch_all and len(all_albums) >= limit:
+                    break
 
         return {"success": True, "albums": all_albums}
     except Exception as e:
@@ -450,6 +537,20 @@ class SpotifyClient(BaseAPIClient):
     async def _run_scraper(self, func, *args, **kwargs) -> dict[str, Any]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+    async def enrich_nrd_album(self, album: dict[str, Any]) -> dict[str, Any]:
+        """Fetch full album metadata for a discography candidate (scraper mode only)."""
+        if self.discography_source != "scraper":
+            return album
+        album_id = album.get("id")
+        if not album_id:
+            return album
+        result = await self._run_scraper(
+            _scraper_enrich_nrd_album, album_id, album.get("primary_artist_id")
+        )
+        if result.get("success") and result.get("album"):
+            return result["album"]
+        return album
 
     async def _get_access_token(self) -> bool:
         """Get Spotify access token using Client Credentials flow"""

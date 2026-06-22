@@ -29,6 +29,7 @@ from database.config_models import DismissedArtistAlbum, NewReleaseIgnoredArtist
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
 from utils.nrd_release_source import (
+    enrich_scraper_nrd_album,
     normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
@@ -265,7 +266,7 @@ async def get_new_releases(
                 albums_result = await release_client.get_artist_albums(
                     artist_id,
                     limit=50,
-                    include_groups="album,single,compilation,appears_on",
+                    include_groups="album,ep,single,compilation,appears_on",
                     fetch_all=True,
                 )
                 if not albums_result.get("success") or not albums_result.get("albums"):
@@ -285,8 +286,9 @@ async def get_new_releases(
                         continue
 
                 new_albums = []
+                scraper_source = normalize_nrd_source(source_provider) == "spotify_scraper"
                 for album in albums_result["albums"]:
-                    if album.get("primary_artist_id") != artist_id:
+                    if not scraper_source and album.get("primary_artist_id") != artist_id:
                         skipped_type += 1
                         continue
 
@@ -301,13 +303,17 @@ async def get_new_releases(
                         skipped_live += 1
                         continue
 
-                    spotify_url = album.get("spotify_url") or album.get("external_url", "")
-                    if not spotify_url:
-                        continue
-
-                    # 3. Local compare: is this album in MB?
                     if _title_matches_mb(album.get("name", ""), mb_titles):
                         skipped_in_mb += 1
+                        continue
+
+                    album = await enrich_scraper_nrd_album(release_client, album, source_provider)
+                    if album.get("primary_artist_id") != artist_id:
+                        skipped_type += 1
+                        continue
+
+                    spotify_url = album.get("spotify_url") or album.get("external_url", "")
+                    if not spotify_url:
                         continue
 
                     harmony_url = f"{HARMONY_BASE_URL}?url={quote(spotify_url, safe='')}"
@@ -894,6 +900,31 @@ def _build_missing_album(album: dict, artist_id: str, selected: set[str]) -> dic
     }
 
 
+async def _maybe_enrich_and_build_missing(
+    release_client,
+    album: dict,
+    artist_id: str,
+    selected: set[str],
+    *,
+    source: str,
+    mb_titles: list[str] | None = None,
+) -> dict | None:
+    """Filter on discography catalog; enrich via get_album only for MB non-matches."""
+    scraper_source = normalize_nrd_source(source) == "spotify_scraper"
+    if not scraper_source and str(album.get("primary_artist_id", "")) != str(artist_id):
+        return None
+    album_type = album.get("album_type", "")
+    total_tracks = album.get("total_tracks", 0)
+    if not _album_matches_filter(album_type, total_tracks, selected):
+        return None
+    if _is_live_release(album.get("name", "")):
+        return None
+    if mb_titles is not None and _title_matches_mb(album.get("name", ""), mb_titles):
+        return None
+    album = await enrich_scraper_nrd_album(release_client, album, source)
+    return _build_missing_album(album, artist_id, selected)
+
+
 @router.post("/new-releases/scan-artist-url", response_model=ScanArtistUrlResponse)
 async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
     """
@@ -984,7 +1015,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
             albums_result = await client.get_artist_albums(
                 artist_id,
                 limit=50,
-                include_groups="album,single,compilation,appears_on",
+                include_groups="album,ep,single,compilation,appears_on",
                 fetch_all=True,
             )
             if not albums_result.get("success") or albums_result.get("error"):
@@ -1000,6 +1031,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
         """Run MusicBrainz scan. Raises HTTPException on error."""
         mb_artist_mbid: str | None = None
         best_missing: list[dict] = []
+        catalog_source = "spotify_scraper" if provider == "spotify" else "deezer"
         async with MusicBrainzClient(config) as mb_client:
             candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
 
@@ -1015,8 +1047,15 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
                         or []
                     )
                     for album in albums:
-                        item = _build_missing_album(album, artist_id, selected)
-                        if item and not _title_matches_mb(album.get("name", ""), titles):
+                        item = await _maybe_enrich_and_build_missing(
+                            release_client,
+                            album,
+                            artist_id,
+                            selected,
+                            source=catalog_source,
+                            mb_titles=titles,
+                        )
+                        if item:
                             best_missing.append(item)
                     break
 
@@ -1044,8 +1083,15 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
                                     or []
                                 )
                                 for a in albums:
-                                    item = _build_missing_album(a, artist_id, selected)
-                                    if item and not _title_matches_mb(a.get("name", ""), titles):
+                                    item = await _maybe_enrich_and_build_missing(
+                                        release_client,
+                                        a,
+                                        artist_id,
+                                        selected,
+                                        source=catalog_source,
+                                        mb_titles=titles,
+                                    )
+                                    if item:
                                         best_missing.append(item)
                                 break
                     if mb_artist_mbid:
@@ -1054,7 +1100,14 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
             # 3. No match: artist not in MB - show all albums with Add to MB
             if mb_artist_mbid is None:
                 for album in albums:
-                    item = _build_missing_album(album, artist_id, selected)
+                    item = await _maybe_enrich_and_build_missing(
+                        release_client,
+                        album,
+                        artist_id,
+                        selected,
+                        source=catalog_source,
+                        mb_titles=None,
+                    )
                     if item:
                         best_missing.append(item)
 

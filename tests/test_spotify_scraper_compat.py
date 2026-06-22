@@ -2,11 +2,53 @@
 
 from clients.client_spotify import (
     _normalize_scraper_album,
+    _normalize_scraper_discography_release,
     _normalize_scraper_owner,
     _normalize_scraper_tracks,
+    _parse_scraper_discography_date,
     _scraper_album_type_in_groups,
     _scraper_playlist_result,
+    _spotify_discography_album_type,
 )
+
+
+def test_parse_scraper_discography_date_day_precision():
+    release_date, precision = _parse_scraper_discography_date(
+        {"isoString": "2024-03-15T00:00:00Z", "precision": "DAY", "year": 2024}
+    )
+    assert release_date == "2024-03-15"
+    assert precision == "day"
+
+
+def test_normalize_scraper_discography_release_maps_nrd_fields():
+    album = _normalize_scraper_discography_release(
+        {
+            "id": "abc123",
+            "name": "Test Album",
+            "type": "EP",
+            "date": {"isoString": "2024-03-15T00:00:00Z", "precision": "DAY", "year": 2024},
+            "tracks": {"totalCount": 5},
+            "sharingInfo": {"shareUrl": "https://open.spotify.com/album/abc123"},
+        },
+        "artist1",
+    )
+    assert album is not None
+    assert album["id"] == "abc123"
+    assert album["album_type"] == "ep"
+    assert album["total_tracks"] == 5
+    assert album["primary_artist_id"] == "artist1"
+    assert album["spotify_url"] == "https://open.spotify.com/album/abc123"
+
+
+def test_spotify_discography_album_type_mapping():
+    assert _spotify_discography_album_type("SINGLE") == "single"
+    assert _spotify_discography_album_type("ALBUM") == "album"
+
+
+def test_scraper_album_type_in_groups_includes_ep_with_album_group():
+    groups = "album,single,compilation,appears_on"
+    assert _scraper_album_type_in_groups("ep", groups) is True
+    assert _scraper_album_type_in_groups("podcast", groups) is False
 
 
 def test_normalize_scraper_album_maps_nrd_fields():

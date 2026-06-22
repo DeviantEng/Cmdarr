@@ -39,3 +39,13 @@ def nrd_release_client(source: str, config) -> BaseAPIClient:
     if src == "spotify_scraper":
         return SpotifyClient(config, discography_source="scraper")
     return SpotifyClient(config, discography_source="api")
+
+
+async def enrich_scraper_nrd_album(release_client, album: dict, source: str) -> dict:
+    """Call get_album for a discography candidate when using spotify_scraper."""
+    if normalize_nrd_source(source) != "spotify_scraper":
+        return album
+    enrich = getattr(release_client, "enrich_nrd_album", None)
+    if enrich is None:
+        return album
+    return await enrich(album)
