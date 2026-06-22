@@ -605,6 +605,32 @@ async def react_events(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+FRONTEND_PUBLIC_FILES = (
+    "icon-32.png",
+    "icon-192.png",
+    "icon-512.png",
+    "icon-1024.png",
+    "apple-touch-icon.png",
+    "site.webmanifest",
+)
+
+
+def _register_frontend_public_file(filename: str) -> None:
+    filepath = os.path.join(frontend_dist, filename)
+
+    @app.get(f"/{filename}", include_in_schema=False)
+    async def serve_frontend_public_file():
+        if not os.path.isfile(filepath):
+            raise HTTPException(status_code=404)
+        return FileResponse(filepath)
+
+    serve_frontend_public_file.__name__ = f"serve_{filename.replace('.', '_')}"
+
+
+for _filename in FRONTEND_PUBLIC_FILES:
+    _register_frontend_public_file(_filename)
+
+
 # API Routes - Import after logging is configured
 from app.api import config, events, import_lists, new_releases, status, test_connectivity
 
