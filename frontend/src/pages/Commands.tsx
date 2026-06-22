@@ -1090,26 +1090,49 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
 
       {/* Commands Display */}
       {filteredCommands.length === 0 ? (
-        <Card>
-          <CardContent className="flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold">
-                {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
-              </h3>
-              <p className="mt-2 text-muted-foreground">
-                {safeCommands.length === 0
-                  ? "Get started by creating your first command"
-                  : "Try adjusting your filters to see more commands"}
-              </p>
+        useArrPanel ? (
+          <ArrContentPanel>
+            <div className="arr-panel-body flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
+              <div className="text-center">
+                <h3 className="text-xl font-semibold">
+                  {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
+                </h3>
+                <p className="mt-2 text-muted-foreground">
+                  {safeCommands.length === 0
+                    ? "Get started by creating your first command"
+                    : "Try adjusting your filters to see more commands"}
+                </p>
+              </div>
+              {safeCommands.length === 0 && (
+                <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create Your First Command
+                </Button>
+              )}
             </div>
-            {safeCommands.length === 0 && (
-              <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
-                <Plus className="mr-2 h-5 w-5" />
-                Create Your First Command
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+          </ArrContentPanel>
+        ) : (
+          <Card>
+            <CardContent className="flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
+              <div className="text-center">
+                <h3 className="text-xl font-semibold">
+                  {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
+                </h3>
+                <p className="mt-2 text-muted-foreground">
+                  {safeCommands.length === 0
+                    ? "Get started by creating your first command"
+                    : "Try adjusting your filters to see more commands"}
+                </p>
+              </div>
+              {safeCommands.length === 0 && (
+                <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create Your First Command
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )
       ) : viewMode === "card" && !useArrPanel ? (
         <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {filteredCommands.map((command) => (
@@ -1219,220 +1242,245 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
       )}
 
       {/* Recent Executions */}
-      <Card>
-        <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <button
-            type="button"
-            onClick={() => setExecutionsPanelOpen((open) => !open)}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-            aria-expanded={executionsPanelOpen}
-          >
+      {(() => {
+        const ExecutionsShell = useArrPanel ? ArrContentPanel : Card;
+        return (
+          <ExecutionsShell>
+            <div
+              className={cn(
+                "flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+                useArrPanel ? "arr-section-header" : "sm:px-6 sm:py-4"
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setExecutionsPanelOpen((open) => !open)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                aria-expanded={executionsPanelOpen}
+              >
+                {executionsPanelOpen ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <h3
+                  className={cn(
+                    "font-medium",
+                    useArrPanel ? "text-sm font-semibold" : "text-lg font-medium"
+                  )}
+                >
+                  Recent Executions
+                </h3>
+                {recentExecutions.length > 0 ? (
+                  <Badge variant="secondary" className="shrink-0 tabular-nums">
+                    {recentExecutions.length}
+                  </Badge>
+                ) : null}
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 self-start sm:self-auto"
+                onClick={handleCleanupExecutions}
+              >
+                <Trash className="mr-2 h-4 w-4" />
+                Cleanup Old
+              </Button>
+            </div>
             {executionsPanelOpen ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <h3 className="text-lg font-medium">Recent Executions</h3>
-            {recentExecutions.length > 0 ? (
-              <Badge variant="secondary" className="shrink-0 tabular-nums">
-                {recentExecutions.length}
-              </Badge>
-            ) : null}
-          </button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 self-start sm:self-auto"
-            onClick={handleCleanupExecutions}
-          >
-            <Trash className="mr-2 h-4 w-4" />
-            Cleanup Old
-          </Button>
-        </div>
-        {executionsPanelOpen ? (
-          <div className="p-4 md:p-6">
-            {recentExecutions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="font-medium">No executions yet</p>
-                <p className="text-sm mt-1">Command executions will appear here once they run.</p>
-              </div>
-            ) : (
-              <div className="space-y-3 md:space-y-4">
-                {recentExecutions.map((execution) => {
-                  const isExpanded = expandedExecutionId === execution.id;
-                  const duration = execution.duration ?? execution.duration_seconds;
-                  const statusLabel =
-                    execution.status === "running"
-                      ? "Running..."
-                      : execution.status === "completed"
-                        ? "Success"
-                        : execution.status === "cancelled"
-                          ? "Cancelled"
-                          : "Failed";
-                  const statusColor =
-                    execution.status === "completed"
-                      ? "text-green-600 dark:text-green-400"
-                      : execution.status === "failed"
-                        ? "text-red-600 dark:text-red-400"
-                        : execution.status === "running"
-                          ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-muted-foreground";
+              <div className={cn("p-4 md:p-6", useArrPanel && "arr-panel-body")}>
+                {recentExecutions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p className="font-medium">No executions yet</p>
+                    <p className="text-sm mt-1">
+                      Command executions will appear here once they run.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 md:space-y-4">
+                    {recentExecutions.map((execution) => {
+                      const isExpanded = expandedExecutionId === execution.id;
+                      const duration = execution.duration ?? execution.duration_seconds;
+                      const statusLabel =
+                        execution.status === "running"
+                          ? "Running..."
+                          : execution.status === "completed"
+                            ? "Success"
+                            : execution.status === "cancelled"
+                              ? "Cancelled"
+                              : "Failed";
+                      const statusColor =
+                        execution.status === "completed"
+                          ? "text-green-600 dark:text-green-400"
+                          : execution.status === "failed"
+                            ? "text-red-600 dark:text-red-400"
+                            : execution.status === "running"
+                              ? "text-yellow-600 dark:text-yellow-400"
+                              : "text-muted-foreground";
 
-                  return (
-                    <div key={execution.id} className="rounded-lg border bg-muted/50 p-3 md:p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              execution.status === "completed"
-                                ? "bg-green-100 dark:bg-green-900"
-                                : execution.status === "failed"
-                                  ? "bg-red-100 dark:bg-red-900"
-                                  : execution.status === "running"
-                                    ? "bg-yellow-100 dark:bg-yellow-900"
-                                    : "bg-muted"
-                            }`}
-                          >
-                            {execution.status === "running" ? (
-                              <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
-                            ) : execution.status === "completed" ? (
-                              <span className="text-green-600 dark:text-green-400">✓</span>
-                            ) : execution.status === "failed" ? (
-                              <span className="text-red-600 dark:text-red-400">✕</span>
-                            ) : (
-                              <span className="text-muted-foreground">○</span>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">
-                              {execution.display_name ??
-                                getCommandDisplayName(execution.command_name)}
-                            </p>
-                            <p className="text-xs text-muted-foreground sm:text-sm">
-                              {execution.started_at
-                                ? new Date(execution.started_at).toLocaleString()
-                                : "—"}
-                            </p>
-                            {execution.target && execution.target !== "unknown" && (
-                              <p className="text-xs text-blue-600 dark:text-blue-400">
-                                Target: {String(execution.target).toUpperCase()}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
-                          <span className={`text-sm font-medium ${statusColor}`}>
-                            {statusLabel}
-                          </span>
-                          {execution.status === "running" && (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleKillExecution(execution.id)}
-                              disabled={killingExecutionId === execution.id}
-                            >
-                              <X className="h-3 w-3 mr-1" />
-                              {killingExecutionId === execution.id ? "Killing..." : "Kill"}
-                            </Button>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {duration != null ? formatDuration(duration) : "In progress"}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {execution.triggered_by}
-                          </p>
-                        </div>
-                      </div>
-                      {execution.status === "failed" && execution.error_message && (
-                        <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                          {execution.error_message}
-                        </div>
-                      )}
-                      {execution.status === "completed" && (
-                        <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
-                          {execution.display_name ?? getCommandDisplayName(execution.command_name)}{" "}
-                          completed successfully in {formatDuration(duration)}
-                        </div>
-                      )}
-                      <div className="mt-3">
-                        <button
-                          onClick={() => setExpandedExecutionId(isExpanded ? null : execution.id)}
-                          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                      return (
+                        <div
+                          key={execution.id}
+                          className="rounded-lg border bg-muted/50 p-3 md:p-4"
                         >
-                          {isExpanded ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                          {isExpanded ? "Hide Details" : "Show Details"}
-                        </button>
-                        {isExpanded && (
-                          <div className="mt-2 p-3 rounded-md bg-muted space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Execution ID:</span>
-                              <span className="font-mono">{execution.id}</span>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                  execution.status === "completed"
+                                    ? "bg-green-100 dark:bg-green-900"
+                                    : execution.status === "failed"
+                                      ? "bg-red-100 dark:bg-red-900"
+                                      : execution.status === "running"
+                                        ? "bg-yellow-100 dark:bg-yellow-900"
+                                        : "bg-muted"
+                                }`}
+                              >
+                                {execution.status === "running" ? (
+                                  <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
+                                ) : execution.status === "completed" ? (
+                                  <span className="text-green-600 dark:text-green-400">✓</span>
+                                ) : execution.status === "failed" ? (
+                                  <span className="text-red-600 dark:text-red-400">✕</span>
+                                ) : (
+                                  <span className="text-muted-foreground">○</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">
+                                  {execution.display_name ??
+                                    getCommandDisplayName(execution.command_name)}
+                                </p>
+                                <p className="text-xs text-muted-foreground sm:text-sm">
+                                  {execution.started_at
+                                    ? new Date(execution.started_at).toLocaleString()
+                                    : "—"}
+                                </p>
+                                {execution.target && execution.target !== "unknown" && (
+                                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                                    Target: {String(execution.target).toUpperCase()}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Started:</span>
-                              <span>
-                                {execution.started_at
-                                  ? new Date(execution.started_at).toLocaleString()
-                                  : "—"}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
+                              <span className={`text-sm font-medium ${statusColor}`}>
+                                {statusLabel}
                               </span>
-                            </div>
-                            {execution.completed_at && (
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Completed:</span>
-                                <span>{new Date(execution.completed_at).toLocaleString()}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Duration:</span>
-                              <span>{formatDuration(duration)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Triggered by:</span>
-                              <span className="capitalize">{execution.triggered_by}</span>
-                            </div>
-                            {execution.error_message && (
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Error:</span>
-                                <span className="text-destructive text-right">
-                                  {execution.error_message}
-                                </span>
-                              </div>
-                            )}
-                            {execution.status !== "running" && (
-                              <div className="pt-3 border-t">
+                              {execution.status === "running" && (
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => handleDeleteExecution(execution.id)}
+                                  onClick={() => handleKillExecution(execution.id)}
+                                  disabled={killingExecutionId === execution.id}
                                 >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete Execution
+                                  <X className="h-3 w-3 mr-1" />
+                                  {killingExecutionId === execution.id ? "Killing..." : "Kill"}
                                 </Button>
-                              </div>
-                            )}
-                            {execution.status === "completed" && execution.output_summary && (
-                              <div className="pt-3 border-t">
-                                <h5 className="font-medium mb-2">Execution Summary</h5>
-                                <pre className="text-xs whitespace-pre-wrap font-sans">
-                                  {execution.output_summary}
-                                </pre>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {duration != null ? formatDuration(duration) : "In progress"}
+                              </p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {execution.triggered_by}
+                              </p>
+                            </div>
+                          </div>
+                          {execution.status === "failed" && execution.error_message && (
+                            <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                              {execution.error_message}
+                            </div>
+                          )}
+                          {execution.status === "completed" && (
+                            <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
+                              {execution.display_name ??
+                                getCommandDisplayName(execution.command_name)}{" "}
+                              completed successfully in {formatDuration(duration)}
+                            </div>
+                          )}
+                          <div className="mt-3">
+                            <button
+                              onClick={() =>
+                                setExpandedExecutionId(isExpanded ? null : execution.id)
+                              }
+                              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                              {isExpanded ? "Hide Details" : "Show Details"}
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-2 p-3 rounded-md bg-muted space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Execution ID:</span>
+                                  <span className="font-mono">{execution.id}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Started:</span>
+                                  <span>
+                                    {execution.started_at
+                                      ? new Date(execution.started_at).toLocaleString()
+                                      : "—"}
+                                  </span>
+                                </div>
+                                {execution.completed_at && (
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Completed:</span>
+                                    <span>{new Date(execution.completed_at).toLocaleString()}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Duration:</span>
+                                  <span>{formatDuration(duration)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Triggered by:</span>
+                                  <span className="capitalize">{execution.triggered_by}</span>
+                                </div>
+                                {execution.error_message && (
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Error:</span>
+                                    <span className="text-destructive text-right">
+                                      {execution.error_message}
+                                    </span>
+                                  </div>
+                                )}
+                                {execution.status !== "running" && (
+                                  <div className="pt-3 border-t">
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={() => handleDeleteExecution(execution.id)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete Execution
+                                    </Button>
+                                  </div>
+                                )}
+                                {execution.status === "completed" && execution.output_summary && (
+                                  <div className="pt-3 border-t">
+                                    <h5 className="font-medium mb-2">Execution Summary</h5>
+                                    <pre className="text-xs whitespace-pre-wrap font-sans">
+                                      {execution.output_summary}
+                                    </pre>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ) : null}
-      </Card>
+            ) : null}
+          </ExecutionsShell>
+        );
+      })()}
 
       {/* New Command Dialog */}
       <CreatePlaylistSyncDialog

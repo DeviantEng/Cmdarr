@@ -8,7 +8,7 @@ export function ArrSystemArtistEventsPage() {
         title="Artist Events"
         description="Cached event scan coverage and cache management."
       />
-      <StatusPage sections={["artist-events"]} showPageHeader={false} />
+      <StatusPage sections={["artist-events"]} showPageHeader={false} useArrPanel />
     </div>
   );
 }

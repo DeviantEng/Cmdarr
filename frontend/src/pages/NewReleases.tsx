@@ -34,6 +34,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  ArrContentPanel,
+  ArrPageToolbar,
+  ArrPanelBody,
+  ArrSectionHeader,
+} from "@/arr/components/ArrPageToolbar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -420,6 +426,254 @@ export function NewReleasesPage({
     }
   };
 
+  const scanPanelBody = (
+    <>
+      {/* Release types - shared by Scan by URL and Actions */}
+      <div className="space-y-2">
+        <span className="text-sm font-medium">
+          Release types (for Scan by URL and Scan artist):
+        </span>
+        <div className="flex flex-wrap gap-4">
+          {(["album", "ep", "single", "other"] as const).map((t) => (
+            <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                checked={adHocAlbumTypes.has(t)}
+                onChange={() => toggleAdHocAlbumType(t)}
+                className="rounded border-input"
+              />
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Scan by URL */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Link2 className="h-4 w-4" />
+          <span className="font-medium">Scan by URL</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            placeholder="https://open.spotify.com/artist/... or deezer.com/album/..."
+            value={artistUrl}
+            onChange={(e) => setArtistUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleScanArtistUrl()}
+            className="min-w-0 w-full flex-1 sm:min-w-[280px]"
+          />
+          <Button onClick={handleScanArtistUrl} disabled={!artistUrl.trim() || artistScanning}>
+            {artistScanning ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="mr-2 h-4 w-4" />
+            )}
+            Scan
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Artist or album URL. Matches MB by streaming link, then by most recent release. Artist not
+          in MB? Add to MB links still shown.
+        </p>
+        {artistScanResult && (
+          <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="font-medium">{artistScanResult.artist_name}</span>
+                <span className="ml-2 text-sm text-muted-foreground">
+                  {artistScanResult.missing_count} of {artistScanResult.total_albums} releases
+                  missing from MusicBrainz
+                  {artistScanResult.artist_in_mb ? "" : " (artist not in MB yet)"}
+                </span>
+              </div>
+              {artistScanResult.musicbrainz_artist_url && (
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={artistScanResult.musicbrainz_artist_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    MusicBrainz
+                  </a>
+                </Button>
+              )}
+            </div>
+            {artistScanResult.albums.length > 0 ? (
+              <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                {artistScanResult.albums.map((a, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span>{a.name}</span>
+                      {a.album_type && (
+                        <span className="ml-2 text-xs text-muted-foreground capitalize">
+                          {a.album_type}
+                        </span>
+                      )}
+                      {a.release_date && (
+                        <span className="ml-2 text-sm text-muted-foreground">{a.release_date}</span>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openHarmony(a.harmony_url)}>
+                      <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                      Add to MB
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                All releases are already in MusicBrainz.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Actions: Run batch, Sync Lidarr, Search artist */}
+      <div className="space-y-3 border-t pt-4">
+        <span className="font-medium">Actions</span>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={handleRunBatch}
+            disabled={batchRunning || !commandEnabled}
+            title={!commandEnabled ? "Enable New Releases Discovery in Commands first" : undefined}
+          >
+            {batchRunning ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            Run next batch
+          </Button>
+          <Button variant="outline" onClick={handleSyncLidarr} disabled={syncing}>
+            {syncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="mr-2 h-4 w-4" />
+            )}
+            Sync Lidarr artists
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="relative min-w-[200px] flex-1">
+            <Input
+              placeholder="Search artist by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && suggestions.length > 0) {
+                  handleScanArtist(suggestions[0].artist_mbid, suggestions[0].artist_name);
+                }
+              }}
+            />
+            {suggestions.length > 0 && (
+              <ul className="absolute z-10 mt-1 w-full rounded-md border bg-popover py-1 shadow-md">
+                {suggestions.map((s) => (
+                  <li key={s.artist_mbid}>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left hover:bg-accent"
+                      onClick={() => handleScanArtist(s.artist_mbid, s.artist_name)}
+                    >
+                      {s.artist_name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (suggestions.length > 0)
+                handleScanArtist(suggestions[0].artist_mbid, suggestions[0].artist_name);
+            }}
+            disabled={searching || suggestions.length === 0}
+          >
+            {searching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Scan artist
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+
+  const pendingDescription = `${total} items matching filters. Links open Lidarr, MusicBrainz, or release source. Clear reappears on rescan; Ignore hides one album; Hide artist skips all future releases for that artist.`;
+
+  const pendingListBody = loading ? (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  ) : pending.length === 0 ? (
+    <div className="flex min-h-[200px] items-center justify-center py-12">
+      <div className="text-center text-muted-foreground">
+        <Disc3 className="mx-auto h-12 w-12 opacity-50" />
+        <p className="mt-2 font-medium">No pending releases</p>
+        <p className="mt-1 text-sm">
+          {releaseWithin === "all"
+            ? "Run a batch or scan an artist to discover new releases."
+            : "Try a wider release date filter or run a new scan."}
+        </p>
+      </div>
+    </div>
+  ) : useArrPanel ? (
+    <ul className="arr-list-rows -mx-4">
+      {pending.map((item) => (
+        <li key={item.id} className="px-4 py-3">
+          <PendingRow
+            item={item}
+            useArrList
+            onClear={() => handleClear(item)}
+            onRecheck={() => handleRecheck(item)}
+            onIgnore={() => handleIgnore(item)}
+            onHideArtist={() => handleHideArtist(item)}
+            onOpenHarmony={openHarmony}
+          />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <div className="space-y-2">
+      {pending.map((item) => (
+        <PendingRow
+          key={item.id}
+          item={item}
+          onClear={() => handleClear(item)}
+          onRecheck={() => handleRecheck(item)}
+          onIgnore={() => handleIgnore(item)}
+          onHideArtist={() => handleHideArtist(item)}
+          onOpenHarmony={openHarmony}
+        />
+      ))}
+    </div>
+  );
+
+  const pendingToolbarActions = (
+    <>
+      <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+        <EyeOff className="mr-2 h-4 w-4" />
+        Hidden
+        {hiddenArtistCount > 0 ? (
+          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
+            {hiddenArtistCount} artist{hiddenArtistCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </Button>
+      {pending.length > 0 && (
+        <Button variant="outline" size="sm" onClick={handleClearAll}>
+          Clear all
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
       {showPageHeader ? (
@@ -433,199 +687,26 @@ export function NewReleasesPage({
       ) : null}
 
       {/* Scan by URL + Actions: shared release type filter */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Scan by URL & Actions</CardTitle>
-          <CardDescription>
-            Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch /
-            scan Lidarr artists. Release types apply to both.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Release types - shared by Scan by URL and Actions */}
-          <div className="space-y-2">
-            <span className="text-sm font-medium">
-              Release types (for Scan by URL and Scan artist):
-            </span>
-            <div className="flex flex-wrap gap-4">
-              {(["album", "ep", "single", "other"] as const).map((t) => (
-                <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={adHocAlbumTypes.has(t)}
-                    onChange={() => toggleAdHocAlbumType(t)}
-                    className="rounded border-input"
-                  />
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Scan by URL */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Link2 className="h-4 w-4" />
-              <span className="font-medium">Scan by URL</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                placeholder="https://open.spotify.com/artist/... or deezer.com/album/..."
-                value={artistUrl}
-                onChange={(e) => setArtistUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleScanArtistUrl()}
-                className="min-w-0 w-full flex-1 sm:min-w-[280px]"
-              />
-              <Button onClick={handleScanArtistUrl} disabled={!artistUrl.trim() || artistScanning}>
-                {artistScanning ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="mr-2 h-4 w-4" />
-                )}
-                Scan
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Artist or album URL. Matches MB by streaming link, then by most recent release. Artist
-              not in MB? Add to MB links still shown.
-            </p>
-            {artistScanResult && (
-              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="font-medium">{artistScanResult.artist_name}</span>
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      {artistScanResult.missing_count} of {artistScanResult.total_albums} releases
-                      missing from MusicBrainz
-                      {artistScanResult.artist_in_mb ? "" : " (artist not in MB yet)"}
-                    </span>
-                  </div>
-                  {artistScanResult.musicbrainz_artist_url && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a
-                        href={artistScanResult.musicbrainz_artist_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        MusicBrainz
-                      </a>
-                    </Button>
-                  )}
-                </div>
-                {artistScanResult.albums.length > 0 ? (
-                  <div className="space-y-2 max-h-[320px] overflow-y-auto">
-                    {artistScanResult.albums.map((a, i) => (
-                      <div
-                        key={i}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background px-3 py-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span>{a.name}</span>
-                          {a.album_type && (
-                            <span className="ml-2 text-xs text-muted-foreground capitalize">
-                              {a.album_type}
-                            </span>
-                          )}
-                          {a.release_date && (
-                            <span className="ml-2 text-sm text-muted-foreground">
-                              {a.release_date}
-                            </span>
-                          )}
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openHarmony(a.harmony_url)}
-                        >
-                          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                          Add to MB
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    All releases are already in MusicBrainz.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Actions: Run batch, Sync Lidarr, Search artist */}
-          <div className="space-y-3 pt-4 border-t">
-            <span className="font-medium">Actions</span>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleRunBatch}
-                disabled={batchRunning || !commandEnabled}
-                title={
-                  !commandEnabled ? "Enable New Releases Discovery in Commands first" : undefined
-                }
-              >
-                {batchRunning ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="mr-2 h-4 w-4" />
-                )}
-                Run next batch
-              </Button>
-              <Button variant="outline" onClick={handleSyncLidarr} disabled={syncing}>
-                {syncing ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Database className="mr-2 h-4 w-4" />
-                )}
-                Sync Lidarr artists
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <div className="relative flex-1 min-w-[200px]">
-                <Input
-                  placeholder="Search artist by name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && suggestions.length > 0) {
-                      handleScanArtist(suggestions[0].artist_mbid, suggestions[0].artist_name);
-                    }
-                  }}
-                />
-                {suggestions.length > 0 && (
-                  <ul className="absolute z-10 mt-1 w-full rounded-md border bg-popover py-1 shadow-md">
-                    {suggestions.map((s) => (
-                      <li key={s.artist_mbid}>
-                        <button
-                          type="button"
-                          className="w-full px-3 py-2 text-left hover:bg-accent"
-                          onClick={() => handleScanArtist(s.artist_mbid, s.artist_name)}
-                        >
-                          {s.artist_name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (suggestions.length > 0)
-                    handleScanArtist(suggestions[0].artist_mbid, suggestions[0].artist_name);
-                }}
-                disabled={searching || suggestions.length === 0}
-              >
-                {searching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                Scan artist
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {useArrPanel ? (
+        <ArrContentPanel>
+          <ArrSectionHeader
+            title="Scan by URL & Actions"
+            description="Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch / scan Lidarr artists. Release types apply to both."
+          />
+          <ArrPanelBody className="space-y-6">{scanPanelBody}</ArrPanelBody>
+        </ArrContentPanel>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scan by URL & Actions</CardTitle>
+            <CardDescription>
+              Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch /
+              scan Lidarr artists. Release types apply to both.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">{scanPanelBody}</CardContent>
+        </Card>
+      )}
 
       {error && (
         <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -642,36 +723,10 @@ export function NewReleasesPage({
       )}
 
       {/* Pending table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <CardTitle>Pending Releases</CardTitle>
-                <CardDescription>
-                  {total} items matching filters. Links open Lidarr, MusicBrainz, or release source.
-                  Clear reappears on rescan; Ignore hides one album; Hide artist skips all future
-                  releases for that artist.
-                </CardDescription>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
-                  <EyeOff className="mr-2 h-4 w-4" />
-                  Hidden
-                  {hiddenArtistCount > 0 ? (
-                    <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-                      {hiddenArtistCount} artist{hiddenArtistCount === 1 ? "" : "s"}
-                    </span>
-                  ) : null}
-                </Button>
-                {pending.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleClearAll}>
-                    Clear all
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+      {useArrPanel ? (
+        <>
+          <ArrPageToolbar>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
               <div className="w-full space-y-1.5 sm:w-52">
                 <Label className="text-xs text-muted-foreground">Release date</Label>
                 <Select
@@ -690,43 +745,51 @@ export function NewReleasesPage({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex flex-wrap gap-2">{pendingToolbarActions}</div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : pending.length === 0 ? (
-            <div className="flex min-h-[200px] items-center justify-center py-12">
-              <div className="text-center text-muted-foreground">
-                <Disc3 className="mx-auto h-12 w-12 opacity-50" />
-                <p className="mt-2 font-medium">No pending releases</p>
-                <p className="mt-1 text-sm">
-                  {releaseWithin === "all"
-                    ? "Run a batch or scan an artist to discover new releases."
-                    : "Try a wider release date filter or run a new scan."}
-                </p>
+          </ArrPageToolbar>
+          <ArrContentPanel>
+            <ArrSectionHeader title="Pending Releases" description={pendingDescription} />
+            <ArrPanelBody>{pendingListBody}</ArrPanelBody>
+          </ArrContentPanel>
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardTitle>Pending Releases</CardTitle>
+                  <CardDescription>{pendingDescription}</CardDescription>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">{pendingToolbarActions}</div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+                <div className="w-full space-y-1.5 sm:w-52">
+                  <Label className="text-xs text-muted-foreground">Release date</Label>
+                  <Select
+                    value={releaseWithin}
+                    onValueChange={(v) => setReleaseWithin(v as ReleaseWithinFilter)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RELEASE_WITHIN_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {pending.map((item) => (
-                <PendingRow
-                  key={item.id}
-                  item={item}
-                  onClear={() => handleClear(item)}
-                  onRecheck={() => handleRecheck(item)}
-                  onIgnore={() => handleIgnore(item)}
-                  onHideArtist={() => handleHideArtist(item)}
-                  onOpenHarmony={openHarmony}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>{pendingListBody}</CardContent>
+        </Card>
+      )}
+
       <ConfirmDialog
         open={confirmClearAll}
         onOpenChange={setConfirmClearAll}
@@ -807,6 +870,7 @@ export function NewReleasesPage({
 
 function PendingRow({
   item,
+  useArrList = false,
   onClear,
   onRecheck,
   onIgnore,
@@ -814,6 +878,7 @@ function PendingRow({
   onOpenHarmony,
 }: {
   item: NewReleasePendingItem;
+  useArrList?: boolean;
   onClear: () => void;
   onRecheck: () => void;
   onIgnore: () => void;
@@ -821,7 +886,12 @@ function PendingRow({
   onOpenHarmony: (url: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+    <div
+      className={cn(
+        "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between",
+        !useArrList && "rounded-lg border bg-muted/30 px-4 py-3"
+      )}
+    >
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.artist_name}</span>
         <span className="mx-2 text-muted-foreground">—</span>

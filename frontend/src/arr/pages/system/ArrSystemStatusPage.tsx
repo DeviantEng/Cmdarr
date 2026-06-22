@@ -17,7 +17,7 @@ export function ArrSystemStatusPage() {
             : "Application health, uptime, execution stats, and database migrations."
         }
       />
-      <StatusPage sections={[...STATUS_SECTIONS]} showPageHeader={false} />
+      <StatusPage sections={[...STATUS_SECTIONS]} showPageHeader={false} useArrPanel />
     </div>
   );
 }

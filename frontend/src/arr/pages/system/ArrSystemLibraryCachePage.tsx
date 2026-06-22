@@ -8,7 +8,7 @@ export function ArrSystemLibraryCachePage() {
         title="Library Cache"
         description="Plex and Jellyfin music library cache stats and refresh controls."
       />
-      <StatusPage sections={["library-cache"]} showPageHeader={false} />
+      <StatusPage sections={["library-cache"]} showPageHeader={false} useArrPanel />
     </div>
   );
 }

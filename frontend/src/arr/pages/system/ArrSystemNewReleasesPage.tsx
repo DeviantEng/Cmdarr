@@ -8,7 +8,7 @@ export function ArrSystemNewReleasesPage() {
         title="New Releases"
         description="Discovery scan coverage and dismissed release management."
       />
-      <StatusPage sections={["new-releases"]} showPageHeader={false} />
+      <StatusPage sections={["new-releases"]} showPageHeader={false} useArrPanel />
     </div>
   );
 }

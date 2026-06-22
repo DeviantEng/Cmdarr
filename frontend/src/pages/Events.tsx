@@ -44,6 +44,12 @@ import type { ConfigUpdateRequest } from "@/lib/types";
 import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
 import { eventSourcesSettingsPath } from "@/lib/settings-paths";
 import { useUiShell } from "@/lib/use-ui-shell";
+import {
+  ArrContentPanel,
+  ArrPageToolbar,
+  ArrPanelBody,
+  ArrSectionHeader,
+} from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
@@ -434,6 +440,430 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
 
   const hiddenTotal = hiddenArtistCount + hiddenEventCount;
 
+  const providersDescription =
+    "Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in Configuration > Event Sources. At least one provider must be ready before refresh runs.";
+
+  const providersPanelBody = (
+    <>
+      {!providerStatus?.any_ready && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          No provider configured — add API keys in{" "}
+          <Link to={eventSourcesPath} className="font-medium underline">
+            Configuration
+          </Link>
+          .
+        </p>
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
+        <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+          <Label className="text-xs font-normal">Ticketmaster</Label>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={settings?.ticketmaster_enabled ?? false}
+              onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_TICKETMASTER_ENABLED", c)}
+            />
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              {providerStatus?.ticketmaster.enabled ? "ready" : "needs key"}
+            </span>
+          </div>
+        </div>
+        <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+          <Label className="text-xs font-normal">SeatGeek</Label>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={settings?.seatgeek_enabled ?? false}
+              onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SEATGEEK_ENABLED", c)}
+            />
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              {providerStatus?.seatgeek.enabled ? "ready" : "needs client_id"}
+            </span>
+          </div>
+        </div>
+        <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
+          <Label className="text-xs font-normal">Deezer</Label>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={settings?.deezer_enabled ?? false}
+              onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_DEEZER_ENABLED", c)}
+            />
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              {providerStatus?.deezer.enabled ? "ready" : "needs ARL"}
+            </span>
+          </div>
+        </div>
+      </div>
+      {providerStatus?.seatgeek.configured && (
+        <p className="text-xs leading-snug text-muted-foreground">
+          SeatGeek free tier allows roughly 500 API requests per day. Large libraries may need a
+          longer refresh interval.
+        </p>
+      )}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="inline-flex">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runRefreshAllDue}
+            disabled={refreshRunning || !providerStatus?.any_ready}
+            className="rounded-r-none"
+          >
+            {refreshRunning ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh all artists
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={refreshRunning || !providerStatus?.any_ready}
+                className="rounded-l-none border-l border-background/40 px-2"
+                aria-label="More refresh options"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setConfirmForceRefreshAll(true)}>
+                Force refresh all artists
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <p className="max-w-xl text-[11px] leading-snug text-muted-foreground">
+          <strong>Refresh all artists</strong> processes every artist past their interval (or never
+          scanned). <strong>Force refresh all artists</strong> ignores the interval and re-queries
+          every Lidarr artist - use after config changes or to recover from a partial scan; large
+          libraries may need a higher command timeout.
+        </p>
+      </div>
+    </>
+  );
+
+  const locationPanelBody = (
+    <>
+      <div className="flex flex-wrap items-end gap-2 gap-y-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <Label className="text-xs">Location</Label>
+          <Input
+            className="h-9 truncate"
+            placeholder="e.g. 97201 or Portland, OR"
+            value={locationQuery}
+            onChange={(e) => setLocationQuery(e.target.value)}
+            title={locationQuery || undefined}
+          />
+        </div>
+        <Button className="h-9" size="sm" onClick={handleGeocode} disabled={geoLoading}>
+          {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+        </Button>
+        <div className="w-24 space-y-1">
+          <Label className="text-xs">Radius (mi)</Label>
+          <Input
+            className="h-9"
+            value={radiusInput}
+            onChange={(e) => setRadiusInput(e.target.value)}
+          />
+        </div>
+        <Button className="h-9" variant="outline" size="sm" onClick={saveRadius}>
+          Apply
+        </Button>
+      </div>
+      {settings?.user_label && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Saved: {settings.user_label} ({settings.user_lat}, {settings.user_lon})
+        </p>
+      )}
+    </>
+  );
+
+  const eventsHeaderActions = (
+    <>
+      <Button variant="outline" size="sm" onClick={() => void openFestivals()} className="shrink-0">
+        Festivals
+      </Button>
+      <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+        <EyeOff className="mr-2 h-4 w-4" />
+        Hidden
+        {hiddenTotal > 0 ? (
+          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
+            {hiddenArtistCount > 0 &&
+              `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
+            {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
+            {hiddenEventCount > 0 &&
+              `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
+          </span>
+        ) : null}
+      </Button>
+    </>
+  );
+
+  const eventsFilterControls = (
+    <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+      <div className="relative min-w-0 flex-1 md:min-w-[12rem]">
+        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search artist or venue..."
+          value={artistFilter}
+          onChange={(e) => setArtistFilter(e.target.value)}
+          className="h-9 pl-9"
+        />
+      </div>
+      <div className="w-full space-y-1.5 sm:w-40">
+        <Label className="text-xs text-muted-foreground">Interest</Label>
+        <Select
+          value={interestFilter}
+          onValueChange={(v) => setInterestFilter(v as "all" | "interested")}
+        >
+          <SelectTrigger className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All events</SelectItem>
+            <SelectItem value="interested">Interested only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="w-full space-y-1.5 sm:w-44">
+        <Label className="text-xs text-muted-foreground">Source</Label>
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="h-9">
+            <SelectValue placeholder="All sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            <SelectItem value="ticketmaster">Ticketmaster</SelectItem>
+            <SelectItem value="seatgeek">SeatGeek</SelectItem>
+            <SelectItem value="deezer">Deezer</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 md:min-w-[14rem]">
+        <Switch
+          id="exclude-festivals"
+          checked={excludeFestivals}
+          onCheckedChange={(c) => setExcludeFestivals(Boolean(c))}
+        />
+        <Label
+          htmlFor="exclude-festivals"
+          className="cursor-pointer text-xs font-normal leading-snug"
+        >
+          Exclude festivals &amp; tour packages
+          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+            Frees list slots (max 200) for regular shows
+          </span>
+        </Label>
+      </div>
+    </div>
+  );
+
+  const renderUpcomingEventsBody = () => (
+    <>
+      <p className="text-xs text-muted-foreground">
+        Showing {filteredEvents.length} of {events.length} in this loaded page
+        {artistFilter.trim() || sourceFilter !== "all" || interestFilter === "interested"
+          ? " (search/source/interest filters)"
+          : ""}
+        . Up to 200 rows are returned per load.
+        {upcomingStoredCount != null && upcomingStoredCount > events.length ? (
+          <>
+            {" "}
+            {upcomingStoredCount.toLocaleString()} upcoming rows match your filters (interest +
+            festival toggle); this response is capped at 200. A tight radius or many hidden items
+            also reduce the list.
+            {!excludeFestivals ? (
+              <>
+                {" "}
+                If the cap is mostly festivals/tours, turn on <strong>
+                  Exclude festivals
+                </strong>{" "}
+                above.
+              </>
+            ) : null}
+          </>
+        ) : null}
+      </p>
+      {events.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No upcoming events in range. Run refresh after configuring providers and syncing Lidarr
+          artists.
+        </p>
+      ) : filteredEvents.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No events match your filters.</p>
+      ) : (
+        <ul className={cn(useArrPanel ? "arr-list-rows -mx-4" : "divide-y rounded-md border")}>
+          {filteredEvents.map((ev) => {
+            const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
+              .filter(Boolean)
+              .join(" | ");
+            const rawSourceRows =
+              ev.source_links && ev.source_links.length > 0
+                ? ev.source_links
+                : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
+            const sourceRows = collapseSourceLinksForDisplay(rawSourceRows, ev.artist_name);
+            return (
+              <li
+                key={`${ev.id}-${ev.starts_at_utc}`}
+                className={cn(
+                  "px-2 py-1.5 pl-1 md:flex md:flex-row md:items-center md:gap-2 md:py-2 md:pl-2",
+                  ev.interested &&
+                    "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
+                )}
+              >
+                <div className="flex min-w-0 items-start gap-1.5 md:contents">
+                  <div className="flex shrink-0 items-start pt-0.5 md:pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "h-9 w-9",
+                        ev.interested && "text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                      )}
+                      title={ev.interested ? "Remove from interested" : "Mark interested"}
+                      onClick={() => void toggleInterested(ev)}
+                    >
+                      <Star
+                        className={cn("h-4 w-4", ev.interested && "fill-current")}
+                        aria-hidden
+                      />
+                      <span className="sr-only">
+                        {ev.interested ? "Remove interested" : "Interested"}
+                      </span>
+                    </Button>
+                  </div>
+                  <div className="min-w-0 flex-1 md:space-y-0">
+                    <div className="flex items-start justify-between gap-2 md:flex-wrap md:items-baseline md:gap-x-2 md:gap-y-0.5">
+                      <span className="min-w-0 truncate text-sm font-semibold leading-tight md:text-base md:whitespace-normal">
+                        {ev.artist_name}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground md:hidden">
+                        {formatEventDate(ev)}
+                      </span>
+                      <span className="hidden text-sm leading-tight text-muted-foreground md:inline">
+                        {venueLine}
+                      </span>
+                    </div>
+                    <p className="truncate text-[11px] leading-snug text-muted-foreground md:hidden">
+                      {venueLine}
+                    </p>
+                    <div className="mt-0.5 flex items-center justify-between gap-1 md:mt-0 md:justify-start">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground md:gap-x-2">
+                        <span className="hidden md:inline">{formatEventDate(ev)}</span>
+                        {ev.event_kind === "festival" && (
+                          <Badge
+                            variant="outline"
+                            className="h-4 px-1 text-[9px] font-normal md:hidden"
+                            title={ev.tm_event_name || "Festival or multi-day event"}
+                          >
+                            Fest
+                          </Badge>
+                        )}
+                        {ev.event_kind === "tour_package" && (
+                          <Badge
+                            variant="outline"
+                            className="h-4 px-1 text-[9px] font-normal md:hidden"
+                            title={ev.tm_event_name || "Multi-act tour or package listing"}
+                          >
+                            Tour
+                          </Badge>
+                        )}
+                        {ev.event_kind === "festival" && (
+                          <Badge
+                            variant="outline"
+                            className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
+                            title={ev.tm_event_name || "Festival or multi-day event"}
+                          >
+                            Festival
+                          </Badge>
+                        )}
+                        {ev.event_kind === "tour_package" && (
+                          <Badge
+                            variant="outline"
+                            className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
+                            title={ev.tm_event_name || "Multi-act tour or package listing"}
+                          >
+                            Tour
+                          </Badge>
+                        )}
+                        {ev.distance_miles != null && (
+                          <span className="tabular-nums">{ev.distance_miles} mi</span>
+                        )}
+                        <span className="flex flex-wrap gap-0.5 md:gap-1">
+                          {sourceRows.map((row) => {
+                            const label = sourceBadge(row.provider);
+                            if (row.url) {
+                              return (
+                                <a
+                                  key={row.provider}
+                                  href={row.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center rounded-md border border-transparent bg-secondary px-1 py-0 text-[9px] font-normal text-secondary-foreground underline-offset-2 hover:underline md:px-1.5 md:text-[10px]"
+                                >
+                                  {label}
+                                </a>
+                              );
+                            }
+                            return (
+                              <Badge
+                                key={row.provider}
+                                variant="secondary"
+                                className="px-1 py-0 text-[9px] font-normal md:px-1.5 md:text-[10px]"
+                              >
+                                {label}
+                              </Badge>
+                            );
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5 md:ml-auto md:gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                          asChild
+                          title="Last.fm events"
+                        >
+                          <a href={ev.last_fm_events_url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span className="sr-only md:not-sr-only md:ml-1">Last.fm</span>
+                          </a>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                          title="Hide this show only"
+                          onClick={() => setConfirmHideEvent(ev)}
+                        >
+                          <MinusCircle className="h-3.5 w-3.5" />
+                          <span className="sr-only md:not-sr-only md:ml-1">Hide event</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 md:h-8 md:w-auto md:px-2"
+                          title="Hide all shows for this artist"
+                          onClick={() => setConfirmHideArtist(ev)}
+                        >
+                          <EyeOff className="h-3.5 w-3.5" />
+                          <span className="sr-only md:not-sr-only md:ml-1">Hide artist</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+
   if (loading && !settings) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -455,456 +885,82 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="text-base">Providers</CardTitle>
-          <CardDescription className="text-xs leading-snug">
-            Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in{" "}
-            <Link to={eventSourcesPath} className="underline font-medium text-foreground">
-              Configuration &gt; Event Sources
-            </Link>
-            . At least one provider must be ready before refresh runs.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 px-4 pb-3 pt-0">
-          {!providerStatus?.any_ready && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              No provider configured — add API keys in{" "}
-              <Link to={eventSourcesPath} className="underline font-medium">
-                Configuration
+      {useArrPanel ? (
+        <ArrContentPanel>
+          <ArrSectionHeader title="Providers" description={providersDescription} />
+          <ArrPanelBody className="space-y-3">{providersPanelBody}</ArrPanelBody>
+        </ArrContentPanel>
+      ) : (
+        <Card>
+          <CardHeader className="space-y-1 px-4 py-3">
+            <CardTitle className="text-base">Providers</CardTitle>
+            <CardDescription className="text-xs leading-snug">
+              Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in{" "}
+              <Link to={eventSourcesPath} className="font-medium text-foreground underline">
+                Configuration &gt; Event Sources
               </Link>
-              .
-            </p>
-          )}
-          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2">
-            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
-              <Label className="text-xs font-normal">Ticketmaster</Label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={settings?.ticketmaster_enabled ?? false}
-                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_TICKETMASTER_ENABLED", c)}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.ticketmaster.enabled ? "ready" : "needs key"}
-                </span>
-              </div>
-            </div>
-            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
-              <Label className="text-xs font-normal">SeatGeek</Label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={settings?.seatgeek_enabled ?? false}
-                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_SEATGEEK_ENABLED", c)}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.seatgeek.enabled ? "ready" : "needs client_id"}
-                </span>
-              </div>
-            </div>
-            <div className="flex min-w-[10rem] flex-1 items-center justify-between gap-2">
-              <Label className="text-xs font-normal">Deezer</Label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={settings?.deezer_enabled ?? false}
-                  onCheckedChange={(c) => toggleProvider("ARTIST_EVENTS_DEEZER_ENABLED", c)}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                  {providerStatus?.deezer.enabled ? "ready" : "needs ARL"}
-                </span>
-              </div>
-            </div>
-          </div>
-          {providerStatus?.seatgeek.configured && (
-            <p className="text-xs text-muted-foreground leading-snug">
-              SeatGeek free tier allows roughly 500 API requests per day. Large libraries may need a
-              longer refresh interval.
-            </p>
-          )}
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="inline-flex">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={runRefreshAllDue}
-                disabled={refreshRunning || !providerStatus?.any_ready}
-                className="rounded-r-none"
-              >
-                {refreshRunning ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Refresh all artists
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={refreshRunning || !providerStatus?.any_ready}
-                    className="rounded-l-none border-l border-background/40 px-2"
-                    aria-label="More refresh options"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setConfirmForceRefreshAll(true)}>
-                    Force refresh all artists
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            <p className="text-[11px] leading-snug text-muted-foreground max-w-xl">
-              <strong>Refresh all artists</strong> processes every artist past their interval (or
-              never scanned). <strong>Force refresh all artists</strong> ignores the interval and
-              re-queries every Lidarr artist - use after config changes or to recover from a partial
-              scan; large libraries may need a higher command timeout.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="space-y-1 px-4 py-3">
-          <CardTitle className="text-base">Location and radius</CardTitle>
-          <CardDescription className="text-xs leading-snug">
-            ZIP or city/state is saved as coordinates. With a saved location, shows without venue
-            coordinates or outside your radius are omitted from the list below.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-4 pb-3 pt-0">
-          <div className="flex flex-wrap items-end gap-2 gap-y-2">
-            <div className="min-w-0 flex-1 space-y-1">
-              <Label className="text-xs">Location</Label>
-              <Input
-                className="h-9 truncate"
-                placeholder="e.g. 97201 or Portland, OR"
-                value={locationQuery}
-                onChange={(e) => setLocationQuery(e.target.value)}
-                title={locationQuery || undefined}
-              />
-            </div>
-            <Button className="h-9" size="sm" onClick={handleGeocode} disabled={geoLoading}>
-              {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-            </Button>
-            <div className="w-24 space-y-1">
-              <Label className="text-xs">Radius (mi)</Label>
-              <Input
-                className="h-9"
-                value={radiusInput}
-                onChange={(e) => setRadiusInput(e.target.value)}
-              />
-            </div>
-            <Button className="h-9" variant="outline" size="sm" onClick={saveRadius}>
-              Apply
-            </Button>
-          </div>
-          {settings?.user_label && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Saved: {settings.user_label} ({settings.user_lat}, {settings.user_lon})
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between md:gap-4">
-          <div>
-            <CardTitle>Upcoming events</CardTitle>
-            <CardDescription>
-              Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync
-              here.
+              . At least one provider must be ready before refresh runs.
             </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void openFestivals()}
-              className="shrink-0"
-            >
-              Festivals
-            </Button>
-            <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
-              <EyeOff className="mr-2 h-4 w-4" />
-              Hidden
-              {hiddenTotal > 0 ? (
-                <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-                  {hiddenArtistCount > 0 &&
-                    `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
-                  {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
-                  {hiddenEventCount > 0 &&
-                    `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
-                </span>
-              ) : null}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
-            <div className="relative min-w-0 flex-1 md:min-w-[12rem]">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search artist or venue..."
-                value={artistFilter}
-                onChange={(e) => setArtistFilter(e.target.value)}
-                className="h-9 pl-9"
-              />
+          </CardHeader>
+          <CardContent className="space-y-3 px-4 pb-3 pt-0">{providersPanelBody}</CardContent>
+        </Card>
+      )}
+
+      {useArrPanel ? (
+        <ArrContentPanel>
+          <ArrSectionHeader
+            title="Location and radius"
+            description="ZIP or city/state is saved as coordinates. With a saved location, shows without venue coordinates or outside your radius are omitted from the list below."
+          />
+          <ArrPanelBody>{locationPanelBody}</ArrPanelBody>
+        </ArrContentPanel>
+      ) : (
+        <Card>
+          <CardHeader className="space-y-1 px-4 py-3">
+            <CardTitle className="text-base">Location and radius</CardTitle>
+            <CardDescription className="text-xs leading-snug">
+              ZIP or city/state is saved as coordinates. With a saved location, shows without venue
+              coordinates or outside your radius are omitted from the list below.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 pt-0">{locationPanelBody}</CardContent>
+        </Card>
+      )}
+
+      {useArrPanel ? (
+        <>
+          <ArrPageToolbar>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-2">{eventsHeaderActions}</div>
+              {eventsFilterControls}
             </div>
-            <div className="w-full space-y-1.5 sm:w-40">
-              <Label className="text-xs text-muted-foreground">Interest</Label>
-              <Select
-                value={interestFilter}
-                onValueChange={(v) => setInterestFilter(v as "all" | "interested")}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All events</SelectItem>
-                  <SelectItem value="interested">Interested only</SelectItem>
-                </SelectContent>
-              </Select>
+          </ArrPageToolbar>
+          <ArrContentPanel>
+            <ArrSectionHeader
+              title="Upcoming events"
+              description="Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync here."
+            />
+            <ArrPanelBody className="space-y-4">{renderUpcomingEventsBody()}</ArrPanelBody>
+          </ArrContentPanel>
+        </>
+      ) : (
+        <Card>
+          <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between md:gap-4">
+            <div>
+              <CardTitle>Upcoming events</CardTitle>
+              <CardDescription>
+                Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync
+                here.
+              </CardDescription>
             </div>
-            <div className="w-full space-y-1.5 sm:w-44">
-              <Label className="text-xs text-muted-foreground">Source</Label>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All sources" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All sources</SelectItem>
-                  <SelectItem value="ticketmaster">Ticketmaster</SelectItem>
-                  <SelectItem value="seatgeek">SeatGeek</SelectItem>
-                  <SelectItem value="deezer">Deezer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 md:min-w-[14rem]">
-              <Switch
-                id="exclude-festivals"
-                checked={excludeFestivals}
-                onCheckedChange={(c) => setExcludeFestivals(Boolean(c))}
-              />
-              <Label
-                htmlFor="exclude-festivals"
-                className="cursor-pointer text-xs font-normal leading-snug"
-              >
-                Exclude festivals &amp; tour packages
-                <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                  Frees list slots (max 200) for regular shows
-                </span>
-              </Label>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Showing {filteredEvents.length} of {events.length} in this loaded page
-            {artistFilter.trim() || sourceFilter !== "all" || interestFilter === "interested"
-              ? " (search/source/interest filters)"
-              : ""}
-            . Up to 200 rows are returned per load.
-            {upcomingStoredCount != null && upcomingStoredCount > events.length ? (
-              <>
-                {" "}
-                {upcomingStoredCount.toLocaleString()} upcoming rows match your filters (interest +
-                festival toggle); this response is capped at 200. A tight radius or many hidden
-                items also reduce the list.
-                {!excludeFestivals ? (
-                  <>
-                    {" "}
-                    If the cap is mostly festivals/tours, turn on <strong>
-                      Exclude festivals
-                    </strong>{" "}
-                    above.
-                  </>
-                ) : null}
-              </>
-            ) : null}
-          </p>
-          {events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No upcoming events in range. Run refresh after configuring providers and syncing
-              Lidarr artists.
-            </p>
-          ) : filteredEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No events match your filters.</p>
-          ) : (
-            <ul className="divide-y rounded-md border">
-              {filteredEvents.map((ev) => {
-                const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
-                  .filter(Boolean)
-                  .join(" | ");
-                const rawSourceRows =
-                  ev.source_links && ev.source_links.length > 0
-                    ? ev.source_links
-                    : ev.sources.map((s) => ({ provider: s, url: null as string | null }));
-                const sourceRows = collapseSourceLinksForDisplay(rawSourceRows, ev.artist_name);
-                return (
-                  <li
-                    key={`${ev.id}-${ev.starts_at_utc}`}
-                    className={cn(
-                      "px-2 py-1.5 pl-1 md:flex md:flex-row md:items-center md:gap-2 md:py-2 md:pl-2",
-                      ev.interested &&
-                        "border-l-4 border-l-amber-500/90 bg-amber-500/[0.07] dark:bg-amber-500/10"
-                    )}
-                  >
-                    <div className="flex min-w-0 items-start gap-1.5 md:contents">
-                      <div className="flex shrink-0 items-start pt-0.5 md:pt-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className={cn(
-                            "h-9 w-9",
-                            ev.interested &&
-                              "text-amber-600 hover:text-amber-700 dark:text-amber-400"
-                          )}
-                          title={ev.interested ? "Remove from interested" : "Mark interested"}
-                          onClick={() => void toggleInterested(ev)}
-                        >
-                          <Star
-                            className={cn("h-4 w-4", ev.interested && "fill-current")}
-                            aria-hidden
-                          />
-                          <span className="sr-only">
-                            {ev.interested ? "Remove interested" : "Interested"}
-                          </span>
-                        </Button>
-                      </div>
-                      <div className="min-w-0 flex-1 md:space-y-0">
-                        <div className="flex items-start justify-between gap-2 md:flex-wrap md:items-baseline md:gap-x-2 md:gap-y-0.5">
-                          <span className="min-w-0 truncate text-sm font-semibold leading-tight md:text-base md:whitespace-normal">
-                            {ev.artist_name}
-                          </span>
-                          <span className="shrink-0 text-[11px] text-muted-foreground md:hidden">
-                            {formatEventDate(ev)}
-                          </span>
-                          <span className="hidden text-sm leading-tight text-muted-foreground md:inline">
-                            {venueLine}
-                          </span>
-                        </div>
-                        <p className="truncate text-[11px] leading-snug text-muted-foreground md:hidden">
-                          {venueLine}
-                        </p>
-                        <div className="mt-0.5 flex items-center justify-between gap-1 md:mt-0 md:justify-start">
-                          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground md:gap-x-2">
-                            <span className="hidden md:inline">{formatEventDate(ev)}</span>
-                            {ev.event_kind === "festival" && (
-                              <Badge
-                                variant="outline"
-                                className="h-4 px-1 text-[9px] font-normal md:hidden"
-                                title={ev.tm_event_name || "Festival or multi-day event"}
-                              >
-                                Fest
-                              </Badge>
-                            )}
-                            {ev.event_kind === "tour_package" && (
-                              <Badge
-                                variant="outline"
-                                className="h-4 px-1 text-[9px] font-normal md:hidden"
-                                title={ev.tm_event_name || "Multi-act tour or package listing"}
-                              >
-                                Tour
-                              </Badge>
-                            )}
-                            {ev.event_kind === "festival" && (
-                              <Badge
-                                variant="outline"
-                                className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
-                                title={ev.tm_event_name || "Festival or multi-day event"}
-                              >
-                                Festival
-                              </Badge>
-                            )}
-                            {ev.event_kind === "tour_package" && (
-                              <Badge
-                                variant="outline"
-                                className="hidden h-5 px-1.5 text-[10px] font-normal md:inline-flex"
-                                title={ev.tm_event_name || "Multi-act tour or package listing"}
-                              >
-                                Tour
-                              </Badge>
-                            )}
-                            {ev.distance_miles != null && (
-                              <span className="tabular-nums">{ev.distance_miles} mi</span>
-                            )}
-                            <span className="flex flex-wrap gap-0.5 md:gap-1">
-                              {sourceRows.map((row) => {
-                                const label = sourceBadge(row.provider);
-                                if (row.url) {
-                                  return (
-                                    <a
-                                      key={row.provider}
-                                      href={row.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center rounded-md border border-transparent bg-secondary px-1 py-0 text-[9px] font-normal text-secondary-foreground underline-offset-2 hover:underline md:px-1.5 md:text-[10px]"
-                                    >
-                                      {label}
-                                    </a>
-                                  );
-                                }
-                                return (
-                                  <Badge
-                                    key={row.provider}
-                                    variant="secondary"
-                                    className="px-1 py-0 text-[9px] font-normal md:px-1.5 md:text-[10px]"
-                                  >
-                                    {label}
-                                  </Badge>
-                                );
-                              })}
-                            </span>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-0.5 md:ml-auto md:gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
-                              asChild
-                              title="Last.fm events"
-                            >
-                              <a
-                                href={ev.last_fm_events_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                <span className="sr-only md:not-sr-only md:ml-1">Last.fm</span>
-                              </a>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
-                              title="Hide this show only"
-                              onClick={() => setConfirmHideEvent(ev)}
-                            >
-                              <MinusCircle className="h-3.5 w-3.5" />
-                              <span className="sr-only md:not-sr-only md:ml-1">Hide event</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 md:h-8 md:w-auto md:px-2"
-                              title="Hide all shows for this artist"
-                              onClick={() => setConfirmHideArtist(ev)}
-                            >
-                              <EyeOff className="h-3.5 w-3.5" />
-                              <span className="sr-only md:not-sr-only md:ml-1">Hide artist</span>
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+            <div className="flex flex-wrap gap-2">{eventsHeaderActions}</div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {eventsFilterControls}
+            {renderUpcomingEventsBody()}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={festivalDialogOpen} onOpenChange={setFestivalDialogOpen}>
         <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
