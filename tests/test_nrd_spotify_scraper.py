@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from utils.nrd_release_source import (
+    normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
     nrd_release_client,
     nrd_uses_spotify,
-    normalize_nrd_source,
 )
 
 

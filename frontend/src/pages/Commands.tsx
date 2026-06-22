@@ -372,8 +372,7 @@ export function CommandsPage() {
     const cfg = command.config_json || {};
     const typesStr = (cfg.album_types as string) || "album";
     const src = (cfg.new_releases_source as string) || "deezer";
-    const nrdSource =
-      src === "spotify_scraper" || src === "spotify" ? "spotify_scraper" : "deezer";
+    const nrdSource = src === "spotify_scraper" || src === "spotify" ? "spotify_scraper" : "deezer";
     const isDaylist = command.command_name.startsWith("daylist_");
 
     const timePeriods: Record<string, { start: number; end: number }> = {

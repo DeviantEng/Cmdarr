@@ -35,10 +35,10 @@ from database.config_models import (
 )
 from database.database import get_database_manager
 from utils.nrd_release_source import (
+    normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
     nrd_release_client,
-    normalize_nrd_source,
 )
 from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
