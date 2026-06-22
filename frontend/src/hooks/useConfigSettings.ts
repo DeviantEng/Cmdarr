@@ -129,7 +129,9 @@ function useConfigSettingsState(options: { loadAllOnMount?: boolean }) {
 
   const handleSettingChange = useCallback(
     (key: string, value: unknown) => {
-      setSettings((prev) => prev.map((setting) => (setting.key === key ? { ...setting, value } : setting)));
+      setSettings((prev) =>
+        prev.map((setting) => (setting.key === key ? { ...setting, value } : setting))
+      );
       setChangedSettings((prev) => new Set(prev).add(key));
       if (revealedKeys.has(key)) {
         setRevealedValues((prev) => ({ ...prev, [key]: String(value ?? "") }));
@@ -151,7 +153,9 @@ function useConfigSettingsState(options: { loadAllOnMount?: boolean }) {
           delete rest[key];
           return rest;
         });
-        setSettings((prev) => prev.map((setting) => (setting.key === key ? { ...setting, value: "***" } : setting)));
+        setSettings((prev) =>
+          prev.map((setting) => (setting.key === key ? { ...setting, value: "***" } : setting))
+        );
         setChangedSettings((prev) => {
           const next = new Set(prev);
           next.delete(key);
@@ -308,9 +312,9 @@ export function useArrConfigSettings(categories: string[]) {
   const categoriesKey = categories.join("\0");
 
   useEffect(() => {
-    if (categories.length === 0) return;
-    void context.loadCategories(categories);
-  }, [context, categoriesKey, categories.length]);
+    if (!categoriesKey) return;
+    void context.loadCategories(categoriesKey.split("\0"));
+  }, [context, categoriesKey]);
 
   return context;
 }

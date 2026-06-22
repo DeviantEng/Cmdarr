@@ -2,12 +2,7 @@ import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { StatusPage } from "@/pages/Status";
 
-const STATUS_SECTIONS = [
-  "health",
-  "system-info",
-  "migrations",
-  "api-endpoints",
-] as const;
+const STATUS_SECTIONS = ["health", "system-info", "migrations", "api-endpoints"] as const;
 
 export function ArrSystemStatusPage() {
   const version = useAppVersion();

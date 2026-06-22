@@ -43,7 +43,7 @@ import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
 import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
 import { eventSourcesSettingsPath } from "@/lib/settings-paths";
-import { useUiShell } from "@/lib/ui-shell";
+import { useUiShell } from "@/lib/use-ui-shell";
 import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
@@ -448,9 +448,9 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
           <p className="text-muted-foreground mt-1">
-            Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
-            from enabled providers. Refresh syncs your Lidarr library automatically before querying
-            event sources.
+            Upcoming shows, festivals, and other events for artists in your Lidarr library,
+            aggregated from enabled providers. Refresh syncs your Lidarr library automatically
+            before querying event sources.
           </p>
         </div>
       ) : null}

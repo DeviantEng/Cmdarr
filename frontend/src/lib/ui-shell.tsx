@@ -1,26 +1,14 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-
-export type UiShell = "legacy" | "arr";
-
-const STORAGE_KEY = "cmdarr-ui-shell";
-
-type UiShellContextValue = {
-  shell: UiShell;
-  setShell: (shell: UiShell) => void;
-  toggleShell: () => void;
-  isArr: boolean;
-};
-
-const UiShellContext = createContext<UiShellContextValue | null>(null);
+import { useEffect, useState, type ReactNode } from "react";
+import { UI_SHELL_STORAGE_KEY, UiShellContext, type UiShell } from "@/lib/ui-shell-context";
 
 export function UiShellProvider({ children }: { children: ReactNode }) {
   const [shell, setShellState] = useState<UiShell>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(UI_SHELL_STORAGE_KEY);
     return stored === "arr" ? "arr" : "legacy";
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, shell);
+    localStorage.setItem(UI_SHELL_STORAGE_KEY, shell);
     document.documentElement.dataset.uiShell = shell;
   }, [shell]);
 
@@ -39,12 +27,4 @@ export function UiShellProvider({ children }: { children: ReactNode }) {
       {children}
     </UiShellContext.Provider>
   );
-}
-
-export function useUiShell() {
-  const ctx = useContext(UiShellContext);
-  if (!ctx) {
-    throw new Error("useUiShell must be used within UiShellProvider");
-  }
-  return ctx;
 }

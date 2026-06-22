@@ -1,6 +1,6 @@
 import { LayoutTemplate, PanelTop } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUiShell } from "@/lib/ui-shell";
+import { useUiShell } from "@/lib/use-ui-shell";
 import { cn } from "@/lib/utils";
 
 type UiShellToggleProps = {
@@ -17,9 +17,7 @@ export function UiShellToggle({ className, compact = false }: UiShellToggleProps
       size={compact ? "sm" : "default"}
       className={cn(compact ? "h-9 gap-1.5 px-2.5" : "h-10 gap-2", className)}
       onClick={toggleShell}
-      title={
-        isArr ? "Switch to classic UI" : "Preview modern *arr UI (work in progress)"
-      }
+      title={isArr ? "Switch to classic UI" : "Preview modern *arr UI (work in progress)"}
     >
       {isArr ? (
         <>

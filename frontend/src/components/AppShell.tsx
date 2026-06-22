@@ -1,4 +1,4 @@
-import { useUiShell } from "@/lib/ui-shell";
+import { useUiShell } from "@/lib/use-ui-shell";
 import { LegacyLayout } from "@/legacy/LegacyLayout";
 import { LegacyRoutes } from "@/legacy/LegacyRoutes";
 import { ArrLayout } from "@/arr/components/ArrLayout";
