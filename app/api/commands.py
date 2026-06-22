@@ -348,7 +348,9 @@ async def update_command(
             prev_config_snapshot = dict(command.config_json or {})
             # Validate Spotify credentials and API access when switching NRD to Spotify source
             if command_name == "new_releases_discovery":
-                src = (request.config_json.get("new_releases_source") or "deezer").strip().lower()
+                from utils.nrd_release_source import normalize_nrd_source
+
+                src = normalize_nrd_source(request.config_json.get("new_releases_source"))
                 if src == "spotify":
                     from clients.client_spotify import SpotifyClient
                     from commands.config_adapter import ConfigAdapter
@@ -2314,9 +2316,12 @@ async def delete_command(
 async def get_new_releases_sources():
     """Get available New Releases Discovery sources and their configuration status"""
     try:
-        from commands.config_adapter import Config
+        import asyncio
 
-        config = Config()
+        from clients.client_spotify import probe_scraper_discography
+
+        loop = asyncio.get_event_loop()
+        scraper_ok = await loop.run_in_executor(None, probe_scraper_discography)
 
         sources = [
             {
@@ -2326,10 +2331,10 @@ async def get_new_releases_sources():
                 "config_help": "No account required—uses public data",
             },
             {
-                "id": "spotify",
+                "id": "spotify_scraper",
                 "name": "Spotify",
-                "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
-                "config_help": "Requires credentials in Config → Music Sources",
+                "configured": scraper_ok,
+                "config_help": "Public catalog via scraper; no account required",
             },
         ]
 

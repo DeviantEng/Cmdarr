@@ -1,8 +1,48 @@
+"""Tests for scraper album normalization helpers."""
+
 from clients.client_spotify import (
+    _normalize_scraper_album,
     _normalize_scraper_owner,
     _normalize_scraper_tracks,
+    _scraper_album_type_in_groups,
     _scraper_playlist_result,
 )
+
+
+def test_normalize_scraper_album_maps_nrd_fields():
+    album = _normalize_scraper_album(
+        {
+            "id": "abc123",
+            "name": "Test Album",
+            "release_date": "2024-03-15",
+            "album_type": "album",
+            "total_tracks": 10,
+            "share_url": "https://open.spotify.com/album/abc123",
+            "artists": [{"id": "artist1", "name": "Artist One"}],
+        },
+        fallback_artist_id="fallback",
+    )
+    assert album["id"] == "abc123"
+    assert album["name"] == "Test Album"
+    assert album["release_date"] == "2024-03-15"
+    assert album["album_type"] == "album"
+    assert album["total_tracks"] == 10
+    assert album["primary_artist_id"] == "artist1"
+    assert album["spotify_url"] == "https://open.spotify.com/album/abc123"
+    assert album["external_url"] == album["spotify_url"]
+
+
+def test_normalize_scraper_album_builds_url_when_share_missing():
+    album = _normalize_scraper_album({"id": "xyz", "name": "No URL"}, fallback_artist_id="a1")
+    assert album["spotify_url"] == "https://open.spotify.com/album/xyz"
+    assert album["primary_artist_id"] == "a1"
+
+
+def test_scraper_album_type_in_groups():
+    groups = "album,single,compilation,appears_on"
+    assert _scraper_album_type_in_groups("album", groups) is True
+    assert _scraper_album_type_in_groups("single", groups) is True
+    assert _scraper_album_type_in_groups("podcast", groups) is False
 
 
 def test_normalize_scraper_tracks_v2_shape():

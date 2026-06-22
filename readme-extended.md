@@ -128,8 +128,8 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 **Access**: Web UI → New Releases (`/new-releases`)
 
 **Benefits**:
-- **Deezer (default)**: No account required—uses public API; ideal without Spotify Premium
-- **Spotify (optional)**: Set credentials in Config; uses Lidarr Spotify links when available
+- **Deezer (default)**: No account required—uses public API
+- **Spotify (optional)**: No account required—uses public catalog scraping via spotifyscraper; alternative when Deezer attaches wrong albums to an artist page (catalog pollution)
 
 - Uses Lidarr artist links when available (avoids name collisions like Emmure vs emmurée)
 - 1 MusicBrainz API call per artist (release groups), no per-album lookups
@@ -137,8 +137,10 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 - One-click links to Lidarr, MusicBrainz artist page, or Harmony to add the album
 - **Scan Artist by URL**: Artist not in Lidarr yet? Paste a Spotify or Deezer artist URL to fetch all albums, compare to MusicBrainz, and get a list of missing releases with Harmony links; add each in Harmony, then add the artist to Lidarr after ~24h
 
-**Requirements**: Lidarr; either Deezer (default) or Spotify credentials in Config  
-**Configuration**: Release source in Commands → Edit; `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources
+**Requirements**: Lidarr; MusicBrainz enabled for batch scans  
+**Configuration**: Release source (Deezer or Spotify) in Commands → Edit; `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources
+
+**Note**: Legacy `spotify` API source may still exist in older configs but is not exposed in the UI. Spotify scraper is the recommended credential-free Spotify path.
 
 ### Playlist Generators (Plex/Jellyfin)
 

@@ -256,10 +256,10 @@ export function CommandsPage() {
     if (
       editingCommand?.command_name === "new_releases_discovery" &&
       nrdSources.length > 0 &&
-      editForm.new_releases_source === "spotify"
+      editForm.new_releases_source === "spotify_scraper"
     ) {
-      const spotifySrc = nrdSources.find((s) => s.id === "spotify");
-      if (spotifySrc && !spotifySrc.configured) {
+      const scraperSrc = nrdSources.find((s) => s.id === "spotify_scraper");
+      if (scraperSrc && !scraperSrc.configured) {
         setEditForm((f) => ({ ...f, new_releases_source: "deezer" }));
       }
     }
@@ -372,6 +372,7 @@ export function CommandsPage() {
     const cfg = command.config_json || {};
     const typesStr = (cfg.album_types as string) || "album";
     const src = (cfg.new_releases_source as string) || "deezer";
+    const nrdSource = src === "spotify_scraper" || src === "spotify" ? "spotify_scraper" : "deezer";
     const isDaylist = command.command_name.startsWith("daylist_");
 
     const timePeriods: Record<string, { start: number; end: number }> = {
@@ -419,7 +420,7 @@ export function CommandsPage() {
         .split(",")
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean),
-      new_releases_source: src === "spotify" ? "spotify" : "deezer",
+      new_releases_source: nrdSource,
       artists_to_query: typeof cfg.artists_to_query === "number" ? cfg.artists_to_query : 3,
       similar_per_artist: typeof cfg.similar_per_artist === "number" ? cfg.similar_per_artist : 1,
       artist_cooldown_days:
