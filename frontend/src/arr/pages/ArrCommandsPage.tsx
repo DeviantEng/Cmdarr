@@ -1,6 +1,14 @@
+import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import { CommandsPage } from "@/pages/Commands";
 
-/** Arr presentation wrapper — full Arr-specific layout coming next. */
 export function ArrCommandsPage() {
-  return <CommandsPage />;
+  return (
+    <div>
+      <ArrPageHeader
+        title="Commands"
+        description="Manage and monitor scheduled and manual Cmdarr commands."
+      />
+      <CommandsPage showPageHeader={false} useArrPanel />
+    </div>
+  );
 }

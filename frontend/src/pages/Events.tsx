@@ -42,6 +42,8 @@ import {
 import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
 import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
+import { eventSourcesSettingsPath } from "@/lib/settings-paths";
+import { useUiShell } from "@/lib/ui-shell";
 import { cn } from "@/lib/utils";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
@@ -55,7 +57,14 @@ function formatEventDate(ev: ArtistEventRow): string {
   return ev.local_date;
 }
 
-export function EventsPage() {
+type EventsPageProps = {
+  showPageHeader?: boolean;
+  useArrPanel?: boolean;
+};
+
+export function EventsPage({ showPageHeader = true, useArrPanel = false }: EventsPageProps) {
+  const { shell } = useUiShell();
+  const eventSourcesPath = eventSourcesSettingsPath(shell);
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<ArtistEventRow[]>([]);
   const [providerStatus, setProviderStatus] = useState<Awaited<
@@ -434,22 +443,24 @@ export function EventsPage() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
-        <p className="text-muted-foreground mt-1">
-          Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
-          from enabled providers. Refresh syncs your Lidarr library automatically before querying
-          event sources.
-        </p>
-      </div>
+    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
+      {showPageHeader ? (
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
+          <p className="text-muted-foreground mt-1">
+            Upcoming shows, festivals, and other events for artists in your Lidarr library, aggregated
+            from enabled providers. Refresh syncs your Lidarr library automatically before querying
+            event sources.
+          </p>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="space-y-1 px-4 py-3">
           <CardTitle className="text-base">Providers</CardTitle>
           <CardDescription className="text-xs leading-snug">
             Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in{" "}
-            <Link to="/config" className="underline font-medium text-foreground">
+            <Link to={eventSourcesPath} className="underline font-medium text-foreground">
               Configuration &gt; Event Sources
             </Link>
             . At least one provider must be ready before refresh runs.
@@ -459,7 +470,7 @@ export function EventsPage() {
           {!providerStatus?.any_ready && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
               No provider configured — add API keys in{" "}
-              <Link to="/config" className="underline font-medium">
+              <Link to={eventSourcesPath} className="underline font-medium">
                 Configuration
               </Link>
               .

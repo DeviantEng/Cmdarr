@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import type { ImportListMetrics } from "@/lib/types";
 import { toast } from "sonner";
 import { Copy, Music, Disc, RotateCcw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function formatFileSize(sizeBytes: number): string {
   if (sizeBytes < 1024) return `${sizeBytes} B`;
@@ -34,7 +35,15 @@ function getStatusVariant(status: string): "default" | "secondary" | "destructiv
 
 type ResetListId = "lastfm" | "playlistsync";
 
-export function ImportListsPage() {
+type ImportListsPageProps = {
+  showPageHeader?: boolean;
+  useArrPanel?: boolean;
+};
+
+export function ImportListsPage({
+  showPageHeader = true,
+  useArrPanel = false,
+}: ImportListsPageProps) {
   const [metrics, setMetrics] = useState<ImportListMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,15 +112,19 @@ export function ImportListsPage() {
   const lastfmUrl = `${baseUrl}/import_lists/discovery_lastfm`;
   const playlistsyncUrl = `${baseUrl}/import_lists/discovery_playlistsync`;
 
+  const listHeader = showPageHeader ? (
+    <div>
+      <h1 className="text-3xl font-bold">Import Lists</h1>
+      <p className="mt-2 text-muted-foreground">
+        Available import list endpoints for Lidarr integration and music discovery automation.
+      </p>
+    </div>
+  ) : null;
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Import Lists</h1>
-          <p className="mt-2 text-muted-foreground">
-            Available import list endpoints for Lidarr integration
-          </p>
-        </div>
+      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
+        {listHeader}
         <div className="text-center text-muted-foreground py-12">Loading...</div>
       </div>
     );
@@ -119,13 +132,8 @@ export function ImportListsPage() {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Import Lists</h1>
-          <p className="mt-2 text-muted-foreground">
-            Available import list endpoints for Lidarr integration
-          </p>
-        </div>
+      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
+        {listHeader}
         <Card className="border-destructive">
           <CardContent className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-8">
             <p className="text-lg font-medium text-destructive">Failed to Load</p>
@@ -138,13 +146,8 @@ export function ImportListsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Import Lists</h1>
-        <p className="mt-2 text-muted-foreground">
-          Available import list endpoints for Lidarr integration and music discovery automation.
-        </p>
-      </div>
+    <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
+      {listHeader}
 
       <div className="space-y-6">
         {/* Last.fm Discovery */}

@@ -156,7 +156,12 @@ function getStoredViewMode(): ViewMode {
   return "card";
 }
 
-export function CommandsPage() {
+type CommandsPageProps = {
+  showPageHeader?: boolean;
+  useArrPanel?: boolean;
+};
+
+export function CommandsPage({ showPageHeader = true, useArrPanel = false }: CommandsPageProps) {
   const [commands, setCommands] = useState<CommandConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -671,11 +676,13 @@ export function CommandsPage() {
 
   if (loading) {
     return (
-      <div>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Commands</h1>
-          <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-        </div>
+      <div className={cn(useArrPanel && "arr-page-panels")}>
+        {showPageHeader ? (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold">Commands</h1>
+            <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
+          </div>
+        ) : null}
         <div className="text-center text-muted-foreground">Loading commands...</div>
       </div>
     );
@@ -683,11 +690,13 @@ export function CommandsPage() {
 
   if (error) {
     return (
-      <div>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Commands</h1>
-          <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-        </div>
+      <div className={cn(useArrPanel && "arr-page-panels")}>
+        {showPageHeader ? (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold">Commands</h1>
+            <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
+          </div>
+        ) : null}
         <Card className="border-destructive">
           <CardContent className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-8">
             <p className="text-lg font-medium text-destructive">Failed to Load Commands</p>
@@ -700,12 +709,13 @@ export function CommandsPage() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Commands</h1>
-        <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-      </div>
+    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
+      {showPageHeader ? (
+        <div>
+          <h1 className="text-3xl font-bold">Commands</h1>
+          <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
+        </div>
+      ) : null}
 
       {/* Controls Row */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

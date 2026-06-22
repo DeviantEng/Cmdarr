@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const RELEASE_WITHIN_OPTIONS: { value: ReleaseWithinFilter; label: string }[] = [
   { value: "all", label: "All dates" },
@@ -59,7 +60,15 @@ function getReleaseUrlLabel(url: string): string {
   return "Release";
 }
 
-export function NewReleasesPage() {
+type NewReleasesPageProps = {
+  showPageHeader?: boolean;
+  useArrPanel?: boolean;
+};
+
+export function NewReleasesPage({
+  showPageHeader = true,
+  useArrPanel = false,
+}: NewReleasesPageProps) {
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<NewReleasePendingItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -412,14 +421,16 @@ export function NewReleasesPage() {
   };
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">New Releases Discovery</h1>
-        <p className="mt-2 text-muted-foreground">
-          Find releases on Deezer (or Spotify) from your Lidarr artists that are missing from
-          MusicBrainz.
-        </p>
-      </div>
+    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
+      {showPageHeader ? (
+        <div>
+          <h1 className="text-3xl font-bold">New Releases Discovery</h1>
+          <p className="mt-2 text-muted-foreground">
+            Find releases on Deezer (or Spotify) from your Lidarr artists that are missing from
+            MusicBrainz.
+          </p>
+        </div>
+      ) : null}
 
       {/* Scan by URL + Actions: shared release type filter */}
       <Card>

@@ -134,3 +134,10 @@
   margin-bottom: 1.5rem;
   padding: 1rem 1.25rem;
 }
+
+[data-ui-shell="arr"] .arr-page-panels .rounded-lg.border.bg-card {
+  border-color: var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-card);
+  box-shadow: none;
+}

@@ -4,6 +4,8 @@ import { UiShellToggle } from "@/components/UiShellToggle";
 import { useTheme } from "@/lib/use-theme";
 import { api } from "@/lib/api";
 import { arrPageTitle } from "@/arr/arr-nav";
+import { useHealthStatus } from "@/hooks/useHealthStatus";
+import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
 
 type ArrHeaderProps = {
@@ -14,6 +16,14 @@ export function ArrHeader({ onOpenSidebar }: ArrHeaderProps) {
   const { theme, setTheme } = useTheme();
   const location = useLocation();
   const title = arrPageTitle(location.pathname);
+  const health = useHealthStatus();
+
+  const healthColor =
+    health.status === "healthy"
+      ? "bg-emerald-500"
+      : health.status === "unhealthy"
+        ? "bg-red-500"
+        : "bg-amber-500";
 
   return (
     <header
@@ -40,8 +50,8 @@ export function ArrHeader({ onOpenSidebar }: ArrHeaderProps) {
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <span
-          className="mr-1 hidden h-2 w-2 rounded-full bg-emerald-500 sm:inline-block"
-          title="Health indicator (placeholder)"
+          className={cn("mr-1 hidden h-2 w-2 rounded-full sm:inline-block", healthColor)}
+          title={health.message}
         />
         <UiShellToggle compact />
         <Button
