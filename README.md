@@ -1,6 +1,6 @@
 [![PR Checks](https://github.com/DeviantEng/Cmdarr/actions/workflows/pr-checks.yml/badge.svg?branch=develop)](https://github.com/DeviantEng/Cmdarr/actions/workflows/pr-checks.yml)
 [![Docker](https://github.com/DeviantEng/Cmdarr/actions/workflows/docker-publish.yml/badge.svg?branch=develop)](https://github.com/DeviantEng/Cmdarr/actions/workflows/docker-publish.yml)
-[![GitHub release](https://img.shields.io/github/v/release/DeviantEng/Cmdarr?include_prereleases&logo=github)](https://github.com/DeviantEng/Cmdarr/releases)
+[![Version](https://img.shields.io/github/v/tag/DeviantEng/Cmdarr?sort=semver&logo=github&label=version)](https://github.com/DeviantEng/Cmdarr/tags)
 [![Discord](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FSfD8GVhMzN%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/SfD8GVhMzN)
 
 # Cmdarr
