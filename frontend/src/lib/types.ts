@@ -202,7 +202,7 @@ export interface NewReleasePendingItem {
   status: string;
 }
 
-export type ReleaseWithinFilter = "all" | "30d" | "60d" | "90d" | "180d" | "this_year";
+export type ReleaseWithinFilter = "all" | "30d" | "90d" | "180d" | "this_year" | "previous_year";
 
 export interface PendingReleasesResponse {
   success: boolean;
