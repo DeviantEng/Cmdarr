@@ -393,7 +393,7 @@ async def get_pending_releases(
     release_within: Annotated[
         str | None,
         Query(
-            description="Release date window: all, 30d, 60d, 90d, 180d, this_year",
+            description="Release date window: all, 30d, 90d, 180d, this_year, previous_year",
         ),
     ] = "all",
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
