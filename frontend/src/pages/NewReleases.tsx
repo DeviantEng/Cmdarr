@@ -765,9 +765,7 @@ export function NewReleasesPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : ignoredArtists.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No hidden artists.
-              </p>
+              <p className="py-6 text-center text-sm text-muted-foreground">No hidden artists.</p>
             ) : (
               ignoredArtists.map((artist) => (
                 <div
