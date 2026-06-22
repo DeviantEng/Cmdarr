@@ -42,6 +42,7 @@ import { fromExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isMobileViewport } from "@/lib/use-mobile";
+import { ArrContentPanel, ArrPageToolbar } from "@/arr/components/ArrPageToolbar";
 import {
   DEFAULT_DAYLIST_TIME_PERIODS,
   hoursFromRange,
@@ -73,6 +74,143 @@ function CommandsSortIcon({
     <ChevronUp className="ml-1 inline h-4 w-4" />
   ) : (
     <ChevronDown className="ml-1 inline h-4 w-4" />
+  );
+}
+
+type CommandsToolbarControlsProps = {
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  useArrPanel: boolean;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  activeFilterCount: number;
+  statusFilter: "all" | "enabled" | "disabled";
+  setStatusFilter: (value: "all" | "enabled" | "disabled") => void;
+  typeFilter: string;
+  setTypeFilter: (value: string) => void;
+  commandTypes: string[];
+  onNewCommand: () => void;
+};
+
+function CommandsToolbarControls({
+  viewMode,
+  setViewMode,
+  useArrPanel,
+  searchQuery,
+  setSearchQuery,
+  activeFilterCount,
+  statusFilter,
+  setStatusFilter,
+  typeFilter,
+  setTypeFilter,
+  commandTypes,
+  onNewCommand,
+}: CommandsToolbarControlsProps) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+        {!useArrPanel ? (
+          <div className="flex items-center rounded-lg bg-muted p-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode("card")}
+              className={cn("h-9 w-9", viewMode === "card" && "bg-background shadow-sm")}
+              aria-label="Card view"
+              title="Card view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className={cn("h-9 w-9", viewMode === "list" && "bg-background shadow-sm")}
+              aria-label="List view"
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search commands..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 pl-8"
+          />
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Filter className="mr-2 h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 ? (
+                <Badge variant="secondary" className="ml-2">
+                  {activeFilterCount}
+                </Badge>
+              ) : null}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <div className="p-2">
+              <div className="mb-3">
+                <label className="mb-1.5 block text-sm font-medium">Status</label>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(v) => setStatusFilter(v as "all" | "enabled" | "disabled")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="enabled">Enabled</SelectItem>
+                    <SelectItem value="disabled">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="mb-3">
+                <label className="mb-1.5 block text-sm font-medium">Type</label>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {commandTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type === "all" ? "All" : type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setTypeFilter("all");
+                  setSearchQuery("");
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <Button size="sm" onClick={onNewCommand}>
+        <Plus className="mr-2 h-4 w-4" />
+        New Command
+      </Button>
+    </div>
   );
 }
 
@@ -146,6 +284,201 @@ function CommandActionsMenu({
   );
 }
 
+type CommandsListBodyProps = {
+  filteredCommands: CommandConfig[];
+  sortField: SortField;
+  sortDirection: SortDirection;
+  handleSort: (field: SortField) => void;
+  handleExecute: (command: CommandConfig) => void;
+  handleEdit: (command: CommandConfig) => void;
+  handleToggleEnabled: (command: CommandConfig) => void;
+  handleDelete: (commandName: string) => void;
+  useArrTable?: boolean;
+};
+
+function CommandsListBody({
+  filteredCommands,
+  sortField,
+  sortDirection,
+  handleSort,
+  handleExecute,
+  handleEdit,
+  handleToggleEnabled,
+  handleDelete,
+  useArrTable = false,
+}: CommandsListBodyProps) {
+  return (
+    <>
+      <div className="divide-y md:hidden">
+        {filteredCommands.map((command) => (
+          <div key={command.id} className="flex items-start gap-2 px-3 py-2.5">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug">
+                  {command.display_name}
+                </span>
+                <Badge
+                  variant={command.enabled ? "default" : "secondary"}
+                  className="shrink-0 text-[10px]"
+                >
+                  {command.enabled ? "On" : "Off"}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                {command.command_type ? (
+                  <span className="truncate">{command.command_type}</span>
+                ) : null}
+                <span className="font-mono">
+                  {command.schedule_override && command.schedule_cron
+                    ? command.schedule_cron
+                    : "Default"}
+                </span>
+                <span>{formatCommandLastRun(command.last_run, true)}</span>
+                {command.last_success !== null ? (
+                  <span
+                    className={
+                      command.last_success
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }
+                  >
+                    {command.last_success ? "OK" : "Fail"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <CommandActionsMenu
+              command={command}
+              onExecute={handleExecute}
+              onEdit={handleEdit}
+              onToggleEnabled={handleToggleEnabled}
+              onDelete={handleDelete}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
+        <table className={cn("w-full", useArrTable && "arr-table")}>
+          <thead className="border-b">
+            <tr>
+              <th className="px-4 py-3 text-left text-sm font-medium">
+                <button
+                  onClick={() => handleSort("name")}
+                  className="flex cursor-pointer items-center hover:text-foreground"
+                >
+                  Name{" "}
+                  <CommandsSortIcon
+                    column="name"
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                  />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium">
+                <button
+                  onClick={() => handleSort("status")}
+                  className="flex cursor-pointer items-center hover:text-foreground"
+                >
+                  Status{" "}
+                  <CommandsSortIcon
+                    column="status"
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                  />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium">
+                <button
+                  onClick={() => handleSort("type")}
+                  className="flex cursor-pointer items-center hover:text-foreground"
+                >
+                  Type{" "}
+                  <CommandsSortIcon
+                    column="type"
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                  />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium">
+                <button
+                  onClick={() => handleSort("schedule")}
+                  className="flex cursor-pointer items-center hover:text-foreground"
+                >
+                  Schedule{" "}
+                  <CommandsSortIcon
+                    column="schedule"
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                  />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium">
+                <button
+                  onClick={() => handleSort("last_run")}
+                  className="flex cursor-pointer items-center hover:text-foreground"
+                >
+                  Last Run{" "}
+                  <CommandsSortIcon
+                    column="last_run"
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                  />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {filteredCommands.map((command) => (
+              <tr key={command.id} className={useArrTable ? undefined : "hover:bg-muted/50"}>
+                <td className="px-4 py-3">
+                  <div>
+                    <div className="font-medium">{command.display_name}</div>
+                    {command.description ? (
+                      <div className="text-xs text-muted-foreground">{command.description}</div>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant={command.enabled ? "default" : "secondary"} className="text-xs">
+                    {command.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  {command.command_type ? (
+                    <Badge variant="outline" className="text-xs">
+                      {command.command_type}
+                    </Badge>
+                  ) : null}
+                </td>
+                <td className="px-4 py-3 font-mono text-sm text-muted-foreground">
+                  {command.schedule_override && command.schedule_cron
+                    ? command.schedule_cron
+                    : "Default"}
+                </td>
+                <td className="px-4 py-3 text-sm text-muted-foreground">
+                  {command.last_run ? new Date(command.last_run).toLocaleString() : "Never"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <CommandActionsMenu
+                    command={command}
+                    onExecute={handleExecute}
+                    onEdit={handleEdit}
+                    onToggleEnabled={handleToggleEnabled}
+                    onDelete={handleDelete}
+                    triggerClassName="h-8 w-8"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function getStoredViewMode(): ViewMode {
   try {
     const stored = localStorage.getItem(VIEW_MODE_KEY);
@@ -165,7 +498,9 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
   const [commands, setCommands] = useState<CommandConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    useArrPanel ? "list" : getStoredViewMode()
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "enabled" | "disabled">("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -271,12 +606,13 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
   }, [editingCommand?.command_name, nrdSources, editForm.new_releases_source]);
 
   useEffect(() => {
+    if (useArrPanel) return;
     try {
       localStorage.setItem(VIEW_MODE_KEY, viewMode);
     } catch {
       /* ignore */
     }
-  }, [viewMode]);
+  }, [useArrPanel, viewMode]);
 
   // Poll executions every 10s when commands are running; pause when edit dialog is open
   useEffect(() => {
@@ -718,113 +1054,39 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
       ) : null}
 
       {/* Controls Row */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* Left Controls */}
-        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-          {/* View Toggle */}
-          <div className="flex items-center rounded-lg bg-muted p-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewMode("card")}
-              className={cn("h-9 w-9", viewMode === "card" && "bg-background shadow-sm")}
-              aria-label="Card view"
-              title="Card view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className={cn("h-9 w-9", viewMode === "list" && "bg-background shadow-sm")}
-              aria-label="List view"
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Search */}
-          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search commands..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-
-          {/* Filters Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Filter className="mr-2 h-4 w-4" />
-                Filter
-                {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {activeFilterCount}
-                  </Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <div className="p-2">
-                <div className="mb-3">
-                  <label className="mb-1.5 block text-sm font-medium">Status</label>
-                  <Select
-                    value={statusFilter}
-                    onValueChange={(v) => setStatusFilter(v as "all" | "enabled" | "disabled")}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="enabled">Enabled</SelectItem>
-                      <SelectItem value="disabled">Disabled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="mb-3">
-                  <label className="mb-1.5 block text-sm font-medium">Type</label>
-                  <Select value={typeFilter} onValueChange={setTypeFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {commandTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type === "all" ? "All" : type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setStatusFilter("all");
-                    setTypeFilter("all");
-                    setSearchQuery("");
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Right Controls */}
-        <Button onClick={() => setShowNewCommandDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Command
-        </Button>
-      </div>
+      {useArrPanel ? (
+        <ArrPageToolbar>
+          <CommandsToolbarControls
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            useArrPanel={useArrPanel}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            activeFilterCount={activeFilterCount}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+            commandTypes={commandTypes}
+            onNewCommand={() => setShowNewCommandDialog(true)}
+          />
+        </ArrPageToolbar>
+      ) : (
+        <CommandsToolbarControls
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          useArrPanel={useArrPanel}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          activeFilterCount={activeFilterCount}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+          commandTypes={commandTypes}
+          onNewCommand={() => setShowNewCommandDialog(true)}
+        />
+      )}
 
       {/* Commands Display */}
       {filteredCommands.length === 0 ? (
@@ -848,7 +1110,7 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
             )}
           </CardContent>
         </Card>
-      ) : viewMode === "card" ? (
+      ) : viewMode === "card" && !useArrPanel ? (
         <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {filteredCommands.map((command) => (
             <Card key={command.id} className="flex min-w-0 flex-col overflow-hidden">
@@ -927,177 +1189,32 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
             </Card>
           ))}
         </div>
+      ) : useArrPanel ? (
+        <ArrContentPanel>
+          <CommandsListBody
+            filteredCommands={filteredCommands}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            handleSort={handleSort}
+            handleExecute={handleExecute}
+            handleEdit={handleEdit}
+            handleToggleEnabled={handleToggleEnabled}
+            handleDelete={handleDelete}
+            useArrTable
+          />
+        </ArrContentPanel>
       ) : (
         <Card>
-          <div className="divide-y md:hidden">
-            {filteredCommands.map((command) => (
-              <div key={command.id} className="flex items-start gap-2 px-3 py-2.5">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex items-start gap-2">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug">
-                      {command.display_name}
-                    </span>
-                    <Badge
-                      variant={command.enabled ? "default" : "secondary"}
-                      className="shrink-0 text-[10px]"
-                    >
-                      {command.enabled ? "On" : "Off"}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                    {command.command_type ? (
-                      <span className="truncate">{command.command_type}</span>
-                    ) : null}
-                    <span className="font-mono">
-                      {command.schedule_override && command.schedule_cron
-                        ? command.schedule_cron
-                        : "Default"}
-                    </span>
-                    <span>{formatCommandLastRun(command.last_run, true)}</span>
-                    {command.last_success !== null && (
-                      <span
-                        className={
-                          command.last_success
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-red-600 dark:text-red-400"
-                        }
-                      >
-                        {command.last_success ? "OK" : "Fail"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <CommandActionsMenu
-                  command={command}
-                  onExecute={handleExecute}
-                  onEdit={handleEdit}
-                  onToggleEnabled={handleToggleEnabled}
-                  onDelete={handleDelete}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full">
-              <thead className="border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button
-                      onClick={() => handleSort("name")}
-                      className="flex items-center cursor-pointer hover:text-foreground"
-                    >
-                      Name{" "}
-                      <CommandsSortIcon
-                        column="name"
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                      />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button
-                      onClick={() => handleSort("status")}
-                      className="flex items-center cursor-pointer hover:text-foreground"
-                    >
-                      Status{" "}
-                      <CommandsSortIcon
-                        column="status"
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                      />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button
-                      onClick={() => handleSort("type")}
-                      className="flex items-center cursor-pointer hover:text-foreground"
-                    >
-                      Type{" "}
-                      <CommandsSortIcon
-                        column="type"
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                      />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button
-                      onClick={() => handleSort("schedule")}
-                      className="flex items-center cursor-pointer hover:text-foreground"
-                    >
-                      Schedule{" "}
-                      <CommandsSortIcon
-                        column="schedule"
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                      />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    <button
-                      onClick={() => handleSort("last_run")}
-                      className="flex items-center cursor-pointer hover:text-foreground"
-                    >
-                      Last Run{" "}
-                      <CommandsSortIcon
-                        column="last_run"
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                      />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredCommands.map((command) => (
-                  <tr key={command.id} className="hover:bg-muted/50">
-                    <td className="px-4 py-3">
-                      <div>
-                        <div className="font-medium">{command.display_name}</div>
-                        {command.description && (
-                          <div className="text-xs text-muted-foreground">{command.description}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant={command.enabled ? "default" : "secondary"}
-                        className="text-xs"
-                      >
-                        {command.enabled ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      {command.command_type && (
-                        <Badge variant="outline" className="text-xs">
-                          {command.command_type}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
-                      {command.schedule_override && command.schedule_cron
-                        ? command.schedule_cron
-                        : "Default"}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {command.last_run ? new Date(command.last_run).toLocaleString() : "Never"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <CommandActionsMenu
-                        command={command}
-                        onExecute={handleExecute}
-                        onEdit={handleEdit}
-                        onToggleEnabled={handleToggleEnabled}
-                        onDelete={handleDelete}
-                        triggerClassName="h-8 w-8"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CommandsListBody
+            filteredCommands={filteredCommands}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            handleSort={handleSort}
+            handleExecute={handleExecute}
+            handleEdit={handleEdit}
+            handleToggleEnabled={handleToggleEnabled}
+            handleDelete={handleDelete}
+          />
         </Card>
       )}
 
