@@ -46,9 +46,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Logo */}
             <div className="flex items-center">
               <Link to="/" className="flex items-center space-x-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                  <span className="text-sm font-bold text-primary-foreground">C</span>
-                </div>
+                <img
+                  src="/icon-512.png"
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-lg"
+                />
                 <span className="text-xl font-bold">Cmdarr</span>
               </Link>
             </div>

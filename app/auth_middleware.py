@@ -40,6 +40,11 @@ def _is_public_path(path: str) -> bool:
         return True
     if path.startswith("/assets/"):
         return True
+    if path.startswith("/icon-") or path in (
+        "/apple-touch-icon.png",
+        "/site.webmanifest",
+    ):
+        return True
     # Frontend SPA routes - must be public so users can reach the login screen
     if path in ("/", "/config", "/status", "/import-lists", "/new-releases", "/events"):
         return True

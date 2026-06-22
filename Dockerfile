@@ -3,6 +3,7 @@ FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:4f2b45e32dc7d2caf66b6d
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
+COPY assets/icon /app/assets/icon
 COPY frontend/ ./
 RUN npm run build
 
