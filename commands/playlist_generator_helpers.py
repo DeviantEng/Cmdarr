@@ -190,12 +190,17 @@ def compute_lfm_similar_playlist_title(config: dict[str, Any]) -> str:
     return f"{PLAYLIST_TITLE_LFM_SIMILAR_PREFIX}: {suffix}"
 
 
-def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
-    """Playlist title from config; uses ordered artist list for auto suffix."""
-    artists_raw = config.get("artists", [])
-    if isinstance(artists_raw, str):
-        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
-    names = [a.strip() for a in artists_raw if (a or "").strip()]
+def compute_setlistfm_playlist_title(
+    config: dict[str, Any], *, artist_display_names: list[str] | None = None
+) -> str:
+    """Playlist title from config; uses library-validated artist names when provided."""
+    if artist_display_names is not None:
+        names = [a.strip() for a in artist_display_names if (a or "").strip()]
+    else:
+        artists_raw = config.get("artists", [])
+        if isinstance(artists_raw, str):
+            artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+        names = [a.strip() for a in artists_raw if (a or "").strip()]
     use_custom = config.get("use_custom_playlist_name", False)
     custom = (config.get("custom_playlist_name") or "").strip()
     if use_custom and custom:
@@ -205,16 +210,141 @@ def compute_setlistfm_playlist_title(config: dict[str, Any]) -> str:
     return f"{PLAYLIST_TITLE_SETLIST_PREFIX}: {suffix}"
 
 
-def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:
-    """Playlist title from stored config (all listed artists in auto suffix). Used on save/API."""
-    artists_raw = config.get("artists", [])
-    if isinstance(artists_raw, str):
-        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
-    names = [a.strip() for a in artists_raw if (a or "").strip()]
+def compute_top_tracks_playlist_title(
+    artist_display_names: list[str], config: dict[str, Any]
+) -> str:
+    """Playlist title from validated artist display names and naming options."""
     use_custom = config.get("use_custom_playlist_name", False)
     custom = (config.get("custom_playlist_name") or "").strip()
     if use_custom and custom:
         suffix = custom
     else:
+        names = [a.strip() for a in artist_display_names if (a or "").strip()]
         suffix = build_auto_playlist_suffix(names[:50]) if names else "Mix"
     return f"{PLAYLIST_TITLE_TOP_TRACKS_PREFIX}: {suffix}"
+
+
+def ordered_library_validated_artist_names(
+    artists_raw: list[str] | str,
+    cached_data: dict[str, Any] | None,
+) -> list[str]:
+    """Ordered display names for title; library-validated when cache is available."""
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    if not cached_data or "artist_index" not in cached_data:
+        return names
+    valid_norms, _ = validate_artists_against_cache(names, cached_data)
+    valid_set = set(valid_norms)
+    return [a.strip() for a in names if normalize_text(a.lower()) in valid_set]
+
+
+def get_library_cache_for_target_config(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Load library cache for a playlist generator target config (best-effort)."""
+    try:
+        from commands.config_adapter import Config
+        from utils.library_cache_manager import get_library_cache_manager
+
+        target = str(config.get("target", "plex")).lower()
+        library_key = config.get("target_library_key")
+        cache_manager = get_library_cache_manager(Config())
+        return cache_manager.get_library_cache(target, str(library_key) if library_key else None)
+    except Exception:
+        return None
+
+
+def compute_top_tracks_playlist_title_from_config(config: dict[str, Any]) -> str:
+    """Playlist title from stored config; validates artists when library cache is available."""
+    cached_data = get_library_cache_for_target_config(config)
+    artists_raw = config.get("artists", [])
+    names = ordered_library_validated_artist_names(artists_raw, cached_data)
+    return compute_top_tracks_playlist_title(names, config)
+
+
+def compute_setlistfm_playlist_title_from_config(config: dict[str, Any]) -> str:
+    """Playlist title from stored config; validates artists when library cache is available."""
+    cached_data = get_library_cache_for_target_config(config)
+    artists_raw = config.get("artists", [])
+    names = ordered_library_validated_artist_names(artists_raw, cached_data)
+    return compute_setlistfm_playlist_title(config, artist_display_names=names)
+
+
+def persist_playlist_identity(
+    command_name: str,
+    command_name_prefix: str,
+    playlist_title: str,
+    playlist_id: str | None,
+    logger: Any,
+    *,
+    update_display_name: bool = True,
+) -> None:
+    """Persist last_playlist_title and last_playlist_id on CommandConfig after a successful sync."""
+    if not command_name or not command_name.startswith(command_name_prefix):
+        return
+    try:
+        from database.config_models import CommandConfig
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            cmd = (
+                session.query(CommandConfig)
+                .filter(CommandConfig.command_name == command_name)
+                .first()
+            )
+            if cmd:
+                cfg = dict(cmd.config_json or {})
+                cfg["last_playlist_title"] = playlist_title
+                if playlist_id:
+                    cfg["last_playlist_id"] = str(playlist_id)
+                else:
+                    cfg.pop("last_playlist_id", None)
+                cmd.config_json = cfg
+                if update_display_name:
+                    cmd.display_name = playlist_title
+                session.commit()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"Could not persist playlist identity: {e}")
+
+
+def delete_playlist_on_target(
+    target_client: Any,
+    *,
+    playlist_id: str | None = None,
+    playlist_title: str | None = None,
+    logger: Any | None = None,
+) -> None:
+    """Delete a playlist by stored ID (preferred) or by name fallback."""
+    log = logger
+    try:
+        if playlist_id:
+            if hasattr(target_client, "get_playlist_by_id"):
+                pl = target_client.get_playlist_by_id(playlist_id)
+                if pl:
+                    if pl.get("ratingKey"):
+                        target_client.delete_playlist(pl["ratingKey"])
+                    elif pl.get("Id"):
+                        target_client.delete_playlist(pl["Id"])
+                    if log:
+                        log.info(f"Deleted playlist by id {playlist_id}")
+                    return
+            if hasattr(target_client, "delete_playlist"):
+                target_client.delete_playlist(playlist_id)
+                if log:
+                    log.info(f"Deleted playlist by id {playlist_id}")
+                return
+        if playlist_title and hasattr(target_client, "find_playlist_by_name"):
+            pl = target_client.find_playlist_by_name(playlist_title)
+            if pl:
+                if pl.get("ratingKey"):
+                    target_client.delete_playlist(pl["ratingKey"])
+                elif pl.get("Id"):
+                    target_client.delete_playlist(pl["Id"])
+                if log:
+                    log.info(f"Deleted playlist '{playlist_title}' (name fallback)")
+    except Exception as e:
+        if log:
+            log.warning(f"Could not delete playlist: {e}")

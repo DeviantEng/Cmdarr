@@ -304,13 +304,13 @@ export function ConfigPage() {
         if (setting.is_sensitive) {
           const isRevealed = revealedKeys.has(setting.key);
           return (
-            <div className="flex gap-2">
+            <div className="flex min-w-0 w-full gap-2">
               <Input
                 type={isRevealed ? "text" : "password"}
                 value={getSensitiveDisplayValue(setting)}
                 onChange={(e) => handleSettingChange(setting.key, e.target.value)}
                 placeholder={setting.default_value}
-                className="font-mono flex-1"
+                className="min-w-0 flex-1 font-mono"
               />
               <Button
                 type="button"
@@ -364,10 +364,11 @@ export function ConfigPage() {
             <code className="rounded bg-muted px-1">X-API-Key</code> header or{" "}
             <code className="rounded bg-muted px-1">Authorization: Bearer &lt;key&gt;</code>.
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-2">
             <Button
               variant="outline"
               size="sm"
+              className="shrink-0 self-start"
               onClick={async () => {
                 setGeneratingApiKey(true);
                 setApiKeyGenerated(null);
@@ -386,7 +387,9 @@ export function ConfigPage() {
               {generatingApiKey ? "Generating..." : "Generate API Key"}
             </Button>
             {apiKeyGenerated && (
-              <div className="flex-1 rounded bg-muted p-2 font-mono text-sm">{apiKeyGenerated}</div>
+              <div className="min-w-0 break-all rounded bg-muted p-2 font-mono text-sm">
+                {apiKeyGenerated}
+              </div>
             )}
           </div>
           {apiKeyGenerated && (
@@ -398,9 +401,14 @@ export function ConfigPage() {
       </Card>
 
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
-          <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => loadConfiguration()}>
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-destructive">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={() => loadConfiguration()}
+          >
             Try Again
           </Button>
         </div>
@@ -472,9 +480,9 @@ export function ConfigPage() {
                 <div className="grid gap-4">
                   {groupSettings.map((setting) => (
                     <Card key={setting.key} className="p-4">
-                      <div className="grid gap-3 sm:grid-cols-[1fr,300px] sm:gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                      <div className="grid min-w-0 gap-3 sm:grid-cols-[1fr,300px] sm:gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Label htmlFor={setting.key} className="text-sm font-medium">
                               {setting.key}
                             </Label>
@@ -492,13 +500,15 @@ export function ConfigPage() {
                           <p className="text-xs text-muted-foreground">
                             {setting.description || "No description available"}
                           </p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                             <span>Category: {setting.category}</span>
                             <span>•</span>
                             <span>Type: {setting.data_type}</span>
                           </div>
                         </div>
-                        <div className="flex items-start">{renderSettingInput(setting)}</div>
+                        <div className="flex min-w-0 items-start">
+                          {renderSettingInput(setting)}
+                        </div>
                       </div>
                     </Card>
                   ))}

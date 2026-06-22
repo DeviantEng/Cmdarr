@@ -73,8 +73,7 @@ class ConfigService:
                 "data_type": "string",
                 "category": "application",
                 "description": (
-                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, "
-                    "Bandsintown, …). "
+                    "User-Agent for outbound API clients (MusicBrainz, ListenBrainz, xmplaylist, …). "
                     "Empty = Cmdarr/<version> (https://github.com/DeviantEng/Cmdarr). "
                     "Not overridable via Docker/environment variables (use this UI only). "
                     "Set a fixed string here if an operator whitelists by UA without a version suffix."
@@ -553,38 +552,7 @@ class ConfigService:
                 "category": "output",
                 "description": "Pretty print JSON output",
             },
-            # Artist events (Bandsintown / Songkick / Ticketmaster)
-            {
-                "key": "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
-                "default_value": "false",
-                "data_type": "bool",
-                "category": "artist_events",
-                "description": "Enable Bandsintown (toggle is on Artist events page; hidden here to avoid duplication)",
-                "is_hidden": True,
-            },
-            {
-                "key": "ARTIST_EVENTS_BANDSINTOWN_APP_ID",
-                "default_value": "",
-                "data_type": "string",
-                "category": "artist_events",
-                "description": "Bandsintown Public API app_id (required when enabled)",
-            },
-            {
-                "key": "ARTIST_EVENTS_SONGKICK_ENABLED",
-                "default_value": "false",
-                "data_type": "bool",
-                "category": "artist_events",
-                "description": "Enable Songkick (toggle is on Artist events page; hidden here to avoid duplication)",
-                "is_hidden": True,
-            },
-            {
-                "key": "ARTIST_EVENTS_SONGKICK_API_KEY",
-                "default_value": "",
-                "data_type": "string",
-                "category": "artist_events",
-                "description": "Songkick API key (required when enabled)",
-                "is_sensitive": True,
-            },
+            # Artist events (Ticketmaster Discovery)
             {
                 "key": "ARTIST_EVENTS_TICKETMASTER_ENABLED",
                 "default_value": "false",
@@ -599,6 +567,38 @@ class ConfigService:
                 "data_type": "string",
                 "category": "artist_events",
                 "description": "Ticketmaster Discovery API: use Consumer Key from developer portal as apikey (Consumer Secret is not used for Discovery GET requests; required when Ticketmaster is enabled)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_SEATGEEK_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable SeatGeek (toggle is on Artist events page; hidden here to avoid duplication)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_SEATGEEK_CLIENT_ID",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "SeatGeek API client_id (free tier from seatgeek.com/account/develop; ~500 requests/day)",
+                "is_sensitive": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_DEEZER_ENABLED",
+                "default_value": "false",
+                "data_type": "bool",
+                "category": "artist_events",
+                "description": "Enable Deezer concerts via unofficial GraphQL (toggle on Artist events page)",
+                "is_hidden": True,
+            },
+            {
+                "key": "ARTIST_EVENTS_DEEZER_ARL",
+                "default_value": "",
+                "data_type": "string",
+                "category": "artist_events",
+                "description": "Deezer ARL cookie for Pipe GraphQL auth (unofficial; concert data from Songkick)",
                 "is_sensitive": True,
             },
             {
@@ -701,9 +701,9 @@ class ConfigService:
                         setting = ConfigSetting(**setting_data)
                         session.add(setting)
                     elif default.get("is_hidden") and default["key"] in (
-                        "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
-                        "ARTIST_EVENTS_SONGKICK_ENABLED",
                         "ARTIST_EVENTS_TICKETMASTER_ENABLED",
+                        "ARTIST_EVENTS_SEATGEEK_ENABLED",
+                        "ARTIST_EVENTS_DEEZER_ENABLED",
                         "ARTIST_EVENTS_USER_LAT",
                         "ARTIST_EVENTS_USER_LON",
                         "ARTIST_EVENTS_USER_LABEL",
@@ -752,6 +752,10 @@ class ConfigService:
                     "PLEX_LIBRARY_SEARCH_TIMEOUT",
                     "LIBRARY_CACHE_PLEX_LIBRARY_NAME",
                     "LIBRARY_CACHE_JELLYFIN_LIBRARY_NAME",
+                    "ARTIST_EVENTS_BANDSINTOWN_ENABLED",
+                    "ARTIST_EVENTS_BANDSINTOWN_APP_ID",
+                    "ARTIST_EVENTS_SONGKICK_ENABLED",
+                    "ARTIST_EVENTS_SONGKICK_API_KEY",
                 ):
                     session.query(ConfigSetting).filter(
                         ConfigSetting.key == deprecated_key

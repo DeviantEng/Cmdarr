@@ -71,19 +71,32 @@ class FestivalHiddenRequest(BaseModel):
 
 @router.get("/provider-status")
 async def provider_status():
-    """Which providers are enabled and configured."""
-    bit = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
-    bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
-    sk = config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False)
-    sk_key = (config_service.get("ARTIST_EVENTS_SONGKICK_API_KEY", "") or "").strip()
+    """Which event providers are enabled and configured."""
     tm = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
     tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
+    sg = config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False)
+    sg_id = (config_service.get("ARTIST_EVENTS_SEATGEEK_CLIENT_ID", "") or "").strip()
+    dz = config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False)
+    dz_arl = (config_service.get("ARTIST_EVENTS_DEEZER_ARL", "") or "").strip()
+    ticketmaster = {
+        "enabled": bool(tm and tm_key),
+        "configured": bool(tm_key),
+    }
+    seatgeek = {
+        "enabled": bool(sg and sg_id),
+        "configured": bool(sg_id),
+    }
+    deezer = {
+        "enabled": bool(dz and dz_arl),
+        "configured": bool(dz_arl),
+    }
+    any_ready = ticketmaster["enabled"] or seatgeek["enabled"] or deezer["enabled"]
     return {
         "success": True,
-        "bandsintown": {"enabled": bool(bit and bit_app), "configured": bool(bit_app)},
-        "songkick": {"enabled": bool(sk and sk_key), "configured": bool(sk_key)},
-        "ticketmaster": {"enabled": bool(tm and tm_key), "configured": bool(tm_key)},
-        "any_ready": bool((bit and bit_app) or (sk and sk_key) or (tm and tm_key)),
+        "ticketmaster": ticketmaster,
+        "seatgeek": seatgeek,
+        "deezer": deezer,
+        "any_ready": any_ready,
     }
 
 
@@ -443,9 +456,9 @@ async def get_events_settings():
         hidden_festival_keys = []
     return {
         "success": True,
-        "bandsintown_enabled": config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False),
-        "songkick_enabled": config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False),
         "ticketmaster_enabled": config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False),
+        "seatgeek_enabled": config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False),
+        "deezer_enabled": config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False),
         "user_lat": config_service.get("ARTIST_EVENTS_USER_LAT", "") or "",
         "user_lon": config_service.get("ARTIST_EVENTS_USER_LON", "") or "",
         "user_label": config_service.get("ARTIST_EVENTS_USER_LABEL", "") or "",

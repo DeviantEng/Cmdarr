@@ -7,11 +7,12 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import aiohttp
 from sqlalchemy import case, func, or_
 
-from clients.client_bandsintown import BandsintownClient
+from clients.client_deezer_events import DeezerEventsClient
 from clients.client_lidarr import LidarrClient
-from clients.client_songkick import SongkickClient
+from clients.client_seatgeek import SeatGeekClient
 from clients.client_ticketmaster import TicketmasterClient
 from commands.command_base import BaseCommand
 from commands.config_adapter import ConfigAdapter
@@ -24,9 +25,11 @@ from database.config_models import (
 )
 from database.database import get_database_manager
 from services.config_service import config_service
+from utils.cmdarr_user_agent import resolve_cmdarr_user_agent
 from utils.event_ingest import persist_normalized_events
 from utils.http_client import QuotaExceededError
 from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
+from utils.venue_geocode import resolve_venue_coordinates
 
 
 class ArtistEventsRefreshCommand(BaseCommand):
@@ -39,7 +42,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         self._quota_locked: dict[str, float] = {}
 
     def get_description(self) -> str:
-        return "Refresh artist events for Lidarr library (Bandsintown / Songkick / Ticketmaster)"
+        return "Refresh artist events for Lidarr library (Ticketmaster / SeatGeek / Deezer)"
 
     def get_logger_name(self) -> str:
         return "cmdarr.artist_events_refresh"
@@ -58,19 +61,24 @@ class ArtistEventsRefreshCommand(BaseCommand):
         error_retry_minutes = max(5, min(24 * 60, int(cj.get("error_retry_minutes", 60))))
         past_event_retention_days = max(0, min(365, int(cj.get("past_event_retention_days", 1))))
 
-        bit_on = config_service.get("ARTIST_EVENTS_BANDSINTOWN_ENABLED", False)
-        bit_app = (config_service.get("ARTIST_EVENTS_BANDSINTOWN_APP_ID", "") or "").strip()
-        sk_on = config_service.get("ARTIST_EVENTS_SONGKICK_ENABLED", False)
-        sk_key = (config_service.get("ARTIST_EVENTS_SONGKICK_API_KEY", "") or "").strip()
         tm_on = config_service.get("ARTIST_EVENTS_TICKETMASTER_ENABLED", False)
         tm_key = (config_service.get("ARTIST_EVENTS_TICKETMASTER_API_KEY", "") or "").strip()
+        sg_on = config_service.get("ARTIST_EVENTS_SEATGEEK_ENABLED", False)
+        sg_id = (config_service.get("ARTIST_EVENTS_SEATGEEK_CLIENT_ID", "") or "").strip()
+        dz_on = config_service.get("ARTIST_EVENTS_DEEZER_ENABLED", False)
+        dz_arl = (config_service.get("ARTIST_EVENTS_DEEZER_ARL", "") or "").strip()
 
-        providers_ok = (
-            (bit_on and bool(bit_app)) or (sk_on and bool(sk_key)) or (tm_on and bool(tm_key))
-        )
-        if not providers_ok:
+        tm_ready = bool(tm_on and tm_key)
+        sg_ready = bool(sg_on and sg_id)
+        dz_ready = bool(dz_on and dz_arl)
+        if not tm_ready and not sg_ready and not dz_ready:
             log.error("No event provider enabled with valid credentials")
-            self.last_run_stats = {"error": "Configure at least one event provider in Config"}
+            self.last_run_stats = {
+                "error": (
+                    "Enable Ticketmaster, SeatGeek, and/or Deezer with credentials in "
+                    "Config → Event Sources"
+                )
+            }
             return False
 
         if not cfg.LIDARR_API_KEY or not cfg.LIDARR_URL:
@@ -97,23 +105,19 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     past_event_retention_days,
                 )
 
-            cached_artists = session.query(func.count(LidarrArtist.id)).scalar() or 0
-            if cached_artists == 0:
-                log.info(
-                    "Lidarr artist cache (lidarr_artist) is empty; fetching library from Lidarr API"
-                )
-                async with LidarrClient(cfg) as lidarr_client:
-                    lidarr_rows = await lidarr_client.get_all_artists()
-                inserted, updated = upsert_lidarr_artists_from_payload(
-                    session, lidarr_rows, now=now
-                )
-                session.commit()
-                log.info(
-                    "Populated lidarr_artist: %s artists from Lidarr (%s inserted, %s updated)",
-                    len(lidarr_rows),
-                    inserted,
-                    updated,
-                )
+            inserted, updated, lidarr_total = await self._sync_lidarr_artist_cache(
+                cfg, session, now, log
+            )
+            if lidarr_total == 0:
+                log.warning("Lidarr artist cache is empty after sync; nothing to refresh")
+                self.last_run_stats = {
+                    "error": "No Lidarr artists found — check Lidarr connection and library",
+                    "past_events_purged": past_events_purged,
+                    "past_event_retention_days": past_event_retention_days,
+                    "hidden_past_single_events_pruned": hidden_past_pruned,
+                    "hidden_single_event_orphans_removed": hidden_orphans_removed,
+                }
+                return False
 
             q = (
                 session.query(LidarrArtist)
@@ -155,28 +159,35 @@ class ArtistEventsRefreshCommand(BaseCommand):
             processed = 0
             artists_with_errors = 0
             provider_error_counts: dict[str, int] = {
-                "bandsintown": 0,
-                "songkick": 0,
                 "ticketmaster": 0,
+                "seatgeek": 0,
+                "deezer": 0,
             }
             self._quota_locked = {}
 
             for la in rows:
-                merged, provider_errors = await self._fetch_for_artist(
+                merged, provider_errors, resolved_dz_id = await self._fetch_for_artist(
                     cfg,
                     la.artist_name,
                     la.artist_mbid,
-                    bit_on,
-                    bit_app,
-                    sk_on,
-                    sk_key,
+                    la.deezer_artist_id,
                     tm_on,
                     tm_key,
+                    sg_on,
+                    sg_id,
+                    dz_on,
+                    dz_arl,
                 )
+                if resolved_dz_id and resolved_dz_id != la.deezer_artist_id:
+                    la.deezer_artist_id = resolved_dz_id
                 if merged:
+                    await self._geocode_normalized_events(cfg, session, merged, max_lookups=5)
                     n, s = persist_normalized_events(session, merged)
                     total_new += n
                     total_sources += s
+                    await self._geocode_stored_events_for_artist(
+                        cfg, session, la.artist_mbid, max_lookups=2
+                    )
                 for p in provider_errors:
                     provider_error_counts[p] = provider_error_counts.get(p, 0) + 1
                 had_error = bool(provider_errors)
@@ -189,11 +200,6 @@ class ArtistEventsRefreshCommand(BaseCommand):
                     .first()
                 )
                 if had_error:
-                    # Retry sooner than the normal TTL; never stamp last_fetched_at on a failure
-                    # so "never succeeded" remains observable in the UI / DB.
-                    # If any provider is quota-locked, push the retry to the quota-reset
-                    # horizon so we don't burn a second wave of rejections as soon as the
-                    # scheduler fires again.
                     retry_due = now + timedelta(minutes=error_retry_minutes)
                     if self._quota_locked:
                         max_lock_seconds = max(self._quota_locked.values())
@@ -245,7 +251,8 @@ class ArtistEventsRefreshCommand(BaseCommand):
             }
             log.info(
                 "Artist events refresh: %s artists processed (force_all=%s, all_due=%s, cap=%s), "
-                "%s new events, %s new sources, %s artists had provider errors (bit=%s sk=%s tm=%s)",
+                "%s new events, %s new sources, %s artists had provider errors "
+                "(tm=%s sg=%s dz=%s)",
                 processed,
                 force_refresh_all,
                 refresh_all_due,
@@ -253,9 +260,9 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 total_new,
                 total_sources,
                 artists_with_errors,
-                provider_error_counts["bandsintown"],
-                provider_error_counts["songkick"],
                 provider_error_counts["ticketmaster"],
+                provider_error_counts["seatgeek"],
+                provider_error_counts["deezer"],
             )
             return True
         except Exception as e:
@@ -266,18 +273,27 @@ class ArtistEventsRefreshCommand(BaseCommand):
         finally:
             session.close()
 
+    async def _sync_lidarr_artist_cache(
+        self, cfg: ConfigAdapter, session, now: datetime, log
+    ) -> tuple[int, int, int]:
+        """Refresh lidarr_artist from Lidarr API. Returns (inserted, updated, total_rows)."""
+        log.info("Syncing Lidarr artist cache before event provider queries")
+        async with LidarrClient(cfg) as lidarr_client:
+            lidarr_rows = await lidarr_client.get_all_artists()
+        inserted, updated = upsert_lidarr_artists_from_payload(session, lidarr_rows, now=now)
+        session.commit()
+        total = session.query(func.count(LidarrArtist.id)).scalar() or 0
+        log.info(
+            "Lidarr artist cache: %s artists from API (%s inserted, %s updated, %s cached rows)",
+            len(lidarr_rows),
+            inserted,
+            updated,
+            total,
+        )
+        return inserted, updated, int(total)
+
     def _prune_stale_hidden_single_events(self, session, now: datetime) -> tuple[int, int]:
-        """Remove per-event hides that no longer matter: old past shows and broken FK refs.
-
-        The upcoming list only shows ``starts_at_utc >= now``, but ``artist_concert_hidden_event``
-        rows would otherwise linger (with joined details in Hidden) until concert rows are
-        purged. We keep hides for **24 hours after** ``starts_at_utc`` so the Hidden list still
-        reflects “day of” through the following calendar day in practice. Orphans can appear if
-        SQLite FKs were off when a ``concert_event`` was removed.
-
-        Returns:
-            (n_pruned_for_past_show, n_orphan_rows_removed)
-        """
+        """Remove per-event hides that no longer matter: old past shows and broken FK refs."""
         hide_prune_cutoff = now - timedelta(days=1)
         n_past = (
             session.query(ArtistConcertHiddenEvent)
@@ -298,14 +314,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         return int(n_past or 0), int(n_orphan or 0)
 
     def _delete_past_events(self, session, now: datetime, retention_days: int) -> int:
-        """Remove canonical events whose start time is older than `retention_days` ago.
-
-        Returns the number of canonical `concert_event` rows deleted. With
-        `PRAGMA foreign_keys=ON` enabled globally (see database.database._enable_sqlite_fk)
-        dependent rows in `concert_event_source` and `artist_concert_hidden_event` cascade
-        automatically. The explicit source delete below is kept as a belt-and-suspenders
-        safeguard so cleanup still works if FK enforcement is ever disabled.
-        """
+        """Remove canonical events whose start time is older than `retention_days` ago."""
         cutoff = now - timedelta(days=max(0, retention_days))
         old_ids = [
             r[0]
@@ -326,31 +335,15 @@ class ArtistEventsRefreshCommand(BaseCommand):
         cfg: ConfigAdapter,
         artist_name: str,
         artist_mbid: str,
-        bit_on: bool,
-        bit_app: str,
-        sk_on: bool,
-        sk_key: str,
+        deezer_artist_id: str | None,
         tm_on: bool,
         tm_key: str,
-    ) -> tuple[list[dict[str, Any]], list[str]]:
-        """Return (merged_events, errored_providers).
-
-        A provider contributes to errored_providers when its client returns None (HTTP / parse
-        failure) or raises. Clients that return an empty list (valid "no events") and disabled
-        providers are treated as success and are NOT reported as errors.
-        """
-
-        async def run_bit():
-            if not bit_on or not bit_app or "bandsintown" in self._quota_locked:
-                return []
-            async with BandsintownClient(cfg, bit_app) as c:
-                return await c.fetch_upcoming_events(artist_name, artist_mbid)
-
-        async def run_sk():
-            if not sk_on or not sk_key or "songkick" in self._quota_locked:
-                return []
-            async with SongkickClient(cfg, sk_key) as c:
-                return await c.fetch_upcoming_events(artist_name, artist_mbid)
+        sg_on: bool,
+        sg_client_id: str,
+        dz_on: bool,
+        dz_arl: str,
+    ) -> tuple[list[dict[str, Any]], list[str], str | None]:
+        """Return (merged_events, errored_providers, resolved_deezer_artist_id)."""
 
         async def run_tm():
             if not tm_on or not tm_key or "ticketmaster" in self._quota_locked:
@@ -358,21 +351,35 @@ class ArtistEventsRefreshCommand(BaseCommand):
             async with TicketmasterClient(cfg, tm_key) as c:
                 return await c.fetch_upcoming_events(artist_name, artist_mbid)
 
+        async def run_sg():
+            if not sg_on or not sg_client_id or "seatgeek" in self._quota_locked:
+                return []
+            async with SeatGeekClient(cfg, sg_client_id) as c:
+                return await c.fetch_upcoming_events(artist_name, artist_mbid)
+
+        async def run_dz():
+            if not dz_on or not dz_arl or "deezer" in self._quota_locked:
+                return [], deezer_artist_id
+            async with DeezerEventsClient(cfg, dz_arl) as c:
+                return await c.fetch_upcoming_events(
+                    artist_name, artist_mbid, deezer_artist_id=deezer_artist_id
+                )
+
         merged: list[dict[str, Any]] = []
         errored: list[str] = []
-        provider_order = ["bandsintown", "songkick", "ticketmaster"]
+        resolved_dz_id = deezer_artist_id
+        provider_order = ["ticketmaster", "seatgeek", "deezer"]
         results = await asyncio.gather(
-            run_bit(),
-            run_sk(),
             run_tm(),
+            run_sg(),
+            run_dz(),
             return_exceptions=True,
         )
         for provider_name, res in zip(provider_order, results, strict=False):
+            if provider_name == "deezer" and isinstance(res, tuple):
+                events, resolved_dz_id = res
+                res = events
             if isinstance(res, QuotaExceededError):
-                # Long-window quota lockout: stop using this provider for the rest of the run.
-                # Every subsequent request would also be rejected and would further delay the
-                # scheduler's eventual unblock. Record the lock-until horizon so the per-artist
-                # next_due_at can be pushed past the quota window.
                 retry_after = res.retry_after_seconds or 3600.0
                 self._quota_locked[provider_name] = retry_after
                 self.logger.error(
@@ -399,4 +406,79 @@ class ArtistEventsRefreshCommand(BaseCommand):
                 errored.append(provider_name)
                 continue
             merged.extend(res)
-        return merged, errored
+        return merged, errored, resolved_dz_id
+
+    async def _geocode_normalized_events(
+        self,
+        cfg: ConfigAdapter,
+        session,
+        items: list[dict[str, Any]],
+        *,
+        max_lookups: int,
+    ) -> None:
+        pending = [
+            item
+            for item in items
+            if item.get("venue_lat") is None
+            and item.get("venue_lon") is None
+            and (item.get("venue_name") or item.get("venue_city"))
+        ]
+        if not pending or max_lookups <= 0:
+            return
+        ua = resolve_cmdarr_user_agent(cfg) or "Cmdarr (artist events geocode)"
+        dbapi = session.connection().connection
+        cursor = dbapi.cursor()
+        async with aiohttp.ClientSession() as http:
+            for item in pending[:max_lookups]:
+                coords = await resolve_venue_coordinates(
+                    http,
+                    cursor,
+                    item.get("venue_name"),
+                    item.get("venue_city"),
+                    item.get("venue_region"),
+                    user_agent=ua,
+                    country=(item.get("venue_country") or "US"),
+                )
+                if coords:
+                    item["venue_lat"], item["venue_lon"] = coords
+                await asyncio.sleep(1.05)
+        dbapi.commit()
+
+    async def _geocode_stored_events_for_artist(
+        self,
+        cfg: ConfigAdapter,
+        session,
+        artist_mbid: str,
+        *,
+        max_lookups: int,
+    ) -> None:
+        rows = (
+            session.query(ArtistEvent)
+            .filter(
+                ArtistEvent.artist_mbid == artist_mbid,
+                or_(ArtistEvent.venue_lat.is_(None), ArtistEvent.venue_lon.is_(None)),
+                ArtistEvent.venue_name.isnot(None),
+            )
+            .limit(max_lookups)
+            .all()
+        )
+        if not rows:
+            return
+        ua = resolve_cmdarr_user_agent(cfg) or "Cmdarr (artist events geocode)"
+        dbapi = session.connection().connection
+        cursor = dbapi.cursor()
+        async with aiohttp.ClientSession() as http:
+            for ev in rows:
+                coords = await resolve_venue_coordinates(
+                    http,
+                    cursor,
+                    ev.venue_name,
+                    ev.venue_city,
+                    ev.venue_region,
+                    user_agent=ua,
+                    country=(ev.venue_country or "US"),
+                )
+                if coords:
+                    ev.venue_lat, ev.venue_lon = coords
+                await asyncio.sleep(1.05)
+        dbapi.commit()

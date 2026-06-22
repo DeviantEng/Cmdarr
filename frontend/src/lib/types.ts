@@ -111,6 +111,25 @@ export interface ArtistEventsStats {
   hidden_events: number;
 }
 
+export interface EventsProviderInfo {
+  enabled: boolean;
+  configured: boolean;
+}
+
+export interface MigrationStatus {
+  success?: boolean;
+  current_version: string;
+  last_run_version: string | null;
+  applied_migrations: {
+    name: string;
+    version: string;
+    description: string;
+    applied_at: string;
+  }[];
+  pending_migrations: { name: string; version: string; description: string }[];
+  dev_manual_available: boolean;
+}
+
 export interface StatusInfo {
   app_name: string;
   version: string;
@@ -183,12 +202,21 @@ export interface NewReleasePendingItem {
   status: string;
 }
 
+export type ReleaseWithinFilter = "all" | "30d" | "90d" | "180d" | "this_year" | "previous_year";
+
 export interface PendingReleasesResponse {
   success: boolean;
   total: number;
   limit: number;
   offset: number;
+  release_within?: ReleaseWithinFilter;
   items: NewReleasePendingItem[];
+}
+
+export interface NewReleaseIgnoredArtist {
+  artist_mbid: string;
+  artist_name: string;
+  ignored_at?: string | null;
 }
 
 export interface ScanArtistUrlAlbum {

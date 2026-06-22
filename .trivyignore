@@ -1,62 +1,23 @@
 # OS-layer CVEs in python/node slim-trixie images (Debian 13).
 # Audit: revisit when Renovate bumps the Dockerfile digest or Debian publishes trixie
-
 # security uploads; verify with `trivy image --severity HIGH,CRITICAL <image>` after rebuild.
 #
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
-#   dpkg-query -W systemd libsystemd0 libudev1 nghttp2 libnghttp2-14 libncursesw6 libtinfo6 libgnutls30t64 libssh2-1t64
+#   dpkg-query -W libssh2-1t64 curl libcurl4t64 libncursesw6 libsqlite3-0 perl-base
 # ---------------------------------------------------------------------------
 #
-# CVE-2026-4105 — systemd-machined RegisterMachine / D-Bus (privilege escalation)
-#   Debian trixie: open / no-dsa (narrow exploitability; requires permissive polkit).
-#   Upstream fixes: systemd 257.12+ / 259.4 / 260.x; Debian sid builds use 260.1-1+.
-#   Our image does not run systemd as PID 1; residual risk from libraries only.
-CVE-2026-4105 exp:2026-09-01
-#
-# CVE-2026-29111 — systemd IPC / assert or stack issue on crafted unprivileged IPC
-#   Debian trixie: open (systemd 257.9-1~deb13u1); patches in upstream 257.11+ etc., sid fixed.
-CVE-2026-29111 exp:2026-09-01
-#
 # CVE-2025-69720 — ncurses infocmp stack overflow (CLI tool mitigations)
-#   Debian trixie: open (no-dsa); fixed in Debian sid ncurses source 6.6+20251231-1 onward.
+#   Debian trixie: open (no-dsa); fixed in Debian sid ncurses 6.6+20251231-1 onward.
 #   Headless CMDARR workload does not run infocmp; exposure is incidental library install.
 CVE-2025-69720 exp:2026-09-01
-#
-# CVE-2026-27135 — nghttp2 DoS via session termination / malformed frame assertion
-#   Debian trixie: open with libnghttp2-14 1.64.x; upstream fix nghttp2 1.68.1+,
-#   Debian sid package nghttp2 1.69.0-1+. No trixie DSA yet.
-CVE-2026-27135 exp:2026-09-01
-#
-# CVE-2026-4878 — libcap: TOCTOU / privilege escalation in cap_set_file()
-#   Debian trixie: open (libcap2); other distros backported sooner; wait for security.debian.org.
-#   EPSS low; CMDARR does not use cap_set_file() in normal operation.
-CVE-2026-4878 exp:2026-09-01
-#
-# CVE-2026-33845 — GnuTLS: DTLS denial of service via zero-length fragment
-#   Debian trixie: open (libgnutls30t64); few GA distros ship fix yet (scanner shows no fixed version).
-#   EPSS moderate; workload is primarily TLS client/server via common stacks; revisit when Debian ships.
-CVE-2026-33845 exp:2026-09-01
-#
-# CVE-2026-33846 — GnuTLS: heap OOB write in DTLS handshake fragment merge (same trixie gnutls epoch)
-#   Debian trixie: vulnerable 3.8.9-3+deb13u2; fixed sid gnutls28 3.8.13-1 (bundled with GNUTLS-SA-2026-04-29)
-CVE-2026-33846 exp:2026-09-01
-#
-# CVE-2026-3833 — GnuTLS: case-sensitive nameConstraints vs policy mismatch
-CVE-2026-3833 exp:2026-09-01
-#
-# CVE-2026-42010 — GnuTLS: auth bypass via NUL character in username
-CVE-2026-42010 exp:2026-09-01
-#
-# CVE-2026-42011 — GnuTLS: security bypass (name constraint handling)
-CVE-2026-42011 exp:2026-09-01
 #
 # CVE-2026-7598 — libssh2: integer overflow in userauth_password (username/password lengths)
 #   Debian trixie: open (libssh2 1.11.1-1); sid 1.11.1-3 fixed per tracker. CMDARR does not expose SSH client to untrusted callers.
 CVE-2026-7598 exp:2026-09-01
 #
 # CVE-2026-5773 — libcurl: wrongful SMBConnection reuse loads wrong SMB share/path
-#   Debian trixie: vulnerable curl 8.14.1-2+deb13u2 / libcurl4t64; fixed in Debian sid curl 8.20.0-2 onward (no trixie DSA yet).
+#   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64; fixed in Debian sid curl 8.20.0-2 onward (no trixie DSA yet).
 #   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-5773
 CVE-2026-5773 exp:2026-09-01
@@ -65,6 +26,18 @@ CVE-2026-5773 exp:2026-09-01
 #   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64
 CVE-2026-6276 exp:2026-09-01
 #
-# CVE-2026-40356 - krb5: MIT Kerberos 5 (krb5): Denial of Service via integer underflow
-#   Debian trixie: vulnerable libkrb5 1.21.3-5+deb13u1
-CVE-2026-40356 exp:2026-09-01
+# CVE-2026-11822 / CVE-2026-11824 — libsqlite3-0: SQLite memory corruption / heap overflow (< 3.53.2)
+#   Debian trixie: libsqlite3-0 3.46.1-7+deb13u1; no trixie security upload yet. CMDARR uses SQLite
+#   only for its local application database, not for parsing untrusted SQLite files from external sources.
+CVE-2026-11822 exp:2026-09-01
+CVE-2026-11824 exp:2026-09-01
+#
+# perl-base — incidental Debian base-image package (python:3.14-slim-trixie); CMDARR runtime is Python-only.
+#   Archive::Tar / IO::Compress issues require attacker-controlled tar/zip extraction; not in app workload.
+#   Debian trixie: perl-base 5.40.1-6; fixes deferred / not yet in trixie-security.
+CVE-2026-42496 exp:2026-09-01
+CVE-2026-8376 exp:2026-09-01
+CVE-2026-42497 exp:2026-09-01
+CVE-2026-48959 exp:2026-09-01
+CVE-2026-48962 exp:2026-09-01
+CVE-2026-9538 exp:2026-09-01

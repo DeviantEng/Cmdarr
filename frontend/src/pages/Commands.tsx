@@ -10,6 +10,7 @@ import {
   Filter,
   Search,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   X,
   Trash,
@@ -34,25 +35,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
-import { fromExpiresAtIso, toExpiresAtIso } from "@/lib/expiration";
+import { CommandEditDialog } from "@/components/CommandEditDialog";
+import { DeleteCommandDialog } from "@/components/DeleteCommandDialog";
+import { fromExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isMobileViewport } from "@/lib/use-mobile";
 import {
   DEFAULT_DAYLIST_TIME_PERIODS,
   hoursFromRange,
   hoursToRange,
 } from "@/components/command-edit/daylistTime";
 import { CommandEditFormBody } from "@/components/command-edit/CommandEditFormBody";
+import {
+  applyExpiryToConfig,
+  buildScheduleAndExpiryConfig,
+  buildSchedulePayload,
+} from "@/components/command-edit/saveHelpers";
 import type { CommandEditFormState, XmplaylistStationRow } from "@/components/command-edit/types";
-import { commandUiCopy } from "@/command-spec";
 
 type ViewMode = "card" | "list";
 type SortField = "name" | "status" | "type" | "schedule" | "last_run";
@@ -83,6 +84,67 @@ const BUILTIN_COMMANDS = [
 ];
 
 const VIEW_MODE_KEY = "cmdarr_commands_view_mode";
+
+function formatCommandLastRun(value: string | null | undefined, compact: boolean): string {
+  if (!value) return "Never";
+  const date = new Date(value);
+  if (!compact) return date.toLocaleString();
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function CommandActionsMenu({
+  command,
+  onExecute,
+  onEdit,
+  onToggleEnabled,
+  onDelete,
+  triggerClassName,
+}: {
+  command: CommandConfig;
+  onExecute: (command: CommandConfig) => void;
+  onEdit: (command: CommandConfig) => void;
+  onToggleEnabled: (command: CommandConfig) => void;
+  onDelete: (commandName: string) => void;
+  triggerClassName?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-9 w-9 shrink-0", triggerClassName)}
+          aria-label={`Actions for ${command.display_name}`}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onExecute(command)}>
+          <Play className="mr-2 h-4 w-4" />
+          Run Now
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit(command)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onToggleEnabled(command)}>
+          {command.enabled ? "Disable" : "Enable"}
+        </DropdownMenuItem>
+        {!BUILTIN_COMMANDS.includes(command.command_name) && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() => onDelete(command.command_name)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function getStoredViewMode(): ViewMode {
   try {
@@ -115,6 +177,8 @@ export function CommandsPage() {
   };
 
   const [showNewCommandDialog, setShowNewCommandDialog] = useState(false);
+  const [deleteCommandTarget, setDeleteCommandTarget] = useState<string | null>(null);
+  const [deleteCommandDeleting, setDeleteCommandDeleting] = useState(false);
   const [editingCommand, setEditingCommand] = useState<CommandConfig | null>(null);
   const [editForm, setEditForm] = useState<CommandEditFormState>({});
   const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
@@ -135,6 +199,7 @@ export function CommandsPage() {
     );
   }, [xmplaylistEditStations, xmplaylistEditFilter]);
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
+  const [executionsPanelOpen, setExecutionsPanelOpen] = useState(() => !isMobileViewport());
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
   const [nrdSources, setNrdSources] = useState<{ id: string; name: string; configured: boolean }[]>(
@@ -347,7 +412,7 @@ export function CommandsPage() {
 
     setEditForm({
       schedule_override: !!command.schedule_override,
-      schedule_cron: command.schedule_cron || "0 3 * * *",
+      schedule_cron: command.schedule_cron || "0 6 * * *",
       artists_per_run: artistsPerRunVal,
       refresh_ttl_days: typeof cfg.refresh_ttl_days === "number" ? cfg.refresh_ttl_days : 14,
       album_types: typesStr
@@ -425,8 +490,8 @@ export function CommandsPage() {
       expires_at: fromExpiresAtIso(cfg.expires_at as string),
       expires_at_delete_playlist: cfg.expires_at_delete_playlist !== false,
       weekly_exploration_keep:
-        typeof cfg.weekly_exploration_keep === "number" ? cfg.weekly_exploration_keep : 2,
-      weekly_jams_keep: typeof cfg.weekly_jams_keep === "number" ? cfg.weekly_jams_keep : 2,
+        typeof cfg.weekly_exploration_keep === "number" ? cfg.weekly_exploration_keep : 3,
+      weekly_jams_keep: typeof cfg.weekly_jams_keep === "number" ? cfg.weekly_jams_keep : 3,
       daily_jams_keep: typeof cfg.daily_jams_keep === "number" ? cfg.daily_jams_keep : 3,
       cleanup_enabled: cfg.cleanup_enabled !== false,
       playlist_types: Array.isArray(cfg.playlist_types) ? cfg.playlist_types : [],
@@ -528,22 +593,24 @@ export function CommandsPage() {
     }
   };
 
-  const handleDelete = async (commandName: string) => {
+  const handleDelete = (commandName: string) => {
     if (BUILTIN_COMMANDS.includes(commandName)) return;
-    if (
-      !confirm(
-        `Are you sure you want to delete the command "${commandName}"? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    setDeleteCommandTarget(commandName);
+  };
+
+  const confirmDeleteCommand = async (deletePlaylist: boolean) => {
+    if (!deleteCommandTarget) return;
+    setDeleteCommandDeleting(true);
     try {
-      await api.deleteCommand(commandName);
+      await api.deleteCommand(deleteCommandTarget, { deletePlaylist });
       toast.success("Command deleted");
+      setDeleteCommandTarget(null);
       loadCommands();
     } catch (error) {
       toast.error("Failed to delete command");
       console.error(error);
+    } finally {
+      setDeleteCommandDeleting(false);
     }
   };
 
@@ -632,7 +699,7 @@ export function CommandsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold">Commands</h1>
@@ -642,14 +709,16 @@ export function CommandsPage() {
       {/* Controls Row */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Left Controls */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           {/* View Toggle */}
           <div className="flex items-center rounded-lg bg-muted p-1">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setViewMode("card")}
-              className={cn(viewMode === "card" && "bg-background shadow-sm")}
+              className={cn("h-9 w-9", viewMode === "card" && "bg-background shadow-sm")}
+              aria-label="Card view"
+              title="Card view"
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -657,14 +726,16 @@ export function CommandsPage() {
               variant="ghost"
               size="sm"
               onClick={() => setViewMode("list")}
-              className={cn(viewMode === "list" && "bg-background shadow-sm")}
+              className={cn("h-9 w-9", viewMode === "list" && "bg-background shadow-sm")}
+              aria-label="List view"
+              title="List view"
             >
               <List className="h-4 w-4" />
             </Button>
           </div>
 
           {/* Search */}
-          <div className="relative w-64">
+          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search commands..."
@@ -767,63 +838,54 @@ export function CommandsPage() {
           </CardContent>
         </Card>
       ) : viewMode === "card" ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {filteredCommands.map((command) => (
-            <Card key={command.id} className="flex flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-base">{command.display_name}</CardTitle>
+            <Card key={command.id} className="flex min-w-0 flex-col overflow-hidden">
+              <CardHeader className="space-y-1 p-3 pb-2 md:p-6 md:pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-sm md:text-base">
+                      {command.display_name}
+                    </CardTitle>
                     {command.description && (
-                      <CardDescription className="mt-1 text-xs">
+                      <CardDescription className="mt-1 line-clamp-1 text-xs md:line-clamp-none">
                         {command.description}
                       </CardDescription>
                     )}
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleExecute(command)}>
-                        <Play className="mr-2 h-4 w-4" />
-                        Run Now
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEdit(command)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
-                        {command.enabled ? "Disable" : "Enable"}
-                      </DropdownMenuItem>
-                      {!BUILTIN_COMMANDS.includes(command.command_name) && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(command.command_name)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <CommandActionsMenu
+                    command={command}
+                    onExecute={handleExecute}
+                    onEdit={handleEdit}
+                    onToggleEnabled={handleToggleEnabled}
+                    onDelete={handleDelete}
+                  />
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                <div className="flex items-center gap-2">
-                  <Badge variant={command.enabled ? "default" : "secondary"}>
+              <CardContent className="space-y-1 px-3 pb-3 pt-0 md:space-y-2 md:px-6 md:pb-6">
+                <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                  <Badge
+                    variant={command.enabled ? "default" : "secondary"}
+                    className="text-[10px] md:text-xs"
+                  >
                     {command.enabled ? "Enabled" : "Disabled"}
                   </Badge>
                   {command.command_type && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge
+                      variant="outline"
+                      className="max-w-[10rem] truncate text-[10px] md:text-xs"
+                    >
                       {command.command_type || "unknown"}
                     </Badge>
                   )}
+                  <span className="text-[10px] text-muted-foreground md:hidden">
+                    {command.schedule_override && command.schedule_cron
+                      ? command.schedule_cron
+                      : "Default"}
+                    {command.last_run ? ` · ${formatCommandLastRun(command.last_run, true)}` : ""}
+                  </span>
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="hidden text-xs text-muted-foreground md:block">
                   Schedule:{" "}
                   <span className="font-mono">
                     {command.schedule_override && command.schedule_cron
@@ -832,12 +894,12 @@ export function CommandsPage() {
                   </span>
                 </div>
                 {command.last_run && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="hidden text-xs text-muted-foreground md:block">
                     Last run: {new Date(command.last_run).toLocaleString()}
                   </div>
                 )}
                 {command.last_success !== null && (
-                  <div className="text-xs">
+                  <div className="text-[10px] md:text-xs">
                     Status:{" "}
                     <span
                       className={
@@ -856,7 +918,55 @@ export function CommandsPage() {
         </div>
       ) : (
         <Card>
-          <div className="overflow-x-auto">
+          <div className="divide-y md:hidden">
+            {filteredCommands.map((command) => (
+              <div key={command.id} className="flex items-start gap-2 px-3 py-2.5">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug">
+                      {command.display_name}
+                    </span>
+                    <Badge
+                      variant={command.enabled ? "default" : "secondary"}
+                      className="shrink-0 text-[10px]"
+                    >
+                      {command.enabled ? "On" : "Off"}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {command.command_type ? (
+                      <span className="truncate">{command.command_type}</span>
+                    ) : null}
+                    <span className="font-mono">
+                      {command.schedule_override && command.schedule_cron
+                        ? command.schedule_cron
+                        : "Default"}
+                    </span>
+                    <span>{formatCommandLastRun(command.last_run, true)}</span>
+                    {command.last_success !== null && (
+                      <span
+                        className={
+                          command.last_success
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400"
+                        }
+                      >
+                        {command.last_success ? "OK" : "Fail"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <CommandActionsMenu
+                  command={command}
+                  onExecute={handleExecute}
+                  onEdit={handleEdit}
+                  onToggleEnabled={handleToggleEnabled}
+                  onDelete={handleDelete}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead className="border-b">
                 <tr>
@@ -963,36 +1073,14 @@ export function CommandsPage() {
                       {command.last_run ? new Date(command.last_run).toLocaleString() : "Never"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleExecute(command)}>
-                            <Play className="mr-2 h-4 w-4" />
-                            Run Now
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(command)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleToggleEnabled(command)}>
-                            {command.enabled ? "Disable" : "Enable"}
-                          </DropdownMenuItem>
-                          {!BUILTIN_COMMANDS.includes(command.command_name) && (
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(command.command_name)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <CommandActionsMenu
+                        command={command}
+                        onExecute={handleExecute}
+                        onEdit={handleEdit}
+                        onToggleEnabled={handleToggleEnabled}
+                        onDelete={handleDelete}
+                        triggerClassName="h-8 w-8"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -1004,192 +1092,218 @@ export function CommandsPage() {
 
       {/* Recent Executions */}
       <Card>
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-medium">Recent Executions</h3>
-          <Button variant="outline" size="sm" onClick={handleCleanupExecutions}>
+        <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <button
+            type="button"
+            onClick={() => setExecutionsPanelOpen((open) => !open)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            aria-expanded={executionsPanelOpen}
+          >
+            {executionsPanelOpen ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <h3 className="text-lg font-medium">Recent Executions</h3>
+            {recentExecutions.length > 0 ? (
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {recentExecutions.length}
+              </Badge>
+            ) : null}
+          </button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={handleCleanupExecutions}
+          >
             <Trash className="mr-2 h-4 w-4" />
             Cleanup Old
           </Button>
         </div>
-        <div className="p-6">
-          {recentExecutions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p className="font-medium">No executions yet</p>
-              <p className="text-sm mt-1">Command executions will appear here once they run.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {recentExecutions.map((execution) => {
-                const isExpanded = expandedExecutionId === execution.id;
-                const duration = execution.duration ?? execution.duration_seconds;
-                const statusLabel =
-                  execution.status === "running"
-                    ? "Running..."
-                    : execution.status === "completed"
-                      ? "Success"
-                      : execution.status === "cancelled"
-                        ? "Cancelled"
-                        : "Failed";
-                const statusColor =
-                  execution.status === "completed"
-                    ? "text-green-600 dark:text-green-400"
-                    : execution.status === "failed"
-                      ? "text-red-600 dark:text-red-400"
-                      : execution.status === "running"
-                        ? "text-yellow-600 dark:text-yellow-400"
-                        : "text-muted-foreground";
+        {executionsPanelOpen ? (
+          <div className="p-4 md:p-6">
+            {recentExecutions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="font-medium">No executions yet</p>
+                <p className="text-sm mt-1">Command executions will appear here once they run.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 md:space-y-4">
+                {recentExecutions.map((execution) => {
+                  const isExpanded = expandedExecutionId === execution.id;
+                  const duration = execution.duration ?? execution.duration_seconds;
+                  const statusLabel =
+                    execution.status === "running"
+                      ? "Running..."
+                      : execution.status === "completed"
+                        ? "Success"
+                        : execution.status === "cancelled"
+                          ? "Cancelled"
+                          : "Failed";
+                  const statusColor =
+                    execution.status === "completed"
+                      ? "text-green-600 dark:text-green-400"
+                      : execution.status === "failed"
+                        ? "text-red-600 dark:text-red-400"
+                        : execution.status === "running"
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-muted-foreground";
 
-                return (
-                  <div key={execution.id} className="p-4 rounded-lg bg-muted/50 border">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            execution.status === "completed"
-                              ? "bg-green-100 dark:bg-green-900"
-                              : execution.status === "failed"
-                                ? "bg-red-100 dark:bg-red-900"
-                                : execution.status === "running"
-                                  ? "bg-yellow-100 dark:bg-yellow-900"
-                                  : "bg-muted"
-                          }`}
-                        >
-                          {execution.status === "running" ? (
-                            <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
-                          ) : execution.status === "completed" ? (
-                            <span className="text-green-600 dark:text-green-400">✓</span>
-                          ) : execution.status === "failed" ? (
-                            <span className="text-red-600 dark:text-red-400">✕</span>
-                          ) : (
-                            <span className="text-muted-foreground">○</span>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium">
-                            {execution.display_name ??
-                              getCommandDisplayName(execution.command_name)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {execution.started_at
-                              ? new Date(execution.started_at).toLocaleString()
-                              : "—"}
-                          </p>
-                          {execution.target && execution.target !== "unknown" && (
-                            <p className="text-xs text-blue-600 dark:text-blue-400">
-                              Target: {String(execution.target).toUpperCase()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right flex items-center gap-2">
-                        <span className={`font-medium ${statusColor}`}>{statusLabel}</span>
-                        {execution.status === "running" && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleKillExecution(execution.id)}
-                            disabled={killingExecutionId === execution.id}
+                  return (
+                    <div key={execution.id} className="rounded-lg border bg-muted/50 p-3 md:p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              execution.status === "completed"
+                                ? "bg-green-100 dark:bg-green-900"
+                                : execution.status === "failed"
+                                  ? "bg-red-100 dark:bg-red-900"
+                                  : execution.status === "running"
+                                    ? "bg-yellow-100 dark:bg-yellow-900"
+                                    : "bg-muted"
+                            }`}
                           >
-                            <X className="h-3 w-3 mr-1" />
-                            {killingExecutionId === execution.id ? "Killing..." : "Kill"}
-                          </Button>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {duration != null ? formatDuration(duration) : "In progress"}
-                        </p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          {execution.triggered_by}
-                        </p>
-                      </div>
-                    </div>
-                    {execution.status === "failed" && execution.error_message && (
-                      <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                        {execution.error_message}
-                      </div>
-                    )}
-                    {execution.status === "completed" && (
-                      <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
-                        {execution.display_name ?? getCommandDisplayName(execution.command_name)}{" "}
-                        completed successfully in {formatDuration(duration)}
-                      </div>
-                    )}
-                    <div className="mt-3">
-                      <button
-                        onClick={() => setExpandedExecutionId(isExpanded ? null : execution.id)}
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                        {isExpanded ? "Hide Details" : "Show Details"}
-                      </button>
-                      {isExpanded && (
-                        <div className="mt-2 p-3 rounded-md bg-muted space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Execution ID:</span>
-                            <span className="font-mono">{execution.id}</span>
+                            {execution.status === "running" ? (
+                              <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
+                            ) : execution.status === "completed" ? (
+                              <span className="text-green-600 dark:text-green-400">✓</span>
+                            ) : execution.status === "failed" ? (
+                              <span className="text-red-600 dark:text-red-400">✕</span>
+                            ) : (
+                              <span className="text-muted-foreground">○</span>
+                            )}
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Started:</span>
-                            <span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {execution.display_name ??
+                                getCommandDisplayName(execution.command_name)}
+                            </p>
+                            <p className="text-xs text-muted-foreground sm:text-sm">
                               {execution.started_at
                                 ? new Date(execution.started_at).toLocaleString()
                                 : "—"}
-                            </span>
+                            </p>
+                            {execution.target && execution.target !== "unknown" && (
+                              <p className="text-xs text-blue-600 dark:text-blue-400">
+                                Target: {String(execution.target).toUpperCase()}
+                              </p>
+                            )}
                           </div>
-                          {execution.completed_at && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Completed:</span>
-                              <span>{new Date(execution.completed_at).toLocaleString()}</span>
-                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
+                          <span className={`text-sm font-medium ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                          {execution.status === "running" && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleKillExecution(execution.id)}
+                              disabled={killingExecutionId === execution.id}
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              {killingExecutionId === execution.id ? "Killing..." : "Kill"}
+                            </Button>
                           )}
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Duration:</span>
-                            <span>{formatDuration(duration)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Triggered by:</span>
-                            <span className="capitalize">{execution.triggered_by}</span>
-                          </div>
-                          {execution.error_message && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Error:</span>
-                              <span className="text-destructive text-right">
-                                {execution.error_message}
-                              </span>
-                            </div>
-                          )}
-                          {execution.status !== "running" && (
-                            <div className="pt-3 border-t">
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteExecution(execution.id)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Execution
-                              </Button>
-                            </div>
-                          )}
-                          {execution.status === "completed" && execution.output_summary && (
-                            <div className="pt-3 border-t">
-                              <h5 className="font-medium mb-2">Execution Summary</h5>
-                              <pre className="text-xs whitespace-pre-wrap font-sans">
-                                {execution.output_summary}
-                              </pre>
-                            </div>
-                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {duration != null ? formatDuration(duration) : "In progress"}
+                          </p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {execution.triggered_by}
+                          </p>
+                        </div>
+                      </div>
+                      {execution.status === "failed" && execution.error_message && (
+                        <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                          {execution.error_message}
                         </div>
                       )}
+                      {execution.status === "completed" && (
+                        <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
+                          {execution.display_name ?? getCommandDisplayName(execution.command_name)}{" "}
+                          completed successfully in {formatDuration(duration)}
+                        </div>
+                      )}
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setExpandedExecutionId(isExpanded ? null : execution.id)}
+                          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                          {isExpanded ? "Hide Details" : "Show Details"}
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-2 p-3 rounded-md bg-muted space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Execution ID:</span>
+                              <span className="font-mono">{execution.id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Started:</span>
+                              <span>
+                                {execution.started_at
+                                  ? new Date(execution.started_at).toLocaleString()
+                                  : "—"}
+                              </span>
+                            </div>
+                            {execution.completed_at && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Completed:</span>
+                                <span>{new Date(execution.completed_at).toLocaleString()}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Duration:</span>
+                              <span>{formatDuration(duration)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Triggered by:</span>
+                              <span className="capitalize">{execution.triggered_by}</span>
+                            </div>
+                            {execution.error_message && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Error:</span>
+                                <span className="text-destructive text-right">
+                                  {execution.error_message}
+                                </span>
+                              </div>
+                            )}
+                            {execution.status !== "running" && (
+                              <div className="pt-3 border-t">
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteExecution(execution.id)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete Execution
+                                </Button>
+                              </div>
+                            )}
+                            {execution.status === "completed" && execution.output_summary && (
+                              <div className="pt-3 border-t">
+                                <h5 className="font-medium mb-2">Execution Summary</h5>
+                                <pre className="text-xs whitespace-pre-wrap font-sans">
+                                  {execution.output_summary}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
       </Card>
 
       {/* New Command Dialog */}
@@ -1199,203 +1313,164 @@ export function CommandsPage() {
         onSuccess={loadCommands}
       />
 
-      {/* Edit Command Dialog */}
-      <Dialog open={!!editingCommand} onOpenChange={(open) => !open && setEditingCommand(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              <span>Edit Command: {editingCommand?.display_name}</span>
-              {editingCommand && (
-                <Badge variant={editingCommand.enabled ? "default" : "secondary"}>
-                  {editingCommand.enabled ? "Enabled" : "Disabled"}
-                </Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>{commandUiCopy.base.dialogDescription}</DialogDescription>
-          </DialogHeader>
-          {editingCommand && (
+      <CommandEditDialog
+        command={editingCommand}
+        onOpenChange={(open) => !open && setEditingCommand(null)}
+        formBody={
+          editingCommand ? (
+            <CommandEditFormBody
+              ctx={{
+                editingCommand,
+                editForm,
+                setEditForm,
+                plexAccounts,
+                daylistUsedIds,
+                localDiscoveryUsedIds,
+                moodsList,
+                xmplaylistEditFilter,
+                setXmplaylistEditFilter,
+                xmplaylistEditLoading,
+                filteredXmEditStations,
+                nrdSources,
+              }}
+            />
+          ) : null
+        }
+        footer={
+          editingCommand ? (
             <>
-              <CommandEditFormBody
-                ctx={{
-                  editingCommand,
-                  editForm,
-                  setEditForm,
-                  plexAccounts,
-                  daylistUsedIds,
-                  localDiscoveryUsedIds,
-                  moodsList,
-                  xmplaylistEditFilter,
-                  setXmplaylistEditFilter,
-                  xmplaylistEditLoading,
-                  filteredXmEditStations,
-                  nrdSources,
-                }}
-              />
-              <div className="flex-shrink-0 flex justify-end gap-2 px-6 py-4 border-t bg-background">
-                <Button variant="outline" onClick={() => setEditingCommand(null)}>
-                  Close
+              <Button variant="outline" onClick={() => setEditingCommand(null)}>
+                Close
+              </Button>
+              {editingCommand.command_name === "new_releases_discovery" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_per_run: editForm.artists_per_run,
+                        album_types: (editForm.album_types ?? ["album"]).join(","),
+                        new_releases_source: editForm.new_releases_source ?? "deezer",
+                      },
+                    })
+                  }
+                >
+                  Save
                 </Button>
-                {editingCommand.command_name === "new_releases_discovery" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_per_run: editForm.artists_per_run,
-                          album_types: (editForm.album_types ?? ["album"]).join(","),
-                          new_releases_source: editForm.new_releases_source ?? "deezer",
-                        },
-                      })
+              )}
+              {editingCommand.command_name === "discovery_lastfm" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_to_query: editForm.artists_to_query ?? 3,
+                        similar_per_artist: editForm.similar_per_artist ?? 1,
+                        artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
+                        limit: editForm.limit ?? 5,
+                        min_match_score: editForm.min_match_score ?? 0.9,
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name === "artist_events_refresh" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        artists_per_run: Math.min(50, Math.max(1, editForm.artists_per_run ?? 20)),
+                        refresh_ttl_days: Math.min(
+                          365,
+                          Math.max(1, editForm.refresh_ttl_days ?? 14)
+                        ),
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("playlist_sync_") && (
+                <Button
+                  disabled={
+                    (editingCommand.config_json?.source as string) !== "listenbrainz" &&
+                    (editingCommand.config_json?.target as string) === "plex" &&
+                    !!editForm.sync_to_multiple_plex_users &&
+                    (editForm.plex_account_ids ?? []).length === 0
+                  }
+                  onClick={() => {
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                      artist_discovery_max_per_run:
+                        editForm.artist_discovery_max_per_run ??
+                        (editForm.enable_artist_discovery ? 2 : 0),
+                    };
+                    if ((editingCommand.config_json?.source as string) === "listenbrainz") {
+                      cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 3;
+                      cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
+                      cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
+                      cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
                     }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name === "discovery_lastfm" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_to_query: editForm.artists_to_query ?? 3,
-                          similar_per_artist: editForm.similar_per_artist ?? 1,
-                          artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
-                          limit: editForm.limit ?? 5,
-                          min_match_score: editForm.min_match_score ?? 0.9,
-                        },
-                      })
-                    }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name === "artist_events_refresh" && (
-                  <Button
-                    onClick={() =>
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: {
-                          ...(editingCommand.config_json || {}),
-                          artists_per_run: Math.min(
-                            50,
-                            Math.max(1, editForm.artists_per_run ?? 20)
-                          ),
-                          refresh_ttl_days: Math.min(
-                            365,
-                            Math.max(1, editForm.refresh_ttl_days ?? 14)
-                          ),
-                        },
-                      })
-                    }
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("playlist_sync_") && (
-                  <Button
-                    disabled={
+                    if (
                       (editingCommand.config_json?.source as string) !== "listenbrainz" &&
-                      (editingCommand.config_json?.target as string) === "plex" &&
-                      !!editForm.sync_to_multiple_plex_users &&
-                      (editForm.plex_account_ids ?? []).length === 0
+                      (editingCommand.config_json?.target as string) === "plex"
+                    ) {
+                      cfg.plex_account_ids = editForm.sync_to_multiple_plex_users
+                        ? (editForm.plex_account_ids ?? [])
+                        : [];
                     }
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
-                        artist_discovery_max_per_run:
-                          editForm.artist_discovery_max_per_run ??
-                          (editForm.enable_artist_discovery ? 2 : 0),
-                      };
-                      if ((editingCommand.config_json?.source as string) === "listenbrainz") {
-                        cfg.weekly_exploration_keep = editForm.weekly_exploration_keep ?? 2;
-                        cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 2;
-                        cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
-                        cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
-                      }
-                      if (
-                        (editingCommand.config_json?.source as string) !== "listenbrainz" &&
-                        (editingCommand.config_json?.target as string) === "plex"
-                      ) {
-                        cfg.plex_account_ids = editForm.sync_to_multiple_plex_users
-                          ? (editForm.plex_account_ids ?? [])
-                          : [];
-                      }
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("daylist_") && (
-                  <Button
-                    onClick={() => {
-                      const time_periods: Record<string, number[]> = {};
-                      for (const [period, { start, end }] of Object.entries(
-                        editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS
-                      )) {
-                        time_periods[period] = hoursFromRange(start, end);
-                      }
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        schedule_minute: editForm.schedule_minute ?? 0,
-                        plex_history_account_id: editForm.plex_history_account_id ?? "",
-                        exclude_played_days: editForm.exclude_played_days ?? 3,
-                        history_lookback_days: editForm.history_lookback_days ?? 45,
-                        max_tracks: editForm.max_tracks ?? 50,
-                        sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
-                        sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
-                        sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
-                        historical_ratio: editForm.historical_ratio ?? 0.3,
-                        timezone: editForm.timezone || undefined,
-                        time_periods,
-                        use_primary_mood: editForm.use_primary_mood ?? false,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({ config_json: cfg });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("top_tracks_") && (
-                  <Button
-                    onClick={() => {
-                      const artistsRaw = (editForm.artists ?? "").trim().split("\n");
-                      const artists = artistsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, cfg));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("daylist_") && (
+                <Button
+                  onClick={() => {
+                    const time_periods: Record<string, number[]> = {};
+                    for (const [period, { start, end }] of Object.entries(
+                      editForm.time_periods ?? DEFAULT_DAYLIST_TIME_PERIODS
+                    )) {
+                      time_periods[period] = hoursFromRange(start, end);
+                    }
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      schedule_minute: editForm.schedule_minute ?? 0,
+                      plex_history_account_id: editForm.plex_history_account_id ?? "",
+                      exclude_played_days: editForm.exclude_played_days ?? 3,
+                      history_lookback_days: editForm.history_lookback_days ?? 45,
+                      max_tracks: editForm.max_tracks ?? 50,
+                      sonic_similar_limit: editForm.sonic_similar_limit ?? 10,
+                      sonic_similarity_limit: editForm.sonic_similarity_limit ?? 50,
+                      sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.8,
+                      historical_ratio: editForm.historical_ratio ?? 0.3,
+                      timezone: editForm.timezone || undefined,
+                      time_periods,
+                      use_primary_mood: editForm.use_primary_mood ?? false,
+                    };
+                    applyExpiryToConfig(cfg, editForm);
+                    handleSaveCommand({ config_json: cfg });
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("top_tracks_") && (
+                <Button
+                  onClick={() => {
+                    const artistsRaw = (editForm.artists ?? "").trim().split("\n");
+                    const artists = artistsRaw.filter((a: string) => a.trim());
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         artists,
                         top_x: editForm.top_x ?? 5,
@@ -1403,33 +1478,20 @@ export function CommandsPage() {
                         target: editForm.target ?? "plex",
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("lfm_similar_") && (
-                  <Button
-                    onClick={() => {
-                      const seedsRaw = (editForm.seed_artists ?? "").trim().split("\n");
-                      const seed_artists = seedsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
+                      })
+                    );
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lfm_similar_") && (
+                <Button
+                  onClick={() => {
+                    const seedsRaw = (editForm.seed_artists ?? "").trim().split("\n");
+                    const seed_artists = seedsRaw.filter((a: string) => a.trim());
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         seed_artists,
                         similar_per_seed: Math.max(1, Math.min(50, editForm.similar_per_seed ?? 5)),
@@ -1440,68 +1502,41 @@ export function CommandsPage() {
                         target: editForm.target ?? "plex",
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
                         custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("setlistfm_") && (
-                  <Button
-                    onClick={() => {
-                      const artistsRaw = (editForm.artists ?? "").trim().split("\n");
-                      const artists = artistsRaw.filter((a: string) => a.trim());
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        artists,
-                        max_tracks_per_artist: Math.max(
-                          3,
-                          Math.min(30, editForm.max_tracks_per_artist ?? 25)
-                        ),
-                        target: editForm.target ?? "plex",
-                        use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
-                        custom_playlist_name: editForm.custom_playlist_name ?? "",
-                      };
-                      delete cfg.max_setlist_pages;
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("local_discovery_") && (
-                  <Button
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
+                      })
+                    );
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("setlistfm_") && (
+                <Button
+                  onClick={() => {
+                    const artistsRaw = (editForm.artists ?? "").trim().split("\n");
+                    const artists = artistsRaw.filter((a: string) => a.trim());
+                    const base: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      artists,
+                      max_tracks_per_artist: Math.max(
+                        3,
+                        Math.min(30, editForm.max_tracks_per_artist ?? 25)
+                      ),
+                      target: editForm.target ?? "plex",
+                      use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
+                      custom_playlist_name: editForm.custom_playlist_name ?? "",
+                    };
+                    delete base.max_setlist_pages;
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, base));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("local_discovery_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         plex_history_account_id: editForm.plex_history_account_id ?? "",
                         lookback_days: editForm.lookback_days ?? 90,
@@ -1512,28 +1547,18 @@ export function CommandsPage() {
                         sonic_similar_limit: editForm.sonic_similar_limit ?? 15,
                         sonic_similarity_distance: editForm.sonic_similarity_distance ?? 0.25,
                         historical_ratio: editForm.historical_ratio ?? 0.3,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                      } else {
-                        delete cfg.expires_at;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("mood_playlist_") && (
-                  <Button
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
+                      })
+                    )
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("mood_playlist_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand(
+                      buildScheduleAndExpiryConfig(editForm, {
                         ...(editingCommand.config_json || {}),
                         moods: editForm.moods ?? [],
                         use_custom_playlist_name: editForm.use_custom_playlist_name ?? false,
@@ -1549,114 +1574,88 @@ export function CommandsPage() {
                           editForm.limit_by_year && editForm.max_year != null
                             ? Math.max(1800, Math.min(2100, editForm.max_year))
                             : undefined,
-                      };
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                      } else {
-                        delete cfg.expires_at;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
-                    Save
-                  </Button>
-                )}
-                {editingCommand.command_name.startsWith("xmplaylist_") && (
-                  <Button
-                    disabled={
-                      editForm.target === "plex" &&
-                      !!editForm.sync_to_multiple_plex_users &&
-                      (editForm.plex_account_ids ?? []).length === 0
-                    }
-                    onClick={() => {
-                      const cfg: Record<string, unknown> = {
-                        ...(editingCommand.config_json || {}),
-                        station_deeplink: (editForm.xm_station_deeplink ?? "").trim(),
-                        station_display_name: (
-                          editForm.xm_station_display_name ??
-                          editForm.xm_station_deeplink ??
-                          ""
-                        ).trim(),
-                        playlist_kind: editForm.xm_playlist_kind ?? "newest",
-                        most_heard_days: editForm.xm_most_heard_days ?? 30,
-                        max_tracks: Math.max(1, Math.min(50, editForm.max_tracks ?? 50)),
-                        target: editForm.target ?? "plex",
-                        enable_artist_discovery: editForm.enable_artist_discovery ?? false,
-                        artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
-                      };
-                      const tgt = (editForm.target ?? "plex") as string;
-                      if (tgt === "plex") {
-                        const multi = !!editForm.sync_to_multiple_plex_users;
-                        const ids = editForm.plex_account_ids ?? [];
-                        if (multi && ids.length > 0) {
-                          cfg.plex_account_ids = ids;
-                          delete cfg.plex_playlist_account_id;
-                        } else {
-                          delete cfg.plex_account_ids;
-                          delete cfg.plex_playlist_account_id;
-                        }
+                      })
+                    )
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("xmplaylist_") && (
+                <Button
+                  disabled={
+                    editForm.target === "plex" &&
+                    !!editForm.sync_to_multiple_plex_users &&
+                    (editForm.plex_account_ids ?? []).length === 0
+                  }
+                  onClick={() => {
+                    const cfg: Record<string, unknown> = {
+                      ...(editingCommand.config_json || {}),
+                      station_deeplink: (editForm.xm_station_deeplink ?? "").trim(),
+                      station_display_name: (
+                        editForm.xm_station_display_name ??
+                        editForm.xm_station_deeplink ??
+                        ""
+                      ).trim(),
+                      playlist_kind: editForm.xm_playlist_kind ?? "newest",
+                      most_heard_days: editForm.xm_most_heard_days ?? 30,
+                      max_tracks: Math.max(1, Math.min(50, editForm.max_tracks ?? 50)),
+                      target: editForm.target ?? "plex",
+                      enable_artist_discovery: editForm.enable_artist_discovery ?? false,
+                      artist_discovery_max_per_run: editForm.artist_discovery_max_per_run ?? 2,
+                    };
+                    const tgt = (editForm.target ?? "plex") as string;
+                    if (tgt === "plex") {
+                      const multi = !!editForm.sync_to_multiple_plex_users;
+                      const ids = editForm.plex_account_ids ?? [];
+                      if (multi && ids.length > 0) {
+                        cfg.plex_account_ids = ids;
+                        delete cfg.plex_playlist_account_id;
                       } else {
                         delete cfg.plex_account_ids;
                         delete cfg.plex_playlist_account_id;
                       }
-                      if (editForm.expires_at_enabled && editForm.expires_at) {
-                        cfg.expires_at = toExpiresAtIso(editForm.expires_at);
-                        cfg.expires_at_delete_playlist =
-                          editForm.expires_at_delete_playlist ?? true;
-                      } else {
-                        delete cfg.expires_at;
-                        delete cfg.expires_at_delete_playlist;
-                      }
-                      handleSaveCommand({
-                        schedule_override: editForm.schedule_override,
-                        schedule_cron: editForm.schedule_override
-                          ? editForm.schedule_cron
-                          : undefined,
-                        config_json: cfg,
-                      });
-                    }}
-                  >
+                    } else {
+                      delete cfg.plex_account_ids;
+                      delete cfg.plex_playlist_account_id;
+                    }
+                    handleSaveCommand(buildScheduleAndExpiryConfig(editForm, cfg));
+                  }}
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name !== "new_releases_discovery" &&
+                editingCommand.command_name !== "discovery_lastfm" &&
+                editingCommand.command_name !== "artist_events_refresh" &&
+                !editingCommand.command_name.startsWith("playlist_sync_") &&
+                !editingCommand.command_name.startsWith("daylist_") &&
+                !editingCommand.command_name.startsWith("top_tracks_") &&
+                !editingCommand.command_name.startsWith("lfm_similar_") &&
+                !editingCommand.command_name.startsWith("setlistfm_") &&
+                !editingCommand.command_name.startsWith("mood_playlist_") &&
+                !editingCommand.command_name.startsWith("xmplaylist_") &&
+                !editingCommand.command_name.startsWith("local_discovery_") && (
+                  <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
                     Save
                   </Button>
                 )}
-                {editingCommand.command_name !== "new_releases_discovery" &&
-                  editingCommand.command_name !== "discovery_lastfm" &&
-                  editingCommand.command_name !== "artist_events_refresh" &&
-                  !editingCommand.command_name.startsWith("playlist_sync_") &&
-                  !editingCommand.command_name.startsWith("daylist_") &&
-                  !editingCommand.command_name.startsWith("top_tracks_") &&
-                  !editingCommand.command_name.startsWith("lfm_similar_") &&
-                  !editingCommand.command_name.startsWith("setlistfm_") &&
-                  !editingCommand.command_name.startsWith("mood_playlist_") &&
-                  !editingCommand.command_name.startsWith("xmplaylist_") &&
-                  !editingCommand.command_name.startsWith("local_discovery_") && (
-                    <Button
-                      onClick={() =>
-                        handleSaveCommand({
-                          schedule_override: editForm.schedule_override,
-                          schedule_cron: editForm.schedule_override
-                            ? editForm.schedule_cron
-                            : undefined,
-                        })
-                      }
-                    >
-                      Save
-                    </Button>
-                  )}
-                <Button onClick={() => handleToggleEnabled(editingCommand)}>
-                  {editingCommand.enabled ? "Disable" : "Enable"}
-                </Button>
-              </div>
+              <Button onClick={() => handleToggleEnabled(editingCommand)}>
+                {editingCommand.enabled ? "Disable" : "Enable"}
+              </Button>
             </>
-          )}
-        </DialogContent>
-      </Dialog>
+          ) : null
+        }
+      />
+      <DeleteCommandDialog
+        open={deleteCommandTarget !== null}
+        commandName={deleteCommandTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteCommandTarget(null);
+        }}
+        onConfirm={confirmDeleteCommand}
+        isDeleting={deleteCommandDeleting}
+      />
     </div>
   );
 }

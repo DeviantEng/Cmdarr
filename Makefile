@@ -3,9 +3,9 @@ ZIZMOR_VERSION = 1.24.1
 # OSV pip-audit false positive for fastapi; remove when retracted/fixed upstream.
 PIPAUDIT_IGNORES = --ignore-vuln MAL-2026-4750
 
-.PHONY: check check-python check-zizmor check-test test check-frontend check-audit fix fix-python fix-zizmor fix-frontend
+.PHONY: check check-python check-zizmor check-test test check-frontend check-frontend-typecheck check-audit fix fix-python fix-zizmor fix-frontend
 
-check: check-python check-zizmor check-frontend check-test check-audit
+check: check-python check-zizmor check-frontend check-frontend-typecheck check-test check-audit
 check-python:
 	uv run ruff check . && uv run ruff format --check .
 check-zizmor:
@@ -15,6 +15,8 @@ check-test test:
 		--cov=utils --cov=tests --cov-report=term-missing
 check-frontend:
 	cd frontend && npm run lint && npm run format:check
+check-frontend-typecheck:
+	cd frontend && npx tsc --noEmit
 check-audit:
 	cd frontend && npm audit --audit-level=high
 	@# Audit project requirements only (pinned/fixed vulns handled in requirements.txt).

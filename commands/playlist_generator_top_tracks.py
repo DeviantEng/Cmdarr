@@ -13,9 +13,12 @@ from utils.library_cache_manager import get_library_cache_manager
 from utils.text_normalizer import normalize_text
 
 from .command_base import BaseCommand
-from .playlist_generator_helpers import build_auto_playlist_suffix, validate_artists_against_cache
-
-PLAYLIST_TITLE_PREFIX = "[Cmdarr] Artist Essentials"
+from .playlist_generator_helpers import (
+    compute_top_tracks_playlist_title,
+    delete_playlist_on_target,
+    persist_playlist_identity,
+    validate_artists_against_cache,
+)
 
 
 class PlaylistGeneratorTopTracksCommand(BaseCommand):
@@ -42,55 +45,6 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
         if target == "jellyfin":
             return JellyfinClient(self.config), "Jellyfin"
         return self.plex_client, "Plex"
-
-    def _delete_playlist_by_name(
-        self, target_client: PlexClient | JellyfinClient, playlist_title: str
-    ) -> None:
-        """Delete a playlist by name from Plex or Jellyfin."""
-        try:
-            pl = target_client.find_playlist_by_name(playlist_title)
-            if not pl:
-                return
-            if isinstance(target_client, PlexClient):
-                rk = pl.get("ratingKey")
-                if rk:
-                    target_client.delete_playlist(rk)
-                    self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
-            else:
-                pid = pl.get("Id")
-                if pid:
-                    target_client.delete_playlist(pid)
-                    self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
-        except Exception as e:
-            self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
-
-    def _persist_after_success(self, playlist_title: str) -> None:
-        """Persist last_playlist_title and update display_name to match playlist."""
-        try:
-            from database.config_models import CommandConfig
-            from database.database import get_database_manager
-
-            cmd_name = self.config_json.get("command_name", "")
-            if not cmd_name or not cmd_name.startswith("top_tracks_"):
-                return
-            db = get_database_manager()
-            session = db.get_config_session_sync()
-            try:
-                cmd = (
-                    session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == cmd_name)
-                    .first()
-                )
-                if cmd:
-                    cfg = dict(cmd.config_json or {})
-                    cfg["last_playlist_title"] = playlist_title
-                    cmd.config_json = cfg
-                    cmd.display_name = playlist_title
-                    session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            self.logger.warning(f"Could not persist after success: {e}")
 
     async def execute(self) -> bool:
         try:
@@ -144,16 +98,17 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 if (a or "").strip() and normalize_text((a or "").strip().lower()) in valid_norms
             ]
 
-            use_custom = config.get("use_custom_playlist_name", False)
-            custom_name = (config.get("custom_playlist_name") or "").strip()
-            if use_custom and custom_name:
-                suffix = custom_name
-            else:
-                suffix = build_auto_playlist_suffix(ordered_display_names)
-            playlist_title = f"{PLAYLIST_TITLE_PREFIX}: {suffix}"
+            playlist_title = compute_top_tracks_playlist_title(ordered_display_names, config)
             last_playlist_title = config.get("last_playlist_title")
-            if last_playlist_title and last_playlist_title != playlist_title:
-                self._delete_playlist_by_name(target_client, last_playlist_title)
+            last_playlist_id = config.get("last_playlist_id")
+            title_changed = last_playlist_title and last_playlist_title != playlist_title
+            if title_changed:
+                delete_playlist_on_target(
+                    target_client,
+                    playlist_id=str(last_playlist_id) if last_playlist_id else None,
+                    playlist_title=last_playlist_title,
+                    logger=self.logger,
+                )
 
             tracks_for_playlist: list[dict[str, Any]] = []
             artists_processed = 0
@@ -224,6 +179,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 summary=summary,
                 library_cache_manager=self.library_cache_manager,
                 library_key=library_key,
+                existing_playlist_id=None if title_changed else last_playlist_id,
             )
 
             success = result.get("success", False)
@@ -247,7 +203,13 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                 self.logger.info(
                     f"Created playlist '{playlist_title}': {found}/{total} tracks from {artists_processed} artists"
                 )
-                self._persist_after_success(playlist_title)
+                persist_playlist_identity(
+                    self.config_json.get("command_name", ""),
+                    "top_tracks_",
+                    playlist_title,
+                    result.get("playlist_id"),
+                    self.logger,
+                )
             return success
 
         except Exception as e:

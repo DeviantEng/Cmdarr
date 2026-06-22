@@ -186,13 +186,6 @@ class HTTPClientUtils:
                                     response.status,
                                     error_text[:300],
                                 )
-                            if response.status == 403 and "bandsintown" in url.lower():
-                                logger.error(
-                                    "Bandsintown 403: app_id may be invalid, revoked, or not allowed for "
-                                    "this use. Keys from Bandsintown for Artists are tied to one artist; "
-                                    "library-wide or high-volume use may require Bandsintown partnership "
-                                    "approval. See Config → Event Sources (ARTIST_EVENTS_BANDSINTOWN_APP_ID)."
-                                )
                         return None
 
             except TimeoutError:

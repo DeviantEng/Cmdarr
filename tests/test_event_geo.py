@@ -2,13 +2,16 @@
 
 from utils.event_geo import (
     coerce_location_str,
+    compute_event_dedupe_key,
     haversine_miles,
     lat_lon_deg_bounds_for_radius_miles,
     make_dedupe_key,
     normalize_city_name,
     normalize_venue_name,
     parse_float,
+    parse_place_city_region,
     venue_fingerprint,
+    venue_fingerprint_legacy,
 )
 
 
@@ -28,6 +31,29 @@ def test_dedupe_key_stable():
     assert k1 != make_dedupe_key("mbid-2", "2026-06-01", fp)
 
 
+def test_compute_event_dedupe_key_matches_manual():
+    fp = venue_fingerprint("The Fillmore", "San Francisco", "CA", 37.7845, -122.4324)
+    manual = make_dedupe_key("mbid-1", "2026-06-01", fp)
+    assert (
+        compute_event_dedupe_key(
+            "mbid-1",
+            "2026-06-01",
+            "The Fillmore",
+            "San Francisco",
+            "CA",
+            37.7845,
+            -122.4324,
+        )
+        == manual
+    )
+
+
+def test_venue_fingerprint_legacy_differs_when_region_present():
+    new_fp = venue_fingerprint("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
+    old_fp = venue_fingerprint_legacy("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
+    assert new_fp != old_fp
+
+
 def test_coerce_location_str_nested_region():
     assert coerce_location_str({"name": "California"}) == "California"
     assert coerce_location_str({"code": "CA"}) == "CA"
@@ -45,7 +71,7 @@ def test_lat_lon_bounds_contains_center():
 
 
 def test_venue_fingerprint_accepts_dict_region():
-    """Bandsintown may return region as a nested object."""
+    """Some APIs return region as a nested object."""
     fp_str = venue_fingerprint("Venue", "Portland", "Oregon", 45.5, -122.6)
     fp_dict = venue_fingerprint("Venue", "Portland", {"name": "Oregon"}, 45.5, -122.6)
     assert fp_str == fp_dict
@@ -65,7 +91,7 @@ def test_venue_fingerprint_differs_for_distinct_venues():
 
 
 def test_venue_fingerprint_ignores_geo_when_name_present():
-    """Two TM/BIT/SK responses for the same venue routinely disagree on coordinates by
+    """Two provider responses for the same venue routinely disagree on coordinates by
     0.01°–0.05° (building centroid vs. street geocode). When a venue name is present,
     geo drift must NOT split one show into multiple canonical rows."""
     same_name_wildly_different_coords = venue_fingerprint(
@@ -95,6 +121,13 @@ def test_venue_fingerprint_merges_saint_vs_st_city():
     assert a == b
 
 
+def test_venue_fingerprint_merges_when_region_missing_on_deezer():
+    """Deezer liveEvents omits state/region; TM rows must still dedupe to the same key."""
+    tm = venue_fingerprint("Brooklyn Bowl", "Nashville", "TN", 36.16251, -86.77148)
+    dz = venue_fingerprint("Brooklyn Bowl", "Nashville", None, None, None)
+    assert tm == dz
+
+
 def test_venue_fingerprint_no_name_falls_back_to_geo():
     """When a venue name is missing, city+region+coarse geo distinguishes events."""
     a = venue_fingerprint(None, "Nashville", "TN", 36.16, -86.77)
@@ -122,6 +155,24 @@ def test_normalize_city_name_common_patterns():
     assert normalize_city_name("Mt. Vernon") == "mount vernon"
     assert normalize_city_name("Ft. Lauderdale") == "fort lauderdale"
     assert normalize_city_name(None) == ""
+
+
+def test_parse_place_city_region_deezer_comma_format():
+    city, region = parse_place_city_region("Camden, NJ, US", None)
+    assert city == "Camden"
+    assert region == "NJ"
+
+
+def test_parse_place_city_region_keeps_ticketmaster_fields():
+    city, region = parse_place_city_region("Camden", "NJ")
+    assert city == "Camden"
+    assert region == "NJ"
+
+
+def test_venue_fingerprint_merges_tm_and_deezer_place_formats():
+    tm = venue_fingerprint("Freedom Mortgage Pavilion", "Camden", "NJ", 39.94, -75.13)
+    dz = venue_fingerprint("Freedom Mortgage Pavilion", "Camden, NJ, US", None, None, None)
+    assert tm == dz
 
 
 def test_haversine_self_is_zero_and_symmetric():

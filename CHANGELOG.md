@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.16] - 2026-06-22
+
+### Features
+- **Playlist identity**: Plex/Jellyfin playlists are now tracked by stored ID as well as title, so overlapping names no longer collide; command delete now offers ability to also delete the playlist in Plex/Jellyfin via optional checkbox.
+- **Artist Events providers**: Removed Bandsintown and Songkick; added **SeatGeek** (developer API; requires `client_id`) and **Deezer** (unofficial GraphQL via ARL) as secondary/tertiary event sources alongside Ticketmaster. Events page shows per-provider badges and source filters; deduped shows keep links for each provider that matched.
+- **New Releases Discovery**: **Hide artist** list (like Artist Events) skips artists on future scans and clears their pending rows; pending list supports a **release date** filter (30/90/180 days, this year, or previous year) to focus on genuinely recent releases.
+
+### Fixes
+- **Artist Events — Ticketmaster matching**: Multi-artist bills no longer reject a show when a co-headliner’s MusicBrainz ID differs from the library artist; matching uses per-attraction MBID/name checks so openers and co-bills resolve correctly.
+- **Spotify playlist sync scraper**: Support spotifyscraper 3.x (removed `browser_type` / `get_playlist_info`) so playlist sync fallback works on fresh installs and Docker rebuilds after API 403 or missing credentials.
+
+### Housekeeping
+- **Security & CI**: Frontend bumps for vite and react-router; `.trivyignore` updates for new CVEs without fix, cleanup of other items that have been fixed.
+- **UI & maintainability**: Command edit/create forms aligned (expiry saves, defaults, section order); shared confirm/edit components, `make check` TypeScript typecheck, and save-time Artist Essentials / Setlist titles matched to library-validated artists; artist-events dedupe, place parsing, and venue geocoding consolidated into shared utils (`event_geo`, `event_dedupe_coalesce`, `venue_geocode`); mobile-responsive layout pass (collapsible Recent Executions, compact command/event rows, overlay nav drawer, accessibility labels); Import Lists, Status, and Configuration pages fixed for narrow viewports (stacked error banners, wrapping card headers/badges, break-all URLs, flexible action rows); follow-up polish for command card grid overflow, tablet nav drawer breakpoint, New Releases pending rows, and Events page width alignment.
+- **Schema migration ledger**: Database migrations are tracked per name in a `schema_migration` ledger and run on every startup when pending (not only when the app version changes). Existing installs backfill the ledger from schema checks. Early alpha: jumping between 0.x minors may still require a fresh install; this lays groundwork for reliable upgrades at 1.x.
+
 ## [0.3.15] - 2026-05-26
 
 ### Features

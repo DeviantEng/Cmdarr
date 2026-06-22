@@ -29,7 +29,12 @@ from clients.client_deezer import DeezerClient
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
 from clients.client_spotify import SpotifyClient
-from database.config_models import ArtistScanLog, DismissedArtistAlbum, NewReleasePending
+from database.config_models import (
+    ArtistScanLog,
+    DismissedArtistAlbum,
+    NewReleaseIgnoredArtist,
+    NewReleasePending,
+)
 from database.database import get_database_manager
 from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
@@ -202,6 +207,12 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 )
 
                                 if not artist_name or not mbid:
+                                    continue
+
+                                if self._is_artist_ignored(session, mbid):
+                                    self.logger.debug(
+                                        f"Skipping '{artist_name}': artist on do-not-track list"
+                                    )
                                     continue
 
                                 # Try Lidarr links first - validate with fuzzy match
@@ -443,6 +454,9 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         try:
             rows = session.query(ArtistScanLog).all()
             log_by_mbid = {r.artist_mbid: r for r in rows}
+            ignored_mbids = {
+                r.artist_mbid for r in session.query(NewReleaseIgnoredArtist.artist_mbid).all()
+            }
         finally:
             session.close()
 
@@ -450,7 +464,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         scanned = []
         for a in artists:
             mbid = a.get("musicBrainzId")
-            if not mbid:
+            if not mbid or mbid in ignored_mbids:
                 continue
             if mbid not in log_by_mbid:
                 never_scanned.append(a)
@@ -479,6 +493,14 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                     had_pending_releases=had_pending,
                 )
             )
+
+    def _is_artist_ignored(self, session: Session, artist_mbid: str) -> bool:
+        return (
+            session.query(NewReleaseIgnoredArtist)
+            .filter(NewReleaseIgnoredArtist.artist_mbid == artist_mbid)
+            .first()
+            is not None
+        )
 
     def _is_dismissed(
         self, session: Session, artist_mbid: str, album_title: str, release_date: str

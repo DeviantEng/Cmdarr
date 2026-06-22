@@ -13,9 +13,16 @@ import {
   RefreshCw,
   RotateCw,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ArtistEventsStats, StatusInfo, LibraryCacheStatus, NrdMetrics } from "@/lib/types";
+import type {
+  ArtistEventsStats,
+  MigrationStatus,
+  StatusInfo,
+  LibraryCacheStatus,
+  NrdMetrics,
+} from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,22 +61,26 @@ export function StatusPage() {
     "restore-all" | "reset" | "invalidate-events" | null
   >(null);
   const [artistEventsStats, setArtistEventsStats] = useState<ArtistEventsStats | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
+  const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadStatus = async () => {
     setError(null);
     try {
-      const [bundle, healthData, cacheData, nrdData] = await Promise.all([
+      const [bundle, healthData, cacheData, nrdData, migData] = await Promise.all([
         api.getStatus(),
         api.healthCheck(),
         api.getCacheStatus().catch(() => null),
         api.getNrdMetrics().catch(() => null),
+        api.getMigrationStatus().catch(() => null),
       ]);
       setStatus(bundle.system);
       setArtistEventsStats(bundle.artist_events);
       setHealth(healthData);
       setCacheStatus(cacheData);
       setNrdMetrics(nrdData);
+      setMigrationStatus(migData);
     } catch {
       setError("Failed to load status");
       toast.error("Failed to load status");
@@ -172,6 +183,26 @@ export function StatusPage() {
     }
   };
 
+  const handleRunMigrations = async () => {
+    setMigrationRunning(true);
+    try {
+      const res = await api.runDbMigrationsManual();
+      if (res.migrations_run > 0) {
+        toast.success(
+          `Ran ${res.migrations_run} migration(s): ${res.migration_names.join(", ") || "none"}`
+        );
+      } else {
+        toast.success("No migrations needed (already applied)");
+      }
+      const migData = await api.getMigrationStatus();
+      setMigrationStatus(migData);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to run migrations");
+    } finally {
+      setMigrationRunning(false);
+    }
+  };
+
   const openDismissed = () => {
     setDismissedOpen(true);
     loadDismissed();
@@ -213,9 +244,14 @@ export function StatusPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-center justify-between">
-          <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => loadStatus()}>
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-destructive">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={() => loadStatus()}
+          >
             Try Again
           </Button>
         </div>
@@ -224,19 +260,19 @@ export function StatusPage() {
       {/* Overall Health */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <CardTitle>System Health</CardTitle>
               <CardDescription>Overall system status</CardDescription>
             </div>
-            <div>
+            <div className="shrink-0 self-start">
               {isHealthy ? (
-                <Badge variant="default" className="flex items-center gap-1">
+                <Badge variant="default" className="flex items-center gap-1 whitespace-nowrap">
                   <CheckCircle2 className="h-4 w-4" />
                   Healthy
                 </Badge>
               ) : (
-                <Badge variant="destructive" className="flex items-center gap-1">
+                <Badge variant="destructive" className="flex items-center gap-1 whitespace-nowrap">
                   <XCircle className="h-4 w-4" />
                   Unhealthy
                 </Badge>
@@ -328,6 +364,77 @@ export function StatusPage() {
         </div>
       )}
 
+      {migrationStatus?.dev_manual_available && (
+        <Card>
+          <CardHeader className="space-y-2 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Database className="h-4 w-4" />
+                  Database migrations
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Dev build only. Pending migrations run automatically on startup and are recorded
+                  in a per-migration ledger ({migrationStatus.current_version}
+                  {migrationStatus.last_run_version
+                    ? `, last recorded ${migrationStatus.last_run_version}`
+                    : ""}
+                  ). Use this button to apply any still-pending migrations after pulling schema
+                  changes on the same <code className="text-[10px]">-dev</code> version.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={handleRunMigrations}
+                disabled={migrationRunning}
+              >
+                {migrationRunning ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Run migrations
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {migrationStatus.pending_migrations.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                  Pending ({migrationStatus.pending_migrations.length})
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {migrationStatus.pending_migrations.map((m) => (
+                    <li key={m.name}>
+                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
+                      {m.description}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No pending migrations.</p>
+            )}
+            {migrationStatus.applied_migrations.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">
+                  Applied ({migrationStatus.applied_migrations.length})
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {migrationStatus.applied_migrations.map((m) => (
+                    <li key={m.name}>
+                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {artistEventsStats && (
         <Card>
           <CardHeader className="space-y-2 py-3">
@@ -402,17 +509,17 @@ export function StatusPage() {
       {cacheStatus && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
+                  <Database className="h-5 w-5 shrink-0" />
                   Library Cache
                 </CardTitle>
                 <CardDescription>
                   Plex and Jellyfin music library cache stats and controls
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex shrink-0 flex-wrap gap-2 self-start">
                 <Button
                   variant="outline"
                   size="sm"
@@ -569,7 +676,7 @@ export function StatusPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -596,7 +703,7 @@ export function StatusPage() {
                 dismissed.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
                       <span className="font-medium">{item.artist_name}</span>
@@ -713,26 +820,32 @@ export function StatusPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Health Check</div>
-                <div className="text-sm text-muted-foreground">/health</div>
+                <div className="truncate text-sm text-muted-foreground">/health</div>
               </div>
-              <Badge variant="outline">GET</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                GET
+              </Badge>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Commands API</div>
-                <div className="text-sm text-muted-foreground">/api/commands</div>
+                <div className="truncate text-sm text-muted-foreground">/api/commands</div>
               </div>
-              <Badge variant="outline">REST</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                REST
+              </Badge>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
+            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <div className="font-medium">Configuration API</div>
-                <div className="text-sm text-muted-foreground">/api/config</div>
+                <div className="truncate text-sm text-muted-foreground">/api/config</div>
               </div>
-              <Badge variant="outline">REST</Badge>
+              <Badge variant="outline" className="shrink-0 self-start sm:self-auto">
+                REST
+              </Badge>
             </div>
           </div>
         </CardContent>

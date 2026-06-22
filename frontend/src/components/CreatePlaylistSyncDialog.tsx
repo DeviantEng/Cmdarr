@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { CreateCommandScheduleExpiryBlock } from "@/components/CreateCommandScheduleExpiryBlock";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
 import { toExpiresAtIso } from "@/lib/expiration";
@@ -67,7 +68,6 @@ type XmplaylistStationRow = {
 };
 
 const cw = commandUiCopy.createWizard;
-const sch = commandUiCopy.schedule;
 const d = commandUiCopy.daylist;
 const ld = commandUiCopy.localDiscovery;
 const tt = commandUiCopy.topTracks;
@@ -1016,7 +1016,7 @@ export function CreatePlaylistSyncDialog({
                           type="checkbox"
                           checked={formData.playlist_types.includes(type)}
                           onChange={() => handleTogglePlaylistType(type)}
-                          className="rounded border-gray-300"
+                          className="rounded border-input"
                         />
                         <span className="text-sm">
                           {type
@@ -1084,7 +1084,7 @@ export function CreatePlaylistSyncDialog({
                         cleanup_enabled: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{lb.cleanupCheckbox}</span>
                 </label>
@@ -1349,7 +1349,7 @@ export function CreatePlaylistSyncDialog({
                     onChange={(e) =>
                       setDaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{cw.enableAfterCreation}</span>
                 </label>
@@ -1535,71 +1535,34 @@ export function CreatePlaylistSyncDialog({
                     </p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-ld-schedule-override"
-                      checked={localDiscoveryForm.schedule_override}
-                      onChange={(e) =>
-                        setLocalDiscoveryForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-ld-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {localDiscoveryForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={localDiscoveryForm.schedule_cron}
-                          onChange={(e) =>
-                            setLocalDiscoveryForm((prev) => ({
-                              ...prev,
-                              schedule_cron: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!localDiscoveryForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={localDiscoveryForm.enabled}
-                    onChange={(e) =>
-                      setLocalDiscoveryForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-ld"
-                  enabled={localDiscoveryForm.expires_at_enabled}
+                  scheduleOverride={localDiscoveryForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={localDiscoveryForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={localDiscoveryForm.enabled}
                   onEnabledChange={(v) =>
+                    setLocalDiscoveryForm((prev) => ({ ...prev, enabled: v }))
+                  }
+                  expiresAtEnabled={localDiscoveryForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setLocalDiscoveryForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={localDiscoveryForm.expires_at}
-                  onValueChange={(v) =>
+                  expiresAt={localDiscoveryForm.expires_at}
+                  onExpiresAtChange={(v) =>
                     setLocalDiscoveryForm((prev) => ({ ...prev, expires_at: v }))
                   }
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={localDiscoveryForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
+                  expiresAtDeletePlaylist={localDiscoveryForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
                     setLocalDiscoveryForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
@@ -1681,7 +1644,7 @@ export function CreatePlaylistSyncDialog({
                         use_custom_playlist_name: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{tt.useCustomPlaylistName}</span>
                 </label>
@@ -1704,67 +1667,32 @@ export function CreatePlaylistSyncDialog({
                 {!topTracksForm.use_custom_playlist_name && (
                   <p className="text-xs text-muted-foreground">{tt.autoNameHelp}</p>
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-tt-schedule-override"
-                      checked={topTracksForm.schedule_override}
-                      onChange={(e) =>
-                        setTopTracksForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-tt-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {topTracksForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={topTracksForm.schedule_cron}
-                          onChange={(e) =>
-                            setTopTracksForm((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!topTracksForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={topTracksForm.enabled}
-                    onChange={(e) =>
-                      setTopTracksForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-tt"
-                  enabled={topTracksForm.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={topTracksForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={topTracksForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={topTracksForm.enabled}
+                  onEnabledChange={(v) => setTopTracksForm((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={topTracksForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setTopTracksForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={topTracksForm.expires_at}
-                  onValueChange={(v) => setTopTracksForm((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={topTracksForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
+                  expiresAt={topTracksForm.expires_at}
+                  onExpiresAtChange={(v) =>
+                    setTopTracksForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  expiresAtDeletePlaylist={topTracksForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
                     setTopTracksForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
@@ -1820,7 +1748,7 @@ export function CreatePlaylistSyncDialog({
                     onChange={(e) =>
                       setLfmSimilarForm((prev) => ({ ...prev, include_seeds: e.target.checked }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{lf.includeSeedsLabel}</span>
                 </label>
@@ -1866,7 +1794,7 @@ export function CreatePlaylistSyncDialog({
                         use_custom_playlist_name: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{lf.useCustomPlaylistName}</span>
                 </label>
@@ -1889,73 +1817,33 @@ export function CreatePlaylistSyncDialog({
                 {!lfmSimilarForm.use_custom_playlist_name && (
                   <p className="text-xs text-muted-foreground">{lf.autoNameHelp}</p>
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-lf-schedule-override"
-                      checked={lfmSimilarForm.schedule_override}
-                      onChange={(e) =>
-                        setLfmSimilarForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-lf-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {lfmSimilarForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={lfmSimilarForm.schedule_cron}
-                          onChange={(e) =>
-                            setLfmSimilarForm((prev) => ({
-                              ...prev,
-                              schedule_cron: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!lfmSimilarForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={lfmSimilarForm.enabled}
-                    onChange={(e) =>
-                      setLfmSimilarForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-lf"
-                  enabled={lfmSimilarForm.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={lfmSimilarForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setLfmSimilarForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={lfmSimilarForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setLfmSimilarForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={lfmSimilarForm.enabled}
+                  onEnabledChange={(v) => setLfmSimilarForm((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={lfmSimilarForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setLfmSimilarForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={lfmSimilarForm.expires_at}
-                  onValueChange={(v) => setLfmSimilarForm((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={lfmSimilarForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
-                    setLfmSimilarForm((prev) => ({
-                      ...prev,
-                      expires_at_delete_playlist: v,
-                    }))
+                  expiresAt={lfmSimilarForm.expires_at}
+                  onExpiresAtChange={(v) =>
+                    setLfmSimilarForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  expiresAtDeletePlaylist={lfmSimilarForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
+                    setLfmSimilarForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>
@@ -2020,7 +1908,7 @@ export function CreatePlaylistSyncDialog({
                         use_custom_playlist_name: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{sf.useCustomPlaylistName}</span>
                 </label>
@@ -2043,73 +1931,33 @@ export function CreatePlaylistSyncDialog({
                 {!setlistfmForm.use_custom_playlist_name && (
                   <p className="text-xs text-muted-foreground">{sf.autoNameHelp}</p>
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-sf-schedule-override"
-                      checked={setlistfmForm.schedule_override}
-                      onChange={(e) =>
-                        setSetlistfmForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-sf-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {setlistfmForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={setlistfmForm.schedule_cron}
-                          onChange={(e) =>
-                            setSetlistfmForm((prev) => ({
-                              ...prev,
-                              schedule_cron: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!setlistfmForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={setlistfmForm.enabled}
-                    onChange={(e) =>
-                      setSetlistfmForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-sf"
-                  enabled={setlistfmForm.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={setlistfmForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setSetlistfmForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={setlistfmForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setSetlistfmForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={setlistfmForm.enabled}
+                  onEnabledChange={(v) => setSetlistfmForm((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={setlistfmForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setSetlistfmForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={setlistfmForm.expires_at}
-                  onValueChange={(v) => setSetlistfmForm((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={setlistfmForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
-                    setSetlistfmForm((prev) => ({
-                      ...prev,
-                      expires_at_delete_playlist: v,
-                    }))
+                  expiresAt={setlistfmForm.expires_at}
+                  onExpiresAtChange={(v) =>
+                    setSetlistfmForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  expiresAtDeletePlaylist={setlistfmForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
+                    setSetlistfmForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
               </>
@@ -2128,7 +1976,7 @@ export function CreatePlaylistSyncDialog({
                               type="checkbox"
                               checked={moodPlaylistForm.moods.includes(moodName)}
                               onChange={() => handleToggleMood(moodName)}
-                              className="rounded border-gray-300"
+                              className="rounded border-input"
                             />
                             <span className="text-sm">{moodName}</span>
                           </label>
@@ -2148,7 +1996,7 @@ export function CreatePlaylistSyncDialog({
                         use_custom_playlist_name: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{mood.useCustomPlaylistName}</span>
                 </label>
@@ -2195,7 +2043,7 @@ export function CreatePlaylistSyncDialog({
                         exclude_last_run: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{mood.forceFresh}</span>
                 </label>
@@ -2209,7 +2057,7 @@ export function CreatePlaylistSyncDialog({
                         limit_by_year: e.target.checked,
                       }))
                     }
-                    className="rounded border-gray-300"
+                    className="rounded border-input"
                   />
                   <span className="text-sm">{mood.limitByYear}</span>
                 </label>
@@ -2244,70 +2092,32 @@ export function CreatePlaylistSyncDialog({
                 {moodPlaylistForm.limit_by_year && (
                   <p className="text-xs text-muted-foreground">{mood.yearRangeHelp}</p>
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-mood-schedule-override"
-                      checked={moodPlaylistForm.schedule_override}
-                      onChange={(e) =>
-                        setMoodPlaylistForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-mood-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {moodPlaylistForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={moodPlaylistForm.schedule_cron}
-                          onChange={(e) =>
-                            setMoodPlaylistForm((prev) => ({
-                              ...prev,
-                              schedule_cron: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!moodPlaylistForm.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={moodPlaylistForm.enabled}
-                    onChange={(e) =>
-                      setMoodPlaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-mood"
-                  enabled={moodPlaylistForm.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={moodPlaylistForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={moodPlaylistForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={moodPlaylistForm.enabled}
+                  onEnabledChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={moodPlaylistForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setMoodPlaylistForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={moodPlaylistForm.expires_at}
-                  onValueChange={(v) => setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={moodPlaylistForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
+                  expiresAt={moodPlaylistForm.expires_at}
+                  onExpiresAtChange={(v) =>
+                    setMoodPlaylistForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  expiresAtDeletePlaylist={moodPlaylistForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
                     setMoodPlaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
@@ -2485,66 +2295,32 @@ export function CreatePlaylistSyncDialog({
                     }
                   />
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-xm-schedule-override"
-                      checked={xmplaylistForm.schedule_override}
-                      onChange={(e) =>
-                        setXmplaylistForm((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label htmlFor="create-xm-schedule-override">{sch.overrideLabel}</Label>
-                  </div>
-                  {xmplaylistForm.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={xmplaylistForm.schedule_cron}
-                          onChange={(e) =>
-                            setXmplaylistForm((prev) => ({
-                              ...prev,
-                              schedule_cron: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                </div>
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={xmplaylistForm.enabled}
-                    onChange={(e) =>
-                      setXmplaylistForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-xm"
-                  enabled={xmplaylistForm.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={xmplaylistForm.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setXmplaylistForm((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={xmplaylistForm.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setXmplaylistForm((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={xmplaylistForm.enabled}
+                  onEnabledChange={(v) => setXmplaylistForm((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={xmplaylistForm.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setXmplaylistForm((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={xmplaylistForm.expires_at}
-                  onValueChange={(v) => setXmplaylistForm((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={xmplaylistForm.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
+                  expiresAt={xmplaylistForm.expires_at}
+                  onExpiresAtChange={(v) =>
+                    setXmplaylistForm((prev) => ({ ...prev, expires_at: v }))
+                  }
+                  expiresAtDeletePlaylist={xmplaylistForm.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
                     setXmplaylistForm((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
                 />
@@ -2685,104 +2461,58 @@ export function CreatePlaylistSyncDialog({
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="create-ext-schedule-override"
-                      checked={formData.schedule_override}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          schedule_override: e.target.checked,
-                        }))
-                      }
-                      className="rounded border-input"
-                    />
-                    <Label
-                      htmlFor="create-ext-schedule-override"
-                      className="cursor-pointer font-normal"
-                    >
-                      {sch.overrideLabel}
-                    </Label>
-                  </div>
-                  {formData.schedule_override && (
-                    <>
-                      <div className="space-y-2 rounded-lg border p-4">
-                        <Input
-                          placeholder={sch.createCronPlaceholder}
-                          value={formData.schedule_cron}
-                          onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, schedule_cron: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{sch.createCronHelp}</p>
-                    </>
-                  )}
-                  {!formData.schedule_override && (
-                    <p className="text-xs text-muted-foreground">{sch.usesGlobalDefault}</p>
-                  )}
-                </div>
-
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.enabled}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        enabled: e.target.checked,
-                      }))
-                    }
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm">{cw.enableAfterCreation}</span>
-                </label>
-
-                {isCompoundFieldVisible(
-                  "compound.artist_discovery",
-                  resolveContextForCreate({
-                    playlistType,
-                    target: formData.target,
-                  })
-                ) && (
-                  <PlaylistSyncArtistDiscoveryControl
-                    checkboxId="create-enable-artist-discovery"
-                    value={{
-                      enable_artist_discovery: formData.enable_artist_discovery,
-                      artist_discovery_max_per_run:
-                        formData.artist_discovery_max_per_run ??
-                        (formData.enable_artist_discovery ? 2 : 0),
-                    }}
-                    onChange={(next) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        enable_artist_discovery: next.enable_artist_discovery,
-                        artist_discovery_max_per_run: next.artist_discovery_max_per_run,
-                      }))
-                    }
-                  />
-                )}
-
-                <ExpirationFields
+                <CreateCommandScheduleExpiryBlock
                   idPrefix="create-ext"
-                  enabled={formData.expires_at_enabled}
-                  onEnabledChange={(v) =>
+                  scheduleOverride={formData.schedule_override}
+                  onScheduleOverrideChange={(v) =>
+                    setFormData((prev) => ({ ...prev, schedule_override: v }))
+                  }
+                  scheduleCron={formData.schedule_cron}
+                  onScheduleCronChange={(v) =>
+                    setFormData((prev) => ({ ...prev, schedule_cron: v }))
+                  }
+                  enabled={formData.enabled}
+                  onEnabledChange={(v) => setFormData((prev) => ({ ...prev, enabled: v }))}
+                  expiresAtEnabled={formData.expires_at_enabled}
+                  onExpiresAtEnabledChange={(v) =>
                     setFormData((prev) => ({
                       ...prev,
                       expires_at_enabled: v,
                       expires_at: v && !prev.expires_at ? "" : prev.expires_at,
                     }))
                   }
-                  value={formData.expires_at}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
-                  showDeletePlaylistOption={true}
-                  deletePlaylistOnExpiry={formData.expires_at_delete_playlist ?? true}
-                  onDeletePlaylistChange={(v) =>
+                  expiresAt={formData.expires_at}
+                  onExpiresAtChange={(v) => setFormData((prev) => ({ ...prev, expires_at: v }))}
+                  expiresAtDeletePlaylist={formData.expires_at_delete_playlist ?? true}
+                  onExpiresAtDeletePlaylistChange={(v) =>
                     setFormData((prev) => ({ ...prev, expires_at_delete_playlist: v }))
                   }
-                />
+                >
+                  {isCompoundFieldVisible(
+                    "compound.artist_discovery",
+                    resolveContextForCreate({
+                      playlistType,
+                      target: formData.target,
+                    })
+                  ) && (
+                    <PlaylistSyncArtistDiscoveryControl
+                      checkboxId="create-enable-artist-discovery"
+                      value={{
+                        enable_artist_discovery: formData.enable_artist_discovery,
+                        artist_discovery_max_per_run:
+                          formData.artist_discovery_max_per_run ??
+                          (formData.enable_artist_discovery ? 2 : 0),
+                      }}
+                      onChange={(next) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          enable_artist_discovery: next.enable_artist_discovery,
+                          artist_discovery_max_per_run: next.artist_discovery_max_per_run,
+                        }))
+                      }
+                    />
+                  )}
+                </CreateCommandScheduleExpiryBlock>
               </>
             )}
           </div>

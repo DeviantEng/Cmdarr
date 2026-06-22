@@ -29,7 +29,9 @@ from utils.text_normalizer import normalize_text
 from .command_base import BaseCommand
 from .playlist_generator_helpers import (
     compute_setlistfm_playlist_title,
+    delete_playlist_on_target,
     load_lidarr_artist_norm_mbid_index_sync,
+    persist_playlist_identity,
     validate_artists_against_cache,
 )
 
@@ -57,53 +59,6 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
         if target == "jellyfin":
             return JellyfinClient(self.config), "Jellyfin"
         return self.plex_client, "Plex"
-
-    def _delete_playlist_by_name(
-        self, target_client: PlexClient | JellyfinClient, playlist_title: str
-    ) -> None:
-        try:
-            pl = target_client.find_playlist_by_name(playlist_title)
-            if not pl:
-                return
-            if isinstance(target_client, PlexClient):
-                rk = pl.get("ratingKey")
-                if rk:
-                    target_client.delete_playlist(rk)
-                    self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
-            else:
-                pid = pl.get("Id")
-                if pid:
-                    target_client.delete_playlist(pid)
-                    self.logger.info(f"Deleted old playlist '{playlist_title}' (name changed)")
-        except Exception as e:
-            self.logger.warning(f"Could not delete old playlist '{playlist_title}': {e}")
-
-    def _persist_after_success(self, playlist_title: str) -> None:
-        try:
-            from database.config_models import CommandConfig
-            from database.database import get_database_manager
-
-            cmd_name = self.config_json.get("command_name", "")
-            if not cmd_name or not cmd_name.startswith("setlistfm_"):
-                return
-            db = get_database_manager()
-            session = db.get_config_session_sync()
-            try:
-                cmd = (
-                    session.query(CommandConfig)
-                    .filter(CommandConfig.command_name == cmd_name)
-                    .first()
-                )
-                if cmd:
-                    cfg = dict(cmd.config_json or {})
-                    cfg["last_playlist_title"] = playlist_title
-                    cmd.config_json = cfg
-                    cmd.display_name = playlist_title
-                    session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            self.logger.warning(f"Could not persist after success: {e}")
 
     async def _resolve_songs_for_artist(
         self,
@@ -228,10 +183,19 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     len(lidarr_mbids_by_norm),
                 )
 
-            playlist_title = compute_setlistfm_playlist_title(config)
+            playlist_title = compute_setlistfm_playlist_title(
+                config, artist_display_names=[line for line, _ in ordered_valid_lines]
+            )
             last_playlist_title = config.get("last_playlist_title")
-            if last_playlist_title and last_playlist_title != playlist_title:
-                self._delete_playlist_by_name(target_client, last_playlist_title)
+            last_playlist_id = config.get("last_playlist_id")
+            title_changed = last_playlist_title and last_playlist_title != playlist_title
+            if title_changed:
+                delete_playlist_on_target(
+                    target_client,
+                    playlist_id=str(last_playlist_id) if last_playlist_id else None,
+                    playlist_title=last_playlist_title,
+                    logger=self.logger,
+                )
 
             tracks_for_playlist: list[dict[str, Any]] = []
             artists_processed = 0
@@ -288,6 +252,7 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                 summary=summary,
                 library_cache_manager=self.library_cache_manager,
                 library_key=library_key,
+                existing_playlist_id=None if title_changed else last_playlist_id,
             )
 
             success = result.get("success", False)
@@ -310,7 +275,13 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     f"Created playlist '{playlist_title}': {found}/{total} tracks from "
                     f"{artists_processed} artists"
                 )
-                self._persist_after_success(playlist_title)
+                persist_playlist_identity(
+                    self.config_json.get("command_name", ""),
+                    "setlistfm_",
+                    playlist_title,
+                    result.get("playlist_id"),
+                    self.logger,
+                )
             return success
 
         except Exception as e:

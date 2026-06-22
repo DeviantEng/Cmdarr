@@ -1,5 +1,6 @@
 import type {
   ArtistEventsStats,
+  EventsProviderInfo,
   CommandConfig,
   CommandExecution,
   CommandUpdateRequest,
@@ -8,7 +9,9 @@ import type {
   ConfigUpdateRequest,
   ConnectivityTestResult,
   StatusInfo,
+  MigrationStatus,
   NrdMetrics,
+  NewReleaseIgnoredArtist,
   NewReleasesResponse,
   PendingReleasesResponse,
   LidarrArtistSuggestion,
@@ -110,8 +113,12 @@ class ApiClient {
     });
   }
 
-  async deleteCommand(commandName: string): Promise<{ message: string }> {
-    return await this.request(`/api/commands/${commandName}`, {
+  async deleteCommand(
+    commandName: string,
+    options?: { deletePlaylist?: boolean }
+  ): Promise<{ message: string }> {
+    const params = options?.deletePlaylist === true ? "?delete_playlist=true" : "";
+    return await this.request(`/api/commands/${commandName}${params}`, {
       method: "DELETE",
     });
   }
@@ -247,6 +254,21 @@ class ApiClient {
     return await this.request("/api/status/nrd-metrics");
   }
 
+  async getMigrationStatus(): Promise<MigrationStatus> {
+    return await this.request("/api/status/migrations");
+  }
+
+  async runDbMigrationsManual(): Promise<{
+    success: boolean;
+    ran: boolean;
+    reason: string;
+    migrations_run: number;
+    migration_names: string[];
+    failed_migration?: string;
+  }> {
+    return await this.request("/api/status/migrations/run", { method: "POST" });
+  }
+
   async getCacheStatus(): Promise<{
     plex: LibraryCacheStatus;
     jellyfin: LibraryCacheStatus;
@@ -295,11 +317,13 @@ class ApiClient {
     status?: string;
     limit?: number;
     offset?: number;
+    release_within?: string;
   }): Promise<PendingReleasesResponse> {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set("status", params.status);
     if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
     if (params?.offset !== undefined) searchParams.set("offset", String(params.offset));
+    if (params?.release_within) searchParams.set("release_within", params.release_within);
     const query = searchParams.toString();
     return this.request<PendingReleasesResponse>(
       `/api/new-releases/pending${query ? `?${query}` : ""}`
@@ -316,6 +340,30 @@ class ApiClient {
 
   async ignoreRelease(itemId: number): Promise<{ success: boolean }> {
     return this.request(`/api/new-releases/ignore/${itemId}`, { method: "POST" });
+  }
+
+  async getIgnoredReleaseArtists(): Promise<{
+    success: boolean;
+    total: number;
+    items: NewReleaseIgnoredArtist[];
+  }> {
+    return this.request("/api/new-releases/ignored-artists");
+  }
+
+  async ignoreReleaseArtist(body: {
+    artist_mbid: string;
+    artist_name?: string;
+  }): Promise<{ success: boolean; pending_removed?: number }> {
+    return this.request("/api/new-releases/ignore-artist", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async unignoreReleaseArtist(artistMbid: string): Promise<{ success: boolean }> {
+    return this.request(`/api/new-releases/unignore-artist/${encodeURIComponent(artistMbid)}`, {
+      method: "POST",
+    });
   }
 
   async recheckRelease(itemId: number): Promise<{ success: boolean; removed?: boolean }> {
@@ -411,9 +459,9 @@ class ApiClient {
   // Artist events (live shows, festivals, etc.)
   async getEventsProviderStatus(): Promise<{
     success: boolean;
-    bandsintown: { enabled: boolean; configured: boolean };
-    songkick: { enabled: boolean; configured: boolean };
-    ticketmaster: { enabled: boolean; configured: boolean };
+    ticketmaster: EventsProviderInfo;
+    seatgeek: EventsProviderInfo;
+    deezer: EventsProviderInfo;
     any_ready: boolean;
   }> {
     return this.request("/api/events/provider-status");
@@ -421,9 +469,9 @@ class ApiClient {
 
   async getEventsSettings(): Promise<{
     success: boolean;
-    bandsintown_enabled: boolean;
-    songkick_enabled: boolean;
     ticketmaster_enabled: boolean;
+    seatgeek_enabled: boolean;
+    deezer_enabled: boolean;
     user_lat: string;
     user_lon: string;
     user_label: string;

@@ -181,7 +181,8 @@ class BaseAPIClient(ABC):
             **kwargs: Additional client-specific parameters
 
         Returns:
-            Dict with keys: success, action, total_tracks, found_tracks, message
+            Dict with keys: success, playlist_id, playlist_title, action, total_tracks,
+            found_tracks, message
         """
         raise NotImplementedError("Subclasses must implement sync_playlist")
 

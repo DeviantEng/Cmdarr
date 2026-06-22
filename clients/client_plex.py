@@ -858,6 +858,8 @@ class PlexClient(BaseAPIClient):
                     return {
                         "success": True,
                         "action": "skipped_empty",
+                        "playlist_id": None,
+                        "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
                         "message": f"Skipped creating empty playlist '{title}'",
@@ -869,15 +871,23 @@ class PlexClient(BaseAPIClient):
                     return {
                         "success": True,
                         "action": "skipped_empty",
+                        "playlist_id": None,
+                        "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
                         "message": f"Skipped creating empty playlist '{title}'",
                     }
 
             # Create/update playlist using proven method
-            success = self.create_or_update_playlist(title, found_track_keys, summary)
+            existing_playlist_id = kwargs.get("existing_playlist_id")
+            playlist_id = self.create_or_update_playlist(
+                title,
+                found_track_keys,
+                summary,
+                existing_playlist_id=existing_playlist_id,
+            )
 
-            if success:
+            if playlist_id:
                 match_rate = (tracks_found / tracks_total * 100) if tracks_total > 0 else 0
                 self.logger.info(
                     f"Successfully synced playlist '{title}': {tracks_found}/{tracks_total} tracks ({match_rate:.1f}% success rate)"
@@ -885,6 +895,8 @@ class PlexClient(BaseAPIClient):
                 return {
                     "success": True,
                     "action": "synced",
+                    "playlist_id": playlist_id,
+                    "playlist_title": title,
                     "total_tracks": tracks_total,
                     "found_tracks": tracks_found,
                     "unmatched_tracks": failed_matches,
@@ -895,6 +907,8 @@ class PlexClient(BaseAPIClient):
                 return {
                     "success": False,
                     "action": "failed",
+                    "playlist_id": None,
+                    "playlist_title": title,
                     "total_tracks": tracks_total,
                     "found_tracks": tracks_found,
                     "unmatched_tracks": failed_matches,
@@ -906,6 +920,8 @@ class PlexClient(BaseAPIClient):
             return {
                 "success": False,
                 "action": "error",
+                "playlist_id": None,
+                "playlist_title": title,
                 "total_tracks": len(tracks),
                 "found_tracks": 0,
                 "unmatched_tracks": [
@@ -1830,6 +1846,21 @@ class PlexClient(BaseAPIClient):
             self.logger.error(f"Error finding playlist by name: {e}")
             return None
 
+    def get_playlist_by_id(self, playlist_rating_key: str | int) -> dict[str, Any] | None:
+        """Fetch playlist metadata by Plex ratingKey."""
+        try:
+            result = self._get(f"/playlists/{playlist_rating_key}")
+            media_container = result.get("MediaContainer", {})
+            metadata = media_container.get("Metadata", [])
+            if metadata:
+                return metadata[0]
+            if media_container.get("ratingKey"):
+                return media_container
+            return None
+        except Exception as e:
+            self.logger.debug(f"Playlist {playlist_rating_key} not found: {e}")
+            return None
+
     def find_playlist_by_prefix(self, prefix: str):
         """Find a playlist whose title starts with prefix. Returns first match or None."""
         try:
@@ -1875,7 +1906,7 @@ class PlexClient(BaseAPIClient):
         try:
             if not track_rating_keys:
                 self.logger.warning("No tracks provided for playlist creation")
-                return False
+                return None
 
             self.logger.info(
                 f"Creating playlist '{title}' using hybrid method (1 track + add remaining)..."
@@ -1907,7 +1938,7 @@ class PlexClient(BaseAPIClient):
 
             if not created_playlist:
                 self.logger.error("Could not find created playlist")
-                return False
+                return None
 
             playlist_rating_key = created_playlist["ratingKey"]
 
@@ -1927,11 +1958,11 @@ class PlexClient(BaseAPIClient):
             self.logger.info(
                 f"Successfully created playlist '{title}' with {len(track_rating_keys)} tracks total"
             )
-            return True
+            return str(playlist_rating_key)
 
         except Exception as e:
             self.logger.error(f"Error creating playlist '{title}': {e}")
-            return False
+            return None
 
     def add_tracks_to_playlist(self, playlist_rating_key, track_rating_keys):
         """
@@ -2000,17 +2031,28 @@ class PlexClient(BaseAPIClient):
             return False
 
     def create_or_update_playlist(
-        self, title, track_rating_keys, summary="", match_prefix: str | None = None
-    ):
+        self,
+        title,
+        track_rating_keys,
+        summary="",
+        match_prefix: str | None = None,
+        existing_playlist_id: str | None = None,
+    ) -> str | None:
         """
         Create a new playlist or update an existing one.
+        Returns playlist ratingKey on success, None on failure.
+        If existing_playlist_id is set, prefer that playlist over name lookup.
         If match_prefix is set (e.g. '[Cmdarr] Daylist'), find existing by prefix instead of exact title.
         """
         try:
-            if match_prefix:
-                existing_playlist = self.find_playlist_by_prefix(match_prefix)
-            else:
-                existing_playlist = self.find_playlist_by_name(title)
+            existing_playlist = None
+            if existing_playlist_id:
+                existing_playlist = self.get_playlist_by_id(existing_playlist_id)
+            if not existing_playlist:
+                if match_prefix:
+                    existing_playlist = self.find_playlist_by_prefix(match_prefix)
+                else:
+                    existing_playlist = self.find_playlist_by_name(title)
 
             if existing_playlist:
                 self.logger.info(f"Found existing playlist '{title}', validating content...")
@@ -2025,12 +2067,12 @@ class PlexClient(BaseAPIClient):
                     self.logger.info(
                         f"Playlist '{title}' already exists with identical content, skipping recreation"
                     )
-                    return True
+                    return str(existing_playlist["ratingKey"])
                 else:
                     self.logger.info(f"Playlist '{title}' content differs, updating playlist")
                     if not self.delete_playlist(existing_playlist["ratingKey"]):
                         self.logger.error("Failed to delete existing playlist")
-                        return False
+                        return None
 
                     # Wait a moment for deletion to complete
                     time.sleep(2)
@@ -2040,7 +2082,7 @@ class PlexClient(BaseAPIClient):
 
         except Exception as e:
             self.logger.error(f"Error creating or updating playlist '{title}': {e}")
-            return False
+            return None
 
     def get_playlist_tracks(self, playlist_rating_key):
         """Get all tracks in a playlist for verification purposes."""
