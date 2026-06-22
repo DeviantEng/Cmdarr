@@ -21,6 +21,9 @@
   --color-input: oklch(91% 0 0);
   --color-ring: oklch(60% 0.23 255);
   --radius: 0.5rem;
+  --dialog-bg: oklch(100% 0 0);
+  --dialog-fg: oklch(9% 0 0);
+  --dialog-border: oklch(91% 0 0);
 }
 
 .dark {
@@ -43,6 +46,9 @@
   --color-border: oklch(28% 0.03 255);
   --color-input: oklch(24% 0.03 255);
   --color-ring: oklch(48% 0.2 255);
+  --dialog-bg: oklch(20% 0.03 255);
+  --dialog-fg: oklch(96% 0 0);
+  --dialog-border: oklch(28% 0.03 255);
 }
 
 * {

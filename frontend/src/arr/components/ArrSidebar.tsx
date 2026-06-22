@@ -84,7 +84,7 @@ export function ArrSidebar({ className }: { className?: string }) {
   return (
     <aside
       className={cn(
-        "flex h-full w-[var(--arr-sidebar-width)] shrink-0 flex-col border-r",
+        "flex h-full max-h-screen w-[var(--arr-sidebar-width)] shrink-0 flex-col border-r lg:h-screen",
         className
       )}
       style={{

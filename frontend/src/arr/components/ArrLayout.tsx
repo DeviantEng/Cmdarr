@@ -26,10 +26,10 @@ export function ArrLayout({ children }: { children: ReactNode }) {
     <ConfigSettingsProvider>
       <div
         data-ui-shell="arr"
-        className="arr-shell flex min-h-screen flex-col lg:flex-row"
+        className="arr-shell flex h-screen overflow-hidden flex-col lg:flex-row"
         style={{ background: "var(--arr-content-bg)" }}
       >
-        <div className="hidden lg:flex">
+        <div className="hidden h-screen shrink-0 lg:flex">
           <ArrSidebar />
         </div>
 
@@ -41,15 +41,17 @@ export function ArrLayout({ children }: { children: ReactNode }) {
               aria-label="Close navigation"
               onClick={() => setMobileNavOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 shadow-xl">
-              <ArrSidebar />
+            <div className="absolute inset-y-0 left-0 h-full shadow-xl">
+              <ArrSidebar className="h-full" />
             </div>
           </div>
         ) : null}
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ArrHeader onOpenSidebar={() => setMobileNavOpen(true)} />
-          <main className={cn("min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6")}>{children}</main>
+          <main className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6")}>
+            {children}
+          </main>
         </div>
       </div>
     </ConfigSettingsProvider>
