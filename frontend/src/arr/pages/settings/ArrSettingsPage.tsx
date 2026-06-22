@@ -9,12 +9,12 @@ import {
   ConfigSettingsToolbar,
 } from "@/components/config/ConfigSettingsFields";
 import { getConfigCategoryGroup } from "@/lib/config-categories";
-import { useConfigSettings } from "@/hooks/useConfigSettings";
+import { useArrConfigSettings } from "@/hooks/useConfigSettings";
 
 export function ArrSettingsPage() {
   const { section } = useParams<{ section: string }>();
   const group = section ? getConfigCategoryGroup(section) : undefined;
-  const controller = useConfigSettings();
+  const controller = useArrConfigSettings(group?.categories ?? []);
 
   if (!section || !group) {
     return <Navigate to="/settings/application" replace />;
@@ -36,12 +36,18 @@ export function ArrSettingsPage() {
         title={group.name}
         description={`Configure ${group.name.toLowerCase()} settings.`}
       />
-      {section === "application" ? <ConfigApiKeyCard controller={controller} /> : null}
-      <ConfigSettingsErrorBanner controller={controller} />
+      {section === "application" ? (
+        <ConfigApiKeyCard controller={controller} variant="arr" />
+      ) : null}
       <div className="mb-4">
-        <ConfigSettingsToolbar controller={controller} />
+        <ConfigSettingsErrorBanner controller={controller} />
       </div>
-      <ConfigSettingsList controller={controller} groupSettings={groupSettings} useArrPanel />
+      <div className="arr-panel arr-settings-panel">
+        <div className="arr-settings-toolbar px-4 py-3">
+          <ConfigSettingsToolbar controller={controller} />
+        </div>
+        <ConfigSettingsList controller={controller} groupSettings={groupSettings} useArrPanel />
+      </div>
       <ConfigConnectivityDialog controller={controller} />
     </div>
   );

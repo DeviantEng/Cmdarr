@@ -84,11 +84,18 @@ export function ConfigSettingsToolbar({ controller }: { controller: ConfigSettin
   );
 }
 
-export function ConfigApiKeyCard({ controller }: { controller: ConfigSettingsController }) {
+export function ConfigApiKeyCard({
+  controller,
+  variant = "legacy",
+}: {
+  controller: ConfigSettingsController;
+  variant?: "legacy" | "arr";
+}) {
   const { apiKeyGenerated, generatingApiKey, handleGenerateApiKey } = controller;
+  const isArr = variant === "arr";
 
   return (
-    <Card className="p-4">
+    <Card className={cn(isArr ? "arr-panel arr-settings-api-key" : "p-4")}>
       <div className="space-y-2">
         <Label className="text-sm font-medium">API Key</Label>
         <p className="text-sm text-muted-foreground">
@@ -318,6 +325,38 @@ export function ConfigSettingsList({
       >
         No settings found in this category
       </div>
+    );
+  }
+
+  if (useArrPanel) {
+    return (
+      <fieldset className="arr-settings-fieldset">
+        {groupSettings.map((setting) => (
+          <div key={setting.key} className="arr-settings-row">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Label htmlFor={setting.key} className="arr-settings-label">
+                  {setting.key}
+                </Label>
+                {setting.is_required ? (
+                  <Badge variant="destructive" className="text-xs">
+                    Required
+                  </Badge>
+                ) : null}
+                {setting.is_sensitive ? (
+                  <Badge variant="secondary" className="text-xs">
+                    Sensitive
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="arr-settings-help">
+                {setting.description || "No description available"}
+              </p>
+            </div>
+            <div className="arr-settings-control">{renderSettingInput(setting)}</div>
+          </div>
+        ))}
+      </fieldset>
     );
   }
 

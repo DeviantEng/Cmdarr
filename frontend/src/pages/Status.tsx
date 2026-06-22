@@ -35,7 +35,34 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
-export function StatusPage() {
+export type StatusSection =
+  | "health"
+  | "system-info"
+  | "migrations"
+  | "artist-events"
+  | "library-cache"
+  | "new-releases"
+  | "api-endpoints";
+
+const ALL_STATUS_SECTIONS: StatusSection[] = [
+  "health",
+  "system-info",
+  "migrations",
+  "artist-events",
+  "library-cache",
+  "new-releases",
+  "api-endpoints",
+];
+
+type StatusPageProps = {
+  sections?: StatusSection[];
+  showPageHeader?: boolean;
+};
+
+export function StatusPage({
+  sections = ALL_STATUS_SECTIONS,
+  showPageHeader = true,
+}: StatusPageProps) {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [health, setHealth] = useState<{
     status: string;
@@ -65,12 +92,14 @@ export function StatusPage() {
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const showSection = (section: StatusSection) => sections.includes(section);
+
   const loadStatus = async () => {
     setError(null);
     try {
       const [bundle, healthData, cacheData, nrdData, migData] = await Promise.all([
         api.getStatus(),
-        api.healthCheck(),
+        api.healthCheck().catch(() => null),
         api.getCacheStatus().catch(() => null),
         api.getNrdMetrics().catch(() => null),
         api.getMigrationStatus().catch(() => null),
@@ -224,10 +253,12 @@ export function StatusPage() {
   if (loading) {
     return (
       <div>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Status</h1>
-          <p className="mt-2 text-muted-foreground">System status and health information</p>
-        </div>
+        {showPageHeader ? (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold">Status</h1>
+            <p className="mt-2 text-muted-foreground">System status and health information</p>
+          </div>
+        ) : null}
         <div className="text-center text-muted-foreground">Loading status...</div>
       </div>
     );
@@ -237,11 +268,12 @@ export function StatusPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Status</h1>
-        <p className="mt-2 text-muted-foreground">System status and health information</p>
-      </div>
+      {showPageHeader ? (
+        <div>
+          <h1 className="text-3xl font-bold">Status</h1>
+          <p className="mt-2 text-muted-foreground">System status and health information</p>
+        </div>
+      ) : null}
 
       {error && (
         <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -258,6 +290,7 @@ export function StatusPage() {
       )}
 
       {/* Overall Health */}
+      {showSection("health") ? (
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -287,9 +320,10 @@ export function StatusPage() {
           </p>
         </CardContent>
       </Card>
+      ) : null}
 
       {/* System Information */}
-      {status && (
+      {showSection("system-info") && status && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -364,7 +398,7 @@ export function StatusPage() {
         </div>
       )}
 
-      {migrationStatus?.dev_manual_available && (
+      {showSection("migrations") && migrationStatus?.dev_manual_available && (
         <Card>
           <CardHeader className="space-y-2 py-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -435,7 +469,7 @@ export function StatusPage() {
         </Card>
       )}
 
-      {artistEventsStats && (
+      {showSection("artist-events") && artistEventsStats && (
         <Card>
           <CardHeader className="space-y-2 py-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -506,7 +540,7 @@ export function StatusPage() {
       )}
 
       {/* Library Cache */}
-      {cacheStatus && (
+      {showSection("library-cache") && cacheStatus && (
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -612,7 +646,7 @@ export function StatusPage() {
         </Card>
       )}
 
-      {/* New Releases */}
+      {showSection("new-releases") ? (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -665,7 +699,10 @@ export function StatusPage() {
           </Button>
         </CardContent>
       </Card>
+      ) : null}
 
+      {showSection("new-releases") ? (
+      <>
       {/* Dismissed Dialog */}
       <Dialog open={dismissedOpen} onOpenChange={setDismissedOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -782,7 +819,10 @@ export function StatusPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </>
+      ) : null}
 
+      {showSection("artist-events") ? (
       <Dialog open={confirmInvalidateEventsOpen} onOpenChange={setConfirmInvalidateEventsOpen}>
         <DialogContent>
           <DialogHeader>
@@ -811,8 +851,9 @@ export function StatusPage() {
           </div>
         </DialogContent>
       </Dialog>
+      ) : null}
 
-      {/* API Endpoints */}
+      {showSection("api-endpoints") ? (
       <Card>
         <CardHeader>
           <CardTitle>API Endpoints</CardTitle>
@@ -850,6 +891,7 @@ export function StatusPage() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
     </div>
   );
 }

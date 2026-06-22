@@ -35,7 +35,6 @@ export function ArrHeader({ onOpenSidebar }: ArrHeaderProps) {
         </Button>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{title}</p>
-          <p className="hidden text-xs text-muted-foreground sm:block">Cmdarr preview · v0.3.17</p>
         </div>
       </div>
 

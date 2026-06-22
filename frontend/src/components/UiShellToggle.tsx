@@ -18,7 +18,7 @@ export function UiShellToggle({ className, compact = false }: UiShellToggleProps
       className={cn(compact ? "h-9 gap-1.5 px-2.5" : "h-10 gap-2", className)}
       onClick={toggleShell}
       title={
-        isArr ? "Switch to classic UI" : "Preview modern *arr UI (work in progress for v0.3.17)"
+        isArr ? "Switch to classic UI" : "Preview modern *arr UI (work in progress)"
       }
     >
       {isArr ? (

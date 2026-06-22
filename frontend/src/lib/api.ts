@@ -219,6 +219,10 @@ class ApiClient {
     return await this.request("/health");
   }
 
+  async getVersion(): Promise<{ version: string }> {
+    return await this.request("/api/version");
+  }
+
   // Auth API
   async getAuthStatus(): Promise<{
     setup_required: boolean;

@@ -2,6 +2,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { arrNavSections, arrPrimaryNav, type ArrNavLink, type ArrNavSection } from "@/arr/arr-nav";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { cn } from "@/lib/utils";
 
 function SidebarLink({ item, nested = false }: { item: ArrNavLink; nested?: boolean }) {
@@ -78,6 +79,8 @@ function ArrBrandMark() {
 }
 
 export function ArrSidebar({ className }: { className?: string }) {
+  const version = useAppVersion();
+
   return (
     <aside
       className={cn(
@@ -101,7 +104,7 @@ export function ArrSidebar({ className }: { className?: string }) {
           >
             Cmdarr
           </div>
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Modern UI</div>
+          <div className="truncate text-[10px] text-muted-foreground">Music automation</div>
         </div>
       </div>
 
@@ -114,6 +117,13 @@ export function ArrSidebar({ className }: { className?: string }) {
           <CollapsibleNavSection key={section.id} section={section} />
         ))}
       </nav>
+
+      <div
+        className="border-t px-3 py-2 text-[11px] text-muted-foreground"
+        style={{ borderColor: "var(--arr-sidebar-border)" }}
+      >
+        {version ? `v${version}` : "Loading version…"}
+      </div>
     </aside>
   );
 }

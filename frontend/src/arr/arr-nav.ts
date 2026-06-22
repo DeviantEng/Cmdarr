@@ -10,6 +10,8 @@ import {
   Settings2,
   Timer,
   Zap,
+  BarChart3,
+  Database,
 } from "lucide-react";
 import { configCategoryGroups } from "@/lib/config-categories";
 
@@ -54,6 +56,9 @@ export const arrSettingsNav: ArrNavLink[] = configCategoryGroups.map((group) => 
 
 export const arrSystemNav: ArrNavLink[] = [
   { path: "/system/status", label: "Status", icon: Gauge },
+  { path: "/system/library-cache", label: "Library Cache", icon: Database },
+  { path: "/system/artist-events", label: "Artist Events", icon: CalendarDays },
+  { path: "/system/new-releases", label: "New Releases", icon: BarChart3 },
 ];
 
 export const arrNavSections: ArrNavSection[] = [
