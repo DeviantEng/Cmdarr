@@ -1,0 +1,77 @@
+/* Cmdarr modern *arr UI tokens — scoped to [data-ui-shell="arr"] */
+
+[data-ui-shell="arr"] {
+  --arr-sidebar-width: 14.5rem;
+  --arr-header-height: 3.25rem;
+  --arr-accent: oklch(58% 0.14 195);
+  --arr-accent-foreground: oklch(98% 0 0);
+  --arr-sidebar-bg: oklch(94% 0.01 260);
+  --arr-sidebar-border: oklch(88% 0.01 260);
+  --arr-sidebar-text: oklch(35% 0.02 260);
+  --arr-sidebar-text-muted: oklch(50% 0.02 260);
+  --arr-sidebar-active-bg: oklch(100% 0 0);
+  --arr-sidebar-active-text: oklch(25% 0.03 195);
+  --arr-content-bg: oklch(97% 0.005 260);
+  --arr-header-bg: oklch(100% 0 0);
+  --arr-header-border: oklch(90% 0.01 260);
+  --color-primary: var(--arr-accent);
+  --color-primary-foreground: var(--arr-accent-foreground);
+  --color-background: var(--arr-content-bg);
+  --color-card: oklch(100% 0 0);
+  --radius: 0.375rem;
+}
+
+.dark [data-ui-shell="arr"] {
+  --arr-sidebar-bg: oklch(20% 0.02 260);
+  --arr-sidebar-border: oklch(26% 0.02 260);
+  --arr-sidebar-text: oklch(88% 0 0);
+  --arr-sidebar-text-muted: oklch(62% 0.02 260);
+  --arr-sidebar-active-bg: oklch(26% 0.04 195);
+  --arr-sidebar-active-text: oklch(92% 0.04 195);
+  --arr-content-bg: oklch(16% 0.02 260);
+  --arr-header-bg: oklch(18% 0.02 260);
+  --arr-header-border: oklch(26% 0.02 260);
+  --arr-accent: oklch(62% 0.14 195);
+  --color-card: oklch(19% 0.02 260);
+  --color-background: var(--arr-content-bg);
+}
+
+[data-ui-shell="arr"] .arr-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--arr-sidebar-text-muted);
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+[data-ui-shell="arr"] .arr-sidebar-link:hover {
+  background: color-mix(in oklch, var(--arr-sidebar-active-bg) 70%, transparent);
+  color: var(--arr-sidebar-text);
+}
+
+[data-ui-shell="arr"] .arr-sidebar-link[aria-current="page"] {
+  background: var(--arr-sidebar-active-bg);
+  color: var(--arr-sidebar-active-text);
+  box-shadow: inset 3px 0 0 var(--arr-accent);
+}
+
+[data-ui-shell="arr"] .arr-section-label {
+  padding: 0.75rem 0.625rem 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--arr-sidebar-text-muted);
+}
+
+[data-ui-shell="arr"] .arr-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-card);
+}
