@@ -2,6 +2,8 @@
 
 > *Running commands, hoping for exit code 0*
 
+[![Discord](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FSfD8GVhMzN%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/SfD8GVhMzN)
+
 A modular music automation platform that bridges services for your self-hosted media setup. Cmdarr connects Lidarr to Last.fm, MusicBrainz, ListenBrainz, Plex, and Jellyfin to discover, organize, and enhance your music library with intelligent automation.
 
 ## What Cmdarr Does
