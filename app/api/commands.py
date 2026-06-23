@@ -346,32 +346,6 @@ async def update_command(
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
             prev_config_snapshot = dict(command.config_json or {})
-            # Validate Spotify credentials and API access when switching NRD to Spotify source
-            if command_name == "new_releases_discovery":
-                from utils.nrd_release_source import normalize_nrd_source
-
-                src = normalize_nrd_source(request.config_json.get("new_releases_source"))
-                if src == "spotify":
-                    from clients.client_spotify import SpotifyClient
-                    from commands.config_adapter import ConfigAdapter
-
-                    config = ConfigAdapter()
-                    if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="Spotify credentials must be set in Config → Music Sources before using Spotify as the release source.",
-                        )
-                    # Verify API actually works (e.g. not 403 Premium required)
-                    client = SpotifyClient(config)
-                    try:
-                        connected = await client.test_connection()
-                        if not connected:
-                            raise HTTPException(
-                                status_code=400,
-                                detail="Spotify API requires Premium for Development Mode. Use Deezer as the release source instead.",
-                            )
-                    finally:
-                        await client.close()
             command.config_json = request.config_json
             # Playlist generators: keep display_name in sync with playlist title on save; delete prior
             # playlist on Plex/Jellyfin when title or target changes so orphans are not left behind.
@@ -2328,13 +2302,16 @@ async def get_new_releases_sources():
                 "id": "deezer",
                 "name": "Deezer",
                 "configured": True,
-                "config_help": "No account required—uses public data",
+                "config_help": "Uses open API",
             },
             {
-                "id": "spotify_scraper",
+                "id": "spotify",
                 "name": "Spotify",
                 "configured": scraper_ok,
-                "config_help": "Public catalog via scraper; no account required",
+                "config_help": (
+                    "Defaults to spotifyscraper unless valid client creds are configured, "
+                    "in which case the official API is used"
+                ),
             },
         ]
 
@@ -2349,18 +2326,16 @@ async def get_new_releases_sources():
 async def get_playlist_sync_sources():
     """Get available playlist sync sources and their configuration status"""
     try:
-        from commands.config_adapter import Config
-
-        config = Config()
-
         sources = [
             {
                 "id": "spotify",
                 "name": "Spotify",
                 "requires_url": True,
                 "example_url": "https://open.spotify.com/playlist/4NDXWHwYWjFmgVPkNy4YlF",
-                "configured": bool(config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET),
-                "config_help": "For public playlists; optional—scraper used when not configured",
+                "configured": True,
+                "config_help": (
+                    "Optional client creds enable official API; otherwise spotifyscraper is used"
+                ),
             },
             {
                 "id": "deezer",

@@ -324,7 +324,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "spotify",
-                "description": "Spotify API Client ID (public playlists, New Releases)",
+                "description": "Spotify API Client ID (optional; enables official API for playlists and NRD)",
                 "is_sensitive": True,
             },
             {
@@ -332,7 +332,7 @@ class ConfigService:
                 "default_value": "",
                 "data_type": "string",
                 "category": "spotify",
-                "description": "Spotify API Client Secret (public playlists, New Releases)",
+                "description": "Spotify API Client Secret (optional; spotifyscraper used when not set or API unavailable)",
                 "is_sensitive": True,
             },
             {

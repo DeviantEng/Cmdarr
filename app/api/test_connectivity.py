@@ -395,42 +395,28 @@ async def _test_musicbrainz() -> ConnectivityTestResult:
 
 
 async def _test_spotify() -> ConnectivityTestResult:
-    """Test Spotify connectivity"""
+    """Test Spotify connectivity (official API when configured, scraper as fallback)."""
     try:
-        # Check if Spotify is configured
-        spotify_client_id = config_service.get("SPOTIFY_CLIENT_ID")
-        spotify_client_secret = config_service.get("SPOTIFY_CLIENT_SECRET")
-
-        if not spotify_client_id or not spotify_client_secret:
-            return ConnectivityTestResult(
-                service="Spotify",
-                success=False,
-                message="Not configured",
-                error="Spotify Client ID or Client Secret not set",
-                status="warning",
-            )
-
-        # Test connection
         from clients.client_spotify import SpotifyClient
 
         config = ConfigAdapter()
 
         async with SpotifyClient(config) as client:
-            # Use the existing test_connection method
-            success = await client.test_connection()
+            detail = await client.test_connection_detail()
 
+        success = detail.get("success", False)
+        message = detail.get("message", "Connection failed")
         if success:
             return ConnectivityTestResult(
-                service="Spotify", success=True, message="Connected successfully", status="success"
+                service="Spotify", success=True, message=message, status="success"
             )
-        else:
-            return ConnectivityTestResult(
-                service="Spotify",
-                success=False,
-                message="Connection failed",
-                error="Unable to authenticate with Spotify API",
-                status="error",
-            )
+        return ConnectivityTestResult(
+            service="Spotify",
+            success=False,
+            message=message,
+            error=message,
+            status="error",
+        )
 
     except Exception as e:
         get_test_connectivity_logger().error(f"Spotify test failed: {e}")

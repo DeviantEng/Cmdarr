@@ -35,7 +35,7 @@ from database.config_models import (
 )
 from database.database import get_database_manager
 from utils.nrd_release_source import (
-    enrich_scraper_nrd_album,
+    enrich_nrd_album_if_needed,
     normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
@@ -167,12 +167,6 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 selected_types = self._get_album_types()
 
             source_provider = self._get_new_releases_source()
-            if normalize_nrd_source(source_provider) == "spotify":
-                if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-                    self.logger.error(
-                        "Spotify credentials not configured (new_releases_source=spotify)"
-                    )
-                    return False
             if not config.LIDARR_API_KEY or not config.LIDARR_URL:
                 self.logger.error("Lidarr not configured")
                 return False
@@ -316,12 +310,10 @@ class NewReleasesDiscoveryCommand(BaseCommand):
 
                                 had_pending = False
                                 candidates = []
-                                scraper_source = (
-                                    normalize_nrd_source(source_provider) == "spotify_scraper"
-                                )
+                                via_scraper = albums_result.get("via") == "scraper"
                                 for album in albums_result["albums"]:
                                     if (
-                                        not scraper_source
+                                        not via_scraper
                                         and album.get("primary_artist_id") != artist_id
                                     ):
                                         continue
@@ -336,7 +328,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                     if _title_matches_mb(album.get("name", ""), mb_titles):
                                         continue
 
-                                    album = await enrich_scraper_nrd_album(
+                                    album = await enrich_nrd_album_if_needed(
                                         release_client, album, source_provider
                                     )
                                     if album.get("primary_artist_id") != artist_id:
@@ -455,7 +447,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         return {"album"}
 
     def _get_new_releases_source(self) -> str:
-        """Get new releases source: deezer, spotify_scraper, or legacy spotify (default deezer)."""
+        """Get new releases source: deezer or spotify (default deezer)."""
         cfg = getattr(self, "config_json", None) or {}
         return normalize_nrd_source(cfg.get("new_releases_source"))
 

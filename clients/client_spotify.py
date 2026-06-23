@@ -427,7 +427,7 @@ def probe_scraper_discography(artist_id: str = "4Z8W4fKeB5YxbusRsdQVPb") -> bool
 class SpotifyClient(BaseAPIClient):
     """Client for Spotify API operations"""
 
-    def __init__(self, config, discography_source: str = "api"):
+    def __init__(self, config):
         super().__init__(
             config=config,
             client_name="spotify",
@@ -436,9 +436,6 @@ class SpotifyClient(BaseAPIClient):
             headers={},
         )
 
-        self.discography_source = (
-            discography_source if discography_source in ("api", "scraper") else "api"
-        )
         self.client_id = config.SPOTIFY_CLIENT_ID
         self.client_secret = config.SPOTIFY_CLIENT_SECRET
         self.access_token = None
@@ -525,9 +522,40 @@ class SpotifyClient(BaseAPIClient):
         self._update_api_cache(usable)
         if not usable:
             self.logger.info(
-                "Spotify API cached as unusable (403 Premium required) - using scraper for playlist sync"
+                "Spotify API cached as unusable (403 Premium required) - using scraper"
             )
         return usable
+
+    async def _can_try_api(self) -> bool:
+        """True when credentials are present and API is not cached as unusable."""
+        if not self._has_credentials():
+            return False
+        if self._should_skip_api():
+            return False
+        if self._get_api_usable_cached() is None:
+            return await self._ensure_api_evaluated()
+        return True
+
+    async def _api_or_scraper(
+        self,
+        operation: str,
+        api_fn,
+        scraper_fn,
+        *,
+        tag_via: bool = False,
+    ) -> dict[str, Any]:
+        """Try official API when usable; fall back to spotifyscraper on failure."""
+        if await self._can_try_api():
+            api_result = await api_fn()
+            if api_result.get("success"):
+                if tag_via:
+                    api_result["via"] = "api"
+                return api_result
+            self.logger.info(f"Spotify API unavailable for {operation} — using scraper")
+        scraper_result = await scraper_fn()
+        if tag_via and scraper_result.get("success"):
+            scraper_result["via"] = "scraper"
+        return scraper_result
 
     async def _get_playlist_via_scraper(self, url: str) -> dict[str, Any]:
         """Run sync scraper in executor."""
@@ -538,16 +566,46 @@ class SpotifyClient(BaseAPIClient):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
+    async def _enrich_nrd_album_api(self, album_id: str, fallback_artist_id: str | None) -> dict[str, Any]:
+        result = await self._get(f"/albums/{album_id}")
+        if not result:
+            return {"success": False, "album": None}
+        artists = result.get("artists", [])
+        primary_artist_id = fallback_artist_id
+        if artists and isinstance(artists[0], dict):
+            primary_artist_id = artists[0].get("id") or primary_artist_id
+        external_url = result.get("external_urls", {}).get("spotify", "")
+        return {
+            "success": True,
+            "album": {
+                "id": result.get("id", album_id),
+                "name": result.get("name", ""),
+                "release_date": result.get("release_date", ""),
+                "release_date_precision": result.get("release_date_precision", "year"),
+                "album_type": (result.get("album_type") or "album").lower(),
+                "total_tracks": int(result.get("total_tracks") or 0),
+                "primary_artist_id": primary_artist_id,
+                "external_url": external_url,
+                "spotify_url": external_url,
+            },
+        }
+
     async def enrich_nrd_album(self, album: dict[str, Any]) -> dict[str, Any]:
-        """Fetch full album metadata for a discography candidate (scraper mode only)."""
-        if self.discography_source != "scraper":
-            return album
+        """Fetch full album metadata for a discography candidate."""
         album_id = album.get("id")
         if not album_id:
             return album
-        result = await self._run_scraper(
-            _scraper_enrich_nrd_album, album_id, album.get("primary_artist_id")
-        )
+        fallback_artist_id = album.get("primary_artist_id")
+
+        async def api_fn():
+            return await self._enrich_nrd_album_api(album_id, fallback_artist_id)
+
+        async def scraper_fn():
+            return await self._run_scraper(
+                _scraper_enrich_nrd_album, album_id, fallback_artist_id
+            )
+
+        result = await self._api_or_scraper("enrich_nrd_album", api_fn, scraper_fn)
         if result.get("success") and result.get("album"):
             return result["album"]
         return album
@@ -823,10 +881,7 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error fetching playlist tracks: {e}")
             return {"success": False, "error": f"Failed to fetch tracks: {str(e)}"}
 
-    async def get_album(self, album_id: str) -> dict[str, Any]:
-        """Get album by ID. Returns artist_id, artist_name, title, album_url, etc."""
-        if self.discography_source == "scraper":
-            return await self._run_scraper(_scraper_get_album, album_id)
+    async def _get_album_api(self, album_id: str) -> dict[str, Any]:
         try:
             result = await self._get(f"/albums/{album_id}")
             if not result:
@@ -850,13 +905,15 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error fetching album {album_id}: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_artist(self, artist_id: str) -> dict[str, Any]:
-        """
-        Get artist by Spotify ID (for name validation when using Lidarr's Spotify link).
-        Returns dict with id, name, or error.
-        """
-        if self.discography_source == "scraper":
-            return await self._run_scraper(_scraper_get_artist, artist_id)
+    async def get_album(self, album_id: str) -> dict[str, Any]:
+        """Get album by ID. Returns artist_id, artist_name, title, album_url, etc."""
+        return await self._api_or_scraper(
+            "get_album",
+            lambda: self._get_album_api(album_id),
+            lambda: self._run_scraper(_scraper_get_album, album_id),
+        )
+
+    async def _get_artist_api(self, artist_id: str) -> dict[str, Any]:
         try:
             result = await self._get(f"/artists/{artist_id}")
             if not result:
@@ -870,13 +927,18 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error fetching artist {artist_id}: {e}")
             return {"success": False, "error": str(e), "name": None}
 
-    async def search_artists(self, name: str, limit: int = 5) -> dict[str, Any]:
+    async def get_artist(self, artist_id: str) -> dict[str, Any]:
         """
-        Search for artists by name on Spotify.
-        Feb 2026: search limit max 10 per request; paginate if more needed.
+        Get artist by Spotify ID (for name validation when using Lidarr's Spotify link).
+        Returns dict with id, name, or error.
         """
-        if self.discography_source == "scraper":
-            return await self._run_scraper(_scraper_search_artists, name, limit)
+        return await self._api_or_scraper(
+            "get_artist",
+            lambda: self._get_artist_api(artist_id),
+            lambda: self._run_scraper(_scraper_get_artist, artist_id),
+        )
+
+    async def _search_artists_api(self, name: str, limit: int) -> dict[str, Any]:
         try:
             page_limit = min(limit, 10)
             all_artists = []
@@ -923,63 +985,31 @@ class SpotifyClient(BaseAPIClient):
             self.logger.error(f"Error searching for artist '{name}': {e}")
             return {"success": False, "error": str(e), "artists": []}
 
-    def _get_artist_albums_cache_key(self, artist_id: str) -> str:
-        """Generate cache key for artist albums (v2 includes primary_artist_id)"""
-        if self.discography_source == "scraper":
+    async def search_artists(self, name: str, limit: int = 5) -> dict[str, Any]:
+        """
+        Search for artists by name on Spotify.
+        Feb 2026: search limit max 10 per request; paginate if more needed.
+        """
+        return await self._api_or_scraper(
+            "search_artists",
+            lambda: self._search_artists_api(name, limit),
+            lambda: self._run_scraper(_scraper_search_artists, name, limit),
+        )
+
+    def _get_artist_albums_cache_key(self, artist_id: str, via: str) -> str:
+        """Generate cache key for artist albums (separate keys per data source)."""
+        if via == "scraper":
             return f"spotify_scraper_artist_albums_v1:{artist_id}"
         return f"spotify_artist_albums_v2:{artist_id}"
 
-    async def get_artist_albums(
+    async def _get_artist_albums_api(
         self,
         artist_id: str,
-        limit: int = 50,
-        include_groups: str = "album,single,compilation,appears_on",
-        fetch_all: bool = False,
+        limit: int,
+        include_groups: str,
+        fetch_all: bool,
     ) -> dict[str, Any]:
-        """
-        Get albums for an artist from Spotify.
-
-        Args:
-            artist_id: Spotify artist ID
-            limit: Maximum albums per request (max 50)
-            include_groups: Album types - album, single, appears_on, compilation
-            fetch_all: If True, paginate to get all albums (no limit)
-
-        Returns:
-            Dict with success, albums list (id, name, release_date, total_tracks, etc.) or error info
-        """
-        if self.discography_source == "scraper":
-            cache_key = self._get_artist_albums_cache_key(artist_id)
-            if self.cache_enabled and self.cache and fetch_all:
-                cached = self.cache.get(cache_key, "spotify")
-                if cached is not None:
-                    self.logger.debug(f"Cache hit for Spotify scraper albums: {artist_id}")
-                    return {"success": True, "albums": cached}
-            result = await self._run_scraper(
-                _scraper_get_artist_albums,
-                artist_id,
-                include_groups,
-                fetch_all,
-                limit,
-            )
-            if (
-                result.get("success")
-                and self.cache_enabled
-                and self.cache
-                and fetch_all
-                and result.get("albums") is not None
-            ):
-                ttl = getattr(self.config, "NEW_RELEASES_CACHE_DAYS", 14)
-                self.cache.set(cache_key, "spotify", result["albums"], ttl)
-            return result
         try:
-            cache_key = self._get_artist_albums_cache_key(artist_id)
-            if self.cache_enabled and self.cache and fetch_all:
-                cached = self.cache.get(cache_key, "spotify")
-                if cached is not None:
-                    self.logger.debug(f"Cache hit for Spotify albums: {artist_id}")
-                    return {"success": True, "albums": cached}
-
             all_albums = []
             offset = 0
             page_limit = min(limit, 50)
@@ -989,6 +1019,8 @@ class SpotifyClient(BaseAPIClient):
                 result = await self._get(f"/artists/{artist_id}/albums", params=params)
 
                 if not result:
+                    if offset == 0:
+                        return {"success": False, "error": "No response", "albums": []}
                     break
 
                 items = result.get("items", [])
@@ -1016,44 +1048,121 @@ class SpotifyClient(BaseAPIClient):
                 if offset >= 200:  # Spotify caps at 200 albums per artist
                     break
 
-            if self.cache_enabled and self.cache and fetch_all:
-                ttl = getattr(self.config, "NEW_RELEASES_CACHE_DAYS", 14)
-                self.cache.set(cache_key, "spotify", all_albums, ttl)
-
             return {"success": True, "albums": all_albums}
 
         except Exception as e:
             self.logger.error(f"Error getting albums for artist {artist_id}: {e}")
             return {"success": False, "error": str(e), "albums": []}
 
+    async def get_artist_albums(
+        self,
+        artist_id: str,
+        limit: int = 50,
+        include_groups: str = "album,single,compilation,appears_on",
+        fetch_all: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Get albums for an artist from Spotify.
+
+        Args:
+            artist_id: Spotify artist ID
+            limit: Maximum albums per request (max 50)
+            include_groups: Album types - album, single, appears_on, compilation
+            fetch_all: If True, paginate to get all albums (no limit)
+
+        Returns:
+            Dict with success, albums list, optional via (api|scraper), or error info
+        """
+        via = "api" if await self._can_try_api() else "scraper"
+        cache_key = self._get_artist_albums_cache_key(artist_id, via)
+        if self.cache_enabled and self.cache and fetch_all:
+            cached = self.cache.get(cache_key, "spotify")
+            if cached is not None:
+                self.logger.debug(f"Cache hit for Spotify {via} albums: {artist_id}")
+                return {"success": True, "albums": cached, "via": via}
+
+        result = await self._api_or_scraper(
+            "get_artist_albums",
+            lambda: self._get_artist_albums_api(artist_id, limit, include_groups, fetch_all),
+            lambda: self._run_scraper(
+                _scraper_get_artist_albums,
+                artist_id,
+                include_groups,
+                fetch_all,
+                limit,
+            ),
+            tag_via=True,
+        )
+
+        if (
+            result.get("success")
+            and self.cache_enabled
+            and self.cache
+            and fetch_all
+            and result.get("albums") is not None
+        ):
+            result_via = result.get("via", via)
+            ck = self._get_artist_albums_cache_key(artist_id, result_via)
+            ttl = getattr(self.config, "NEW_RELEASES_CACHE_DAYS", 14)
+            self.cache.set(ck, "spotify", result["albums"], ttl)
+
+        return result
+
+    async def _test_scraper_connection(self) -> bool:
+        scraper_result = await self._get_playlist_via_scraper(
+            "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+        )
+        return bool(scraper_result.get("success"))
+
     async def test_connection(self) -> bool:
-        """Test connection: API when credentials configured, scraper when not."""
+        """Test connection: API when credentials configured; scraper as fallback."""
+        detail = await self.test_connection_detail()
+        return detail.get("success", False)
+
+    async def test_connection_detail(self) -> dict[str, Any]:
+        """Test Spotify connectivity; returns success flag and human-readable message."""
+        api_ok = False
+        scraper_ok = False
         try:
             if self._has_credentials():
                 self.logger.info("Testing connection to Spotify API...")
-                if not await self._ensure_valid_token():
-                    self.logger.error("Failed to obtain Spotify access token")
-                    return False
-                result = await self._get("/tracks/4iV5W9uYEdYUVa79Axb7Rh")
-                if result:
-                    self.logger.info("Successfully connected to Spotify API")
-                    return True
-                self.logger.error("Spotify API test failed - no valid response")
-                return False
+                if await self._can_try_api():
+                    result = await self._get("/tracks/4iV5W9uYEdYUVa79Axb7Rh")
+                    api_ok = bool(result)
+                    if api_ok:
+                        self.logger.info("Successfully connected to Spotify API")
+                if not api_ok:
+                    self.logger.info("Spotify API test failed — trying scraper fallback")
+            else:
+                self.logger.info("Testing Spotify scraper (no API credentials)...")
 
-            self.logger.info("Testing Spotify scraper (no credentials)...")
-            scraper_result = await self._get_playlist_via_scraper(
-                "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
-            )
-            if scraper_result.get("success"):
+            scraper_ok = await self._test_scraper_connection()
+            if scraper_ok:
                 self.logger.info("Spotify scraper test passed")
-                return True
-            self.logger.error(f"Spotify scraper test failed: {scraper_result.get('error')}")
-            return False
+
+            if api_ok:
+                return {"success": True, "message": "Official API connected", "mode": "api"}
+            if scraper_ok:
+                if self._has_credentials():
+                    return {
+                        "success": True,
+                        "message": "API failed; scraper connected",
+                        "mode": "scraper",
+                    }
+                return {
+                    "success": True,
+                    "message": "Scraper connected (no API creds)",
+                    "mode": "scraper",
+                }
+            return {
+                "success": False,
+                "message": "Both API and scraper failed",
+                "mode": None,
+            }
 
         except Exception as e:
             self.logger.error(f"Failed to connect to Spotify: {e}")
-            return False
+            return {"success": False, "message": "Connection test failed", "mode": None}
         finally:
             if self.session:
                 await self.session.close()
