@@ -29,7 +29,7 @@ from database.config_models import DismissedArtistAlbum, NewReleaseIgnoredArtist
 from database.database import get_config_db, get_database_manager
 from utils.logger import get_logger
 from utils.nrd_release_source import (
-    enrich_scraper_nrd_album,
+    enrich_nrd_album_if_needed,
     normalize_nrd_source,
     nrd_lidarr_artist_id_key,
     nrd_mb_streaming_provider,
@@ -178,12 +178,6 @@ async def get_new_releases(
     config = ConfigAdapter()
 
     source_provider = _get_new_releases_source_from_db()
-    if normalize_nrd_source(source_provider) == "spotify":
-        if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-            raise HTTPException(
-                status_code=503,
-                detail="Spotify credentials not configured (new_releases_source=spotify).",
-            )
     if not config.LIDARR_API_KEY or not config.LIDARR_URL:
         raise HTTPException(
             status_code=503,
@@ -286,9 +280,9 @@ async def get_new_releases(
                         continue
 
                 new_albums = []
-                scraper_source = normalize_nrd_source(source_provider) == "spotify_scraper"
+                via_scraper = albums_result.get("via") == "scraper"
                 for album in albums_result["albums"]:
-                    if not scraper_source and album.get("primary_artist_id") != artist_id:
+                    if not via_scraper and album.get("primary_artist_id") != artist_id:
                         skipped_type += 1
                         continue
 
@@ -307,7 +301,7 @@ async def get_new_releases(
                         skipped_in_mb += 1
                         continue
 
-                    album = await enrich_scraper_nrd_album(release_client, album, source_provider)
+                    album = await enrich_nrd_album_if_needed(release_client, album, source_provider)
                     if album.get("primary_artist_id") != artist_id:
                         skipped_type += 1
                         continue
@@ -908,10 +902,10 @@ async def _maybe_enrich_and_build_missing(
     *,
     source: str,
     mb_titles: list[str] | None = None,
+    via_scraper: bool = False,
 ) -> dict | None:
     """Filter on discography catalog; enrich via get_album only for MB non-matches."""
-    scraper_source = normalize_nrd_source(source) == "spotify_scraper"
-    if not scraper_source and str(album.get("primary_artist_id", "")) != str(artist_id):
+    if not via_scraper and str(album.get("primary_artist_id", "")) != str(artist_id):
         return None
     album_type = album.get("album_type", "")
     total_tracks = album.get("total_tracks", 0)
@@ -921,7 +915,7 @@ async def _maybe_enrich_and_build_missing(
         return None
     if mb_titles is not None and _title_matches_mb(album.get("name", ""), mb_titles):
         return None
-    album = await enrich_scraper_nrd_album(release_client, album, source)
+    album = await enrich_nrd_album_if_needed(release_client, album, source)
     return _build_missing_album(album, artist_id, selected)
 
 
@@ -956,7 +950,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
         selected = {"album", "ep", "single"}
 
     if provider == "spotify":
-        release_client = SpotifyClient(config, discography_source="scraper")
+        release_client = SpotifyClient(config)
     else:
         release_client = DeezerClient(config)
 
@@ -1021,6 +1015,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
             if not albums_result.get("success") or albums_result.get("error"):
                 raise HTTPException(status_code=500, detail="Failed to fetch albums")
             albums = albums_result.get("albums", [])
+            albums_via_scraper = albums_result.get("via") == "scraper"
     except HTTPException:
         raise
     except Exception:
@@ -1031,7 +1026,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
         """Run MusicBrainz scan. Raises HTTPException on error."""
         mb_artist_mbid: str | None = None
         best_missing: list[dict] = []
-        catalog_source = "spotify_scraper" if provider == "spotify" else "deezer"
+        catalog_source = "spotify" if provider == "spotify" else "deezer"
         async with MusicBrainzClient(config) as mb_client:
             candidates = await mb_client.search_artist_candidates(artist_name, limit=5)
 
@@ -1054,6 +1049,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
                             selected,
                             source=catalog_source,
                             mb_titles=titles,
+                            via_scraper=albums_via_scraper,
                         )
                         if item:
                             best_missing.append(item)
@@ -1090,6 +1086,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
                                         selected,
                                         source=catalog_source,
                                         mb_titles=titles,
+                                        via_scraper=albums_via_scraper,
                                     )
                                     if item:
                                         best_missing.append(item)
@@ -1107,6 +1104,7 @@ async def scan_artist_url(body: ScanArtistUrlRequest) -> ScanArtistUrlResponse:
                         selected,
                         source=catalog_source,
                         mb_titles=None,
+                        via_scraper=albums_via_scraper,
                     )
                     if item:
                         best_missing.append(item)

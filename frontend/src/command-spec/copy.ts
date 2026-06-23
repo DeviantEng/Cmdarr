@@ -78,9 +78,9 @@ export const commandUiCopy = {
     releaseTypesHeading: "Release types to include",
     releaseTypesHelp: "Used for batch runs and ad-hoc artist scans",
     sourceHelp:
-      "Deezer uses public data. Spotify uses public catalog scraping—no account required.",
+      "Deezer uses open API. Spotify defaults to spotifyscraper unless valid client creds are configured, in which case the official API is used.",
     deezerOption: "Deezer",
-    spotifyOption: "Spotify (no account required)",
+    spotifyOption: "Spotify",
   },
   artistEvents: {
     artistsPerRun: "Artists per scheduled run",

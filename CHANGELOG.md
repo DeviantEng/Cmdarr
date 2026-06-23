@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.17-dev] - TBD
 
 ### Features
-- **New Releases Discovery — Spotify (scraper)**: Optional release source using public Spotify catalog via spotifyscraper — no Spotify API credentials or Premium required. Deezer remains the default; switch in Commands → Edit to compare catalogs (e.g. when Deezer attaches wrong albums to an artist page).
+- **Unified Spotify client**: Optional Client ID/Secret app-wide; official API when credentials are valid, spotifyscraper as default and fallback for playlist sync, NRD, and scan-by-URL. NRD release source picker shows Deezer or Spotify only.
 - **NRD Spotify performance**: Artist discography is fetched in one paginated pass per artist; `get_album` runs only for releases that do not match MusicBrainz, before creating pending rows.
 - **Modern arr UI (preview)**: Optional Sonarr-style shell with sidebar navigation, collapsible Settings/System sections, and panel-based layouts on Commands, Import Lists, New Releases, Events, Settings, and System pages. Toggle from the header; classic UI remains the default until 0.4.0.
 
