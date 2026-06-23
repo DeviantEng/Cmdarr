@@ -611,6 +611,13 @@ async def react_events(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+@app.get("/commands", response_class=HTMLResponse)
+@app.get("/commands/{full_path:path}", response_class=HTMLResponse)
+async def react_commands(request: Request, full_path: str = ""):
+    """Serve React app for modern UI commands routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
 FRONTEND_PUBLIC_FILES = (
     "icon-32.png",
     "icon-192.png",

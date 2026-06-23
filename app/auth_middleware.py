@@ -48,6 +48,8 @@ def _is_public_path(path: str) -> bool:
     # Frontend SPA routes - must be public so users can reach the login screen
     if path in ("/", "/config", "/status", "/import-lists", "/new-releases", "/events"):
         return True
+    if path == "/commands" or path.startswith("/commands/"):
+        return True
     if path == "/settings" or path.startswith("/settings/"):
         return True
     if path == "/system" or path.startswith("/system/"):

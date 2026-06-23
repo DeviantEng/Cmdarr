@@ -45,3 +45,12 @@ def test_is_setup_required_when_configured(mock_config):
         "user" if "USERNAME" in k else ("hash" if "PASSWORD" in k else d)
     )
     assert is_setup_required() is False
+
+
+def test_public_spa_paths_include_commands_routes():
+    from app.auth_middleware import _is_public_path
+
+    assert _is_public_path("/commands") is True
+    assert _is_public_path("/commands/add") is True
+    assert _is_public_path("/commands/history") is True
+    assert _is_public_path("/api/commands") is False
