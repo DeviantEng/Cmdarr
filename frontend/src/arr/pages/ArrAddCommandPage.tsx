@@ -1,5 +1,6 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
+import { Button } from "@/components/ui/button";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
 
 export function ArrAddCommandPage() {
@@ -9,7 +10,12 @@ export function ArrAddCommandPage() {
     <div>
       <ArrPageHeader
         title="Add New"
-        description="Choose a command type and configure how it should run."
+        description="Pick a command type, then configure how it runs."
+        actions={
+          <Button variant="secondary" size="sm" asChild>
+            <Link to="/commands">Back to commands</Link>
+          </Button>
+        }
       />
       <div className="arr-page-panels">
         <CreatePlaylistSyncDialog

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, Trash, Trash2, X } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, Loader2, Trash, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CommandConfig, CommandExecution } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isMobileViewport } from "@/lib/use-mobile";
-import { ArrContentPanel } from "@/arr/components/ArrPageToolbar";
+import { ArrContentPanel, ArrPanelBody, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
 
 function formatDuration(seconds?: number) {
   if (seconds == null) return "In progress";
@@ -18,10 +18,95 @@ function formatDuration(seconds?: number) {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
+function formatStartedAt(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function resolveDisplayName(execution: CommandExecution, commands?: CommandConfig[]) {
   if (execution.display_name) return execution.display_name;
   const cmd = commands?.find((c) => c.command_name === execution.command_name);
   return cmd?.display_name || execution.command_name.replace(/_/g, " ");
+}
+
+function statusBadgeVariant(status: CommandExecution["status"]) {
+  if (status === "completed") return "default" as const;
+  if (status === "failed") return "destructive" as const;
+  if (status === "running") return "secondary" as const;
+  return "outline" as const;
+}
+
+function statusLabel(status: CommandExecution["status"]) {
+  if (status === "running") return "Running";
+  if (status === "completed") return "Success";
+  if (status === "cancelled") return "Cancelled";
+  return "Failed";
+}
+
+type ExecutionDetailsProps = {
+  execution: CommandExecution;
+  displayName: string;
+  duration?: number;
+  onDelete: (id: number) => void;
+};
+
+function ExecutionDetails({ execution, displayName, duration, onDelete }: ExecutionDetailsProps) {
+  return (
+    <div className="arr-history-detail">
+      <dl>
+        <dt>Command</dt>
+        <dd>{displayName}</dd>
+        <dt>Execution ID</dt>
+        <dd className="font-mono">{execution.id}</dd>
+        <dt>Started</dt>
+        <dd>{execution.started_at ? new Date(execution.started_at).toLocaleString() : "—"}</dd>
+        {execution.completed_at ? (
+          <>
+            <dt>Completed</dt>
+            <dd>{new Date(execution.completed_at).toLocaleString()}</dd>
+          </>
+        ) : null}
+        <dt>Duration</dt>
+        <dd>{formatDuration(duration)}</dd>
+        <dt>Triggered by</dt>
+        <dd className="capitalize">{execution.triggered_by}</dd>
+        {execution.target && execution.target !== "unknown" ? (
+          <>
+            <dt>Target</dt>
+            <dd className="uppercase">{String(execution.target)}</dd>
+          </>
+        ) : null}
+        {execution.error_message ? (
+          <>
+            <dt>Error</dt>
+            <dd className="text-destructive">{execution.error_message}</dd>
+          </>
+        ) : null}
+      </dl>
+      {execution.status === "completed" && execution.output_summary ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="mb-1 font-medium">Summary</div>
+          <pre className="whitespace-pre-wrap font-sans text-xs text-muted-foreground">
+            {execution.output_summary}
+          </pre>
+        </div>
+      ) : null}
+      {execution.status !== "running" ? (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+          <Button variant="destructive" size="sm" onClick={() => onDelete(execution.id)}>
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+            Delete
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 type CommandExecutionsPanelProps = {
@@ -39,9 +124,11 @@ export function CommandExecutionsPanel({
   pausePolling = false,
 }: CommandExecutionsPanelProps) {
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
+  const [loading, setLoading] = useState(true);
   const [panelOpen, setPanelOpen] = useState(() => !collapsible || !isMobileViewport());
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
+  const compactArr = useArrPanel && !collapsible;
 
   const loadExecutions = async () => {
     try {
@@ -49,6 +136,8 @@ export function CommandExecutionsPanel({
       setRecentExecutions(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error loading executions:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -80,6 +169,7 @@ export function CommandExecutionsPanel({
     try {
       await api.deleteExecution(executionId);
       toast.success("Execution deleted");
+      if (expandedExecutionId === executionId) setExpandedExecutionId(null);
       void loadExecutions();
     } catch {
       toast.error("Failed to delete execution");
@@ -97,6 +187,178 @@ export function CommandExecutionsPanel({
       toast.error("Failed to cleanup executions");
     }
   };
+
+  const cleanupButton = (
+    <Button variant="secondary" size="sm" onClick={handleCleanupExecutions}>
+      <Trash className="mr-2 h-4 w-4" />
+      Cleanup old
+    </Button>
+  );
+
+  if (compactArr) {
+    return (
+      <ArrContentPanel>
+        <ArrSectionHeader
+          title="Execution log"
+          description={
+            recentExecutions.length > 0
+              ? `${recentExecutions.length} recent run${recentExecutions.length === 1 ? "" : "s"}`
+              : "Runs appear here after commands execute"
+          }
+          actions={cleanupButton}
+        />
+        {loading ? (
+          <ArrPanelBody className="flex min-h-[240px] items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </ArrPanelBody>
+        ) : recentExecutions.length === 0 ? (
+          <ArrPanelBody className="py-12 text-center text-sm text-muted-foreground">
+            No executions yet.
+          </ArrPanelBody>
+        ) : (
+          <>
+            <div className="divide-y md:hidden">
+              {recentExecutions.map((execution) => {
+                const isExpanded = expandedExecutionId === execution.id;
+                const duration = execution.duration ?? execution.duration_seconds;
+                const displayName = resolveDisplayName(execution, commands);
+
+                return (
+                  <div key={execution.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
+                      onClick={() => setExpandedExecutionId(isExpanded ? null : execution.id)}
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">{displayName}</span>
+                          <Badge
+                            variant={statusBadgeVariant(execution.status)}
+                            className="shrink-0 text-[10px]"
+                          >
+                            {statusLabel(execution.status)}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
+                          <span>{formatStartedAt(execution.started_at)}</span>
+                          <span>{formatDuration(duration)}</span>
+                          <span className="capitalize">{execution.triggered_by}</span>
+                        </div>
+                      </div>
+                      {isExpanded ? (
+                        <ChevronUp className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                    {isExpanded ? (
+                      <ExecutionDetails
+                        execution={execution}
+                        displayName={displayName}
+                        duration={duration}
+                        onDelete={handleDeleteExecution}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="arr-table w-full">
+                <thead className="border-b">
+                  <tr>
+                    <th className="w-8 px-2" />
+                    <th>Command</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Trigger</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentExecutions.map((execution) => {
+                    const isExpanded = expandedExecutionId === execution.id;
+                    const duration = execution.duration ?? execution.duration_seconds;
+                    const displayName = resolveDisplayName(execution, commands);
+
+                    return (
+                      <Fragment key={execution.id}>
+                        <tr className="border-b last:border-b-0 hover:bg-muted/30">
+                          <td className="px-2">
+                            <button
+                              type="button"
+                              className="rounded p-1 text-muted-foreground hover:text-foreground"
+                              onClick={() =>
+                                setExpandedExecutionId(isExpanded ? null : execution.id)
+                              }
+                              aria-label={isExpanded ? "Hide details" : "Show details"}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="max-w-[16rem] truncate font-medium">{displayName}</td>
+                          <td>
+                            <Badge
+                              variant={statusBadgeVariant(execution.status)}
+                              className="text-[10px]"
+                            >
+                              {statusLabel(execution.status)}
+                            </Badge>
+                          </td>
+                          <td className="whitespace-nowrap text-muted-foreground">
+                            {formatStartedAt(execution.started_at)}
+                          </td>
+                          <td className="whitespace-nowrap text-muted-foreground">
+                            {formatDuration(duration)}
+                          </td>
+                          <td className="capitalize text-muted-foreground">
+                            {execution.triggered_by}
+                          </td>
+                          <td className="text-right">
+                            {execution.status === "running" ? (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleKillExecution(execution.id)}
+                                disabled={killingExecutionId === execution.id}
+                              >
+                                {killingExecutionId === execution.id ? "Killing…" : "Kill"}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr>
+                            <td colSpan={7} className="p-0">
+                              <ExecutionDetails
+                                execution={execution}
+                                displayName={displayName}
+                                duration={duration}
+                                onDelete={handleDeleteExecution}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </ArrContentPanel>
+    );
+  }
 
   const isOpen = collapsible ? panelOpen : true;
   const Shell = useArrPanel ? ArrContentPanel : Card;
@@ -175,14 +437,6 @@ export function CommandExecutionsPanel({
                 const isExpanded = expandedExecutionId === execution.id;
                 const duration = execution.duration ?? execution.duration_seconds;
                 const displayName = resolveDisplayName(execution, commands);
-                const statusLabel =
-                  execution.status === "running"
-                    ? "Running..."
-                    : execution.status === "completed"
-                      ? "Success"
-                      : execution.status === "cancelled"
-                        ? "Cancelled"
-                        : "Failed";
                 const statusColor =
                   execution.status === "completed"
                     ? "text-green-600 dark:text-green-400"
@@ -196,44 +450,18 @@ export function CommandExecutionsPanel({
                   <div key={execution.id} className="rounded-lg border bg-muted/50 p-3 md:p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
-                        <div
-                          className={cn(
-                            "flex h-8 w-8 items-center justify-center rounded-full",
-                            execution.status === "completed"
-                              ? "bg-green-100 dark:bg-green-900"
-                              : execution.status === "failed"
-                                ? "bg-red-100 dark:bg-red-900"
-                                : execution.status === "running"
-                                  ? "bg-yellow-100 dark:bg-yellow-900"
-                                  : "bg-muted"
-                          )}
-                        >
-                          {execution.status === "running" ? (
-                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-yellow-600 border-t-transparent" />
-                          ) : execution.status === "completed" ? (
-                            <span className="text-green-600 dark:text-green-400">✓</span>
-                          ) : execution.status === "failed" ? (
-                            <span className="text-red-600 dark:text-red-400">✕</span>
-                          ) : (
-                            <span className="text-muted-foreground">○</span>
-                          )}
-                        </div>
                         <div className="min-w-0">
                           <p className="truncate font-medium">{displayName}</p>
                           <p className="text-xs text-muted-foreground sm:text-sm">
-                            {execution.started_at
-                              ? new Date(execution.started_at).toLocaleString()
-                              : "—"}
+                            {formatStartedAt(execution.started_at)}
                           </p>
-                          {execution.target && execution.target !== "unknown" && (
-                            <p className="text-xs text-blue-600 dark:text-blue-400">
-                              Target: {String(execution.target).toUpperCase()}
-                            </p>
-                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
-                        <span className={`text-sm font-medium ${statusColor}`}>{statusLabel}</span>
+                        <span className={`text-sm font-medium ${statusColor}`}>
+                          {statusLabel(execution.status)}
+                          {execution.status === "running" ? "…" : ""}
+                        </span>
                         {execution.status === "running" && (
                           <Button
                             variant="destructive"
@@ -245,9 +473,7 @@ export function CommandExecutionsPanel({
                             {killingExecutionId === execution.id ? "Killing..." : "Kill"}
                           </Button>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          {duration != null ? formatDuration(duration) : "In progress"}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{formatDuration(duration)}</p>
                         <p className="text-xs capitalize text-muted-foreground">
                           {execution.triggered_by}
                         </p>
@@ -256,11 +482,6 @@ export function CommandExecutionsPanel({
                     {execution.status === "failed" && execution.error_message && (
                       <div className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                         {execution.error_message}
-                      </div>
-                    )}
-                    {execution.status === "completed" && (
-                      <div className="mt-3 rounded-md bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-400">
-                        {displayName} completed successfully in {formatDuration(duration)}
                       </div>
                     )}
                     <div className="mt-3">
@@ -274,66 +495,16 @@ export function CommandExecutionsPanel({
                         ) : (
                           <ChevronDown className="h-4 w-4" />
                         )}
-                        {isExpanded ? "Hide Details" : "Show Details"}
+                        {isExpanded ? "Hide details" : "Show details"}
                       </button>
-                      {isExpanded && (
-                        <div className="mt-2 space-y-2 rounded-md bg-muted p-3 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Execution ID:</span>
-                            <span className="font-mono">{execution.id}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Started:</span>
-                            <span>
-                              {execution.started_at
-                                ? new Date(execution.started_at).toLocaleString()
-                                : "—"}
-                            </span>
-                          </div>
-                          {execution.completed_at && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Completed:</span>
-                              <span>{new Date(execution.completed_at).toLocaleString()}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Duration:</span>
-                            <span>{formatDuration(duration)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Triggered by:</span>
-                            <span className="capitalize">{execution.triggered_by}</span>
-                          </div>
-                          {execution.error_message && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Error:</span>
-                              <span className="text-right text-destructive">
-                                {execution.error_message}
-                              </span>
-                            </div>
-                          )}
-                          {execution.status !== "running" && (
-                            <div className="border-t pt-3">
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteExecution(execution.id)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Execution
-                              </Button>
-                            </div>
-                          )}
-                          {execution.status === "completed" && execution.output_summary && (
-                            <div className="border-t pt-3">
-                              <h5 className="mb-2 font-medium">Execution Summary</h5>
-                              <pre className="whitespace-pre-wrap font-sans text-xs">
-                                {execution.output_summary}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {isExpanded ? (
+                        <ExecutionDetails
+                          execution={execution}
+                          displayName={displayName}
+                          duration={duration}
+                          onDelete={handleDeleteExecution}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 );

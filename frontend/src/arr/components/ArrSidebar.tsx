@@ -103,6 +103,8 @@ function ArrBrandMark() {
 
 export function ArrSidebar({ className }: { className?: string }) {
   const version = useAppVersion();
+  const commandsSection = arrNavSections.find((section) => section.id === "commands");
+  const secondaryNavSections = arrNavSections.filter((section) => section.id !== "commands");
 
   return (
     <aside
@@ -132,11 +134,13 @@ export function ArrSidebar({ className }: { className?: string }) {
       </div>
 
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain p-2">
+        {commandsSection ? <CollapsibleNavSection section={commandsSection} /> : null}
+
         {arrPrimaryNav.map((item) => (
           <SidebarLink key={item.path} item={item} />
         ))}
 
-        {arrNavSections.map((section) => (
+        {secondaryNavSections.map((section) => (
           <CollapsibleNavSection key={section.id} section={section} />
         ))}
       </nav>
