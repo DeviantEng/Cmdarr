@@ -36,10 +36,7 @@ function CollapsibleNavSection({ section }: { section: ArrNavSection }) {
           to={section.indexPath}
           end={section.indexEnd}
           className={({ isActive }) =>
-            cn(
-              "arr-sidebar-link",
-              (isActive || isInSection) && "arr-sidebar-section-title-active"
-            )
+            cn("arr-sidebar-link", (isActive || isInSection) && "arr-sidebar-section-title-active")
           }
         >
           <section.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
