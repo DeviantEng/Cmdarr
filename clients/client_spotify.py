@@ -566,7 +566,9 @@ class SpotifyClient(BaseAPIClient):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
-    async def _enrich_nrd_album_api(self, album_id: str, fallback_artist_id: str | None) -> dict[str, Any]:
+    async def _enrich_nrd_album_api(
+        self, album_id: str, fallback_artist_id: str | None
+    ) -> dict[str, Any]:
         result = await self._get(f"/albums/{album_id}")
         if not result:
             return {"success": False, "album": None}
@@ -601,9 +603,7 @@ class SpotifyClient(BaseAPIClient):
             return await self._enrich_nrd_album_api(album_id, fallback_artist_id)
 
         async def scraper_fn():
-            return await self._run_scraper(
-                _scraper_enrich_nrd_album, album_id, fallback_artist_id
-            )
+            return await self._run_scraper(_scraper_enrich_nrd_album, album_id, fallback_artist_id)
 
         result = await self._api_or_scraper("enrich_nrd_album", api_fn, scraper_fn)
         if result.get("success") and result.get("album"):
