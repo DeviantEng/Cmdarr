@@ -8,15 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.17-dev] - TBD
 
 ### Features
-- **New Releases Discovery — Spotify (scraper)**: Optional release source using public Spotify catalog via spotifyscraper — no Spotify API credentials or Premium required. Deezer remains the default; switch in Commands → Edit to compare catalogs (e.g. when Deezer attaches wrong albums to an artist page).
-- **NRD Spotify performance**: Artist discography is fetched in one paginated pass per artist; `get_album` runs only for releases that do not match MusicBrainz, before creating pending rows.
-- **Modern arr UI (preview)**: Optional Sonarr-style shell with sidebar navigation, collapsible Settings/System sections, and panel-based layouts on Commands, Import Lists, New Releases, Events, Settings, and System pages. Toggle from the header; classic UI remains the default until 0.4.0.
+- **Spotify Client Update**: Supports Spotify credentials (client ID/secret), but if they don't validate or not configured, defaults to use spotifyscraper for all functions for Spotify (New Release Discovery, Playlist Sync, etc).
+- **Modern arr UI (preview)**: Optional Sonarr-style shell with sidebar navigation, collapsible Settings/System sections, and panel-based layouts on Commands, Import Lists, New Releases, Events, Settings, and System pages. Toggle from the header, upper-right.
 
 ### Fixes
 - ???
 
 ### Housekeeping
 - **Icons** - Generated icons for Cmdarr.
+- **Python Package Update**: Review and update of Python packages.
 
 ## [0.3.16] - 2026-06-22
 
