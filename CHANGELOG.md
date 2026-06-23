@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Housekeeping
 - **Icons** - Generated icons for Cmdarr.
+- **Dependencies**: Bump Python package floors (aiohttp, FastAPI, uvicorn, SQLAlchemy, pydantic, spotifyscraper transitives, dev tools including Ruff 0.15.18).
 
 ## [0.3.16] - 2026-06-22
 

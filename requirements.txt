@@ -1,40 +1,40 @@
 # Core HTTP client for async requests
-aiohttp>=3.8.0
+aiohttp>=3.14.1
 
 # TLS/browser fingerprint impersonation (xmplaylist.com behind Cloudflare)
-curl-cffi>=0.7.0
+curl-cffi>=0.15.0
 
 # Synchronous HTTP client for Plex API (proven working approach)
-requests>=2.28.0
+requests>=2.34.0
 # Explicit floor: transitive CVEs CVE-2026-44431, CVE-2026-44432 (Trivy) fixed in urllib3>=2.7.0
 urllib3>=2.7.0
 
 # Additional aiohttp components for SSL/TLS handling
-aiofiles>=23.0.0
+aiofiles>=25.1.0
 
 # System process and memory monitoring for library cache management
-psutil>=5.9.0
+psutil>=7.0.0
 
 # FastAPI and web framework dependencies
-fastapi>=0.136.0
-uvicorn[standard]>=0.46.0
-jinja2>=3.1.0
-python-multipart>=0.0.6
+fastapi>=0.138.0
+uvicorn[standard]>=0.49.0
+jinja2>=3.1.6
+python-multipart>=0.0.32
 
 # Database and ORM
-sqlalchemy>=2.0.0
+sqlalchemy>=2.0.51
 
 # Pydantic for data validation
-pydantic>=2.0.0
+pydantic>=2.13.4
 
 # Cron schedule parsing for scheduler
-croniter>=2.0.0
+croniter>=6.2.0
 
 # Image processing for daylist cover generation (Meloday-style)
-Pillow>=10.0.0
+Pillow>=12.2.0
 
 # IANA timezone database (required for zoneinfo on minimal Linux/Docker; optional on macOS/Windows)
-tzdata>=2024.1
+tzdata>=2026.2
 
 # Spotify playlist scraping (no credentials required for public playlists)
 spotifyscraper>=2.1.0,<4.0.0
@@ -43,7 +43,7 @@ rich>=15.0.0
 Pygments>=2.20.0
 
 # Password hashing for access control (bcrypt directly; passlib unmaintained, incompatible with bcrypt 4.1+)
-bcrypt>=4.0.0
+bcrypt>=4.3.0
 
 # For enhanced logging and formatting
 # colorlog>=6.7.0
