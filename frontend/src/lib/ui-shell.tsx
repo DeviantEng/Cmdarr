@@ -9,7 +9,8 @@ export function UiShellProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem(UI_SHELL_STORAGE_KEY, shell);
-    document.documentElement.dataset.uiShell = shell;
+    // Arr tokens live on `.arr-shell[data-ui-shell="arr"]` only — never on <html> (breaks login + portaled dialogs).
+    document.documentElement.removeAttribute("data-ui-shell");
   }, [shell]);
 
   const setShell = (next: UiShell) => setShellState(next);

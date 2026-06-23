@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ArrCommandsPage } from "@/arr/pages/ArrCommandsPage";
+import { ArrAddCommandPage } from "@/arr/pages/ArrAddCommandPage";
+import { ArrCommandHistoryPage } from "@/arr/pages/ArrCommandHistoryPage";
 import { ArrNewReleasesPage } from "@/arr/pages/ArrNewReleasesPage";
 import { ArrEventsPage } from "@/arr/pages/ArrEventsPage";
 import { ArrImportListsPage } from "@/arr/pages/ArrImportListsPage";
@@ -12,7 +14,10 @@ import { ArrSystemNewReleasesPage } from "@/arr/pages/system/ArrSystemNewRelease
 export function ArrRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<ArrCommandsPage />} />
+      <Route path="/" element={<Navigate to="/commands" replace />} />
+      <Route path="/commands" element={<ArrCommandsPage />} />
+      <Route path="/commands/add" element={<ArrAddCommandPage />} />
+      <Route path="/commands/history" element={<ArrCommandHistoryPage />} />
       <Route path="/new-releases" element={<ArrNewReleasesPage />} />
       <Route path="/events" element={<ArrEventsPage />} />
       <Route path="/import-lists" element={<ArrImportListsPage />} />

@@ -21,42 +21,65 @@ function CollapsibleNavSection({ section }: { section: ArrNavSection }) {
   const [expanded, setExpanded] = useState(isInSection);
 
   useEffect(() => {
-    setExpanded(isInSection);
+    if (isInSection) setExpanded(true);
   }, [isInSection]);
 
-  const toggleSection = () => {
-    if (expanded) {
-      setExpanded(false);
+  const openSection = () => {
+    setExpanded(true);
+    if (isInSection) return;
+    if (section.indexPath) {
+      navigate(section.indexPath);
       return;
     }
-    setExpanded(true);
-    if (!isInSection && section.items[0]) {
+    if (section.items[0]) {
       navigate(section.items[0].path);
     }
   };
 
   return (
-    <div className="pt-1">
-      <button
-        type="button"
-        className={cn(
-          "arr-sidebar-link w-full text-left",
-          isInSection && "text-[var(--arr-sidebar-text)]"
+    <div className={cn("arr-sidebar-section pt-1", isInSection && "is-active")}>
+      <div className="flex items-center gap-0.5 pr-1">
+        {section.indexPath ? (
+          <NavLink
+            to={section.indexPath}
+            end={section.indexEnd}
+            className={({ isActive }) =>
+              cn(
+                "arr-sidebar-link min-w-0 flex-1",
+                (isActive || isInSection) && "arr-sidebar-section-title-active"
+              )
+            }
+          >
+            <section.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            <span className="truncate">{section.label}</span>
+          </NavLink>
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              "arr-sidebar-link min-w-0 flex-1 text-left",
+              isInSection && "arr-sidebar-section-title-active"
+            )}
+            onClick={openSection}
+          >
+            <section.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            <span className="truncate">{section.label}</span>
+          </button>
         )}
-        onClick={toggleSection}
-        aria-expanded={expanded}
-      >
-        <section.icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-        <span className="truncate">{section.label}</span>
-        <ChevronDown
-          className={cn(
-            "ml-auto h-4 w-4 shrink-0 opacity-60 transition-transform",
-            expanded && "rotate-180"
-          )}
-        />
-      </button>
-      {expanded ? (
-        <div className="ml-3 space-y-0.5 border-l border-[var(--arr-sidebar-border)] pl-1 pt-0.5">
+        {section.items.length > 0 ? (
+          <button
+            type="button"
+            className="arr-sidebar-chevron"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Collapse ${section.label}` : `Expand ${section.label}`}
+          >
+            <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+          </button>
+        ) : null}
+      </div>
+      {expanded && section.items.length > 0 ? (
+        <div className="arr-sidebar-section-nested space-y-0.5 pt-0.5">
           {section.items.map((item) => (
             <SidebarLink key={item.path} item={item} nested />
           ))}
@@ -84,7 +107,7 @@ export function ArrSidebar({ className }: { className?: string }) {
   return (
     <aside
       className={cn(
-        "flex h-full max-h-screen w-[var(--arr-sidebar-width)] shrink-0 flex-col border-r lg:h-screen",
+        "flex h-svh w-[var(--arr-sidebar-width)] shrink-0 flex-col overflow-hidden border-r",
         className
       )}
       style={{
@@ -108,7 +131,7 @@ export function ArrSidebar({ className }: { className?: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain p-2">
         {arrPrimaryNav.map((item) => (
           <SidebarLink key={item.path} item={item} />
         ))}

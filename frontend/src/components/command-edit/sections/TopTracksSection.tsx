@@ -1,6 +1,7 @@
 import type { CommandEditRenderContext } from "../types";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { NumericInput } from "@/components/NumericInput";
 import {
   Select,
@@ -19,8 +20,8 @@ export function TopTracksSection({ ctx }: { ctx: CommandEditRenderContext }) {
     <>
       <div className="space-y-2">
         <Label>{t.artistsLabel}</Label>
-        <textarea
-          className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        <Textarea
+          className="min-h-[80px]"
           value={editForm.artists ?? ""}
           onChange={(e) => setEditForm((f) => ({ ...f, artists: e.target.value }))}
         />

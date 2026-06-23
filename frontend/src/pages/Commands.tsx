@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   LayoutGrid,
   List,
@@ -10,13 +11,10 @@ import {
   Filter,
   Search,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
-  X,
-  Trash,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CommandConfig, CommandExecution } from "@/lib/types";
+import type { CommandConfig } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,10 +36,10 @@ import {
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";
 import { CommandEditDialog } from "@/components/CommandEditDialog";
 import { DeleteCommandDialog } from "@/components/DeleteCommandDialog";
+import { CommandExecutionsPanel } from "@/components/CommandExecutionsPanel";
 import { fromExpiresAtIso } from "@/lib/expiration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { isMobileViewport } from "@/lib/use-mobile";
 import { ArrContentPanel, ArrPageToolbar } from "@/arr/components/ArrPageToolbar";
 import {
   DEFAULT_DAYLIST_TIME_PERIODS,
@@ -146,7 +144,7 @@ function CommandsToolbarControls({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
+            <Button variant={useArrPanel ? "secondary" : "outline"} size="sm">
               <Filter className="mr-2 h-4 w-4" />
               Filter
               {activeFilterCount > 0 ? (
@@ -190,7 +188,7 @@ function CommandsToolbarControls({
                 </Select>
               </div>
               <Button
-                variant="outline"
+                variant={useArrPanel ? "secondary" : "outline"}
                 size="sm"
                 className="w-full"
                 onClick={() => {
@@ -206,10 +204,12 @@ function CommandsToolbarControls({
         </DropdownMenu>
       </div>
 
-      <Button size="sm" onClick={onNewCommand}>
-        <Plus className="mr-2 h-4 w-4" />
-        New Command
-      </Button>
+      {!useArrPanel ? (
+        <Button size="sm" onClick={onNewCommand}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Command
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -491,10 +491,15 @@ function getStoredViewMode(): ViewMode {
 
 type CommandsPageProps = {
   showPageHeader?: boolean;
+  showExecutions?: boolean;
   useArrPanel?: boolean;
 };
 
-export function CommandsPage({ showPageHeader = true, useArrPanel = false }: CommandsPageProps) {
+export function CommandsPage({
+  showPageHeader = true,
+  showExecutions = true,
+  useArrPanel = false,
+}: CommandsPageProps) {
   const [commands, setCommands] = useState<CommandConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -538,22 +543,9 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
         (s.number != null && String(s.number).includes(q))
     );
   }, [xmplaylistEditStations, xmplaylistEditFilter]);
-  const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
-  const [executionsPanelOpen, setExecutionsPanelOpen] = useState(() => !isMobileViewport());
-  const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
-  const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
   const [nrdSources, setNrdSources] = useState<{ id: string; name: string; configured: boolean }[]>(
     []
   );
-
-  const loadExecutions = async () => {
-    try {
-      const data = await api.getAllExecutions(50);
-      setRecentExecutions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Error loading executions:", err);
-    }
-  };
 
   const loadCommands = async () => {
     try {
@@ -576,7 +568,6 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
 
   useEffect(() => {
     loadCommands();
-    loadExecutions();
   }, []);
 
   useEffect(() => {
@@ -614,14 +605,6 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
     }
   }, [useArrPanel, viewMode]);
 
-  // Poll executions every 10s when commands are running; pause when edit dialog is open
-  useEffect(() => {
-    const hasRunning = recentExecutions.some((e) => e.status === "running");
-    if (!hasRunning || editingCommand) return;
-    const id = setInterval(loadExecutions, 10000);
-    return () => clearInterval(id);
-  }, [recentExecutions, editingCommand]);
-
   // Auto-refresh commands every 5s; pause when edit or create dialog is open
   useEffect(() => {
     if (editingCommand || showNewCommandDialog) return;
@@ -629,62 +612,12 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
     return () => clearInterval(id);
   }, [editingCommand, showNewCommandDialog]);
 
-  const getCommandDisplayName = (commandName: string) => {
-    const cmd = commands.find((c) => c.command_name === commandName);
-    return cmd?.display_name || commandName.replace(/_/g, " ");
-  };
-
-  const formatDuration = (seconds?: number) => {
-    if (seconds == null) return "In progress";
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const m = Math.floor(seconds / 60);
-    const s = Math.round(seconds % 60);
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  };
-
-  const handleKillExecution = async (executionId: number) => {
-    try {
-      setKillingExecutionId(executionId);
-      await api.killExecution(executionId);
-      toast.success("Execution cancelled");
-      loadCommands();
-      loadExecutions();
-    } catch {
-      toast.error("Failed to cancel execution");
-    } finally {
-      setKillingExecutionId(null);
-    }
-  };
-
-  const handleDeleteExecution = async (executionId: number) => {
-    try {
-      await api.deleteExecution(executionId);
-      toast.success("Execution deleted");
-      loadExecutions();
-    } catch {
-      toast.error("Failed to delete execution");
-    }
-  };
-
-  const handleCleanupExecutions = async () => {
-    try {
-      const result = await api.cleanupExecutions(undefined, 50);
-      toast.success(
-        result.deleted_count ? `Cleaned up ${result.deleted_count} old executions` : result.message
-      );
-      loadExecutions();
-    } catch {
-      toast.error("Failed to cleanup executions");
-    }
-  };
-
   const handleExecute = async (command: CommandConfig) => {
     try {
       const result = await api.executeCommand(command.command_name, { triggered_by: "manual" });
       const displayName = command.display_name || command.command_name;
       toast.success(result?.message || `Command "${displayName}" started`);
       loadCommands();
-      loadExecutions();
     } catch (error) {
       toast.error(`Failed to execute command`);
       console.error(error);
@@ -1104,9 +1037,11 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
                 </p>
               </div>
               {safeCommands.length === 0 && (
-                <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
-                  <Plus className="mr-2 h-5 w-5" />
-                  Create Your First Command
+                <Button size="lg" asChild>
+                  <Link to="/commands/add">
+                    <Plus className="mr-2 h-5 w-5" />
+                    Add Your First Command
+                  </Link>
                 </Button>
               )}
             </div>
@@ -1241,253 +1176,22 @@ export function CommandsPage({ showPageHeader = true, useArrPanel = false }: Com
         </Card>
       )}
 
-      {/* Recent Executions */}
-      {(() => {
-        const ExecutionsShell = useArrPanel ? ArrContentPanel : Card;
-        return (
-          <ExecutionsShell>
-            <div
-              className={cn(
-                "flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-                useArrPanel ? "arr-section-header" : "sm:px-6 sm:py-4"
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => setExecutionsPanelOpen((open) => !open)}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                aria-expanded={executionsPanelOpen}
-              >
-                {executionsPanelOpen ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                )}
-                <h3
-                  className={cn(
-                    "font-medium",
-                    useArrPanel ? "text-sm font-semibold" : "text-lg font-medium"
-                  )}
-                >
-                  Recent Executions
-                </h3>
-                {recentExecutions.length > 0 ? (
-                  <Badge variant="secondary" className="shrink-0 tabular-nums">
-                    {recentExecutions.length}
-                  </Badge>
-                ) : null}
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 self-start sm:self-auto"
-                onClick={handleCleanupExecutions}
-              >
-                <Trash className="mr-2 h-4 w-4" />
-                Cleanup Old
-              </Button>
-            </div>
-            {executionsPanelOpen ? (
-              <div className={cn("p-4 md:p-6", useArrPanel && "arr-panel-body")}>
-                {recentExecutions.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p className="font-medium">No executions yet</p>
-                    <p className="text-sm mt-1">
-                      Command executions will appear here once they run.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 md:space-y-4">
-                    {recentExecutions.map((execution) => {
-                      const isExpanded = expandedExecutionId === execution.id;
-                      const duration = execution.duration ?? execution.duration_seconds;
-                      const statusLabel =
-                        execution.status === "running"
-                          ? "Running..."
-                          : execution.status === "completed"
-                            ? "Success"
-                            : execution.status === "cancelled"
-                              ? "Cancelled"
-                              : "Failed";
-                      const statusColor =
-                        execution.status === "completed"
-                          ? "text-green-600 dark:text-green-400"
-                          : execution.status === "failed"
-                            ? "text-red-600 dark:text-red-400"
-                            : execution.status === "running"
-                              ? "text-yellow-600 dark:text-yellow-400"
-                              : "text-muted-foreground";
+      {showExecutions ? (
+        <CommandExecutionsPanel
+          useArrPanel={useArrPanel}
+          collapsible={!useArrPanel}
+          commands={commands}
+          pausePolling={!!editingCommand}
+        />
+      ) : null}
 
-                      return (
-                        <div
-                          key={execution.id}
-                          className="rounded-lg border bg-muted/50 p-3 md:p-4"
-                        >
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
-                              <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                  execution.status === "completed"
-                                    ? "bg-green-100 dark:bg-green-900"
-                                    : execution.status === "failed"
-                                      ? "bg-red-100 dark:bg-red-900"
-                                      : execution.status === "running"
-                                        ? "bg-yellow-100 dark:bg-yellow-900"
-                                        : "bg-muted"
-                                }`}
-                              >
-                                {execution.status === "running" ? (
-                                  <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
-                                ) : execution.status === "completed" ? (
-                                  <span className="text-green-600 dark:text-green-400">✓</span>
-                                ) : execution.status === "failed" ? (
-                                  <span className="text-red-600 dark:text-red-400">✕</span>
-                                ) : (
-                                  <span className="text-muted-foreground">○</span>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">
-                                  {execution.display_name ??
-                                    getCommandDisplayName(execution.command_name)}
-                                </p>
-                                <p className="text-xs text-muted-foreground sm:text-sm">
-                                  {execution.started_at
-                                    ? new Date(execution.started_at).toLocaleString()
-                                    : "—"}
-                                </p>
-                                {execution.target && execution.target !== "unknown" && (
-                                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                                    Target: {String(execution.target).toUpperCase()}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end">
-                              <span className={`text-sm font-medium ${statusColor}`}>
-                                {statusLabel}
-                              </span>
-                              {execution.status === "running" && (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleKillExecution(execution.id)}
-                                  disabled={killingExecutionId === execution.id}
-                                >
-                                  <X className="h-3 w-3 mr-1" />
-                                  {killingExecutionId === execution.id ? "Killing..." : "Kill"}
-                                </Button>
-                              )}
-                              <p className="text-xs text-muted-foreground">
-                                {duration != null ? formatDuration(duration) : "In progress"}
-                              </p>
-                              <p className="text-xs text-muted-foreground capitalize">
-                                {execution.triggered_by}
-                              </p>
-                            </div>
-                          </div>
-                          {execution.status === "failed" && execution.error_message && (
-                            <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                              {execution.error_message}
-                            </div>
-                          )}
-                          {execution.status === "completed" && (
-                            <div className="mt-3 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
-                              {execution.display_name ??
-                                getCommandDisplayName(execution.command_name)}{" "}
-                              completed successfully in {formatDuration(duration)}
-                            </div>
-                          )}
-                          <div className="mt-3">
-                            <button
-                              onClick={() =>
-                                setExpandedExecutionId(isExpanded ? null : execution.id)
-                              }
-                              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-                            >
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                              {isExpanded ? "Hide Details" : "Show Details"}
-                            </button>
-                            {isExpanded && (
-                              <div className="mt-2 p-3 rounded-md bg-muted space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Execution ID:</span>
-                                  <span className="font-mono">{execution.id}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Started:</span>
-                                  <span>
-                                    {execution.started_at
-                                      ? new Date(execution.started_at).toLocaleString()
-                                      : "—"}
-                                  </span>
-                                </div>
-                                {execution.completed_at && (
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Completed:</span>
-                                    <span>{new Date(execution.completed_at).toLocaleString()}</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Duration:</span>
-                                  <span>{formatDuration(duration)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Triggered by:</span>
-                                  <span className="capitalize">{execution.triggered_by}</span>
-                                </div>
-                                {execution.error_message && (
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Error:</span>
-                                    <span className="text-destructive text-right">
-                                      {execution.error_message}
-                                    </span>
-                                  </div>
-                                )}
-                                {execution.status !== "running" && (
-                                  <div className="pt-3 border-t">
-                                    <Button
-                                      variant="destructive"
-                                      size="sm"
-                                      onClick={() => handleDeleteExecution(execution.id)}
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Delete Execution
-                                    </Button>
-                                  </div>
-                                )}
-                                {execution.status === "completed" && execution.output_summary && (
-                                  <div className="pt-3 border-t">
-                                    <h5 className="font-medium mb-2">Execution Summary</h5>
-                                    <pre className="text-xs whitespace-pre-wrap font-sans">
-                                      {execution.output_summary}
-                                    </pre>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </ExecutionsShell>
-        );
-      })()}
-
-      {/* New Command Dialog */}
-      <CreatePlaylistSyncDialog
-        open={showNewCommandDialog}
-        onOpenChange={setShowNewCommandDialog}
-        onSuccess={loadCommands}
-      />
+      {!useArrPanel ? (
+        <CreatePlaylistSyncDialog
+          open={showNewCommandDialog}
+          onOpenChange={setShowNewCommandDialog}
+          onSuccess={loadCommands}
+        />
+      ) : null}
 
       <CommandEditDialog
         command={editingCommand}

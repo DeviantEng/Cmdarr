@@ -40,7 +40,7 @@ export function CommandEditDialog({
         {command && (
           <>
             {formBody}
-            <div className="flex-shrink-0 flex justify-end gap-2 px-6 py-4 border-t bg-background">
+            <div className="flex-shrink-0 flex justify-end gap-2 border-t border-[var(--dialog-border)] px-6 py-4">
               {footer}
             </div>
           </>

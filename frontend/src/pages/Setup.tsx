@@ -47,7 +47,7 @@ export function SetupPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md space-y-6 rounded-lg border p-6">
+      <div className="w-full max-w-md space-y-6 rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
         <h1 className="text-2xl font-semibold">Cmdarr Setup</h1>
         <p className="text-muted-foreground text-sm">
           Create your admin account. This is required for first-time setup.
