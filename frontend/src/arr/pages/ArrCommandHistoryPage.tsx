@@ -6,7 +6,7 @@ export function ArrCommandHistoryPage() {
     <div>
       <ArrPageHeader
         title="History"
-        description="Recent command runs, status, and execution details."
+        description="Recent command runs with status, timing, and details."
       />
       <div className="arr-page-panels">
         <CommandExecutionsPanel useArrPanel />

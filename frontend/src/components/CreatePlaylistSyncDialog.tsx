@@ -47,7 +47,8 @@ import {
   PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS,
 } from "@/command-spec";
 import { PlaylistSyncArtistDiscoveryControl } from "@/components/command-edit/PlaylistSyncArtistDiscoveryControl";
-import { ArrContentPanel } from "@/arr/components/ArrPageToolbar";
+import { ArrContentPanel, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
+import { cn } from "@/lib/utils";
 
 type PlaylistType =
   | "listenbrainz"
@@ -104,6 +105,15 @@ interface CreatePlaylistSyncDialogProps {
   onSuccess: () => void;
   /** Render inline on a page instead of a portaled modal. */
   embedded?: boolean;
+}
+
+function typePickerIconClass(embedded: boolean, palette: string) {
+  return cn(
+    embedded
+      ? "arr-create-type-icon"
+      : "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+    palette
+  );
 }
 
 interface PlaylistValidation {
@@ -877,30 +887,33 @@ export function CreatePlaylistSyncDialog({
 
   const formBody = (
     <>
-      {embedded ? (
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold">{createTitle}</h2>
-          <p className="text-sm text-muted-foreground">{createDescription}</p>
-        </div>
-      ) : (
+      {!embedded ? (
         <DialogHeader>
           <DialogTitle>{createTitle}</DialogTitle>
           <DialogDescription>{createDescription}</DialogDescription>
         </DialogHeader>
-      )}
+      ) : step === "form" ? (
+        <ArrSectionHeader title={createTitle} description={createDescription} />
+      ) : null}
 
       {step === "type" ? (
-        <div className="grid gap-3 py-4">
+        <div className={embedded ? "arr-panel-body arr-create-type-grid" : "grid gap-3 py-4"}>
           {/* Daylist */}
           <button
             onClick={() => handleSelectType("daylist")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900">
+            <div className={typePickerIconClass(embedded, "bg-amber-100 dark:bg-amber-900")}>
               <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardDaylistTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardDaylistTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
             </div>
           </button>
@@ -908,13 +921,19 @@ export function CreatePlaylistSyncDialog({
           {/* Local Discovery */}
           <button
             onClick={() => handleSelectType("local_discovery")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900">
+            <div className={typePickerIconClass(embedded, "bg-teal-100 dark:bg-teal-900")}>
               <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardLocalDiscoveryTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardLocalDiscoveryTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
             </div>
           </button>
@@ -922,13 +941,19 @@ export function CreatePlaylistSyncDialog({
           {/* ListenBrainz Curated */}
           <button
             onClick={() => handleSelectType("listenbrainz")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
+            <div className={typePickerIconClass(embedded, "bg-purple-100 dark:bg-purple-900")}>
               <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardListenbrainzTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardListenbrainzTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardListenbrainzBlurb}</p>
             </div>
           </button>
@@ -936,13 +961,19 @@ export function CreatePlaylistSyncDialog({
           {/* External Playlist */}
           <button
             onClick={() => handleSelectType("other")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+            <div className={typePickerIconClass(embedded, "bg-green-100 dark:bg-green-900")}>
               <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardExternalTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardExternalTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardExternalBlurb}</p>
             </div>
           </button>
@@ -950,13 +981,19 @@ export function CreatePlaylistSyncDialog({
           {/* Top Tracks / Artist Essentials */}
           <button
             onClick={() => handleSelectType("top_tracks")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
+            <div className={typePickerIconClass(embedded, "bg-blue-100 dark:bg-blue-900")}>
               <ListMusic className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardArtistEssentialsTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardArtistEssentialsTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardArtistEssentialsBlurb}</p>
             </div>
           </button>
@@ -964,13 +1001,19 @@ export function CreatePlaylistSyncDialog({
           {/* Last.fm Similar */}
           <button
             onClick={() => handleSelectType("lfm_similar")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900">
+            <div className={typePickerIconClass(embedded, "bg-indigo-100 dark:bg-indigo-900")}>
               <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardLfmSimilarTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardLfmSimilarTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardLfmSimilarBlurb}</p>
             </div>
           </button>
@@ -978,13 +1021,19 @@ export function CreatePlaylistSyncDialog({
           {/* Setlist.fm */}
           <button
             onClick={() => handleSelectType("setlistfm")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900">
+            <div className={typePickerIconClass(embedded, "bg-rose-100 dark:bg-rose-900")}>
               <Mic2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardSetlistFmTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardSetlistFmTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardSetlistFmBlurb}</p>
             </div>
           </button>
@@ -992,13 +1041,19 @@ export function CreatePlaylistSyncDialog({
           {/* XMPlaylist (SiriusXM History) */}
           <button
             onClick={() => handleSelectType("xmplaylist")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900">
+            <div className={typePickerIconClass(embedded, "bg-sky-100 dark:bg-sky-900")}>
               <Radio className="h-5 w-5 text-sky-600 dark:text-sky-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardXmplaylistTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardXmplaylistTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardXmplaylistBlurb}</p>
             </div>
           </button>
@@ -1006,19 +1061,25 @@ export function CreatePlaylistSyncDialog({
           {/* Mood Playlist */}
           <button
             onClick={() => handleSelectType("mood_playlist")}
-            className="flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900">
+            <div className={typePickerIconClass(embedded, "bg-violet-100 dark:bg-violet-900")}>
               <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold">{cw.cardMoodTitle}</h3>
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardMoodTitle}
+              </h3>
               <p className="text-xs text-muted-foreground">{cw.cardMoodBlurb}</p>
             </div>
           </button>
         </div>
       ) : (
-        <div className="space-y-4 py-4">
+        <div className={embedded ? "arr-panel-body space-y-4" : "space-y-4 py-4"}>
           {playlistType === "listenbrainz" ? (
             <>
               {/* Playlist Types */}
@@ -2506,51 +2567,81 @@ export function CreatePlaylistSyncDialog({
         </div>
       )}
 
-      <DialogFooter>
-        {step === "form" && (
-          <Button variant="outline" onClick={() => setStep("type")}>
-            Back
+      {embedded ? (
+        step === "form" ? (
+          <div className="arr-form-footer">
+            <Button variant="secondary" onClick={() => setStep("type")}>
+              Back
+            </Button>
+            <Button onClick={handleSubmit} disabled={!canSubmit() || isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {cw.submitCreating}
+                </>
+              ) : playlistType === "daylist" ? (
+                cw.submitDaylist
+              ) : playlistType === "top_tracks" ? (
+                cw.submitArtistEssentials
+              ) : playlistType === "lfm_similar" ? (
+                cw.submitLfmSimilar
+              ) : playlistType === "setlistfm" ? (
+                cw.submitSetlistFm
+              ) : playlistType === "local_discovery" ? (
+                cw.submitLocalDiscovery
+              ) : playlistType === "xmplaylist" ? (
+                cw.submitXmplaylist
+              ) : playlistType === "mood_playlist" ? (
+                cw.submitMoodPlaylist
+              ) : (
+                cw.submitPlaylistSync
+              )}
+            </Button>
+          </div>
+        ) : null
+      ) : (
+        <DialogFooter>
+          {step === "form" && (
+            <Button variant="outline" onClick={() => setStep("type")}>
+              Back
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
           </Button>
-        )}
-        <Button variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
-        </Button>
-        {step === "form" && (
-          <Button onClick={handleSubmit} disabled={!canSubmit() || isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {cw.submitCreating}
-              </>
-            ) : playlistType === "daylist" ? (
-              cw.submitDaylist
-            ) : playlistType === "top_tracks" ? (
-              cw.submitArtistEssentials
-            ) : playlistType === "lfm_similar" ? (
-              cw.submitLfmSimilar
-            ) : playlistType === "setlistfm" ? (
-              cw.submitSetlistFm
-            ) : playlistType === "local_discovery" ? (
-              cw.submitLocalDiscovery
-            ) : playlistType === "xmplaylist" ? (
-              cw.submitXmplaylist
-            ) : playlistType === "mood_playlist" ? (
-              cw.submitMoodPlaylist
-            ) : (
-              cw.submitPlaylistSync
-            )}
-          </Button>
-        )}
-      </DialogFooter>
+          {step === "form" && (
+            <Button onClick={handleSubmit} disabled={!canSubmit() || isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {cw.submitCreating}
+                </>
+              ) : playlistType === "daylist" ? (
+                cw.submitDaylist
+              ) : playlistType === "top_tracks" ? (
+                cw.submitArtistEssentials
+              ) : playlistType === "lfm_similar" ? (
+                cw.submitLfmSimilar
+              ) : playlistType === "setlistfm" ? (
+                cw.submitSetlistFm
+              ) : playlistType === "local_discovery" ? (
+                cw.submitLocalDiscovery
+              ) : playlistType === "xmplaylist" ? (
+                cw.submitXmplaylist
+              ) : playlistType === "mood_playlist" ? (
+                cw.submitMoodPlaylist
+              ) : (
+                cw.submitPlaylistSync
+              )}
+            </Button>
+          )}
+        </DialogFooter>
+      )}
     </>
   );
 
   if (embedded) {
-    return (
-      <ArrContentPanel>
-        <div className="arr-panel-body space-y-4">{formBody}</div>
-      </ArrContentPanel>
-    );
+    return <ArrContentPanel>{formBody}</ArrContentPanel>;
   }
 
   return (
