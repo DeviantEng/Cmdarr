@@ -4,9 +4,11 @@ import {
   Cog,
   Disc3,
   Gauge,
+  History,
   Import,
   ListMusic,
   Monitor,
+  Plus,
   Settings2,
   Timer,
   Zap,
@@ -28,11 +30,19 @@ export type ArrNavSection = {
   label: string;
   pathPrefix: string;
   icon: LucideIcon;
+  /** Main route when clicking the section header (Lidarr-style). */
+  indexPath?: string;
+  /** NavLink `end` for the section header route. */
+  indexEnd?: boolean;
   items: ArrNavLink[];
 };
 
+export const arrCommandsNav: ArrNavLink[] = [
+  { path: "/commands/add", label: "Add New", icon: Plus },
+  { path: "/commands/history", label: "History", icon: History },
+];
+
 export const arrPrimaryNav: ArrNavLink[] = [
-  { path: "/", label: "Commands", icon: ListMusic, end: true },
   { path: "/new-releases", label: "New Releases", icon: Disc3 },
   { path: "/events", label: "Artist Events", icon: CalendarDays },
   { path: "/import-lists", label: "Import Lists", icon: Import },
@@ -62,6 +72,15 @@ export const arrSystemNav: ArrNavLink[] = [
 ];
 
 export const arrNavSections: ArrNavSection[] = [
+  {
+    id: "commands",
+    label: "Commands",
+    pathPrefix: "/commands",
+    indexPath: "/commands",
+    indexEnd: true,
+    icon: ListMusic,
+    items: arrCommandsNav,
+  },
   {
     id: "settings",
     label: "Settings",
@@ -98,6 +117,10 @@ function settingsSectionDescription(slug: string): string {
 }
 
 export function arrPageTitle(pathname: string): string {
+  if (pathname === "/commands/add") return "Add New";
+  if (pathname === "/commands/history") return "History";
+  if (pathname === "/commands") return "Commands";
+
   const settingsMatch = arrSettingsNav.find((item) => pathname.startsWith(item.path));
   if (settingsMatch) return settingsMatch.label;
 
@@ -109,6 +132,7 @@ export function arrPageTitle(pathname: string): string {
   );
   if (primaryMatch) return primaryMatch.label;
 
+  if (pathname.startsWith("/commands")) return "Commands";
   if (pathname.startsWith("/settings")) return "Settings";
   if (pathname.startsWith("/system")) return "System";
 

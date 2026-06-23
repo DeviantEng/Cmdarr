@@ -60,6 +60,10 @@ body {
   color: var(--color-foreground);
 }
 
+#root {
+  min-height: 0;
+}
+
 /* Range slider with visible track (works in light and dark mode) */
 .slider-range {
   -webkit-appearance: none;

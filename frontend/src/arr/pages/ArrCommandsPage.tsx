@@ -6,9 +6,9 @@ export function ArrCommandsPage() {
     <div>
       <ArrPageHeader
         title="Commands"
-        description="Manage and monitor scheduled and manual Cmdarr commands."
+        description="Manage, enable, and run Cmdarr commands manually or on a schedule."
       />
-      <CommandsPage showPageHeader={false} useArrPanel />
+      <CommandsPage showPageHeader={false} showExecutions={false} useArrPanel />
     </div>
   );
 }
