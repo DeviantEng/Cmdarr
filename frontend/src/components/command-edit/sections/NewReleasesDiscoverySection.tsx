@@ -5,16 +5,16 @@ import { commandUiCopy } from "@/command-spec";
 
 const nr = commandUiCopy.newReleases;
 
+function normalizeNrdSourceValue(src: string | undefined): "deezer" | "spotify" {
+  if (src === "spotify" || src === "spotify_scraper") return "spotify";
+  return "deezer";
+}
+
 export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderContext }) {
   const { editForm, setEditForm, nrdSources } = ctx;
-  const spotifyScraper = nrdSources.find((s) => s.id === "spotify_scraper");
-  const spotifyConfigured = spotifyScraper?.configured !== false;
-  const sourceValue =
-    editForm.new_releases_source === "spotify_scraper"
-      ? "spotify_scraper"
-      : editForm.new_releases_source === "spotify"
-        ? "spotify_scraper"
-        : "deezer";
+  const spotifySource = nrdSources.find((s) => s.id === "spotify");
+  const spotifyConfigured = spotifySource?.configured !== false;
+  const sourceValue = normalizeNrdSourceValue(editForm.new_releases_source);
 
   return (
     <>
@@ -38,16 +38,15 @@ export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderCon
           onChange={(e) =>
             setEditForm((f) => ({
               ...f,
-              new_releases_source:
-                e.target.value === "spotify_scraper" ? "spotify_scraper" : "deezer",
+              new_releases_source: e.target.value === "spotify" ? "spotify" : "deezer",
             }))
           }
           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
         >
           <option value="deezer">{nr.deezerOption}</option>
-          <option value="spotify_scraper" disabled={!!spotifyScraper && !spotifyConfigured}>
+          <option value="spotify" disabled={!!spotifySource && !spotifyConfigured}>
             {nr.spotifyOption}
-            {spotifyScraper && !spotifyConfigured ? " (unavailable)" : ""}
+            {spotifySource && !spotifyConfigured ? " (unavailable)" : ""}
           </option>
         </select>
         <p className="text-xs text-muted-foreground">{nr.sourceHelp}</p>

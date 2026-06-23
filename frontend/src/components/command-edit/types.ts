@@ -9,7 +9,7 @@ export type CommandEditFormState = {
   /** artist_events_refresh: days between per-artist fetches */
   refresh_ttl_days?: number;
   album_types?: string[];
-  new_releases_source?: "spotify" | "spotify_scraper" | "deezer";
+  new_releases_source?: "spotify" | "deezer";
   artists_to_query?: number;
   similar_per_artist?: number;
   artist_cooldown_days?: number;

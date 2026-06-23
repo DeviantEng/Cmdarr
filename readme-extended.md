@@ -128,8 +128,8 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 **Access**: Web UI → New Releases (`/new-releases`)
 
 **Benefits**:
-- **Deezer (default)**: No account required—uses public API
-- **Spotify (optional)**: No account required—uses public catalog scraping via spotifyscraper; alternative when Deezer attaches wrong albums to an artist page (catalog pollution)
+- **Deezer (default)**: Uses open API; no account required
+- **Spotify (optional)**: Defaults to spotifyscraper (no account required). When valid Spotify Client ID/Secret are configured and the API works, the official API is used instead—useful when Deezer attaches wrong albums to an artist page (catalog pollution)
 
 - Uses Lidarr artist links when available (avoids name collisions like Emmure vs emmurée)
 - 1 MusicBrainz API call per artist (release groups), no per-album lookups
@@ -138,9 +138,9 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 - **Scan Artist by URL**: Artist not in Lidarr yet? Paste a Spotify or Deezer artist URL to fetch all albums, compare to MusicBrainz, and get a list of missing releases with Harmony links; add each in Harmony, then add the artist to Lidarr after ~24h
 
 **Requirements**: Lidarr; MusicBrainz enabled for batch scans  
-**Configuration**: Release source (Deezer or Spotify) in Commands → Edit; `NEW_RELEASES_CACHE_DAYS` (default 14) in Configuration → Music Sources
+**Configuration**: Release source (Deezer or Spotify) in Commands → Edit; optional Spotify Client ID/Secret in Configuration → Music Sources; `NEW_RELEASES_CACHE_DAYS` (default 14)
 
-**Note**: Legacy `spotify` API source may still exist in older configs but is not exposed in the UI. Spotify scraper is the recommended credential-free Spotify path.
+**Note**: Older configs may store `spotify_scraper` as the release source; it is treated as Spotify automatically.
 
 ### Playlist Generators (Plex/Jellyfin)
 
@@ -206,7 +206,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 - **Plex Token**: Get from [Plex Support Guide](https://support.plex.tv/articles/204059436/) (for playlist sync)
 - **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
 - **Jellyfin User ID**: Found in Jellyfin Dashboard → Users → Select User → User ID
-- **Spotify Client ID & Secret**: Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) (for playlist sync, public playlists only)
+- **Spotify Client ID & Secret** (optional): Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Enables official API for playlist sync and NRD when valid; spotifyscraper is used otherwise.
 
 ### Event Sources (artist events)
 
