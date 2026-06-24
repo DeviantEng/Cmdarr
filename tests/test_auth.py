@@ -47,10 +47,21 @@ def test_is_setup_required_when_configured(mock_config):
     assert is_setup_required() is False
 
 
-def test_public_spa_paths_include_commands_routes():
-    from app.auth_middleware import _is_public_path
+def test_public_spa_paths_do_not_require_auth():
+    from app.auth_middleware import _requires_auth
 
-    assert _is_public_path("/commands") is True
-    assert _is_public_path("/commands/add") is True
-    assert _is_public_path("/commands/history") is True
-    assert _is_public_path("/api/commands") is False
+    assert _requires_auth("/") is False
+    assert _requires_auth("/commands") is False
+    assert _requires_auth("/commands/add") is False
+    assert _requires_auth("/commands/history") is False
+    assert _requires_auth("/settings/application") is False
+    assert _requires_auth("/system/status") is False
+
+
+def test_api_and_import_list_paths_require_auth():
+    from app.auth_middleware import _requires_auth
+
+    assert _requires_auth("/api/commands") is True
+    assert _requires_auth("/api/auth/status") is False
+    assert _requires_auth("/import_lists/discovery_lastfm") is False
+    assert _requires_auth("/import_lists/metrics") is True

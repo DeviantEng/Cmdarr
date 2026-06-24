@@ -7,6 +7,13 @@ from starlette.responses import JSONResponse
 from app.auth import is_setup_required
 from services.config_service import config_service
 
+_PUBLIC_IMPORT_LIST_PATHS = frozenset(
+    {
+        "/import_lists/discovery_lastfm",
+        "/import_lists/discovery_playlistsync",
+    }
+)
+
 
 def _is_authenticated(request: Request) -> bool:
     """Check if request has valid session or API key."""
@@ -32,37 +39,20 @@ def _is_authenticated(request: Request) -> bool:
     return False
 
 
-def _is_public_path(path: str) -> bool:
-    """Paths that don't require auth."""
-    if path == "/health":
-        return True
-    if path.startswith("/api/auth/"):
-        return True
-    if path.startswith("/assets/"):
-        return True
-    if path.startswith("/icon-") or path in (
-        "/apple-touch-icon.png",
-        "/site.webmanifest",
-    ):
-        return True
-    # Frontend SPA routes - must be public so users can reach the login screen
-    if path in ("/", "/config", "/status", "/import-lists", "/new-releases", "/events"):
-        return True
-    if path == "/commands" or path.startswith("/commands/"):
-        return True
-    if path == "/settings" or path.startswith("/settings/"):
-        return True
-    if path == "/system" or path.startswith("/system/"):
-        return True
-    # Import list JSON endpoints - public for Lidarr (no auth headers); content is artist MBIDs only
-    if path in ("/import_lists/discovery_lastfm", "/import_lists/discovery_playlistsync"):
-        return True
+def _requires_auth(path: str) -> bool:
+    """Return True when the path must be authenticated before route handlers run."""
+    if path.startswith("/api/"):
+        return not path.startswith("/api/auth/")
+
+    if path.startswith("/import_lists/"):
+        return path not in _PUBLIC_IMPORT_LIST_PATHS
+
     return False
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if _is_public_path(request.url.path):
+        if not _requires_auth(request.url.path):
             return await call_next(request)
         if _is_authenticated(request):
             return await call_next(request)
