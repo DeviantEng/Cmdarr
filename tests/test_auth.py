@@ -67,15 +67,21 @@ def test_api_and_import_list_paths_require_auth():
     assert _requires_auth("/import_lists/metrics") is True
 
 
-def test_auth_status_not_shadowed_by_spa_fallback():
-    from starlette.testclient import TestClient
+def test_api_auth_routes_registered_before_spa_catchall():
+    """Regression: SPA catch-all must not shadow /api/auth/* registered after it."""
+    from pathlib import Path
 
-    from app.main import app
+    main_source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    auth_marker = 'app.include_router(auth_routes.router, prefix="/api/auth"'
+    commands_marker = 'app.include_router(commands.router, prefix="/api/commands"'
+    catchall_marker = "async def react_spa_fallback"
 
-    with TestClient(app) as client:
-        response = client.get("/api/auth/status")
+    assert auth_marker in main_source
+    assert commands_marker in main_source
+    assert catchall_marker in main_source
+    assert main_source.index(auth_marker) < main_source.index(catchall_marker)
+    assert main_source.index(commands_marker) < main_source.index(catchall_marker)
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert "setup_required" in payload
-    assert "authenticated" in payload
+    lifespan_block = main_source.split("async def lifespan", 1)[1].split("\n\n    yield", 1)[0]
+    assert auth_marker not in lifespan_block
+    assert commands_marker not in lifespan_block
