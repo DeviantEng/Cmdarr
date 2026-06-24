@@ -65,3 +65,17 @@ def test_api_and_import_list_paths_require_auth():
     assert _requires_auth("/api/auth/status") is False
     assert _requires_auth("/import_lists/discovery_lastfm") is False
     assert _requires_auth("/import_lists/metrics") is True
+
+
+def test_auth_status_not_shadowed_by_spa_fallback():
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as client:
+        response = client.get("/api/auth/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "setup_required" in payload
+    assert "authenticated" in payload

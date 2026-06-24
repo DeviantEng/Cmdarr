@@ -306,25 +306,6 @@ async def lifespan(app: FastAPI):
     # Initialize session store for auth
     app.state.sessions = {}
 
-    # Import and include commands router after logging is configured
-    try:
-        from app.api import commands
-
-        app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
-        get_app_logger().info("Commands API router loaded successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to load commands API router: {e}")
-        # Don't raise here as other APIs still work
-
-    try:
-        from app.api import auth_routes
-
-        app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
-        get_app_logger().info("Auth API router loaded successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to load auth API router: {e}")
-        # Don't raise here as other APIs still work
-
     yield
 
     # Shutdown
@@ -659,9 +640,20 @@ async def react_system(request: Request, full_path: str = ""):
 
 
 # API Routes - Import after logging is configured
-from app.api import config, events, import_lists, new_releases, status, test_connectivity
+from app.api import (
+    auth_routes,
+    commands,
+    config,
+    events,
+    import_lists,
+    new_releases,
+    status,
+    test_connectivity,
+)
 
-# Include API routers
+# Include API routers (must register before SPA catch-all so /api/* is not shadowed)
+app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
+app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
