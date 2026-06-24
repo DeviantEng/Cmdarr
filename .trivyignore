@@ -16,6 +16,18 @@ CVE-2025-69720 exp:2026-09-01
 #   Debian trixie: open (libssh2 1.11.1-1); sid 1.11.1-3 fixed per tracker. CMDARR does not expose SSH client to untrusted callers.
 CVE-2026-7598 exp:2026-09-01
 #
+# CVE-2026-55200 — libssh2: out-of-bounds write via unchecked packet_length in transport.c
+#   Debian trixie: open (libssh2 1.11.1-1); upstream fix in commit 7acf3df, no trixie DSA yet.
+#   libssh2 is a transitive curl dependency; HEALTHCHECK uses curl for local HTTP only—not SSH/SFTP.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-55200
+CVE-2026-55200 exp:2026-09-01
+#
+# CVE-2026-55199 — libssh2: pre-auth DoS via SSH_MSG_EXT_INFO extension count loop
+#   Debian trixie: open (libssh2 1.11.1-1); upstream fix in commit 1762685, no trixie DSA yet.
+#   Requires a malicious SSH server; CMDARR does not initiate SSH sessions (curl HTTP healthcheck only).
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-55199
+CVE-2026-55199 exp:2026-09-01
+#
 # CVE-2026-5773 — libcurl: wrongful SMBConnection reuse loads wrong SMB share/path
 #   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64; fixed in Debian sid curl 8.20.0-2 onward (no trixie DSA yet).
 #   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.

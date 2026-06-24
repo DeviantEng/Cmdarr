@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Housekeeping
 - **Icons** - Generated icons for Cmdarr.
 - **Python Package Update**: Review and update of Python packages.
-- 
+
 ## [0.3.16] - 2026-06-22
 
 ### Features
