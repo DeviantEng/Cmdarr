@@ -611,6 +611,13 @@ async def react_events(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+@app.get("/commands", response_class=HTMLResponse)
+@app.get("/commands/{full_path:path}", response_class=HTMLResponse)
+async def react_commands(request: Request, full_path: str = ""):
+    """Serve React app for modern UI commands routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
 FRONTEND_PUBLIC_FILES = (
     "icon-32.png",
     "icon-192.png",
@@ -661,6 +668,26 @@ app.include_router(import_lists.router, prefix="/import_lists", tags=["import_li
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
+
+
+_SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "import_lists/", "assets/")
+_SPA_FALLBACK_EXCLUDED_EXACT = frozenset({"health"})
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def react_spa_fallback(request: Request, full_path: str):
+    """Serve React app for direct navigation and refresh on client-side routes."""
+    if full_path in _SPA_FALLBACK_EXCLUDED_EXACT or full_path.startswith(
+        _SPA_FALLBACK_EXCLUDED_PREFIXES
+    ):
+        raise HTTPException(status_code=404, detail="Not Found")
+    if full_path.startswith("icon-"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    index_path = os.path.join(frontend_dist, "index.html")
+    if not os.path.isfile(index_path):
+        raise HTTPException(status_code=503, detail="Frontend not built")
+    return FileResponse(index_path)
 
 
 if __name__ == "__main__":
