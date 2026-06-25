@@ -54,7 +54,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
+        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing --cov-fail-under=70
 
   frontend-lint:
     runs-on: ubuntu-latest
