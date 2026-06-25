@@ -1,15 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import {
+  ArrContentPanel,
+  ArrPageToolbar,
+  ArrPanelBody,
+  ArrSectionHeader,
+} from "@/arr/components/ArrPageToolbar";
+import { cn } from "@/lib/utils";
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
-  Calendar,
   CheckCircle2,
   XCircle,
   Clock,
   Server,
   RotateCcw,
-  Database,
   RefreshCw,
   RotateCw,
   Trash2,
@@ -35,7 +39,85 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
-export function StatusPage() {
+export type StatusSection =
+  | "health"
+  | "system-info"
+  | "migrations"
+  | "artist-events"
+  | "library-cache"
+  | "new-releases"
+  | "api-endpoints";
+
+const ALL_STATUS_SECTIONS: StatusSection[] = [
+  "health",
+  "system-info",
+  "migrations",
+  "artist-events",
+  "library-cache",
+  "new-releases",
+  "api-endpoints",
+];
+
+function StatusSectionPanel({
+  useArrPanel,
+  title,
+  description,
+  actions,
+  children,
+  bodyClassName,
+}: {
+  useArrPanel: boolean;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+  bodyClassName?: string;
+}) {
+  if (useArrPanel) {
+    return (
+      <ArrContentPanel>
+        <ArrSectionHeader title={title} description={description} actions={actions} />
+        <ArrPanelBody className={bodyClassName}>{children}</ArrPanelBody>
+      </ArrContentPanel>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className={actions ? "space-y-2 py-3" : undefined}>
+        {actions ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-base">{title}</CardTitle>
+              {description ? (
+                <CardDescription className="text-xs leading-snug">{description}</CardDescription>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
+          </div>
+        ) : (
+          <>
+            <CardTitle>{title}</CardTitle>
+            {description ? <CardDescription>{description}</CardDescription> : null}
+          </>
+        )}
+      </CardHeader>
+      <CardContent className={bodyClassName}>{children}</CardContent>
+    </Card>
+  );
+}
+
+type StatusPageProps = {
+  sections?: StatusSection[];
+  showPageHeader?: boolean;
+  useArrPanel?: boolean;
+};
+
+export function StatusPage({
+  sections = ALL_STATUS_SECTIONS,
+  showPageHeader = true,
+  useArrPanel = false,
+}: StatusPageProps) {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [health, setHealth] = useState<{
     status: string;
@@ -65,12 +147,14 @@ export function StatusPage() {
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const showSection = (section: StatusSection) => sections.includes(section);
+
   const loadStatus = async () => {
     setError(null);
     try {
       const [bundle, healthData, cacheData, nrdData, migData] = await Promise.all([
         api.getStatus(),
-        api.healthCheck(),
+        api.healthCheck().catch(() => null),
         api.getCacheStatus().catch(() => null),
         api.getNrdMetrics().catch(() => null),
         api.getMigrationStatus().catch(() => null),
@@ -223,11 +307,13 @@ export function StatusPage() {
 
   if (loading) {
     return (
-      <div>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Status</h1>
-          <p className="mt-2 text-muted-foreground">System status and health information</p>
-        </div>
+      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
+        {showPageHeader ? (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold">Status</h1>
+            <p className="mt-2 text-muted-foreground">System status and health information</p>
+          </div>
+        ) : null}
         <div className="text-center text-muted-foreground">Loading status...</div>
       </div>
     );
@@ -235,13 +321,35 @@ export function StatusPage() {
 
   const isHealthy = health?.status === "healthy";
 
+  const healthBadge = isHealthy ? (
+    <Badge variant="default" className="flex items-center gap-1 whitespace-nowrap">
+      <CheckCircle2 className="h-4 w-4" />
+      Healthy
+    </Badge>
+  ) : (
+    <Badge variant="destructive" className="flex items-center gap-1 whitespace-nowrap">
+      <XCircle className="h-4 w-4" />
+      Unhealthy
+    </Badge>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Status</h1>
-        <p className="mt-2 text-muted-foreground">System status and health information</p>
-      </div>
+    <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
+      {showPageHeader ? (
+        <div>
+          <h1 className="text-3xl font-bold">Status</h1>
+          <p className="mt-2 text-muted-foreground">System status and health information</p>
+        </div>
+      ) : null}
+
+      {useArrPanel ? (
+        <ArrPageToolbar>
+          <Button variant="outline" size="sm" onClick={() => void loadStatus()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </ArrPageToolbar>
+      ) : null}
 
       {error && (
         <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -258,383 +366,383 @@ export function StatusPage() {
       )}
 
       {/* Overall Health */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <CardTitle>System Health</CardTitle>
-              <CardDescription>Overall system status</CardDescription>
-            </div>
-            <div className="shrink-0 self-start">
-              {isHealthy ? (
-                <Badge variant="default" className="flex items-center gap-1 whitespace-nowrap">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Healthy
-                </Badge>
-              ) : (
-                <Badge variant="destructive" className="flex items-center gap-1 whitespace-nowrap">
-                  <XCircle className="h-4 w-4" />
-                  Unhealthy
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+      {showSection("health") ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="System Health"
+          description="Overall system status"
+          actions={healthBadge}
+        >
           <p className="text-sm text-muted-foreground">{health?.message}</p>
           <p className="mt-2 text-xs text-muted-foreground">
             Last checked: {health?.timestamp ? new Date(health.timestamp).toLocaleString() : "N/A"}
           </p>
-        </CardContent>
-      </Card>
+        </StatusSectionPanel>
+      ) : null}
 
       {/* System Information */}
-      {status && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Application</CardTitle>
-              <Server className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{status.app_name}</div>
-              <p className="text-xs text-muted-foreground">
-                {status.version}
-                {status.runtime_mode && (
-                  <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
-                )}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Uptime</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatUptime(status.uptime_seconds)}</div>
-              <p className="text-xs text-muted-foreground">Running smoothly</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Database</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold capitalize">{status.database_status}</div>
-              <p className="text-xs text-muted-foreground">
-                {status.database_status === "connected" ? "Operating normally" : "Check connection"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Configuration</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold capitalize">{status.configuration_status}</div>
-              <p className="text-xs text-muted-foreground">
-                {status.configuration_status === "valid" ? "All set" : "Needs attention"}
-              </p>
-            </CardContent>
-          </Card>
-
-          {status.execution_stats && (
+      {showSection("system-info") && status ? (
+        useArrPanel ? (
+          <ArrContentPanel>
+            <ArrSectionHeader
+              title="System Information"
+              description="Application runtime, database, and execution summary"
+            />
+            <ArrPanelBody>
+              <div className="arr-stats-grid">
+                <div>
+                  <div className="text-lg font-semibold">{status.app_name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {status.version}
+                    {status.runtime_mode && (
+                      <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold">{formatUptime(status.uptime_seconds)}</div>
+                  <div className="text-xs text-muted-foreground">Uptime</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold capitalize">{status.database_status}</div>
+                  <div className="text-xs text-muted-foreground">Database</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold capitalize">
+                    {status.configuration_status}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Configuration</div>
+                </div>
+                {status.execution_stats ? (
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {status.execution_stats.total_execution_count.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Executions · {status.execution_stats.total_success_count.toLocaleString()} ok
+                      · {status.execution_stats.total_failure_count.toLocaleString()} failed
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </ArrPanelBody>
+          </ArrContentPanel>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Execution Stats</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Application</CardTitle>
+                <Server className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {status.execution_stats.total_execution_count.toLocaleString()} total
-                </div>
+                <div className="text-2xl font-bold">{status.app_name}</div>
                 <p className="text-xs text-muted-foreground">
-                  {status.execution_stats.total_success_count.toLocaleString()} success ·{" "}
-                  {status.execution_stats.total_failure_count.toLocaleString()} failed
+                  {status.version}
+                  {status.runtime_mode && (
+                    <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
+                  )}
                 </p>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Uptime</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatUptime(status.uptime_seconds)}</div>
+                <p className="text-xs text-muted-foreground">Running smoothly</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Database</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold capitalize">{status.database_status}</div>
+                <p className="text-xs text-muted-foreground">
+                  {status.database_status === "connected"
+                    ? "Operating normally"
+                    : "Check connection"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Configuration</CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold capitalize">{status.configuration_status}</div>
+                <p className="text-xs text-muted-foreground">
+                  {status.configuration_status === "valid" ? "All set" : "Needs attention"}
+                </p>
+              </CardContent>
+            </Card>
+
+            {status.execution_stats && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Execution Stats</CardTitle>
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {status.execution_stats.total_execution_count.toLocaleString()} total
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {status.execution_stats.total_success_count.toLocaleString()} success ·{" "}
+                    {status.execution_stats.total_failure_count.toLocaleString()} failed
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )
+      ) : null}
+
+      {showSection("migrations") && migrationStatus?.dev_manual_available ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="Database migrations"
+          description={`Dev build only. Pending migrations run automatically on startup and are recorded in a per-migration ledger (${migrationStatus.current_version}${migrationStatus.last_run_version ? `, last recorded ${migrationStatus.last_run_version}` : ""}). Use this button to apply any still-pending migrations after pulling schema changes on the same -dev version.`}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleRunMigrations}
+              disabled={migrationRunning}
+            >
+              {migrationRunning ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Run migrations
+            </Button>
+          }
+          bodyClassName="space-y-3"
+        >
+          {migrationStatus.pending_migrations.length > 0 ? (
+            <div>
+              <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                Pending ({migrationStatus.pending_migrations.length})
+              </p>
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {migrationStatus.pending_migrations.map((m) => (
+                  <li key={m.name}>
+                    <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
+                    {m.description}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No pending migrations.</p>
           )}
-        </div>
-      )}
+          {migrationStatus.applied_migrations.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">
+                Applied ({migrationStatus.applied_migrations.length})
+              </p>
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {migrationStatus.applied_migrations.map((m) => (
+                  <li key={m.name}>
+                    <span className="font-mono text-[10px]">{m.version}</span> · {m.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </StatusSectionPanel>
+      ) : null}
 
-      {migrationStatus?.dev_manual_available && (
-        <Card>
-          <CardHeader className="space-y-2 py-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Database className="h-4 w-4" />
-                  Database migrations
-                </CardTitle>
-                <CardDescription className="text-xs leading-snug">
-                  Dev build only. Pending migrations run automatically on startup and are recorded
-                  in a per-migration ledger ({migrationStatus.current_version}
-                  {migrationStatus.last_run_version
-                    ? `, last recorded ${migrationStatus.last_run_version}`
-                    : ""}
-                  ). Use this button to apply any still-pending migrations after pulling schema
-                  changes on the same <code className="text-[10px]">-dev</code> version.
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={handleRunMigrations}
-                disabled={migrationRunning}
-              >
-                {migrationRunning ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Run migrations
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-3">
-            {migrationStatus.pending_migrations.length > 0 ? (
-              <div>
-                <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
-                  Pending ({migrationStatus.pending_migrations.length})
-                </p>
-                <ul className="text-xs text-muted-foreground space-y-1">
-                  {migrationStatus.pending_migrations.map((m) => (
-                    <li key={m.name}>
-                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name} —{" "}
-                      {m.description}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No pending migrations.</p>
+      {showSection("artist-events") && artistEventsStats ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="Artist Events"
+          description="Cached shows from the event refresh command. Clearing deletes stored events and per-artist scan timestamps so every library artist is due on the next run. Artist hides (from the Events page) are kept; single-event hides tied to deleted rows are removed."
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 text-destructive hover:text-destructive"
+              onClick={() => setConfirmInvalidateEventsOpen(true)}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Clear event cache
+            </Button>
+          }
+        >
+          <div
+            className={cn(
+              "grid gap-3 text-sm",
+              useArrPanel ? "arr-stats-grid" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
             )}
-            {migrationStatus.applied_migrations.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Applied ({migrationStatus.applied_migrations.length})
-                </p>
-                <ul className="text-xs text-muted-foreground space-y-1">
-                  {migrationStatus.applied_migrations.map((m) => (
-                    <li key={m.name}>
-                      <span className="font-mono text-[10px]">{m.version}</span> · {m.name}
-                    </li>
-                  ))}
-                </ul>
+          >
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.lidarr_artists.toLocaleString()}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {artistEventsStats && (
-        <Card>
-          <CardHeader className="space-y-2 py-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Calendar className="h-4 w-4" />
-                  Artist Events
-                </CardTitle>
-                <CardDescription className="text-xs leading-snug">
-                  Cached shows from the event refresh command. Clearing deletes stored events and
-                  per-artist scan timestamps so every library artist is due on the next run. Artist
-                  hides (from the Events page) are kept; single-event hides tied to deleted rows are
-                  removed.
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive shrink-0"
-                onClick={() => setConfirmInvalidateEventsOpen(true)}
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Clear event cache
-              </Button>
+              <div className="text-xs text-muted-foreground">Lidarr artists</div>
             </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.lidarr_artists.toLocaleString()}
-                </div>
-                <div className="text-xs text-muted-foreground">Lidarr artists</div>
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.artists_scanned_at_least_once.toLocaleString()}
               </div>
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.artists_scanned_at_least_once.toLocaleString()}
-                </div>
-                <div className="text-xs text-muted-foreground">Scanned ≥ once</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.scan_coverage_percent.toFixed(1)}%
-                </div>
-                <div className="text-xs text-muted-foreground">Scan coverage</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.upcoming_events_stored.toLocaleString()}
-                </div>
-                <div className="text-xs text-muted-foreground">Upcoming stored</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.hidden_artists.toLocaleString()}
-                </div>
-                <div className="text-xs text-muted-foreground">Hidden artists</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold tabular-nums">
-                  {artistEventsStats.hidden_events.toLocaleString()}
-                </div>
-                <div className="text-xs text-muted-foreground">Hidden events</div>
-              </div>
+              <div className="text-xs text-muted-foreground">Scanned ≥ once</div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.scan_coverage_percent.toFixed(1)}%
+              </div>
+              <div className="text-xs text-muted-foreground">Scan coverage</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.upcoming_events_stored.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground">Upcoming stored</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.hidden_artists.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground">Hidden artists</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold tabular-nums">
+                {artistEventsStats.hidden_events.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground">Hidden events</div>
+            </div>
+          </div>
+        </StatusSectionPanel>
+      ) : null}
 
       {/* Library Cache */}
-      {cacheStatus && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5 shrink-0" />
-                  Library Cache
-                </CardTitle>
-                <CardDescription>
-                  Plex and Jellyfin music library cache stats and controls
-                </CardDescription>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2 self-start">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleCacheRefresh(false)}
-                  disabled={!!cacheActionLoading}
-                >
-                  <RefreshCw
-                    className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "refresh" ? "animate-spin" : ""}`}
-                  />
-                  Refresh
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleCacheRefresh(true)}
-                  disabled={!!cacheActionLoading}
-                >
-                  <RotateCw
-                    className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "rebuild" ? "animate-spin" : ""}`}
-                  />
-                  Force Rebuild
-                </Button>
-              </div>
+      {showSection("library-cache") && cacheStatus ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="Library Cache"
+          description="Plex and Jellyfin music library cache stats and controls"
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCacheRefresh(false)}
+                disabled={!!cacheActionLoading}
+              >
+                <RefreshCw
+                  className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "refresh" ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCacheRefresh(true)}
+                disabled={!!cacheActionLoading}
+              >
+                <RotateCw
+                  className={`mr-1.5 h-3.5 w-3.5 ${cacheActionLoading === "rebuild" ? "animate-spin" : ""}`}
+                />
+                Force Rebuild
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border p-4">
+              <div className="font-medium capitalize mb-2">Plex</div>
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Objects</dt>
+                  <dd>{cacheStatus.plex.object_count.toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Last built</dt>
+                  <dd>{formatCacheTime(cacheStatus.plex.last_generated)}</dd>
+                </div>
+                {cacheStatus.plex.hit_rate != null && (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Hit rate</dt>
+                    <dd>{(cacheStatus.plex.hit_rate * 100).toFixed(1)}%</dd>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd>
+                    <Badge
+                      variant={cacheStatus.plex.status === "Available" ? "default" : "secondary"}
+                    >
+                      {cacheStatus.plex.status}
+                    </Badge>
+                  </dd>
+                </div>
+              </dl>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border p-4">
-                <div className="font-medium capitalize mb-2">Plex</div>
-                <dl className="space-y-1 text-sm">
+            <div className="rounded-lg border p-4">
+              <div className="font-medium capitalize mb-2">Jellyfin</div>
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Objects</dt>
+                  <dd>{cacheStatus.jellyfin.object_count.toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Last built</dt>
+                  <dd>{formatCacheTime(cacheStatus.jellyfin.last_generated)}</dd>
+                </div>
+                {cacheStatus.jellyfin.hit_rate != null && (
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Objects</dt>
-                    <dd>{cacheStatus.plex.object_count.toLocaleString()}</dd>
+                    <dt className="text-muted-foreground">Hit rate</dt>
+                    <dd>{(cacheStatus.jellyfin.hit_rate * 100).toFixed(1)}%</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Last built</dt>
-                    <dd>{formatCacheTime(cacheStatus.plex.last_generated)}</dd>
-                  </div>
-                  {cacheStatus.plex.hit_rate != null && (
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Hit rate</dt>
-                      <dd>{(cacheStatus.plex.hit_rate * 100).toFixed(1)}%</dd>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Status</dt>
-                    <dd>
-                      <Badge
-                        variant={cacheStatus.plex.status === "Available" ? "default" : "secondary"}
-                      >
-                        {cacheStatus.plex.status}
-                      </Badge>
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-              <div className="rounded-lg border p-4">
-                <div className="font-medium capitalize mb-2">Jellyfin</div>
-                <dl className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Objects</dt>
-                    <dd>{cacheStatus.jellyfin.object_count.toLocaleString()}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Last built</dt>
-                    <dd>{formatCacheTime(cacheStatus.jellyfin.last_generated)}</dd>
-                  </div>
-                  {cacheStatus.jellyfin.hit_rate != null && (
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Hit rate</dt>
-                      <dd>{(cacheStatus.jellyfin.hit_rate * 100).toFixed(1)}%</dd>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Status</dt>
-                    <dd>
-                      <Badge
-                        variant={
-                          cacheStatus.jellyfin.status === "Available" ? "default" : "secondary"
-                        }
-                      >
-                        {cacheStatus.jellyfin.status}
-                      </Badge>
-                    </dd>
-                  </div>
-                </dl>
-              </div>
+                )}
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd>
+                    <Badge
+                      variant={
+                        cacheStatus.jellyfin.status === "Available" ? "default" : "secondary"
+                      }
+                    >
+                      {cacheStatus.jellyfin.status}
+                    </Badge>
+                  </dd>
+                </div>
+              </dl>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </StatusSectionPanel>
+      ) : null}
 
-      {/* New Releases */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            New Releases
-          </CardTitle>
-          <CardDescription>
-            {nrdMetrics?.available
+      {showSection("new-releases") ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="New Releases"
+          description={
+            nrdMetrics?.available
               ? `Lidarr artist scan coverage (within ${nrdMetrics.cache_ttl_days ?? 14}-day TTL). Dismissed releases can be restored below.`
-              : "Dismissed releases from New Releases can be restored here"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {nrdMetrics?.available && (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-lg border p-4">
+              : "Dismissed releases from New Releases can be restored here"
+          }
+          bodyClassName="space-y-4"
+        >
+          {nrdMetrics?.available ? (
+            <div className={cn(useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3")}>
+              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.total_lidarr_artists?.toLocaleString() ?? "—"}
                 </div>
                 <p className="text-sm text-muted-foreground">Lidarr artists</p>
               </div>
-              <div className="rounded-lg border p-4">
+              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.artists_scanned_fresh?.toLocaleString() ?? "—"}
                 </div>
@@ -642,7 +750,7 @@ export function StatusPage() {
                 {nrdMetrics.total_lidarr_artists != null &&
                   nrdMetrics.total_lidarr_artists > 0 &&
                   nrdMetrics.artists_scanned_fresh != null && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {(
                         (nrdMetrics.artists_scanned_fresh / nrdMetrics.total_lidarr_artists) *
                         100
@@ -651,176 +759,189 @@ export function StatusPage() {
                     </p>
                   )}
               </div>
-              <div className="rounded-lg border p-4">
+              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
                 </div>
                 <p className="text-sm text-muted-foreground">Not yet scanned</p>
               </div>
             </div>
-          )}
+          ) : null}
           <Button variant="outline" onClick={openDismissed}>
             <RotateCcw className="mr-2 h-4 w-4" />
             View / Restore Dismissed
           </Button>
-        </CardContent>
-      </Card>
+        </StatusSectionPanel>
+      ) : null}
 
-      {/* Dismissed Dialog */}
-      <Dialog open={dismissedOpen} onOpenChange={setDismissedOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Dismissed Releases</DialogTitle>
-            <DialogDescription>
-              Restore to allow them to reappear on the next New Releases scan.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmRestoreAllOpen(true)}
-                disabled={dismissedTotal === 0}
-              >
-                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                Restore All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmResetOpen(true)}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Reset
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {dismissed.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No dismissed releases.</p>
-              ) : (
-                dismissed.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+      {showSection("new-releases") ? (
+        <>
+          {/* Dismissed Dialog */}
+          <Dialog open={dismissedOpen} onOpenChange={setDismissedOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Dismissed Releases</DialogTitle>
+                <DialogDescription>
+                  Restore to allow them to reappear on the next New Releases scan.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmRestoreAllOpen(true)}
+                    disabled={dismissedTotal === 0}
                   >
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium">{item.artist_name}</span>
-                      <span className="mx-2 text-muted-foreground">—</span>
-                      <span>{item.album_title}</span>
-                      {item.release_date && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {item.release_date}
-                        </span>
-                      )}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
-                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                      Restore
-                    </Button>
-                  </div>
-                ))
-              )}
-              {dismissedTotal > dismissed.length && (
-                <p className="text-xs text-muted-foreground">
-                  Showing {dismissed.length} of {dismissedTotal}
-                </p>
-              )}
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    Restore All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmResetOpen(true)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Reset
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-2">
+                  {dismissed.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No dismissed releases.</p>
+                  ) : (
+                    dismissed.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium">{item.artist_name}</span>
+                          <span className="mx-2 text-muted-foreground">—</span>
+                          <span>{item.album_title}</span>
+                          {item.release_date && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {item.release_date}
+                            </span>
+                          )}
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
+                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                          Restore
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                  {dismissedTotal > dismissed.length && (
+                    <p className="text-xs text-muted-foreground">
+                      Showing {dismissed.length} of {dismissedTotal}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Restore All confirmation */}
+          <Dialog open={confirmRestoreAllOpen} onOpenChange={setConfirmRestoreAllOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Restore All Dismissed</DialogTitle>
+                <DialogDescription>
+                  This will restore all {dismissedTotal} dismissed release
+                  {dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan.
+                  Continue?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setConfirmRestoreAllOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleRestoreAll}
+                  disabled={confirmActionLoading === "restore-all"}
+                >
+                  {confirmActionLoading === "restore-all" ? "Restoring…" : "Restore All"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Reset scan history confirmation */}
+          <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  Reset New Releases Discovery
+                </DialogTitle>
+                <DialogDescription>
+                  This will wipe all artist scan history from the database. Every Lidarr artist will
+                  be treated as "not yet scanned" and NRD will start fresh on the next run. This
+                  cannot be undone. Continue?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setConfirmResetOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleReset}
+                  disabled={confirmActionLoading === "reset"}
+                >
+                  {confirmActionLoading === "reset" ? "Resetting…" : "Reset"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : null}
+
+      {showSection("artist-events") ? (
+        <Dialog open={confirmInvalidateEventsOpen} onOpenChange={setConfirmInvalidateEventsOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Clear artist events cache?
+              </DialogTitle>
+              <DialogDescription>
+                This deletes all stored upcoming events and clears per-artist event-scan timestamps.
+                The Artist Events page will be empty until the next refresh. Every Lidarr artist
+                will be due for scanning again. Artist-level hides are kept; hides on individual
+                events are dropped with those rows.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setConfirmInvalidateEventsOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleInvalidateArtistEvents}
+                disabled={confirmActionLoading === "invalidate-events"}
+              >
+                {confirmActionLoading === "invalidate-events" ? "Clearing…" : "Clear cache"}
+              </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
-      {/* Restore All confirmation */}
-      <Dialog open={confirmRestoreAllOpen} onOpenChange={setConfirmRestoreAllOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restore All Dismissed</DialogTitle>
-            <DialogDescription>
-              This will restore all {dismissedTotal} dismissed release
-              {dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan.
-              Continue?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmRestoreAllOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRestoreAll} disabled={confirmActionLoading === "restore-all"}>
-              {confirmActionLoading === "restore-all" ? "Restoring…" : "Restore All"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reset scan history confirmation */}
-      <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Reset New Releases Discovery
-            </DialogTitle>
-            <DialogDescription>
-              This will wipe all artist scan history from the database. Every Lidarr artist will be
-              treated as "not yet scanned" and NRD will start fresh on the next run. This cannot be
-              undone. Continue?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmResetOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleReset}
-              disabled={confirmActionLoading === "reset"}
+      {showSection("api-endpoints") ? (
+        <StatusSectionPanel
+          useArrPanel={useArrPanel}
+          title="API Endpoints"
+          description="Available API endpoints"
+        >
+          <div className={cn("space-y-2", useArrPanel && "arr-list-rows -mx-4")}>
+            <div
+              className={cn(
+                "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
+                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+              )}
             >
-              {confirmActionLoading === "reset" ? "Resetting…" : "Reset"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmInvalidateEventsOpen} onOpenChange={setConfirmInvalidateEventsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Clear artist events cache?
-            </DialogTitle>
-            <DialogDescription>
-              This deletes all stored upcoming events and clears per-artist event-scan timestamps.
-              The Artist Events page will be empty until the next refresh. Every Lidarr artist will
-              be due for scanning again. Artist-level hides are kept; hides on individual events are
-              dropped with those rows.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmInvalidateEventsOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleInvalidateArtistEvents}
-              disabled={confirmActionLoading === "invalidate-events"}
-            >
-              {confirmActionLoading === "invalidate-events" ? "Clearing…" : "Clear cache"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* API Endpoints */}
-      <Card>
-        <CardHeader>
-          <CardTitle>API Endpoints</CardTitle>
-          <CardDescription>Available API endpoints</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="font-medium">Health Check</div>
                 <div className="truncate text-sm text-muted-foreground">/health</div>
@@ -829,7 +950,12 @@ export function StatusPage() {
                 GET
               </Badge>
             </div>
-            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              className={cn(
+                "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
+                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+              )}
+            >
               <div className="min-w-0">
                 <div className="font-medium">Commands API</div>
                 <div className="truncate text-sm text-muted-foreground">/api/commands</div>
@@ -838,7 +964,12 @@ export function StatusPage() {
                 REST
               </Badge>
             </div>
-            <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              className={cn(
+                "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
+                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+              )}
+            >
               <div className="min-w-0">
                 <div className="font-medium">Configuration API</div>
                 <div className="truncate text-sm text-muted-foreground">/api/config</div>
@@ -848,8 +979,8 @@ export function StatusPage() {
               </Badge>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </StatusSectionPanel>
+      ) : null}
     </div>
   );
 }

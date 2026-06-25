@@ -25,10 +25,8 @@ async def _optional_musicbrainz(config):
 
 from sqlalchemy.orm import Session
 
-from clients.client_deezer import DeezerClient
 from clients.client_lidarr import LidarrClient
 from clients.client_musicbrainz import MusicBrainzClient
-from clients.client_spotify import SpotifyClient
 from database.config_models import (
     ArtistScanLog,
     DismissedArtistAlbum,
@@ -36,6 +34,13 @@ from database.config_models import (
     NewReleasePending,
 )
 from database.database import get_database_manager
+from utils.nrd_release_source import (
+    enrich_nrd_album_if_needed,
+    normalize_nrd_source,
+    nrd_lidarr_artist_id_key,
+    nrd_mb_streaming_provider,
+    nrd_release_client,
+)
 from utils.text_normalizer import normalize_text, prefer_base_releases, strip_edition_suffix
 
 from .command_base import BaseCommand
@@ -162,12 +167,6 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 selected_types = self._get_album_types()
 
             source_provider = self._get_new_releases_source()
-            if source_provider == "spotify":
-                if not config.SPOTIFY_CLIENT_ID or not config.SPOTIFY_CLIENT_SECRET:
-                    self.logger.error(
-                        "Spotify credentials not configured (new_releases_source=spotify)"
-                    )
-                    return False
             if not config.LIDARR_API_KEY or not config.LIDARR_URL:
                 self.logger.error("Lidarr not configured")
                 return False
@@ -188,14 +187,14 @@ class NewReleasesDiscoveryCommand(BaseCommand):
             db = get_database_manager()
             session = db.get_config_session_context()
 
-            client_class = SpotifyClient if source_provider == "spotify" else DeezerClient
-            artist_id_key = "spotifyArtistId" if source_provider == "spotify" else "deezerArtistId"
+            mb_streaming_provider = nrd_mb_streaming_provider(source_provider)
+            artist_id_key = nrd_lidarr_artist_id_key(source_provider)
 
             try:
                 inserted = 0
                 scanned = 0
                 async with LidarrClient(config):
-                    async with client_class(config) as release_client:
+                    async with nrd_release_client(source_provider, config) as release_client:
                         async with _optional_musicbrainz(config) as musicbrainz_client:
                             for artist in artists:
                                 artist_name = artist.get("artistName", "")
@@ -234,7 +233,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 # Fallback: MusicBrainz URL relations (Lidarr may not have Deezer/Spotify link)
                                 if not artist_id and musicbrainz_client:
                                     mb_artist_id = await musicbrainz_client.get_artist_streaming_id(
-                                        mbid, source_provider
+                                        mbid, mb_streaming_provider
                                     )
                                     if mb_artist_id:
                                         artist_id = mb_artist_id
@@ -287,7 +286,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                 albums_result = await release_client.get_artist_albums(
                                     artist_id,
                                     limit=50,
-                                    include_groups="album,single,compilation,appears_on",
+                                    include_groups="album,ep,single,compilation,appears_on",
                                     fetch_all=True,
                                 )
                                 if not albums_result.get("success") or not albums_result.get(
@@ -311,8 +310,12 @@ class NewReleasesDiscoveryCommand(BaseCommand):
 
                                 had_pending = False
                                 candidates = []
+                                via_scraper = albums_result.get("via") == "scraper"
                                 for album in albums_result["albums"]:
-                                    if album.get("primary_artist_id") != artist_id:
+                                    if (
+                                        not via_scraper
+                                        and album.get("primary_artist_id") != artist_id
+                                    ):
                                         continue
                                     album_type = album.get("album_type", "")
                                     total_tracks = album.get("total_tracks", 0)
@@ -322,12 +325,19 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                                         continue
                                     if _is_live_release(album.get("name", "")):
                                         continue
+                                    if _title_matches_mb(album.get("name", ""), mb_titles):
+                                        continue
+
+                                    album = await enrich_nrd_album_if_needed(
+                                        release_client, album, source_provider
+                                    )
+                                    if album.get("primary_artist_id") != artist_id:
+                                        continue
+
                                     spotify_url = album.get("spotify_url") or album.get(
                                         "external_url", ""
                                     )
                                     if not spotify_url:
-                                        continue
-                                    if _title_matches_mb(album.get("name", ""), mb_titles):
                                         continue
 
                                     album_title = album.get("name", "Unknown")
@@ -437,10 +447,9 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         return {"album"}
 
     def _get_new_releases_source(self) -> str:
-        """Get new releases source: 'spotify' or 'deezer' (default deezer)."""
+        """Get new releases source: deezer or spotify (default deezer)."""
         cfg = getattr(self, "config_json", None) or {}
-        src = (cfg.get("new_releases_source") or "deezer").strip().lower()
-        return src if src in ("spotify", "deezer") else "deezer"
+        return normalize_nrd_source(cfg.get("new_releases_source"))
 
     async def _pick_artists_to_scan(self, n: int) -> list[dict[str, Any]]:
         """Pick artists: never-scanned first, then by last_scanned_at ASC; if more than n, random sample."""

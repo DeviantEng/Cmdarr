@@ -306,25 +306,6 @@ async def lifespan(app: FastAPI):
     # Initialize session store for auth
     app.state.sessions = {}
 
-    # Import and include commands router after logging is configured
-    try:
-        from app.api import commands
-
-        app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
-        get_app_logger().info("Commands API router loaded successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to load commands API router: {e}")
-        # Don't raise here as other APIs still work
-
-    try:
-        from app.api import auth_routes
-
-        app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
-        get_app_logger().info("Auth API router loaded successfully")
-    except Exception as e:
-        get_app_logger().error(f"Failed to load auth API router: {e}")
-        # Don't raise here as other APIs still work
-
     yield
 
     # Shutdown
@@ -568,6 +549,12 @@ async def detailed_status_api(db: Annotated[Session, Depends(get_config_db)]):
         raise HTTPException(status_code=500, detail="Status check failed")
 
 
+@app.get("/api/version")
+async def get_app_version():
+    """Lightweight version endpoint for UI display."""
+    return {"version": __version__}
+
+
 # Serve React app for frontend routes
 @app.get("/", response_class=HTMLResponse)
 async def react_app(request: Request):
@@ -605,16 +592,94 @@ async def react_events(request: Request):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
-# API Routes - Import after logging is configured
-from app.api import config, events, import_lists, new_releases, status, test_connectivity
+@app.get("/commands", response_class=HTMLResponse)
+@app.get("/commands/{full_path:path}", response_class=HTMLResponse)
+async def react_commands(request: Request, full_path: str = ""):
+    """Serve React app for modern UI commands routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
 
-# Include API routers
+
+FRONTEND_PUBLIC_FILES = (
+    "icon-32.png",
+    "icon-192.png",
+    "icon-512.png",
+    "icon-1024.png",
+    "apple-touch-icon.png",
+    "site.webmanifest",
+)
+
+
+def _register_frontend_public_file(filename: str) -> None:
+    filepath = os.path.join(frontend_dist, filename)
+
+    @app.get(f"/{filename}", include_in_schema=False)
+    async def serve_frontend_public_file():
+        if not os.path.isfile(filepath):
+            raise HTTPException(status_code=404)
+        return FileResponse(filepath)
+
+    serve_frontend_public_file.__name__ = f"serve_{filename.replace('.', '_')}"
+
+
+for _filename in FRONTEND_PUBLIC_FILES:
+    _register_frontend_public_file(_filename)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+@app.get("/settings/{full_path:path}", response_class=HTMLResponse)
+async def react_settings(request: Request, full_path: str = ""):
+    """Serve React app for modern UI settings routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+@app.get("/system", response_class=HTMLResponse)
+@app.get("/system/{full_path:path}", response_class=HTMLResponse)
+async def react_system(request: Request, full_path: str = ""):
+    """Serve React app for modern UI system routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+# API Routes - Import after logging is configured
+from app.api import (
+    auth_routes,
+    commands,
+    config,
+    events,
+    import_lists,
+    new_releases,
+    status,
+    test_connectivity,
+)
+
+# Include API routers (must register before SPA catch-all so /api/* is not shadowed)
+app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
+app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
 app.include_router(config.router, prefix="/api/config", tags=["configuration"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(import_lists.router, prefix="/import_lists", tags=["import_lists"])
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
+
+
+_SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "import_lists/", "assets/")
+_SPA_FALLBACK_EXCLUDED_EXACT = frozenset({"health"})
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def react_spa_fallback(request: Request, full_path: str):
+    """Serve React app for direct navigation and refresh on client-side routes."""
+    if full_path in _SPA_FALLBACK_EXCLUDED_EXACT or full_path.startswith(
+        _SPA_FALLBACK_EXCLUDED_PREFIXES
+    ):
+        raise HTTPException(status_code=404, detail="Not Found")
+    if full_path.startswith("icon-"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    index_path = os.path.join(frontend_dist, "index.html")
+    if not os.path.isfile(index_path):
+        raise HTTPException(status_code=503, detail="Frontend not built")
+    return FileResponse(index_path)
 
 
 if __name__ == "__main__":

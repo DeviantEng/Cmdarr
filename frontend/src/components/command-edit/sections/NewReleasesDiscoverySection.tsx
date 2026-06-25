@@ -5,10 +5,17 @@ import { commandUiCopy } from "@/command-spec";
 
 const nr = commandUiCopy.newReleases;
 
+function normalizeNrdSourceValue(src: string | undefined): "deezer" | "spotify" {
+  if (src === "spotify" || src === "spotify_scraper") return "spotify";
+  return "deezer";
+}
+
 export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderContext }) {
   const { editForm, setEditForm, nrdSources } = ctx;
-  const spotify = nrdSources.find((s) => s.id === "spotify");
-  const spotifyConfigured = !!spotify?.configured;
+  const spotifySource = nrdSources.find((s) => s.id === "spotify");
+  const spotifyConfigured = spotifySource?.configured !== false;
+  const sourceValue = normalizeNrdSourceValue(editForm.new_releases_source);
+
   return (
     <>
       <div className="space-y-2">
@@ -27,7 +34,7 @@ export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderCon
         <Label htmlFor="edit-source">{nr.releaseSource}</Label>
         <select
           id="edit-source"
-          value={editForm.new_releases_source ?? "deezer"}
+          value={sourceValue}
           onChange={(e) =>
             setEditForm((f) => ({
               ...f,
@@ -37,8 +44,9 @@ export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderCon
           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
         >
           <option value="deezer">{nr.deezerOption}</option>
-          <option value="spotify" disabled={!!spotify && !spotify.configured}>
-            {`${nr.spotifyOptionPrefix}${spotifyConfigured ? nr.spotifyCredentialsOk : nr.spotifyCredentialsMissing})`}
+          <option value="spotify" disabled={!!spotifySource && !spotifyConfigured}>
+            {nr.spotifyOption}
+            {spotifySource && !spotifyConfigured ? " (unavailable)" : ""}
           </option>
         </select>
         <p className="text-xs text-muted-foreground">{nr.sourceHelp}</p>

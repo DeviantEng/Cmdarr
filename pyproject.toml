@@ -39,3 +39,15 @@ ignore = [
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.coverage.run]
+source = ["utils"]
+omit = [
+    "utils/cache_client_example.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

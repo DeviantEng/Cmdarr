@@ -12,7 +12,7 @@ check-zizmor:
 	uvx zizmor==$(ZIZMOR_VERSION) . --offline
 check-test test:
 	uv run --with-requirements requirements-dev.txt pytest tests/ -v \
-		--cov=utils --cov=tests --cov-report=term-missing
+		--cov=utils --cov=tests --cov-report=term-missing --cov-fail-under=70
 check-frontend:
 	cd frontend && npm run lint && npm run format:check
 check-frontend-typecheck:

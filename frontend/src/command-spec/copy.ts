@@ -77,11 +77,10 @@ export const commandUiCopy = {
     releaseSource: "Release source",
     releaseTypesHeading: "Release types to include",
     releaseTypesHelp: "Used for batch runs and ad-hoc artist scans",
-    sourceHelp: "Deezer uses public data; Spotify requires credentials in Config → Music Sources",
-    deezerOption: "Deezer (no account configuration required)",
-    spotifyOptionPrefix: "Spotify (",
-    spotifyCredentialsOk: "credentials configured",
-    spotifyCredentialsMissing: "set credentials in Config",
+    sourceHelp:
+      "Deezer uses open API. Spotify defaults to spotifyscraper unless valid client creds are configured, in which case the official API is used.",
+    deezerOption: "Deezer",
+    spotifyOption: "Spotify",
   },
   artistEvents: {
     artistsPerRun: "Artists per scheduled run",

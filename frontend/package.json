@@ -7,8 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "sync-icons": "bash sync-icons.sh",
+    "dev": "npm run sync-icons && vite",
+    "build": "npm run sync-icons && tsc -b && vite build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

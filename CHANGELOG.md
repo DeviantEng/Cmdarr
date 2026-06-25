@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.17] - 2026-06-25
+
+### Features
+- **Modern arr UI (preview)**: Optional Sonarr-style shell with sidebar navigation, collapsible Settings/System sections, and panel-based layouts on Commands, Import Lists, New Releases, Events, Settings, and System pages. Toggle from the header, upper-right.
+- **Spotify Client Update**: Supports Spotify credentials (client ID/secret), but if they don't validate or not configured, defaults to use spotifyscraper for all functions for Spotify (New Release Discovery, Playlist Sync, etc).
+
+### Fixes
+- **Minor fixes**: Playlist matching updates; minor bug fixes.
+
+### Housekeeping
+- **Icons** - Generated icons for Cmdarr.
+- **Python Package Update**: Review and update of Python packages.
+- **Test coverage**: Added unit tests for timezone, event dedupe coalescing, and related utils; enforce 70% coverage floor in CI (current ~73%).
+
 ## [0.3.16] - 2026-06-22
 
 ### Features
