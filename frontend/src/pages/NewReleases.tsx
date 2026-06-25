@@ -66,6 +66,14 @@ function getReleaseUrlLabel(url: string): string {
   return "Release";
 }
 
+/** Show YYYY-MM-DD for API datetimes such as 2026-03-13T00:00:00+00:00. */
+function formatReleaseDate(value: string): string {
+  if (value.length >= 10 && value[4] === "-" && value[7] === "-") {
+    return value.slice(0, 10);
+  }
+  return value;
+}
+
 type NewReleasesPageProps = {
   showPageHeader?: boolean;
   useArrPanel?: boolean;
@@ -513,7 +521,9 @@ export function NewReleasesPage({
                         </span>
                       )}
                       {a.release_date && (
-                        <span className="ml-2 text-sm text-muted-foreground">{a.release_date}</span>
+                        <span className="ml-2 text-sm text-muted-foreground">
+                          {formatReleaseDate(a.release_date)}
+                        </span>
                       )}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => openHarmony(a.harmony_url)}>
@@ -900,7 +910,9 @@ function PendingRow({
           <span className="ml-2 text-xs text-muted-foreground capitalize">{item.album_type}</span>
         )}
         {item.release_date && (
-          <span className="ml-2 text-sm text-muted-foreground">{item.release_date}</span>
+          <span className="ml-2 text-sm text-muted-foreground">
+            {formatReleaseDate(item.release_date)}
+          </span>
         )}
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:shrink-0">
