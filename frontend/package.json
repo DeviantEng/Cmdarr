@@ -61,5 +61,8 @@
     "@typescript-eslint/typescript-estree": {
       "minimatch": "9.0.7"
     }
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
   }
 }
