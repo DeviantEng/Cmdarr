@@ -7,10 +7,11 @@ import asyncio
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from __version__ import __version__
@@ -25,6 +26,116 @@ router = APIRouter()
 # Lazy-load logger to avoid initialization issues
 def get_status_logger():
     return get_logger("cmdarr.api.status")
+
+
+_SINCE_TOKENS: dict[str, timedelta] = {
+    "1d": timedelta(days=1),
+    "3d": timedelta(days=3),
+    "7d": timedelta(days=7),
+    "14d": timedelta(days=14),
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+    "1y": timedelta(days=365),
+}
+
+
+def parse_execution_since(since: str | None) -> datetime | None:
+    """Parse a relative since token into a UTC cutoff, or None for no lower bound."""
+    if since is None or since == "all":
+        return None
+    token = since.strip().lower()
+    if token in _SINCE_TOKENS:
+        return datetime.utcnow() - _SINCE_TOKENS[token]
+    try:
+        parsed = datetime.fromisoformat(token.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid since value: {since}. Use 1d, 3d, 7d, 14d, 30d, 90d, 1y, all, or ISO datetime.",
+        ) from exc
+
+
+def _execution_status(execution: CommandExecution) -> str:
+    if execution.is_running:
+        return "running"
+    if execution.completed_at is not None:
+        return "completed" if execution.success else "failed"
+    return "running"
+
+
+def _serialize_execution(
+    execution: CommandExecution, command_config: CommandConfig | None
+) -> dict[str, Any]:
+    status = _execution_status(execution)
+    return {
+        "id": execution.id,
+        "command_name": execution.command_name,
+        "display_name": command_config.display_name
+        if command_config
+        else execution.command_name.replace("_", " "),
+        "started_at": execution.started_at.isoformat() + "Z",
+        "completed_at": execution.completed_at.isoformat() + "Z"
+        if execution.completed_at
+        else None,
+        "success": execution.success,
+        "duration": execution.duration,
+        "error_message": execution.error_message,
+        "triggered_by": execution.triggered_by,
+        "is_running": execution.is_running,
+        "status": status,
+        "output_summary": execution.output_summary,
+        "target": command_config.config_json.get("target", "unknown")
+        if command_config and command_config.config_json
+        else "unknown",
+    }
+
+
+def _filtered_executions_query(
+    db: Session,
+    since_cutoff: datetime | None,
+    command_name: str | None,
+):
+    query = db.query(CommandExecution)
+    if since_cutoff is not None:
+        query = query.filter(CommandExecution.started_at >= since_cutoff)
+    if command_name and command_name.lower() != "all":
+        query = query.filter(CommandExecution.command_name == command_name)
+    return query
+
+
+def _execution_summary(
+    db: Session, since_cutoff: datetime | None, command_name: str | None
+) -> dict:
+    base = _filtered_executions_query(db, since_cutoff, command_name)
+    total_count = base.count()
+    success_count = base.filter(
+        CommandExecution.status == "completed",
+        CommandExecution.success.is_(True),
+    ).count()
+    failure_count = base.filter(
+        CommandExecution.status.in_(["failed"]),
+    ).count()
+    running_count = base.filter(CommandExecution.status == "running").count()
+
+    avg_duration = (
+        base.filter(
+            CommandExecution.completed_at.isnot(None),
+            CommandExecution.duration.isnot(None),
+        )
+        .with_entities(func.avg(CommandExecution.duration))
+        .scalar()
+    )
+
+    return {
+        "total_count": total_count,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "running_count": running_count,
+        "avg_duration_seconds": round(float(avg_duration), 2) if avg_duration is not None else None,
+    }
 
 
 @router.get("/system")
@@ -243,62 +354,50 @@ async def get_commands_status(db: Annotated[Session, Depends(get_config_db)]):
 
 
 @router.get("/executions/recent")
-async def get_recent_executions(limit: int = 20, db: Session = Depends(get_config_db)):
-    """Get recent command executions"""
+async def get_recent_executions(
+    limit: int = Query(default=20, ge=1, le=500),
+    since: str | None = Query(default=None),
+    command_name: str | None = Query(default=None),
+    db: Session = Depends(get_config_db),
+):
+    """Get command executions with optional time and command filters."""
     try:
-        executions = (
-            db.query(CommandExecution)
-            .order_by(CommandExecution.started_at.desc())
-            .limit(limit)
-            .all()
+        since_cutoff = parse_execution_since(since)
+        query = _filtered_executions_query(db, since_cutoff, command_name)
+        executions = query.order_by(CommandExecution.started_at.desc()).limit(limit).all()
+
+        command_names = {e.command_name for e in executions}
+        configs = (
+            {
+                c.command_name: c
+                for c in db.query(CommandConfig)
+                .filter(CommandConfig.command_name.in_(command_names))
+                .all()
+            }
+            if command_names
+            else {}
         )
 
-        execution_list = []
-        for execution in executions:
-            # Determine status based on execution state
-            if execution.is_running:
-                status = "running"
-            elif execution.completed_at is not None:
-                status = "completed" if execution.success else "failed"
-            else:
-                status = "running"  # Fallback for incomplete executions
-
-            # Get command configuration (include soft-deleted for execution history display)
-            command_config = (
-                db.query(CommandConfig)
-                .filter(CommandConfig.command_name == execution.command_name)
-                .first()
-            )
-
-            execution_list.append(
-                {
-                    "id": execution.id,
-                    "command_name": execution.command_name,
-                    "display_name": command_config.display_name
-                    if command_config
-                    else execution.command_name.replace("_", " "),
-                    "started_at": execution.started_at.isoformat() + "Z",
-                    "completed_at": execution.completed_at.isoformat() + "Z"
-                    if execution.completed_at
-                    else None,
-                    "success": execution.success,
-                    "duration": execution.duration,
-                    "error_message": execution.error_message,
-                    "triggered_by": execution.triggered_by,
-                    "is_running": execution.is_running,
-                    "status": status,
-                    "output_summary": execution.output_summary,
-                    "target": command_config.config_json.get("target", "unknown")
-                    if command_config and command_config.config_json
-                    else "unknown",
-                }
-            )
+        execution_list = [
+            _serialize_execution(execution, configs.get(execution.command_name))
+            for execution in executions
+        ]
+        summary = _execution_summary(db, since_cutoff, command_name)
 
         return {
             "executions": execution_list,
             "total_count": len(execution_list),
+            "summary": summary,
+            "filters": {
+                "since": since,
+                "command_name": command_name
+                if command_name and command_name.lower() != "all"
+                else None,
+            },
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         get_status_logger().error(f"Failed to get recent executions: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve recent executions")
@@ -465,7 +564,11 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
     """
     try:
         from commands.config_adapter import ConfigAdapter
-        from database.config_models import ArtistScanLog
+        from database.config_models import (
+            ArtistScanLog,
+            DismissedArtistAlbum,
+            NewReleaseIgnoredArtist,
+        )
 
         config = ConfigAdapter()
         if not config.LIDARR_API_KEY or not config.LIDARR_URL:
@@ -475,6 +578,8 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
                 "total_lidarr_artists": None,
                 "artists_scanned_fresh": None,
                 "artists_not_scanned": None,
+                "dismissed_count": None,
+                "ignored_count": None,
                 "cache_ttl_days": None,
             }
 
@@ -496,11 +601,16 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
         all_scanned_mbids = {row.artist_mbid for row in db.query(ArtistScanLog.artist_mbid).all()}
         artists_not_scanned = len(lidarr_mbids - all_scanned_mbids)
 
+        dismissed_count = db.query(DismissedArtistAlbum).count()
+        ignored_count = db.query(NewReleaseIgnoredArtist).count()
+
         return {
             "available": True,
             "total_lidarr_artists": total,
             "artists_scanned_fresh": artists_scanned_fresh,
             "artists_not_scanned": artists_not_scanned,
+            "dismissed_count": dismissed_count,
+            "ignored_count": ignored_count,
             "cache_ttl_days": cache_ttl_days,
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
@@ -512,8 +622,56 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
             "total_lidarr_artists": None,
             "artists_scanned_fresh": None,
             "artists_not_scanned": None,
+            "dismissed_count": None,
+            "ignored_count": None,
             "cache_ttl_days": None,
         }
+
+
+@router.get("/nrd-metrics/not-scanned-artists")
+async def get_nrd_not_scanned_artists(
+    db: Annotated[Session, Depends(get_config_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 500,
+):
+    """Lidarr artists that have never been scanned for new releases."""
+    try:
+        from commands.config_adapter import ConfigAdapter
+        from database.config_models import ArtistScanLog
+
+        config = ConfigAdapter()
+        if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+            raise HTTPException(status_code=503, detail="Lidarr not configured")
+
+        from clients.client_lidarr import LidarrClient
+
+        async with LidarrClient(config) as lidarr_client:
+            artists = await lidarr_client.get_all_artists()
+
+        scanned_mbids = {row.artist_mbid for row in db.query(ArtistScanLog.artist_mbid).all()}
+        not_scanned = []
+        for artist in artists:
+            mbid = artist.get("musicBrainzId")
+            if not mbid or mbid in scanned_mbids:
+                continue
+            not_scanned.append(
+                {
+                    "artist_mbid": mbid,
+                    "artist_name": artist.get("artistName") or "",
+                }
+            )
+            if len(not_scanned) >= limit:
+                break
+
+        return {
+            "total": len(not_scanned),
+            "items": not_scanned,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_status_logger().error(f"Failed to get not-scanned artists: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve not-scanned artists") from e
 
 
 @router.get("/migrations")

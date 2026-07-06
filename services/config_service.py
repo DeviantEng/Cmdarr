@@ -367,11 +367,12 @@ class ConfigService:
             },
             # Command Configuration
             {
-                "key": "COMMAND_CLEANUP_RETENTION",
-                "default_value": "50",
+                "key": "COMMAND_HISTORY_RETENTION_DAYS",
+                "default_value": "365",
                 "data_type": "int",
                 "category": "commands",
-                "description": "Number of command executions to keep per command",
+                "description": "Days to keep command execution history (0 = keep forever)",
+                "min_value": 0,
             },
             {
                 "key": "MAX_PARALLEL_COMMANDS",

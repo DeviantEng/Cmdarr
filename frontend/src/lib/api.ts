@@ -5,6 +5,8 @@ import type {
   CommandExecution,
   CommandUpdateRequest,
   CommandExecutionRequest,
+  ExecutionHistoryResponse,
+  ExecutionHistorySince,
   ConfigSetting,
   ConfigUpdateRequest,
   ConnectivityTestResult,
@@ -139,23 +141,23 @@ class ApiClient {
     });
   }
 
-  async cleanupExecutions(
-    commandName?: string,
-    keepCount?: number
-  ): Promise<{ message: string; deleted_count?: number }> {
+  async getExecutions(options?: {
+    since?: ExecutionHistorySince | string;
+    commandName?: string | null;
+    limit?: number;
+  }): Promise<ExecutionHistoryResponse> {
     const params = new URLSearchParams();
-    if (commandName) params.set("command_name", commandName);
-    if (keepCount !== undefined) params.set("keep_count", String(keepCount));
+    if (options?.since) params.set("since", options.since);
+    if (options?.commandName) params.set("command_name", options.commandName);
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
     const query = params.toString();
-    return await this.request(`/api/commands/executions/cleanup${query ? `?${query}` : ""}`, {
-      method: "POST",
-    });
+    return await this.request<ExecutionHistoryResponse>(
+      `/api/status/executions/recent${query ? `?${query}` : ""}`
+    );
   }
 
   async getAllExecutions(limit = 50): Promise<CommandExecution[]> {
-    const response = await this.request<{ executions: CommandExecution[] }>(
-      `/api/status/executions/recent?limit=${limit}`
-    );
+    const response = await this.getExecutions({ limit });
     return response.executions;
   }
 
@@ -256,6 +258,13 @@ class ApiClient {
 
   async getNrdMetrics(): Promise<NrdMetrics> {
     return await this.request("/api/status/nrd-metrics");
+  }
+
+  async getNrdNotScannedArtists(limit = 500): Promise<{
+    total: number;
+    items: { artist_mbid: string; artist_name: string }[];
+  }> {
+    return await this.request(`/api/status/nrd-metrics/not-scanned-artists?limit=${limit}`);
   }
 
   async getMigrationStatus(): Promise<MigrationStatus> {
