@@ -183,7 +183,11 @@ class NewReleasesDiscoveryCommand(BaseCommand):
             }
 
             # Continual validation: recheck existing pending/dismissed rows (orthogonal to artist pick).
-            if not is_manual_scan and config.MUSICBRAINZ_ENABLED and self._continual_validation_enabled():
+            if (
+                not is_manual_scan
+                and config.MUSICBRAINZ_ENABLED
+                and self._continual_validation_enabled()
+            ):
                 session = db.get_config_session_context()
                 try:
                     async with _optional_musicbrainz(config) as musicbrainz_client:

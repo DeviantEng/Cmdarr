@@ -1243,10 +1243,7 @@ export function CommandsPage({
                       ...buildSchedulePayload(editForm),
                       config_json: {
                         ...(editingCommand.config_json || {}),
-                        artists_per_run: Math.min(
-                          100,
-                          Math.max(1, editForm.artists_per_run ?? 25)
-                        ),
+                        artists_per_run: Math.min(100, Math.max(1, editForm.artists_per_run ?? 25)),
                         album_types: (editForm.album_types ?? ["album"]).join(","),
                         new_releases_source: editForm.new_releases_source ?? "deezer",
                         continual_validation_enabled: !!editForm.continual_validation_enabled,
