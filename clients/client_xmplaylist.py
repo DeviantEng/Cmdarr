@@ -35,6 +35,17 @@ def _xmplaylist_headers(config: Any) -> dict[str, str]:
 MOST_HEARD_DAYS = frozenset({1, 7, 14, 30, 60})
 
 
+def _is_cloudflare_body(body: str) -> bool:
+    """Detect Cloudflare challenge/block pages in HTTP error bodies."""
+    lowered = (body or "").lower()
+    return (
+        "just a moment" in lowered
+        or "cloudflare" in lowered
+        or "cf-ray" in lowered
+        or "attention required" in lowered
+    )
+
+
 def _join_artists(artists: Any) -> str:
     """Normalize artists array or string to a single search string."""
     if artists is None:
@@ -107,6 +118,43 @@ class XmplaylistClient(BaseAPIClient):
             headers=_xmplaylist_headers(config),
         )
         self._curl_session = None
+        self._last_fetch_error: dict[str, Any] | None = None
+
+    def clear_fetch_error(self) -> None:
+        self._last_fetch_error = None
+
+    @property
+    def fetch_failed(self) -> bool:
+        return self._last_fetch_error is not None
+
+    def fetch_error_summary(self) -> str:
+        if not self._last_fetch_error:
+            return ""
+        err = self._last_fetch_error
+        if err.get("cloudflare"):
+            status = err.get("status_code")
+            if status:
+                return f"xmplaylist API blocked by Cloudflare (HTTP {status})"
+            return "xmplaylist API blocked by Cloudflare"
+        status = err.get("status_code")
+        if status:
+            return f"xmplaylist API request failed (HTTP {status})"
+        return str(err.get("message") or "xmplaylist API request failed")
+
+    def _set_fetch_error(
+        self,
+        status_code: int | None,
+        url: str,
+        message: str,
+        *,
+        cloudflare: bool = False,
+    ) -> None:
+        self._last_fetch_error = {
+            "status_code": status_code,
+            "url": url,
+            "message": message,
+            "cloudflare": cloudflare,
+        }
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._curl_session is not None:
@@ -147,15 +195,23 @@ class XmplaylistClient(BaseAPIClient):
                 )
             else:
                 self.logger.error("xmplaylist: unsupported HTTP method %s", meth)
+                self._set_fetch_error(None, full_url, f"unsupported HTTP method {meth}")
                 return None
         except Exception as e:
             self.logger.error("xmplaylist curl_cffi request failed: %s", e)
+            self._set_fetch_error(None, full_url, str(e))
             return None
 
         if r.status_code not in (200, 201, 204):
             body = r.text or ""
             preview = (body[:500] + "…") if len(body) > 500 else body
             self.logger.error("HTTP error %s: %s", r.status_code, preview or "(empty body)")
+            self._set_fetch_error(
+                r.status_code,
+                full_url,
+                preview or "HTTP error",
+                cloudflare=_is_cloudflare_body(body),
+            )
             return None
 
         if r.status_code == 204:
@@ -165,11 +221,13 @@ class XmplaylistClient(BaseAPIClient):
             data = r.json()
         except Exception as e:
             self.logger.error("Invalid JSON from xmplaylist (%s): %s", r.status_code, e)
+            self._set_fetch_error(r.status_code, full_url, f"invalid JSON: {e}")
             return None
 
         if isinstance(data, (dict, list)):
             return data
         self.logger.error("Unexpected JSON type from xmplaylist: %s", type(data).__name__)
+        self._set_fetch_error(r.status_code, full_url, f"unexpected JSON type: {type(data).__name__}")
         return None
 
     async def _make_request(
@@ -200,7 +258,10 @@ class XmplaylistClient(BaseAPIClient):
         use_curl = getattr(self.config, "XMPLAYLIST_USE_CURL_CFFI", True)
         if use_curl:
             try:
-                return await self._make_request_curl_cffi(url, method, kwargs.get("json"))
+                result = await self._make_request_curl_cffi(url, method, kwargs.get("json"))
+                if result is None and self._last_fetch_error is None:
+                    self._set_fetch_error(None, url, "Request failed")
+                return result
             except ImportError:
                 self.logger.warning(
                     "curl_cffi is not installed; xmplaylist may be blocked by Cloudflare. "
@@ -215,7 +276,7 @@ class XmplaylistClient(BaseAPIClient):
             if endpoint.startswith("http")
             else HTTPClientUtils.build_api_url(self.base_url, endpoint)
         )
-        return await HTTPClientUtils.make_async_request(
+        result = await HTTPClientUtils.make_async_request(
             session=self.session,
             url=aio_url,
             method=method,
@@ -225,6 +286,9 @@ class XmplaylistClient(BaseAPIClient):
             logger=self.logger,
             json=kwargs.get("json"),
         )
+        if result is None and self._last_fetch_error is None:
+            self._set_fetch_error(None, url, "Request failed")
+        return result
 
     def _build_url(self, path_or_url: str) -> str:
         from utils.http_client import HTTPClientUtils
@@ -299,6 +363,7 @@ class XmplaylistClient(BaseAPIClient):
         if not ch:
             return []
 
+        self.clear_fetch_error()
         collected: list[dict[str, str]] = []
         next_ref: str | None = f"/api/station/{ch}/newest"
         visited: set[str] = set()
@@ -333,6 +398,7 @@ class XmplaylistClient(BaseAPIClient):
         if not ch:
             return []
 
+        self.clear_fetch_error()
         collected: list[dict[str, str]] = []
         next_ref: str | None = f"/api/station/{ch}/most-heard"
         visited: set[str] = set()
