@@ -500,14 +500,14 @@ class CommandCleanupService:
             logger.error(f"Failed to get running commands: {e}")
             return []
 
-    async def cleanup_old_executions(self, keep_count: int | None = None):
-        """Clean up old command executions, keeping only the most recent ones per command"""
+    async def cleanup_old_executions(self):
+        """Delete command executions older than COMMAND_HISTORY_RETENTION_DAYS (0 = keep forever)."""
         try:
-            # Get retention count from config if not provided
-            if keep_count is None:
-                from services.config_service import config_service
+            from services.config_service import config_service
 
-                keep_count = config_service.get_int("COMMAND_CLEANUP_RETENTION", 50)
+            retention_days = config_service.get_int("COMMAND_HISTORY_RETENTION_DAYS", 365)
+            if retention_days <= 0:
+                return
 
             from database.database import get_database_manager
 
@@ -515,35 +515,21 @@ class CommandCleanupService:
             db = manager.get_session_sync()
 
             try:
-                # Single query: fetch all executions ordered by command_name, started_at DESC
-                executions = (
+                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                to_delete = (
                     db.query(CommandExecution)
-                    .order_by(
-                        CommandExecution.command_name,
-                        CommandExecution.started_at.desc(),
-                    )
+                    .filter(CommandExecution.started_at < cutoff)
                     .all()
                 )
-
-                # Group by command, keep top keep_count per command, collect rest for deletion
-                from collections import defaultdict
-
-                kept_per_command: dict[str, int] = defaultdict(int)
-                to_delete: list[CommandExecution] = []
-
-                for execution in executions:
-                    cmd = execution.command_name
-                    if kept_per_command[cmd] < keep_count:
-                        kept_per_command[cmd] += 1
-                    else:
-                        to_delete.append(execution)
 
                 for execution in to_delete:
                     db.delete(execution)
 
                 if to_delete:
                     db.commit()
-                    logger.info(f"Cleaned up {len(to_delete)} old executions across all commands")
+                    logger.info(
+                        f"Cleaned up {len(to_delete)} executions older than {retention_days} days"
+                    )
             finally:
                 db.close()
 

@@ -38,6 +38,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { HiddenEventsDialog } from "@/components/HiddenEventsDialog";
+import { IgnoredReleaseArtistsDialog } from "@/components/IgnoredReleaseArtistsDialog";
+import { NrdNotScannedDialog } from "@/components/NrdNotScannedDialog";
 
 export type StatusSection =
   | "health"
@@ -107,6 +110,41 @@ function StatusSectionPanel({
   );
 }
 
+function ClickableKpiCell({
+  value,
+  label,
+  clickable,
+  onClick,
+  valueClassName = "text-lg font-semibold tabular-nums",
+}: {
+  value: string;
+  label: string;
+  clickable?: boolean;
+  onClick?: () => void;
+  valueClassName?: string;
+}) {
+  const content = (
+    <>
+      <div className={valueClassName}>{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </>
+  );
+
+  if (!clickable || !onClick) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {content}
+    </button>
+  );
+}
+
 type StatusPageProps = {
   sections?: StatusSection[];
   showPageHeader?: boolean;
@@ -146,6 +184,10 @@ export function StatusPage({
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hiddenEventsOpen, setHiddenEventsOpen] = useState(false);
+  const [hiddenEventsTab, setHiddenEventsTab] = useState<"artists" | "events">("artists");
+  const [notScannedOpen, setNotScannedOpen] = useState(false);
+  const [ignoredOpen, setIgnoredOpen] = useState(false);
 
   const showSection = (section: StatusSection) => sections.includes(section);
 
@@ -609,18 +651,24 @@ export function StatusPage({
               </div>
               <div className="text-xs text-muted-foreground">Upcoming stored</div>
             </div>
-            <div>
-              <div className="text-lg font-semibold tabular-nums">
-                {artistEventsStats.hidden_artists.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">Hidden artists</div>
-            </div>
-            <div>
-              <div className="text-lg font-semibold tabular-nums">
-                {artistEventsStats.hidden_events.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">Hidden events</div>
-            </div>
+            <ClickableKpiCell
+              value={artistEventsStats.hidden_artists.toLocaleString()}
+              label="Hidden artists"
+              clickable={useArrPanel && artistEventsStats.hidden_artists > 0}
+              onClick={() => {
+                setHiddenEventsTab("artists");
+                setHiddenEventsOpen(true);
+              }}
+            />
+            <ClickableKpiCell
+              value={artistEventsStats.hidden_events.toLocaleString()}
+              label="Hidden events"
+              clickable={useArrPanel && artistEventsStats.hidden_events > 0}
+              onClick={() => {
+                setHiddenEventsTab("events");
+                setHiddenEventsOpen(true);
+              }}
+            />
           </div>
         </StatusSectionPanel>
       ) : null}
@@ -735,7 +783,12 @@ export function StatusPage({
           bodyClassName="space-y-4"
         >
           {nrdMetrics?.available ? (
-            <div className={cn(useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3")}>
+            <div
+              className={cn(
+                useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3",
+                useArrPanel && "sm:grid-cols-2 lg:grid-cols-5"
+              )}
+            >
               <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.total_lidarr_artists?.toLocaleString() ?? "—"}
@@ -759,18 +812,41 @@ export function StatusPage({
                     </p>
                   )}
               </div>
-              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
-                <div className="text-2xl font-bold">
-                  {nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
-                </div>
-                <p className="text-sm text-muted-foreground">Not yet scanned</p>
-              </div>
+              <ClickableKpiCell
+                value={nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
+                label="Not yet scanned"
+                valueClassName="text-2xl font-bold tabular-nums"
+                clickable={
+                  useArrPanel && nrdMetrics.artists_not_scanned != null && nrdMetrics.artists_not_scanned > 0
+                }
+                onClick={() => setNotScannedOpen(true)}
+              />
+              {useArrPanel ? (
+                <>
+                  <ClickableKpiCell
+                    value={(nrdMetrics.dismissed_count ?? 0).toLocaleString()}
+                    label="Dismissed"
+                    valueClassName="text-2xl font-bold tabular-nums"
+                    clickable={(nrdMetrics.dismissed_count ?? 0) > 0}
+                    onClick={openDismissed}
+                  />
+                  <ClickableKpiCell
+                    value={(nrdMetrics.ignored_count ?? 0).toLocaleString()}
+                    label="Ignored"
+                    valueClassName="text-2xl font-bold tabular-nums"
+                    clickable={(nrdMetrics.ignored_count ?? 0) > 0}
+                    onClick={() => setIgnoredOpen(true)}
+                  />
+                </>
+              ) : null}
             </div>
           ) : null}
-          <Button variant="outline" onClick={openDismissed}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            View / Restore Dismissed
-          </Button>
+          {!useArrPanel ? (
+            <Button variant="outline" onClick={openDismissed}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              View / Restore Dismissed
+            </Button>
+          ) : null}
         </StatusSectionPanel>
       ) : null}
 
@@ -981,6 +1057,19 @@ export function StatusPage({
           </div>
         </StatusSectionPanel>
       ) : null}
+
+      <HiddenEventsDialog
+        open={hiddenEventsOpen}
+        onOpenChange={setHiddenEventsOpen}
+        initialTab={hiddenEventsTab}
+        onChanged={loadStatus}
+      />
+      <NrdNotScannedDialog open={notScannedOpen} onOpenChange={setNotScannedOpen} />
+      <IgnoredReleaseArtistsDialog
+        open={ignoredOpen}
+        onOpenChange={setIgnoredOpen}
+        onChanged={loadStatus}
+      />
     </div>
   );
 }

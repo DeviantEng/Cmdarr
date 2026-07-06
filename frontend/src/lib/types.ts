@@ -37,6 +37,35 @@ export interface CommandExecution {
   target?: string;
 }
 
+export type ExecutionHistorySince =
+  | "1d"
+  | "3d"
+  | "7d"
+  | "14d"
+  | "30d"
+  | "90d"
+  | "1y"
+  | "all";
+
+export interface ExecutionHistorySummary {
+  total_count: number;
+  success_count: number;
+  failure_count: number;
+  running_count: number;
+  avg_duration_seconds: number | null;
+}
+
+export interface ExecutionHistoryResponse {
+  executions: CommandExecution[];
+  total_count: number;
+  summary: ExecutionHistorySummary;
+  filters: {
+    since: string | null;
+    command_name: string | null;
+  };
+  timestamp: string;
+}
+
 export interface ImportListMetrics {
   lastfm: ImportListMetric;
   unified: ImportListMetric;
@@ -98,6 +127,8 @@ export interface NrdMetrics {
   total_lidarr_artists: number | null;
   artists_scanned_fresh: number | null;
   artists_not_scanned: number | null;
+  dismissed_count?: number | null;
+  ignored_count?: number | null;
   cache_ttl_days: number | null;
   timestamp?: string;
 }
