@@ -34,6 +34,7 @@ from database.config_models import (
     NewReleasePending,
 )
 from database.database import get_database_manager
+from utils.nrd_mb_validation import run_validation_batch
 from utils.nrd_release_source import (
     enrich_nrd_album_if_needed,
     normalize_nrd_source,
@@ -46,6 +47,7 @@ from utils.text_normalizer import normalize_text, prefer_base_releases, strip_ed
 from .command_base import BaseCommand
 from .config_adapter import ConfigAdapter
 
+DEFAULT_ARTISTS_PER_RUN = 25
 HARMONY_BASE_URL = "https://harmony.pulsewidth.org.uk/release"
 ALBUM_TYPES = frozenset({"album", "ep", "single", "other"})
 
@@ -152,6 +154,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
             self.logger.info("Starting new releases discovery...")
             config = self.config_adapter
             artists = getattr(self.config, "artists", None)
+            is_manual_scan = bool(artists)
             source = getattr(self.config, "source", "scheduled")
             artists_per_run = self._get_artists_per_run()
             override_types = getattr(self.config, "album_types", None)
@@ -171,12 +174,50 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 self.logger.error("Lidarr not configured")
                 return False
 
+            db = get_database_manager()
+            validation_stats = {
+                "validation_checked": 0,
+                "validation_removed": 0,
+                "validation_pending_checked": 0,
+                "validation_dismissed_checked": 0,
+            }
+
+            # Continual validation: recheck existing pending/dismissed rows (orthogonal to artist pick).
+            if not is_manual_scan and config.MUSICBRAINZ_ENABLED and self._continual_validation_enabled():
+                session = db.get_config_session_context()
+                try:
+                    async with _optional_musicbrainz(config) as musicbrainz_client:
+                        if musicbrainz_client:
+                            validation_stats = await self._run_continual_validation(
+                                session, musicbrainz_client
+                            )
+                            session.commit()
+                            if validation_stats["validation_checked"]:
+                                self.logger.info(
+                                    "Continual validation: checked %s, removed %s "
+                                    "(pending %s, dismissed %s)",
+                                    validation_stats["validation_checked"],
+                                    validation_stats["validation_removed"],
+                                    validation_stats["validation_pending_checked"],
+                                    validation_stats["validation_dismissed_checked"],
+                                )
+                finally:
+                    session.close()
+
             if not artists:
                 artists = await self._pick_artists_to_scan(artists_per_run)
+
             if not artists:
                 self.logger.info("No artists to scan")
-                self.last_run_stats = {"artists_scanned": 0, "new_releases_detected": 0}
+                self.last_run_stats = {
+                    "artists_scanned": 0,
+                    "new_releases_detected": 0,
+                    **validation_stats,
+                }
                 return True
+
+            mb_streaming_provider = nrd_mb_streaming_provider(source_provider)
+            artist_id_key = nrd_lidarr_artist_id_key(source_provider)
 
             self.logger.info(
                 f"Scanning {len(artists)} artists (types: {sorted(selected_types)}, source: {source_provider})"
@@ -184,11 +225,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
 
             cache_ttl = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
             lidarr_base = (config.LIDARR_URL or "").rstrip("/")
-            db = get_database_manager()
             session = db.get_config_session_context()
-
-            mb_streaming_provider = nrd_mb_streaming_provider(source_provider)
-            artist_id_key = nrd_lidarr_artist_id_key(source_provider)
 
             try:
                 inserted = 0
@@ -397,6 +434,7 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 self.last_run_stats = {
                     "artists_scanned": scanned,
                     "new_releases_detected": inserted,
+                    **validation_stats,
                 }
                 self.logger.info(
                     f"Discovery complete: scanned {scanned} artists, inserted {inserted} pending releases"
@@ -409,7 +447,43 @@ class NewReleasesDiscoveryCommand(BaseCommand):
             self.logger.exception(f"New releases discovery failed: {e}")
             return False
 
+    def _get_config_json(self) -> dict[str, Any]:
+        cfg = getattr(self, "config_json", None) or {}
+        return dict(cfg) if isinstance(cfg, dict) else {}
+
+    def _continual_validation_enabled(self) -> bool:
+        return bool(self._get_config_json().get("continual_validation_enabled"))
+
+    def _get_validation_batch_size(self) -> int:
+        try:
+            n = int(self._get_config_json().get("continual_validation_batch_size", 50))
+        except TypeError, ValueError:
+            n = 50
+        return max(1, min(100, n))
+
+    def _get_validation_interval_days(self) -> int:
+        try:
+            n = int(self._get_config_json().get("continual_validation_interval_days", 14))
+        except TypeError, ValueError:
+            n = 14
+        return max(1, min(365, n))
+
+    async def _run_continual_validation(self, session: Session, mb_client) -> dict[str, Any]:
+        return await run_validation_batch(
+            session,
+            mb_client,
+            batch_size=self._get_validation_batch_size(),
+            interval_days=self._get_validation_interval_days(),
+        )
+
     def _get_artists_per_run(self) -> int:
+        cfg = self._get_config_json()
+        if cfg:
+            try:
+                n = int(cfg.get("artists_per_run", DEFAULT_ARTISTS_PER_RUN))
+                return max(1, min(100, n))
+            except TypeError, ValueError:
+                pass
         db = get_database_manager()
         session = db.get_config_session_context()
         try:
@@ -421,11 +495,11 @@ class NewReleasesDiscoveryCommand(BaseCommand):
                 .first()
             )
             if row and row.config_json:
-                n = row.config_json.get("artists_per_run", 5)
-                return max(1, min(50, int(n)))
+                n = row.config_json.get("artists_per_run", DEFAULT_ARTISTS_PER_RUN)
+                return max(1, min(100, int(n)))
         finally:
             session.close()
-        return 5
+        return DEFAULT_ARTISTS_PER_RUN
 
     def _get_album_types(self) -> set[str]:
         db = get_database_manager()
@@ -543,7 +617,12 @@ class NewReleasesDiscoveryCommand(BaseCommand):
         )
 
     def get_description(self) -> str:
-        return "Scan Lidarr artists for Deezer (or Spotify) releases missing from MusicBrainz; insert into New Releases pending table."
+        return (
+            "Scan Lidarr artists for Deezer (or Spotify) releases missing from MusicBrainz; "
+            "insert into New Releases pending table. Optional continual validation rechecks "
+            "existing pending and dismissed rows against MusicBrainz each scheduled run "
+            "(independent of which artists are scanned for new releases)."
+        )
 
     def get_logger_name(self) -> str:
         return "cmdarr.command.new_releases_discovery"

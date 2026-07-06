@@ -1,4 +1,5 @@
 import type { CommandEditRenderContext } from "../types";
+import { ContinualValidationFields } from "@/components/ContinualValidationFields";
 import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/NumericInput";
 import { commandUiCopy } from "@/command-spec";
@@ -22,14 +23,28 @@ export function NewReleasesDiscoverySection({ ctx }: { ctx: CommandEditRenderCon
         <Label htmlFor="edit-artists">{nr.artistsPerRun}</Label>
         <NumericInput
           id="edit-artists"
-          value={editForm.artists_per_run ?? 5}
-          onChange={(v) => setEditForm((f) => ({ ...f, artists_per_run: v ?? 5 }))}
+          value={editForm.artists_per_run ?? 25}
+          onChange={(v) => setEditForm((f) => ({ ...f, artists_per_run: v ?? 25 }))}
           min={1}
-          max={50}
-          defaultValue={5}
+          max={100}
+          defaultValue={25}
         />
         <p className="text-xs text-muted-foreground">{nr.artistsPerRunHelp}</p>
       </div>
+      <ContinualValidationFields
+        enabled={!!editForm.continual_validation_enabled}
+        onEnabledChange={(enabled) =>
+          setEditForm((f) => ({ ...f, continual_validation_enabled: enabled }))
+        }
+        batchSize={editForm.continual_validation_batch_size ?? 50}
+        onBatchSizeChange={(v) =>
+          setEditForm((f) => ({ ...f, continual_validation_batch_size: v }))
+        }
+        intervalDays={editForm.continual_validation_interval_days ?? 14}
+        onIntervalDaysChange={(v) =>
+          setEditForm((f) => ({ ...f, continual_validation_interval_days: v }))
+        }
+      />
       <div className="space-y-2">
         <Label htmlFor="edit-source">{nr.releaseSource}</Label>
         <select

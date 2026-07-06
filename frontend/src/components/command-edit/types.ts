@@ -10,6 +10,9 @@ export type CommandEditFormState = {
   refresh_ttl_days?: number;
   album_types?: string[];
   new_releases_source?: "spotify" | "deezer";
+  continual_validation_enabled?: boolean;
+  continual_validation_batch_size?: number;
+  continual_validation_interval_days?: number;
   artists_to_query?: number;
   similar_per_artist?: number;
   artist_cooldown_days?: number;

@@ -523,6 +523,18 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             )
         """)
 
+    def migrate_new_release_pending_last_mb_recheck_at(cursor):
+        if not _column_exists(cursor, "new_release_pending", "last_mb_recheck_at"):
+            cursor.execute(
+                "ALTER TABLE new_release_pending ADD COLUMN last_mb_recheck_at TIMESTAMP"
+            )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_new_release_pending_status_last_mb_recheck
+            ON new_release_pending (status, last_mb_recheck_at)
+            """
+        )
+
     runner.add_migration(
         VersionMigration(
             version="0.3.16",
@@ -540,6 +552,16 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             description="Merge TM and Deezer duplicate rows that split on missing Deezer region",
             up_func=migrate_concert_event_deezer_dedupe_coalesce,
             applied_check=lambda c: False,
+        )
+    )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.18",
+            name="new_release_pending_last_mb_recheck_at",
+            description="Add last_mb_recheck_at for continual MB validation throttling",
+            up_func=migrate_new_release_pending_last_mb_recheck_at,
+            applied_check=lambda c: _column_exists(c, "new_release_pending", "last_mb_recheck_at"),
         )
     )
 

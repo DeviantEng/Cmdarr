@@ -642,6 +642,8 @@ async def reset_nrd_scan_history(db: Annotated[Session, Depends(get_config_db)])
 @router.post("/new-releases/recheck/{item_id}")
 async def recheck_release(item_id: int, db: Annotated[Session, Depends(get_config_db)]):
     """Verify in MusicBrainz; if album found, remove from pending."""
+    from utils.nrd_mb_validation import apply_mb_found, apply_mb_not_found, check_release_in_mb
+
     get_logger("cmdarr.api.new_releases")
     row = db.query(NewReleasePending).filter(NewReleasePending.id == item_id).first()
     if not row:
@@ -650,13 +652,13 @@ async def recheck_release(item_id: int, db: Annotated[Session, Depends(get_confi
     found_in_mb = False
     if config.MUSICBRAINZ_ENABLED and row.artist_mbid and row.album_title:
         async with MusicBrainzClient(config) as mb_client:
-            found_in_mb = await mb_client.release_exists_by_artist_and_title(
-                row.artist_mbid, row.album_title, cache_ttl_days=0
-            )
+            found_in_mb = await check_release_in_mb(mb_client, row.artist_mbid, row.album_title)
     if found_in_mb:
-        db.delete(row)
+        apply_mb_found(db, row)
         db.commit()
         return {"success": True, "message": "Found in MusicBrainz, removed", "removed": True}
+    apply_mb_not_found(db, row)
+    db.commit()
     return {"success": True, "message": "Not found in MusicBrainz", "removed": False}
 
 
