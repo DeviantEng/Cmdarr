@@ -517,9 +517,7 @@ class CommandCleanupService:
             try:
                 cutoff = datetime.utcnow() - timedelta(days=retention_days)
                 to_delete = (
-                    db.query(CommandExecution)
-                    .filter(CommandExecution.started_at < cutoff)
-                    .all()
+                    db.query(CommandExecution).filter(CommandExecution.started_at < cutoff).all()
                 )
 
                 for execution in to_delete:

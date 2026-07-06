@@ -106,7 +106,9 @@ def _filtered_executions_query(
     return query
 
 
-def _execution_summary(db: Session, since_cutoff: datetime | None, command_name: str | None) -> dict:
+def _execution_summary(
+    db: Session, since_cutoff: datetime | None, command_name: str | None
+) -> dict:
     base = _filtered_executions_query(db, since_cutoff, command_name)
     total_count = base.count()
     success_count = base.filter(
@@ -365,12 +367,16 @@ async def get_recent_executions(
         executions = query.order_by(CommandExecution.started_at.desc()).limit(limit).all()
 
         command_names = {e.command_name for e in executions}
-        configs = {
-            c.command_name: c
-            for c in db.query(CommandConfig)
-            .filter(CommandConfig.command_name.in_(command_names))
-            .all()
-        } if command_names else {}
+        configs = (
+            {
+                c.command_name: c
+                for c in db.query(CommandConfig)
+                .filter(CommandConfig.command_name.in_(command_names))
+                .all()
+            }
+            if command_names
+            else {}
+        )
 
         execution_list = [
             _serialize_execution(execution, configs.get(execution.command_name))
@@ -384,7 +390,9 @@ async def get_recent_executions(
             "summary": summary,
             "filters": {
                 "since": since,
-                "command_name": command_name if command_name and command_name.lower() != "all" else None,
+                "command_name": command_name
+                if command_name and command_name.lower() != "all"
+                else None,
             },
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }

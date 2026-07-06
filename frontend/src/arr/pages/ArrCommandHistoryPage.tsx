@@ -11,11 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import type {
-  CommandConfig,
-  ExecutionHistorySince,
-  ExecutionHistorySummary,
-} from "@/lib/types";
+import type { CommandConfig, ExecutionHistorySince, ExecutionHistorySummary } from "@/lib/types";
 
 const TIME_RANGE_OPTIONS: { value: ExecutionHistorySince; label: string }[] = [
   { value: "1d", label: "Last 24 hours" },
@@ -49,7 +45,10 @@ export function ArrCommandHistoryPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    void api.getCommands().then(setCommands).catch(() => setCommands([]));
+    void api
+      .getCommands()
+      .then(setCommands)
+      .catch(() => setCommands([]));
   }, []);
 
   const commandLabel = useMemo(() => {
@@ -142,7 +141,8 @@ export function ArrCommandHistoryPage() {
               </div>
             )}
             <p className="mt-3 text-xs text-muted-foreground">
-              Summary for {filterSubtitle(since, commandLabel)}. System status shows lifetime totals.
+              Summary for {filterSubtitle(since, commandLabel)}. System status shows lifetime
+              totals.
             </p>
           </ArrPanelBody>
         </ArrContentPanel>

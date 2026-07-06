@@ -139,7 +139,11 @@ export function HiddenEventsDialog({
                       <span className="min-w-0 truncate font-medium">
                         {h.artist_name || h.artist_mbid}
                       </span>
-                      <Button variant="outline" size="sm" onClick={() => void restoreHidden(h.artist_mbid)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void restoreHidden(h.artist_mbid)}
+                      >
                         Restore
                       </Button>
                     </div>
@@ -171,7 +175,8 @@ export function HiddenEventsDialog({
                       <div className="min-w-0">
                         <div className="font-medium">{h.artist_name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} | {h.local_date}
+                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} |{" "}
+                          {h.local_date}
                         </div>
                       </div>
                       <Button
@@ -196,7 +201,8 @@ export function HiddenEventsDialog({
           <DialogHeader>
             <DialogTitle>Restore all hidden artists?</DialogTitle>
             <DialogDescription>
-              This clears every artist-level hide. Their events will appear in the list again (if any).
+              This clears every artist-level hide. Their events will appear in the list again (if
+              any).
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

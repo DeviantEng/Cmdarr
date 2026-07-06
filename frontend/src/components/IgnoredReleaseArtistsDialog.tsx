@@ -77,7 +77,9 @@ export function IgnoredReleaseArtistsDialog({
                 key={artist.artist_mbid}
                 className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="min-w-0 font-medium">{artist.artist_name || artist.artist_mbid}</div>
+                <div className="min-w-0 font-medium">
+                  {artist.artist_name || artist.artist_mbid}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"

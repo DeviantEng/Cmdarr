@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 - **New Release Discovery — continual validation**: Optional scheduled MusicBrainz recheck of pending and dismissed releases on each command run (independent of artist discovery); configurable batch size and recheck interval. Removes rows automatically when found in MB.
 - **New Release Discovery — artists per run**: Default raised to 25; max increased to 100 (was 5 / 50).
+- **Command history**: Dedicated History page with time-range and command filters, filter-scoped KPIs (runs, failures, avg duration), and time-based retention (`COMMAND_HISTORY_RETENTION_DAYS`, default 1 year) replacing the old per-command count limit.
+- **System KPI drill-down**: Clickable KPIs on Artist Events (hidden artists/events) and New Releases (not yet scanned, dismissed, ignored) open detail dialogs with restore actions.
 
 ### Fixes
 - N/A

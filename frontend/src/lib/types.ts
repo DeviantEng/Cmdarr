@@ -37,15 +37,7 @@ export interface CommandExecution {
   target?: string;
 }
 
-export type ExecutionHistorySince =
-  | "1d"
-  | "3d"
-  | "7d"
-  | "14d"
-  | "30d"
-  | "90d"
-  | "1y"
-  | "all";
+export type ExecutionHistorySince = "1d" | "3d" | "7d" | "14d" | "30d" | "90d" | "1y" | "all";
 
 export interface ExecutionHistorySummary {
   total_count: number;

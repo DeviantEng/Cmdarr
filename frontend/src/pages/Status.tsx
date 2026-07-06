@@ -817,7 +817,9 @@ export function StatusPage({
                 label="Not yet scanned"
                 valueClassName="text-2xl font-bold tabular-nums"
                 clickable={
-                  useArrPanel && nrdMetrics.artists_not_scanned != null && nrdMetrics.artists_not_scanned > 0
+                  useArrPanel &&
+                  nrdMetrics.artists_not_scanned != null &&
+                  nrdMetrics.artists_not_scanned > 0
                 }
                 onClick={() => setNotScannedOpen(true)}
               />
