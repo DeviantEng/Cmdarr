@@ -10,8 +10,7 @@ def _nrd_summary(stats: dict, duration: float = 12.3) -> str:
 def test_nrd_summary_without_validation():
     summary = _nrd_summary({"artists_scanned": 25, "new_releases_detected": 2})
     assert summary == (
-        "New Releases Discovery completed in 12.3s • "
-        "Scanned 25 artists, 2 new release(s) detected"
+        "New Releases Discovery completed in 12.3s • Scanned 25 artists, 2 new release(s) detected"
     )
 
 
