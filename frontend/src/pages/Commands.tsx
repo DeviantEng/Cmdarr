@@ -675,21 +675,35 @@ export function CommandsPage({
     }
 
     const isArtistEvents = command.command_name === "artist_events_refresh";
+    const isNrd = command.command_name === "new_releases_discovery";
     const apCfg = cfg.artists_per_run;
     const artistsPerRunVal =
       typeof apCfg === "number"
         ? isArtistEvents
           ? Math.min(50, Math.max(1, apCfg))
-          : apCfg
+          : isNrd
+            ? Math.min(100, Math.max(1, apCfg))
+            : apCfg
         : isArtistEvents
           ? 20
-          : 5;
+          : isNrd
+            ? 25
+            : 5;
 
     setEditForm({
       schedule_override: !!command.schedule_override,
       schedule_cron: command.schedule_cron || "0 6 * * *",
       artists_per_run: artistsPerRunVal,
       refresh_ttl_days: typeof cfg.refresh_ttl_days === "number" ? cfg.refresh_ttl_days : 14,
+      continual_validation_enabled: !!cfg.continual_validation_enabled,
+      continual_validation_batch_size:
+        typeof cfg.continual_validation_batch_size === "number"
+          ? Math.min(100, Math.max(1, cfg.continual_validation_batch_size))
+          : 50,
+      continual_validation_interval_days:
+        typeof cfg.continual_validation_interval_days === "number"
+          ? Math.min(365, Math.max(1, cfg.continual_validation_interval_days))
+          : 14,
       album_types: typesStr
         .split(",")
         .map((s) => s.trim().toLowerCase())
@@ -1229,9 +1243,18 @@ export function CommandsPage({
                       ...buildSchedulePayload(editForm),
                       config_json: {
                         ...(editingCommand.config_json || {}),
-                        artists_per_run: editForm.artists_per_run,
+                        artists_per_run: Math.min(100, Math.max(1, editForm.artists_per_run ?? 25)),
                         album_types: (editForm.album_types ?? ["album"]).join(","),
                         new_releases_source: editForm.new_releases_source ?? "deezer",
+                        continual_validation_enabled: !!editForm.continual_validation_enabled,
+                        continual_validation_batch_size: Math.min(
+                          100,
+                          Math.max(1, editForm.continual_validation_batch_size ?? 50)
+                        ),
+                        continual_validation_interval_days: Math.min(
+                          365,
+                          Math.max(1, editForm.continual_validation_interval_days ?? 14)
+                        ),
                       },
                     })
                   }

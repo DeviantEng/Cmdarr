@@ -73,7 +73,7 @@ export const commandUiCopy = {
   },
   newReleases: {
     artistsPerRun: "Artists per run",
-    artistsPerRunHelp: "Max artists to scan per batch (1–50)",
+    artistsPerRunHelp: "Max artists to scan per batch (1–100)",
     releaseSource: "Release source",
     releaseTypesHeading: "Release types to include",
     releaseTypesHelp: "Used for batch runs and ad-hoc artist scans",
@@ -81,6 +81,16 @@ export const commandUiCopy = {
       "Deezer uses open API. Spotify defaults to spotifyscraper unless valid client creds are configured, in which case the official API is used.",
     deezerOption: "Deezer",
     spotifyOption: "Spotify",
+    continualValidation: {
+      enableLabel: "Enable continual release validation",
+      helper:
+        "On each scheduled run, recheck existing pending and dismissed releases against MusicBrainz (independent of which artists are scanned). Rows found in MB are removed automatically (including dismissed entries). Excluded artists are skipped.",
+      batchSizeLabel: "Records to check per run",
+      batchSizeHelp: "Max MusicBrainz lookups per run (1–100). Default 50 (~1 min at rate limit).",
+      intervalDaysLabel: "Recheck interval (days)",
+      intervalDaysHelp:
+        "Only recheck rows not validated within this many days (1–365). Default 14.",
+    },
   },
   artistEvents: {
     artistsPerRun: "Artists per scheduled run",

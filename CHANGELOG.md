@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.18-dev] - TBD
 
 ### Features
-- N/A
+- **New Release Discovery — continual validation**: Optional scheduled MusicBrainz recheck of pending and dismissed releases on each command run (independent of artist discovery); configurable batch size and recheck interval. Removes rows automatically when found in MB.
+- **New Release Discovery — artists per run**: Default raised to 25; max increased to 100 (was 5 / 50).
 
 ### Fixes
 - N/A
