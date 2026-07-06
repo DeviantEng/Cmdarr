@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.18-dev] - TBD
+
+### Features
+- N/A
+
+### Fixes
+- N/A
+
+### Housekeeping
+- **Security**: Review of .trivyignore; removed CVEs that now have a fix, and added 2 new ignores related to gzip and libacl1
+- **Python Package Update**: Review and update of Python packages.
+- **Node Package Update**: Review and update of Node packages.
+
 ## [0.3.17] - 2026-06-25
 
 ### Features
