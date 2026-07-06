@@ -227,7 +227,9 @@ class XmplaylistClient(BaseAPIClient):
         if isinstance(data, (dict, list)):
             return data
         self.logger.error("Unexpected JSON type from xmplaylist: %s", type(data).__name__)
-        self._set_fetch_error(r.status_code, full_url, f"unexpected JSON type: {type(data).__name__}")
+        self._set_fetch_error(
+            r.status_code, full_url, f"unexpected JSON type: {type(data).__name__}"
+        )
         return None
 
     async def _make_request(
