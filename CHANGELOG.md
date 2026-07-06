@@ -12,8 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Release Discovery — artists per run**: Default raised to 25; max increased to 100 (was 5 / 50).
 
 ### Fixes
-- **XM Playlist**: Fail the command when xmplaylist.com API requests fail (e.g. Cloudflare 403) instead of reporting success with zero tracks.
-- **XM Playlist**: Surface Cloudflare-aware error messages in command history when the API is blocked.
+- **XM Playlist**: Fail the command with a Cloudflare-aware error when xmplaylist.com API requests fail (e.g. 403), instead of reporting success with zero tracks.
 
 ### Housekeeping
 - **Security**: Review of .trivyignore; removed CVEs that now have a fix, and added 2 new ignores related to gzip and libacl1
