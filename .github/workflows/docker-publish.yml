@@ -44,26 +44,34 @@ jobs:
       - name: Run unit tests
         run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
 
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.set-matrix.outputs.include }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            INCLUDE='[
+              {"variant":"debian","dockerfile":"./Dockerfile","trivyignore":".trivyignore","scan_suffix":"","gha_cache_scope":"debian","image_description":"Modular music automation platform (Debian fallback)"},
+              {"variant":"wolfi","dockerfile":"./Dockerfile.wolfi","trivyignore":".trivyignore.wolfi","scan_suffix":"-wolfi","gha_cache_scope":"wolfi","image_description":"Modular music automation platform (Wolfi/Chainguard)"}
+            ]'
+          else
+            INCLUDE='[
+              {"variant":"debian","dockerfile":"./Dockerfile","trivyignore":".trivyignore","scan_suffix":"","gha_cache_scope":"debian","image_description":"Modular music automation platform (Debian fallback)"}
+            ]'
+          fi
+          echo "include<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$INCLUDE" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
   build-and-push:
-    needs: [unit-tests]
-    if: matrix.variant == 'debian' || github.ref == 'refs/heads/main'
+    needs: [unit-tests, prepare-matrix]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: debian
-            dockerfile: ./Dockerfile
-            trivyignore: .trivyignore
-            scan_suffix: ""
-            gha_cache_scope: debian
-            image_description: Modular music automation platform (Debian fallback)
-          - variant: wolfi
-            dockerfile: ./Dockerfile.wolfi
-            trivyignore: .trivyignore.wolfi
-            scan_suffix: -wolfi
-            gha_cache_scope: wolfi
-            image_description: Modular music automation platform (Wolfi/Chainguard)
+        include: ${{ fromJSON(needs.prepare-matrix.outputs.include) }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
