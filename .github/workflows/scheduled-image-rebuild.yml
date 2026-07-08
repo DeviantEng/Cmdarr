@@ -1,7 +1,7 @@
 name: Scheduled image rebuild (develop + main, no cache)
 
 # Refreshes images without touching Dockerfile digests — forces a full Docker build so
-# `apt-get update && apt-get upgrade` layers pull current distro patches.
+# Chainguard/Wolfi base layers are rebuilt with current upstream patches.
 #
 # Renovate proposes digest bumps separately (weekly grouped PR → develop).
 

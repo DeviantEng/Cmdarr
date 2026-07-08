@@ -48,10 +48,9 @@ else
 fi
 
 CHANGELOG_URL="${SERVER_URL}/${REPO}/blob/main/${CHANGELOG_FILE}"
-DOCKER_IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
-DOCKER_IMAGE_DEBIAN="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+DOCKER_IMAGE="${REGISTRY}/${IMAGE_NAME}:latest"
 
-python3 - "$VERSION" "$TAG" "$RELEASE_URL" "$DOCKER_IMAGE_LATEST" "$DOCKER_IMAGE_DEBIAN" "$CHANGELOG_URL" "$CHANGELOG_FILE" <<'PY' | curl -fsS -X POST "$WEBHOOK_URL" \
+python3 - "$VERSION" "$TAG" "$RELEASE_URL" "$DOCKER_IMAGE" "$CHANGELOG_URL" "$CHANGELOG_FILE" <<'PY' | curl -fsS -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
   -d @-
 import json
@@ -59,7 +58,7 @@ import re
 import sys
 from pathlib import Path
 
-version, tag, release_url, docker_latest, docker_debian, changelog_url, changelog_file = sys.argv[1:8]
+version, tag, release_url, docker_image, changelog_url, changelog_file = sys.argv[1:7]
 path = Path(changelog_file)
 if not path.is_file():
     raise SystemExit(f"{changelog_file} not found")
@@ -90,13 +89,8 @@ payload = {
             "color": 5793266,
             "fields": [
                 {
-                    "name": "Docker (default — Wolfi)",
-                    "value": f"`{docker_latest}`",
-                    "inline": False,
-                },
-                {
-                    "name": "Docker (Debian fallback)",
-                    "value": f"`{docker_debian}`",
+                    "name": "Docker",
+                    "value": f"`{docker_image}`",
                     "inline": False,
                 },
                 {
