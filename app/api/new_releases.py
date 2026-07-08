@@ -499,6 +499,7 @@ async def list_ignored_artists(
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
     db: Session = Depends(get_config_db),
 ):
+    total = db.query(NewReleaseIgnoredArtist).count()
     rows = (
         db.query(NewReleaseIgnoredArtist)
         .order_by(NewReleaseIgnoredArtist.ignored_at.desc())
@@ -507,7 +508,7 @@ async def list_ignored_artists(
     )
     return {
         "success": True,
-        "total": len(rows),
+        "total": total,
         "items": [
             {
                 "artist_mbid": r.artist_mbid,
@@ -567,6 +568,18 @@ async def unignore_artist(artist_mbid: str, db: Annotated[Session, Depends(get_c
     db.delete(row)
     db.commit()
     return {"success": True, "message": "Artist tracking restored"}
+
+
+@router.post("/new-releases/unignore-all-artists")
+async def unignore_all_artists(db: Annotated[Session, Depends(get_config_db)]):
+    """Restore all ignored artists — removes every row from the ignore list."""
+    deleted = db.query(NewReleaseIgnoredArtist).delete()
+    db.commit()
+    return {
+        "success": True,
+        "message": f"Restored {deleted} artist(s)",
+        "restored_count": deleted,
+    }
 
 
 @router.post("/new-releases/dismiss/{item_id}")

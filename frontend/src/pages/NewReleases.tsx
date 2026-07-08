@@ -11,7 +11,6 @@ import {
   Ban,
   Link2,
   MinusCircle,
-  RotateCcw,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { NewReleasePendingItem, ReleaseWithinFilter } from "@/lib/types";
@@ -26,14 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { HiddenReleasesDialog } from "@/components/HiddenReleasesDialog";
+import { IgnoredReleaseArtistsDialog } from "@/components/IgnoredReleaseArtistsDialog";
 import {
   ArrContentPanel,
   ArrPageToolbar,
@@ -116,12 +110,10 @@ export function NewReleasesPage({
   const [ignoreTarget, setIgnoreTarget] = useState<NewReleasePendingItem | null>(null);
   const [hideArtistTarget, setHideArtistTarget] = useState<NewReleasePendingItem | null>(null);
   const [releaseWithin, setReleaseWithin] = useState<ReleaseWithinFilter>("90d");
-  const [hiddenOpen, setHiddenOpen] = useState(false);
-  const [ignoredArtists, setIgnoredArtists] = useState<
-    { artist_mbid: string; artist_name: string; ignored_at?: string | null }[]
-  >([]);
-  const [hiddenArtistCount, setHiddenArtistCount] = useState(0);
-  const [ignoredArtistsLoading, setIgnoredArtistsLoading] = useState(false);
+  const [ignoredArtistsOpen, setIgnoredArtistsOpen] = useState(false);
+  const [hiddenReleasesOpen, setHiddenReleasesOpen] = useState(false);
+  const [ignoredArtistCount, setIgnoredArtistCount] = useState(0);
+  const [hiddenReleaseCount, setHiddenReleaseCount] = useState(0);
   const [hideArtistLoading, setHideArtistLoading] = useState(false);
   const [clearAllLoading, setClearAllLoading] = useState(false);
   const [ignoreLoading, setIgnoreLoading] = useState(false);
@@ -169,22 +161,22 @@ export function NewReleasesPage({
     }
   }, [releaseWithin]);
 
-  const loadIgnoredArtists = useCallback(async () => {
-    setIgnoredArtistsLoading(true);
+  const loadExclusionCounts = useCallback(async () => {
     try {
-      const res = await api.getIgnoredReleaseArtists();
-      setIgnoredArtists(res.items);
-      setHiddenArtistCount(res.items.length);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load hidden artists");
-    } finally {
-      setIgnoredArtistsLoading(false);
+      const [ignored, hidden] = await Promise.all([
+        api.getIgnoredReleaseArtists(500),
+        api.getDismissedReleases({ limit: 1 }),
+      ]);
+      setIgnoredArtistCount(ignored.total ?? ignored.items.length);
+      setHiddenReleaseCount(hidden.total);
+    } catch {
+      /* counts are optional UI hints */
     }
   }, []);
 
   useEffect(() => {
-    void loadIgnoredArtists();
-  }, [loadIgnoredArtists]);
+    void loadExclusionCounts();
+  }, [loadExclusionCounts]);
 
   useEffect(() => {
     fetchPending();
@@ -253,28 +245,12 @@ export function NewReleasesPage({
       setPending((prev) => prev.filter((p) => p.artist_mbid !== hideArtistTarget.artist_mbid));
       setTotal((t) => Math.max(0, t - (res.pending_removed ?? 0)));
       setHideArtistTarget(null);
-      await loadIgnoredArtists();
-      toast.success(`Hidden releases for ${hideArtistTarget.artist_name}`);
+      await loadExclusionCounts();
+      toast.success(`Ignored ${hideArtistTarget.artist_name} for discovery`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not hide artist");
+      toast.error(err instanceof Error ? err.message : "Could not ignore artist");
     } finally {
       setHideArtistLoading(false);
-    }
-  };
-
-  const openHidden = () => {
-    setHiddenOpen(true);
-    void loadIgnoredArtists();
-  };
-
-  const restoreHiddenArtist = async (artistMbid: string) => {
-    try {
-      await api.unignoreReleaseArtist(artistMbid);
-      setIgnoredArtists((prev) => prev.filter((a) => a.artist_mbid !== artistMbid));
-      setHiddenArtistCount((c) => Math.max(0, c - 1));
-      toast.success("Artist restored");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Restore failed");
     }
   };
 
@@ -290,7 +266,8 @@ export function NewReleasesPage({
       setPending((prev) => prev.filter((p) => p.id !== ignoreTarget.id));
       setTotal((t) => Math.max(0, t - 1));
       setIgnoreTarget(null);
-      toast.success("Ignored");
+      await loadExclusionCounts();
+      toast.success("Release hidden");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Ignore failed");
     } finally {
@@ -615,7 +592,9 @@ export function NewReleasesPage({
     </>
   );
 
-  const pendingDescription = `${total} items matching filters. Links open Lidarr, MusicBrainz, or release source. Clear reappears on rescan; Ignore hides one album; Hide artist skips all future releases for that artist.`;
+  const pendingDescription = useArrPanel
+    ? `${total} items matching filters. Clear reappears on rescan; Hide release hides one album; Ignore artist skips all future releases for that artist.`
+    : `${total} items matching filters. Links open Lidarr, MusicBrainz, or release source. Clear reappears on rescan; Ignore hides one album; Hide artist skips all future releases for that artist.`;
 
   const pendingListBody = loading ? (
     <div className="flex items-center justify-center py-12">
@@ -665,22 +644,53 @@ export function NewReleasesPage({
     </div>
   );
 
-  const pendingToolbarActions = (
+  const pendingToolbarActions = useArrPanel ? (
     <>
-      <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIgnoredArtistsOpen(true)}
+        className="shrink-0"
+      >
         <EyeOff className="mr-2 h-4 w-4" />
-        Hidden
-        {hiddenArtistCount > 0 ? (
-          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-            {hiddenArtistCount} artist{hiddenArtistCount === 1 ? "" : "s"}
-          </span>
-        ) : null}
+        Ignored artists ({ignoredArtistCount})
       </Button>
-      {pending.length > 0 && (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setHiddenReleasesOpen(true)}
+        className="shrink-0"
+      >
+        <Ban className="mr-2 h-4 w-4" />
+        Hidden releases ({hiddenReleaseCount})
+      </Button>
+      {pending.length > 0 ? (
         <Button variant="outline" size="sm" onClick={handleClearAll}>
           Clear all
         </Button>
-      )}
+      ) : null}
+    </>
+  ) : (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIgnoredArtistsOpen(true)}
+        className="shrink-0"
+      >
+        <EyeOff className="mr-2 h-4 w-4" />
+        Hidden
+        {ignoredArtistCount > 0 ? (
+          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
+            {ignoredArtistCount} artist{ignoredArtistCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </Button>
+      {pending.length > 0 ? (
+        <Button variant="outline" size="sm" onClick={handleClearAll}>
+          Clear all
+        </Button>
+      ) : null}
     </>
   );
 
@@ -812,68 +822,41 @@ export function NewReleasesPage({
       <ConfirmDialog
         open={ignoreTarget !== null}
         onOpenChange={(open) => !open && setIgnoreTarget(null)}
-        title="Ignore this release?"
+        title="Hide this release?"
         description={
           ignoreTarget
-            ? `Ignore "${ignoreTarget.album_title}" by ${ignoreTarget.artist_name}? It won't reappear. Restore from Status if needed.`
+            ? `Hide "${ignoreTarget.album_title}" by ${ignoreTarget.artist_name}? It won't reappear until restored from Hidden releases.`
             : null
         }
-        confirmLabel="Ignore release"
+        confirmLabel="Hide release"
         onConfirm={doIgnore}
         isLoading={ignoreLoading}
       />
       <ConfirmDialog
         open={hideArtistTarget !== null}
         onOpenChange={(open) => !open && setHideArtistTarget(null)}
-        title="Hide all releases for this artist?"
+        title="Ignore this artist?"
         description={
           hideArtistTarget
-            ? `"${hideArtistTarget.artist_name}" will disappear from this list until you restore the artist from Hidden.`
+            ? `"${hideArtistTarget.artist_name}" will be excluded from discovery until restored from Ignored artists.`
             : null
         }
-        confirmLabel="Hide artist"
+        confirmLabel="Ignore artist"
         onConfirm={doHideArtist}
         isLoading={hideArtistLoading}
       />
-      <Dialog open={hiddenOpen} onOpenChange={setHiddenOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Hidden from list</DialogTitle>
-            <DialogDescription>
-              Discovery still runs for other artists; restore to show pending releases again.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto space-y-2">
-            {ignoredArtistsLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : ignoredArtists.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">No hidden artists.</p>
-            ) : (
-              ignoredArtists.map((artist) => (
-                <div
-                  key={artist.artist_mbid}
-                  className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0 font-medium">
-                    {artist.artist_name || artist.artist_mbid}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 self-start sm:self-auto"
-                    onClick={() => restoreHiddenArtist(artist.artist_mbid)}
-                  >
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                    Restore
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <IgnoredReleaseArtistsDialog
+        open={ignoredArtistsOpen}
+        onOpenChange={setIgnoredArtistsOpen}
+        onChanged={loadExclusionCounts}
+      />
+      {useArrPanel ? (
+        <HiddenReleasesDialog
+          open={hiddenReleasesOpen}
+          onOpenChange={setHiddenReleasesOpen}
+          onChanged={loadExclusionCounts}
+        />
+      ) : null}
     </div>
   );
 }
@@ -945,49 +928,93 @@ function PendingRow({
             </Button>
           )}
         </div>
-        {/* Actions — icon-only square buttons with tooltips */}
-        <div className="flex items-center gap-1 border-border/60 sm:border-l sm:pl-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
-            onClick={onHideArtist}
-            title="Hide all releases for this artist"
-          >
-            <EyeOff className="h-3.5 w-3.5" />
-            <span className="sr-only sm:not-sr-only sm:ml-1">Hide artist</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
-            onClick={onClear}
-            title="Clear for now, will reappear on rescan"
-          >
-            <MinusCircle className="h-3.5 w-3.5" />
-            <span className="sr-only sm:not-sr-only sm:ml-1">Clear</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={onRecheck}
-            title="Verify in MusicBrainz and remove if found"
-            aria-label="Recheck release in MusicBrainz"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-            onClick={onIgnore}
-            title="Ignore this album permanently"
-            aria-label="Ignore release"
-          >
-            <Ban className="h-4 w-4" />
-          </Button>
-        </div>
+        {useArrList ? (
+          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto border-border/60 sm:max-w-none sm:border-l sm:pl-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+              onClick={onRecheck}
+              title="Verify in MusicBrainz and remove if found"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Recheck
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+              onClick={onClear}
+              title="Clear for now, will reappear on rescan"
+            >
+              <MinusCircle className="h-3 w-3" />
+              Clear
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+              onClick={onIgnore}
+              title="Hide this album permanently"
+            >
+              <Ban className="h-3 w-3" />
+              Hide release
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap text-muted-foreground hover:text-destructive"
+              onClick={onHideArtist}
+              title="Ignore all releases for this artist"
+            >
+              <EyeOff className="h-3 w-3" />
+              Ignore artist
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 border-border/60 sm:border-l sm:pl-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
+              onClick={onHideArtist}
+              title="Hide all releases for this artist"
+            >
+              <EyeOff className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only sm:ml-1">Hide artist</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
+              onClick={onClear}
+              title="Clear for now, will reappear on rescan"
+            >
+              <MinusCircle className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only sm:ml-1">Clear</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={onRecheck}
+              title="Verify in MusicBrainz and remove if found"
+              aria-label="Recheck release in MusicBrainz"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+              onClick={onIgnore}
+              title="Ignore this album permanently"
+              aria-label="Ignore release"
+            >
+              <Ban className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

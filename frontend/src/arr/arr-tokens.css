@@ -234,12 +234,28 @@
   }
 }
 
-.arr-shell[data-ui-shell="arr"] .arr-stats-grid > div {
+.arr-shell[data-ui-shell="arr"] .arr-stats-grid > div,
+.arr-shell[data-ui-shell="arr"] .arr-stats-grid > button {
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   background: color-mix(in oklch, var(--muted) 40%, transparent);
   padding: 0.75rem;
   text-align: center;
+}
+
+.arr-shell[data-ui-shell="arr"] .arr-stats-grid > button {
+  width: 100%;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.arr-shell[data-ui-shell="arr"] .arr-stats-grid > button:hover {
+  background: color-mix(in oklch, var(--muted) 65%, transparent);
+}
+
+.arr-shell[data-ui-shell="arr"] .arr-stats-grid > button:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .arr-shell[data-ui-shell="arr"] .arr-field-label {
