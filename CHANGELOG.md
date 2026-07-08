@@ -5,19 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.18-dev] - TBD
+## [0.3.18] - 2026-07-08
 
 ### Features
-- **Command history**: Dedicated History page with time-range and command filters, filter-scoped KPIs (runs, failures, avg duration), and time-based retention (`COMMAND_HISTORY_RETENTION_DAYS`, default 1 year) replacing the old per-command count limit.
 - **New Release Discovery**: Optional continual MusicBrainz validation rechecks pending and dismissed releases on each command run (configurable batch size and interval), removing rows when found in MB; artists-per-run default raised to 25 and max to 100 (was 5 / 50). Separate **Ignored artists** and **Hidden releases** exclusion dialogs with search, sort, date added, restore, and restore-all; pending actions relabeled (Recheck, Clear, Hide release, Ignore artist); system KPIs for not yet scanned, hidden releases, and ignored artists use consistent boxed layout and open detail dialogs.
 - **Artist Events — exclusion management**: Hidden artists and hidden events each open a dedicated dialog with search, sort, date added, per-item restore, and restore-all (replacing the tabbed popup); Events page toolbar and system KPIs use the same boxed layout and terminology.
+- **Command history**: Dedicated History page with time-range and command filters, filter-scoped KPIs (runs, failures, avg duration), and time-based retention (`COMMAND_HISTORY_RETENTION_DAYS`, default 1 year) replacing the old per-command count limit.
 
 ### Fixes
 - **XM Playlist**: Fail the command with a Cloudflare-aware error when xmplaylist.com API requests fail (e.g. 403), instead of reporting success with zero tracks.
 
 ### Housekeeping
 - **Docker (Wolfi/Chainguard)**: Wolfi-based distroless runtime (`Dockerfile.wolfi`, digest-pinned Chainguard Python 3.14); v0.3.18 will publish Wolfi as `latest` and `v*-wolfi` tags with Debian `v*` tags retained as fallback; Python entrypoint (`docker/entrypoint.py`) replaces shell entrypoint on Wolfi images.
-- **Security (Debian fallback image)**: Removed apt `curl` from the Debian runtime image (HEALTHCHECK uses a Python stdlib probe) and refreshed `.trivyignore` against a clean Trivy scan — dropped stale curl/libcurl and sqlite ignores; 9 documented Debian trixie OS exceptions remain (ncurses, gzip, libacl1, perl-base, util-linux/libblkid), each with no trixie fix yet.
+- **Security (Debian fallback image)**: Removed apt `curl` from the Debian runtime image (HEALTHCHECK uses a Python stdlib probe) and refreshed `.trivyignore` against a clean Trivy scan — dropped stale curl/libcurl and sqlite ignores; 9 documented Debian trixie OS exceptions remain, each with no trixie fix yet.
 - **Python Package Update**: Review and update of Python packages.
 - **Node Package Update**: Review and update of Node packages.
 
