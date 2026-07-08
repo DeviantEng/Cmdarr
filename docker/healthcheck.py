@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Probe /health for Docker HEALTHCHECK (stdlib only — no curl binary required)."""
+
 import sys
 import urllib.error
 import urllib.request
@@ -12,7 +13,7 @@ def main() -> int:
     try:
         with urllib.request.urlopen(HEALTH_URL, timeout=TIMEOUT_SEC) as resp:
             return 0 if resp.status == 200 else 1
-    except (urllib.error.URLError, OSError, TimeoutError):
+    except urllib.error.URLError, OSError, TimeoutError:
         return 1
 
 
