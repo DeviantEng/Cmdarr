@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 320s
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "gosu", "appuser", "python", "/app/docker/healthcheck.py"]
       interval: 30s
       timeout: 10s
       retries: 3

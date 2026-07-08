@@ -30,9 +30,8 @@ ENV WEB_HOST=0.0.0.0 \
     LOG_LEVEL=INFO \
     LOG_RETENTION_DAYS=7
 
-# Install system dependencies
+# Install runtime helpers (curl removed — HEALTHCHECK uses docker/healthcheck.py)
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    curl \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,9 +58,9 @@ RUN mkdir -p /app/data/logs && \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Health check
+# Health check (Python stdlib — no curl/apt libcurl in final image)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD gosu appuser curl -f http://localhost:8080/health || exit 1
+    CMD gosu appuser python /app/docker/healthcheck.py
 
 # Use entrypoint script to handle UID/GID changes at runtime
 ENTRYPOINT ["/entrypoint.sh"]

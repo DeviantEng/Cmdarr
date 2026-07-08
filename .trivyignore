@@ -4,7 +4,7 @@
 #
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
-#   dpkg-query -W libssh2-1t64 curl libcurl4t64 libncursesw6 libsqlite3-0 perl-base gzip libacl1
+#   dpkg-query -W libssh2-1t64 libcurl4t64 libncursesw6 libsqlite3-0 perl-base gzip libacl1 util-linux libblkid1
 # ---------------------------------------------------------------------------
 #
 # CVE-2025-69720 — libncursesw6: infocmp stack overflow (CLI tool)
@@ -27,13 +27,13 @@ CVE-2026-54369 exp:2026-09-01
 #
 # CVE-2026-5773 — libcurl4t64: wrongful SMB connection reuse loads wrong share/path
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.20.0-2 onward (no trixie DSA yet).
-#   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.
+#   Affects libcurl SMB(S) transfers only; apt curl removed from image; xmplaylist uses curl-cffi (Python), not system curl CLI.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-5773
 CVE-2026-5773 exp:2026-09-01
 #
 # CVE-2026-6276 — libcurl4t64: cookie leak when reusing easy handle after custom Host header
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.20.0~rc3-1 onward (no trixie DSA yet).
-#   Requires custom Host header on first request then reuse without it; HEALTHCHECK uses a fresh local HTTP probe only.
+#   Requires custom Host header on first request then reuse without it; apt curl removed; incidental libcurl4t64 if still pulled by base/wheels.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-6276
 CVE-2026-6276 exp:2026-09-01
 #
@@ -93,48 +93,48 @@ CVE-2026-53615 exp:2026-09-01
 #
 # CVE-2026-12064 — curl / libcurl4t64: SSH host verification bypass with schemeless URL and --proto-default sftp/scp
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Affects curl CLI SFTP/SCP with schemeless URLs; HEALTHCHECK uses plain HTTP to localhost only.
+#   Affects curl CLI SFTP/SCP with schemeless URLs; apt curl removed from image.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-12064
 CVE-2026-12064 exp:2026-09-01
 #
 # CVE-2026-8286 — curl / libcurl4t64: connection reuse despite STARTTLS TLS configuration mismatch
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Affects STARTTLS upgrade paths (e.g. FTP/IMAP); HEALTHCHECK uses plain HTTP to localhost only.
+#   Affects STARTTLS upgrade paths (e.g. FTP/IMAP); apt curl removed from image.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8286
 CVE-2026-8286 exp:2026-09-01
 #
 # CVE-2026-8927 — libcurl4t64: proxy Digest auth header leak when reusing handle across different proxies
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Requires env-var proxy config with Digest auth across sequential transfers; HEALTHCHECK does not use HTTP proxies.
+#   Requires env-var proxy config with Digest auth across sequential transfers; apt curl removed; xmplaylist uses curl-cffi.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8927
 CVE-2026-8927 exp:2026-09-01
 #
 # CVE-2026-8932 — libcurl4t64: mTLS security feature bypass via improper connection reuse
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Requires client-certificate (mTLS) reuse across transfers; HEALTHCHECK uses plain HTTP to localhost only.
+#   Requires client-certificate (mTLS) reuse across transfers; apt curl removed from image.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8932
 CVE-2026-8932 exp:2026-09-01
 #
 # CVE-2026-9079 — libcurl4t64: proxy authentication credentials not cleared between handle reuse
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Requires proxy auth state on a reused easy handle; HEALTHCHECK uses a fresh local HTTP probe without proxies.
+#   Requires proxy auth state on a reused easy handle; apt curl removed; incidental libcurl4t64 only.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9079
 CVE-2026-9079 exp:2026-09-01
 #
 # CVE-2026-9080 — libcurl4t64: use-after-free calling curl_easy_pause() from CURLMOPT_SOCKETFUNCTION callback
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Requires multi-handle event loop with pause inside socket callback; HEALTHCHECK uses a simple one-shot curl invocation.
+#   Requires multi-handle event loop with pause inside socket callback; apt curl removed; xmplaylist curl-cffi usage is unrelated.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9080
 CVE-2026-9080 exp:2026-09-01
 #
 # CVE-2026-9545 — libcurl4t64: information disclosure via cached SSL session and early data reuse
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Requires TLS session cache / 0-RTT early data reuse across connections; HEALTHCHECK uses plain HTTP to localhost only.
+#   Requires TLS session cache / 0-RTT early data reuse across connections; apt curl removed from image.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9545
 CVE-2026-9545 exp:2026-09-01
 #
 # CVE-2026-9547 — curl / libcurl4t64: MITM via SSH host key bypass (schemeless URL / missing known_hosts setup)
 #   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
-#   Affects curl SSH/SFTP transfers without host key verification; HEALTHCHECK uses plain HTTP to localhost only.
+#   Affects curl SSH/SFTP transfers without host key verification; apt curl removed from image.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9547
 CVE-2026-9547 exp:2026-09-01
