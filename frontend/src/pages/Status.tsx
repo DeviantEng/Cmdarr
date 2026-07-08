@@ -38,7 +38,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { HiddenEventsDialog } from "@/components/HiddenEventsDialog";
+import { HiddenEventArtistsDialog } from "@/components/HiddenEventArtistsDialog";
+import { HiddenConcertEventsDialog } from "@/components/HiddenConcertEventsDialog";
 import { HiddenReleasesDialog } from "@/components/HiddenReleasesDialog";
 import { IgnoredReleaseArtistsDialog } from "@/components/IgnoredReleaseArtistsDialog";
 import { NrdNotScannedDialog } from "@/components/NrdNotScannedDialog";
@@ -179,8 +180,8 @@ export function StatusPage({
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hiddenEventsOpen, setHiddenEventsOpen] = useState(false);
-  const [hiddenEventsTab, setHiddenEventsTab] = useState<"artists" | "events">("artists");
+  const [hiddenEventArtistsOpen, setHiddenEventArtistsOpen] = useState(false);
+  const [hiddenConcertEventsOpen, setHiddenConcertEventsOpen] = useState(false);
   const [notScannedOpen, setNotScannedOpen] = useState(false);
   const [ignoredOpen, setIgnoredOpen] = useState(false);
 
@@ -597,20 +598,16 @@ export function StatusPage({
             <ClickableKpiCell
               value={artistEventsStats.hidden_artists.toLocaleString()}
               label="Hidden artists"
+              valueClassName="text-lg font-semibold tabular-nums"
               clickable={useArrPanel && artistEventsStats.hidden_artists > 0}
-              onClick={() => {
-                setHiddenEventsTab("artists");
-                setHiddenEventsOpen(true);
-              }}
+              onClick={() => setHiddenEventArtistsOpen(true)}
             />
             <ClickableKpiCell
               value={artistEventsStats.hidden_events.toLocaleString()}
               label="Hidden events"
+              valueClassName="text-lg font-semibold tabular-nums"
               clickable={useArrPanel && artistEventsStats.hidden_events > 0}
-              onClick={() => {
-                setHiddenEventsTab("events");
-                setHiddenEventsOpen(true);
-              }}
+              onClick={() => setHiddenConcertEventsOpen(true)}
             />
           </div>
         </StatusSectionPanel>
@@ -879,10 +876,14 @@ export function StatusPage({
         </StatusSectionPanel>
       ) : null}
 
-      <HiddenEventsDialog
-        open={hiddenEventsOpen}
-        onOpenChange={setHiddenEventsOpen}
-        initialTab={hiddenEventsTab}
+      <HiddenEventArtistsDialog
+        open={hiddenEventArtistsOpen}
+        onOpenChange={setHiddenEventArtistsOpen}
+        onChanged={loadStatus}
+      />
+      <HiddenConcertEventsDialog
+        open={hiddenConcertEventsOpen}
+        onOpenChange={setHiddenConcertEventsOpen}
         onChanged={loadStatus}
       />
       <HiddenReleasesDialog

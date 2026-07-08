@@ -8,11 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.18-dev] - TBD
 
 ### Features
-- **New Release Discovery — continual validation**: Optional scheduled MusicBrainz recheck of pending and dismissed releases on each command run (independent of artist discovery); configurable batch size and recheck interval. Removes rows automatically when found in MB.
-- **New Release Discovery — artists per run**: Default raised to 25; max increased to 100 (was 5 / 50).
 - **Command history**: Dedicated History page with time-range and command filters, filter-scoped KPIs (runs, failures, avg duration), and time-based retention (`COMMAND_HISTORY_RETENTION_DAYS`, default 1 year) replacing the old per-command count limit.
-- **System KPI drill-down**: Clickable KPIs on Artist Events (hidden artists/events) and New Releases (not yet scanned, dismissed, ignored) open detail dialogs with restore actions.
-- **New Release Discovery — exclusion management**: Separate **Ignored artists** and **Hidden releases** dialogs with search, sort, date added, per-item restore, and restore-all; pending actions relabeled and reordered (Recheck, Clear, Hide release, Ignore artist); system KPIs use the same boxed layout and terminology as other stats.
+- **New Release Discovery**: Optional continual MusicBrainz validation rechecks pending and dismissed releases on each command run (configurable batch size and interval), removing rows when found in MB; artists-per-run default raised to 25 and max to 100 (was 5 / 50). Separate **Ignored artists** and **Hidden releases** exclusion dialogs with search, sort, date added, restore, and restore-all; pending actions relabeled (Recheck, Clear, Hide release, Ignore artist); system KPIs for not yet scanned, hidden releases, and ignored artists use consistent boxed layout and open detail dialogs.
+- **Artist Events — exclusion management**: Hidden artists and hidden events each open a dedicated dialog with search, sort, date added, per-item restore, and restore-all (replacing the tabbed popup); Events page toolbar and system KPIs use the same boxed layout and terminology.
 
 ### Fixes
 - **XM Playlist**: Fail the command with a Cloudflare-aware error when xmplaylist.com API requests fail (e.g. 403), instead of reporting success with zero tracks.

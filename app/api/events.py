@@ -323,6 +323,7 @@ async def list_hidden(
     db: Annotated[Session, Depends(get_config_db)],
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
+    total = db.query(ArtistEventHidden).count()
     rows = (
         db.query(ArtistEventHidden)
         .order_by(func.lower(ArtistEventHidden.artist_name).asc())
@@ -331,6 +332,7 @@ async def list_hidden(
     )
     return {
         "success": True,
+        "total": total,
         "items": [
             {
                 "artist_mbid": r.artist_mbid,
@@ -386,11 +388,12 @@ async def list_hidden_events(
         db.query(ArtistConcertHiddenEvent, ArtistEvent)
         .join(ArtistEvent, ArtistEvent.id == ArtistConcertHiddenEvent.event_id)
         .order_by(func.lower(ArtistEvent.artist_name).asc(), ArtistEvent.local_date.asc())
-        .limit(limit)
     )
-    rows = q.all()
+    total = q.count()
+    rows = q.limit(limit).all()
     return {
         "success": True,
+        "total": total,
         "items": [
             {
                 "event_id": ev.id,

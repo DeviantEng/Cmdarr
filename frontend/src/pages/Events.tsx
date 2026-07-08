@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   ChevronDown,
   ExternalLink,
   EyeOff,
@@ -49,7 +50,8 @@ import {
   ArrSectionHeader,
 } from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
-import { HiddenEventsDialog } from "@/components/HiddenEventsDialog";
+import { HiddenEventArtistsDialog } from "@/components/HiddenEventArtistsDialog";
+import { HiddenConcertEventsDialog } from "@/components/HiddenConcertEventsDialog";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
 
@@ -79,7 +81,8 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
   const [locationQuery, setLocationQuery] = useState("");
   const [radiusInput, setRadiusInput] = useState("100");
   const [geoLoading, setGeoLoading] = useState(false);
-  const [hiddenOpen, setHiddenOpen] = useState(false);
+  const [hiddenArtistsOpen, setHiddenArtistsOpen] = useState(false);
+  const [hiddenEventsOpen, setHiddenEventsOpen] = useState(false);
   const [hiddenArtistCount, setHiddenArtistCount] = useState(0);
   const [hiddenEventCount, setHiddenEventCount] = useState(0);
   const [refreshRunning, setRefreshRunning] = useState(false);
@@ -134,8 +137,8 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
       setUpcomingStoredCount(ev.upcoming_stored_count ?? null);
       setRadiusInput(String(st.radius_miles ?? 100));
       setLocationQuery(st.user_label ?? "");
-      setHiddenArtistCount(hA.items.length);
-      setHiddenEventCount(hE.items.length);
+      setHiddenArtistCount(hA.total ?? hA.items.length);
+      setHiddenEventCount(hE.total ?? hE.items.length);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load events");
     } finally {
@@ -267,8 +270,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
     }
   };
 
-  const openHidden = () => setHiddenOpen(true);
-
   const runRefreshAllDue = async () => {
     setRefreshRunning(true);
     try {
@@ -366,8 +367,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
     if (p === "deezer") return "DZ";
     return p.slice(0, 3).toUpperCase();
   };
-
-  const hiddenTotal = hiddenArtistCount + hiddenEventCount;
 
   const providersDescription =
     "Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in Configuration > Event Sources. At least one provider must be ready before refresh runs.";
@@ -513,18 +512,23 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
       <Button variant="outline" size="sm" onClick={() => void openFestivals()} className="shrink-0">
         Festivals
       </Button>
-      <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setHiddenArtistsOpen(true)}
+        className="shrink-0"
+      >
         <EyeOff className="mr-2 h-4 w-4" />
-        Hidden
-        {hiddenTotal > 0 ? (
-          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-            {hiddenArtistCount > 0 &&
-              `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
-            {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
-            {hiddenEventCount > 0 &&
-              `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
-          </span>
-        ) : null}
+        Hidden artists ({hiddenArtistCount})
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setHiddenEventsOpen(true)}
+        className="shrink-0"
+      >
+        <CalendarDays className="mr-2 h-4 w-4" />
+        Hidden events ({hiddenEventCount})
       </Button>
     </>
   );
@@ -972,7 +976,16 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
         </DialogContent>
       </Dialog>
 
-      <HiddenEventsDialog open={hiddenOpen} onOpenChange={setHiddenOpen} onChanged={load} />
+      <HiddenEventArtistsDialog
+        open={hiddenArtistsOpen}
+        onOpenChange={setHiddenArtistsOpen}
+        onChanged={load}
+      />
+      <HiddenConcertEventsDialog
+        open={hiddenEventsOpen}
+        onOpenChange={setHiddenEventsOpen}
+        onChanged={load}
+      />
 
       <Dialog open={!!confirmHideArtist} onOpenChange={(o) => !o && setConfirmHideArtist(null)}>
         <DialogContent>
@@ -980,7 +993,7 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
             <DialogTitle>Hide all shows for this artist?</DialogTitle>
             <DialogDescription>
               {confirmHideArtist
-                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden > Artists.`
+                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden artists.`
                 : null}
             </DialogDescription>
           </DialogHeader>

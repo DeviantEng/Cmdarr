@@ -580,11 +580,12 @@ class ApiClient {
     return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);
   }
 
-  async getHiddenEventArtists(): Promise<{
+  async getHiddenEventArtists(limit = 500): Promise<{
     success: boolean;
+    total?: number;
     items: { artist_mbid: string; artist_name: string; hidden_at: string | null }[];
   }> {
-    return this.request("/api/events/hidden");
+    return this.request(`/api/events/hidden?limit=${limit}`);
   }
 
   async hideEventArtist(artist_mbid: string, artist_name?: string): Promise<{ success: boolean }> {
@@ -603,8 +604,9 @@ class ApiClient {
     return this.request("/api/events/unhide-all", { method: "POST" });
   }
 
-  async getHiddenEvents(): Promise<{
+  async getHiddenEvents(limit = 500): Promise<{
     success: boolean;
+    total?: number;
     items: {
       event_id: number;
       artist_mbid: string;
@@ -615,7 +617,7 @@ class ApiClient {
       hidden_at: string | null;
     }[];
   }> {
-    return this.request("/api/events/hidden-events");
+    return this.request(`/api/events/hidden-events?limit=${limit}`);
   }
 
   async hideEventRow(eventId: number): Promise<{ success: boolean }> {
