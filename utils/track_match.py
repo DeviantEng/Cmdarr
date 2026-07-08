@@ -8,6 +8,8 @@ names (e.g. grandparentTitle vs AlbumArtist), cache record shape, and auth/HTTP 
 
 from __future__ import annotations
 
+import re
+
 # Subtracted from total score when Plex/Jellyfin credits collaborators but the source does not.
 # Large enough that album bonuses (+50) cannot flip the winner vs the primary-artist line.
 COLLABORATION_MISMATCH_PENALTY_POINTS = 60
@@ -87,6 +89,98 @@ def normalized_primary_artist_for_collab_match(library_artist_raw: str) -> str |
     if not primary or primary.lower() == full_stripped.lower():
         return None
     return normalize_text(primary.lower())
+
+
+_MBID_UUID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
+
+# Unicode fold map mirrored from utils.text_normalizer (artist identity only).
+_UNICODE_TO_ASCII = {
+    "ö": "o",
+    "ü": "u",
+    "ä": "a",
+    "ß": "ss",
+    "ø": "o",
+    "œ": "oe",
+    "æ": "ae",
+    "ñ": "n",
+    "é": "e",
+    "è": "e",
+    "ê": "e",
+    "ë": "e",
+    "á": "a",
+    "à": "a",
+    "â": "a",
+    "ã": "a",
+    "å": "a",
+    "í": "i",
+    "ì": "i",
+    "î": "i",
+    "ï": "i",
+    "ó": "o",
+    "ò": "o",
+    "ô": "o",
+    "õ": "o",
+    "ú": "u",
+    "ù": "u",
+    "û": "u",
+    "ý": "y",
+    "ÿ": "y",
+    "ç": "c",
+    "ð": "d",
+    "þ": "th",
+}
+
+_PUNCT_STRIP_RE = re.compile(r"[^\w\s\'-]")
+
+
+def _fold_unicode_lower(text: str) -> str:
+    text = text.lower().strip()
+    for uchar, ascii_char in _UNICODE_TO_ASCII.items():
+        text = text.replace(uchar, ascii_char)
+    return text
+
+
+def extract_mbid_from_guid(guid: str | None) -> str | None:
+    """Extract the first UUID MusicBrainz id embedded in a Plex/Jellyfin guid string."""
+    if not guid:
+        return None
+    match = _MBID_UUID_RE.search(guid)
+    return match.group(0).lower() if match else None
+
+
+def artist_identity_matches(source: str, library: str) -> bool:
+    """
+    True when two artist display names refer to the same identity for matching.
+
+    After normalize_text() equality, rejects punctuation-only collisions (e.g. ``Gore.`` vs
+    ``gore``) while still allowing unicode-fold differences (e.g. ``Motörhead`` vs ``Motorhead``).
+    """
+    from utils.text_normalizer import normalize_text
+
+    source = (source or "").strip()
+    library = (library or "").strip()
+    if not source or not library:
+        return False
+    if normalize_text(source) != normalize_text(library):
+        return False
+    if source.lower().strip() == library.lower().strip():
+        return True
+
+    s_fold = _fold_unicode_lower(source)
+    l_fold = _fold_unicode_lower(library)
+    if s_fold == l_fold:
+        return True
+
+    s_nopunct = _PUNCT_STRIP_RE.sub("", s_fold)
+    l_nopunct = _PUNCT_STRIP_RE.sub("", l_fold)
+    if s_nopunct == l_nopunct:
+        if _PUNCT_STRIP_RE.sub("", s_fold) != s_fold or _PUNCT_STRIP_RE.sub("", l_fold) != l_fold:
+            return False
+        return True
+    return True
 
 
 def normalized_artist_for_source_vs_library(

@@ -10,14 +10,14 @@ from clients.client_jellyfin import JellyfinClient
 from clients.client_lastfm import LastFMClient
 from clients.client_plex import PlexClient
 from utils.library_cache_manager import get_library_cache_manager
-from utils.text_normalizer import normalize_text
 
 from .command_base import BaseCommand
 from .playlist_generator_helpers import (
     compute_top_tracks_playlist_title,
     delete_playlist_on_target,
     persist_playlist_identity,
-    validate_artists_against_cache,
+    resolve_artist_track_keys,
+    resolve_validated_artists,
 )
 
 
@@ -80,23 +80,15 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                     target_name.lower(), library_key
                 )
 
-            valid_artists, invalid_artists = validate_artists_against_cache(
-                artists_raw, cached_data
-            )
+            resolved_artists, invalid_artists = resolve_validated_artists(artists_raw, cached_data)
             if invalid_artists:
                 self.logger.warning(f"Artists not in library: {invalid_artists}")
 
-            if not valid_artists:
+            if not resolved_artists:
                 self.logger.error("No valid artists found in library")
                 return False
 
-            # Ordered display names from user list (for auto-naming)
-            valid_norms = set(valid_artists)
-            ordered_display_names = [
-                a.strip()
-                for a in artists_raw
-                if (a or "").strip() and normalize_text((a or "").strip().lower()) in valid_norms
-            ]
+            ordered_display_names = [r.display_name for r in resolved_artists]
 
             playlist_title = compute_top_tracks_playlist_title(ordered_display_names, config)
             last_playlist_title = config.get("last_playlist_title")
@@ -116,9 +108,8 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
 
             if source == "plex":
                 # Plex: get popular tracks via ratingCount
-                for artist_name in valid_artists:
-                    norm = normalize_text(artist_name.lower())
-                    track_keys = (cached_data or {}).get("artist_index", {}).get(norm, [])
+                for resolved in resolved_artists:
+                    track_keys = resolve_artist_track_keys(cached_data, resolved)
                     if not track_keys:
                         artists_skipped += 1
                         continue
@@ -143,22 +134,32 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             else:
                 # Last.fm: get top tracks, pass to sync_playlist for matching
                 async with self.lastfm_client:
-                    for artist_name in valid_artists:
+                    for resolved in resolved_artists:
+                        mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+                        if mbid:
+                            self.logger.debug(
+                                "Last.fm top tracks for '%s' using Lidarr MBID %s",
+                                resolved.display_name,
+                                mbid,
+                            )
                         top_tracks = await self.lastfm_client.get_top_tracks(
-                            artist_name, limit=top_x
+                            resolved.display_name,
+                            limit=top_x,
+                            mbid=mbid,
                         )
                         added = 0
                         for t in top_tracks[:top_x]:
                             track_name = t.get("name", "")
                             if not track_name:
                                 continue
-                            tracks_for_playlist.append(
-                                {
-                                    "artist": artist_name,
-                                    "track": track_name,
-                                    "album": t.get("album", ""),
-                                }
-                            )
+                            track_row: dict[str, Any] = {
+                                "artist": resolved.library_artist,
+                                "track": track_name,
+                                "album": t.get("album", ""),
+                            }
+                            if mbid:
+                                track_row["mbid"] = mbid
+                            tracks_for_playlist.append(track_row)
                             added += 1
                         if added > 0:
                             artists_processed += 1
@@ -168,7 +169,11 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             if not tracks_for_playlist:
                 self.logger.warning("No tracks found for playlist")
                 return True
-            summary = f"Top {top_x} tracks per artist. Artists: {', '.join(valid_artists[:5])}{'...' if len(valid_artists) > 5 else ''}"
+            summary = (
+                f"Top {top_x} tracks per artist. Artists: "
+                f"{', '.join(ordered_display_names[:5])}"
+                f"{'...' if len(ordered_display_names) > 5 else ''}"
+            )
 
             if hasattr(target_client, "_cached_library"):
                 target_client._cached_library = cached_data
@@ -186,7 +191,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             found = result.get("found_tracks", 0)
             total = result.get("total_tracks", 0)
 
-            artists_total = len(valid_artists) + len(invalid_artists)
+            artists_total = len(resolved_artists) + len(invalid_artists)
             self.last_run_stats = {
                 "artists_processed": artists_processed,
                 "artists_skipped": artists_skipped,

@@ -210,32 +210,42 @@ class LastFMClient(BaseAPIClient):
 
             return [], []
 
-    async def get_top_tracks(self, artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
+    async def get_top_tracks(
+        self,
+        artist_name: str,
+        limit: int = 10,
+        *,
+        mbid: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get top tracks for an artist via artist.getTopTracks.
         Returns list of {name, artist, playcount} for matching against library.
         """
-        if not artist_name or not str(artist_name).strip():
+        mbid = (mbid or "").strip() or None
+        name_clean = (artist_name or "").strip()
+        if not mbid and not name_clean:
             return []
 
-        cache_key = f"toptracks:{artist_name}:{limit}"
+        cache_key = f"toptracks:{mbid or name_clean}:{limit}"
         if self.cache_enabled and self.cache:
             if self.cache.is_failed_lookup(cache_key, "lastfm"):
                 return []
             cached = self.cache.get(cache_key, "lastfm")
             if cached is not None:
-                self.logger.debug(f"Cache hit for top tracks: {artist_name}")
+                self.logger.debug(f"Cache hit for top tracks: {mbid or name_clean}")
                 return cached.get("tracks", [])
 
-        params = {
+        params: dict[str, str] = {
             "method": "artist.getTopTracks",
-            "artist": artist_name.strip(),
             "limit": str(min(limit, 50)),
         }
+        if mbid:
+            params["mbid"] = mbid
+        else:
+            params["artist"] = name_clean
+        context = f"top tracks for '{name_clean}'" + (f" (MBID: {mbid})" if mbid else "")
         try:
-            response = await self._make_request(
-                params, context_info=f"top tracks for '{artist_name}'"
-            )
+            response = await self._make_request(params, context_info=context)
             if not response:
                 if self.cache_enabled and self.cache:
                     self.cache.mark_failed_lookup(
@@ -255,7 +265,11 @@ class LastFMClient(BaseAPIClient):
             for t in track_list:
                 name = t.get("name", "").strip()
                 art = t.get("artist", {})
-                artist = art.get("name", artist_name) if isinstance(art, dict) else artist_name
+                artist = (
+                    art.get("name", name_clean or artist_name)
+                    if isinstance(art, dict)
+                    else (name_clean or artist_name)
+                )
                 if name:
                     tracks.append(
                         {
@@ -274,7 +288,7 @@ class LastFMClient(BaseAPIClient):
                 )
             return tracks
         except Exception as e:
-            self.logger.error(f"Error getting top tracks for {artist_name}: {e}")
+            self.logger.error(f"Error getting top tracks for {mbid or name_clean}: {e}")
             if self.cache_enabled and self.cache:
                 self.cache.mark_failed_lookup(
                     cache_key,
