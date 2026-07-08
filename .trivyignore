@@ -84,3 +84,57 @@ CVE-2026-48962 exp:2026-09-01
 #   Requires parsing attacker-controlled tar headers; CMDARR does not extract untrusted tar archives via Perl.
 #   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9538
 CVE-2026-9538 exp:2026-09-01
+#
+# CVE-2026-53615 — util-linux / libblkid1: integer overflow parsing DOS partition tables (util-linux < 2.42.3)
+#   Debian trixie: util-linux 2.41-5 / libblkid1 2.41-5 vulnerable; unfixed in sid (no trixie DSA yet).
+#   Requires parsing a crafted partition table with libblkid; CMDARR does not invoke blkid/fdisk or mount untrusted block devices.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-53615
+CVE-2026-53615 exp:2026-09-01
+#
+# CVE-2026-12064 — curl / libcurl4t64: SSH host verification bypass with schemeless URL and --proto-default sftp/scp
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Affects curl CLI SFTP/SCP with schemeless URLs; HEALTHCHECK uses plain HTTP to localhost only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-12064
+CVE-2026-12064 exp:2026-09-01
+#
+# CVE-2026-8286 — curl / libcurl4t64: connection reuse despite STARTTLS TLS configuration mismatch
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Affects STARTTLS upgrade paths (e.g. FTP/IMAP); HEALTHCHECK uses plain HTTP to localhost only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8286
+CVE-2026-8286 exp:2026-09-01
+#
+# CVE-2026-8927 — libcurl4t64: proxy Digest auth header leak when reusing handle across different proxies
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Requires env-var proxy config with Digest auth across sequential transfers; HEALTHCHECK does not use HTTP proxies.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8927
+CVE-2026-8927 exp:2026-09-01
+#
+# CVE-2026-8932 — libcurl4t64: mTLS security feature bypass via improper connection reuse
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Requires client-certificate (mTLS) reuse across transfers; HEALTHCHECK uses plain HTTP to localhost only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8932
+CVE-2026-8932 exp:2026-09-01
+#
+# CVE-2026-9079 — libcurl4t64: proxy authentication credentials not cleared between handle reuse
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Requires proxy auth state on a reused easy handle; HEALTHCHECK uses a fresh local HTTP probe without proxies.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9079
+CVE-2026-9079 exp:2026-09-01
+#
+# CVE-2026-9080 — libcurl4t64: use-after-free calling curl_easy_pause() from CURLMOPT_SOCKETFUNCTION callback
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Requires multi-handle event loop with pause inside socket callback; HEALTHCHECK uses a simple one-shot curl invocation.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9080
+CVE-2026-9080 exp:2026-09-01
+#
+# CVE-2026-9545 — libcurl4t64: information disclosure via cached SSL session and early data reuse
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Requires TLS session cache / 0-RTT early data reuse across connections; HEALTHCHECK uses plain HTTP to localhost only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9545
+CVE-2026-9545 exp:2026-09-01
+#
+# CVE-2026-9547 — curl / libcurl4t64: MITM via SSH host key bypass (schemeless URL / missing known_hosts setup)
+#   Debian trixie: curl 8.14.1-2+deb13u3 / libcurl4t64 vulnerable; fixed in sid curl 8.21.0-2 onward (no trixie DSA yet).
+#   Affects curl SSH/SFTP transfers without host key verification; HEALTHCHECK uses plain HTTP to localhost only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9547
+CVE-2026-9547 exp:2026-09-01

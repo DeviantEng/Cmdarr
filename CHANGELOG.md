@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XM Playlist**: Fail the command with a Cloudflare-aware error when xmplaylist.com API requests fail (e.g. 403), instead of reporting success with zero tracks.
 
 ### Housekeeping
-- **Security**: Review of .trivyignore; removed CVEs that now have a fix, and added 2 new ignores related to gzip and libacl1
+- **Security**: Review of .trivyignore; added 9 new Debian trixie ignores (util-linux/libblkid CVE-2026-53615; curl/libcurl4t64 CVE-2026-12064, CVE-2026-8286, CVE-2026-8927, CVE-2026-8932, CVE-2026-9079, CVE-2026-9080, CVE-2026-9545, CVE-2026-9547) with no trixie fix yet.
 - **Python Package Update**: Review and update of Python packages.
 - **Node Package Update**: Review and update of Node packages.
 
