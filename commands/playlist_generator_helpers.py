@@ -3,10 +3,12 @@
 
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
 from utils.text_normalizer import normalize_text
+from utils.track_match import artist_identity_matches
 
 SEP = " · "
 MAX_ARTIST_LEN = 40
@@ -77,6 +79,158 @@ def index_lidarr_artist_mbids_by_norm(
         if n and mb:
             by_norm[n].add(mb)
     return {k: sorted(v) for k, v in by_norm.items()}
+
+
+@dataclass(frozen=True)
+class ResolvedArtist:
+    """Library-validated artist with disambiguation metadata for playlist matching."""
+
+    display_name: str
+    norm: str
+    mbids: list[str]
+    library_artist: str
+
+
+def load_lidarr_artist_pairs_sync() -> list[tuple[str, str]]:
+    """Load ``(artist_name, artist_mbid)`` pairs from Lidarr. Returns [] if DB/query fails."""
+
+    try:
+        from database.config_models import LidarrArtist
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            rows = session.query(LidarrArtist).all()
+            return [
+                (r.artist_name or "", r.artist_mbid or "")
+                for r in rows
+                if (r.artist_name or "").strip() and (r.artist_mbid or "").strip()
+            ]
+        finally:
+            session.close()
+    except Exception:
+        return []
+
+
+def _pick_lidarr_mbids(
+    display_name: str, norm: str, lidarr_pairs: list[tuple[str, str]]
+) -> list[str]:
+    candidates = [
+        (name, mbid.strip())
+        for name, mbid in lidarr_pairs
+        if normalize_text(name) == norm and mbid.strip()
+    ]
+    if not candidates:
+        return []
+    if len(candidates) == 1:
+        return [candidates[0][1]]
+    best_name, best_mbid = max(
+        candidates,
+        key=lambda pair: SequenceMatcher(None, display_name.lower(), pair[0].lower()).ratio(),
+    )
+    return [best_mbid]
+
+
+def _distinct_library_artists_for_norm(cached_data: dict[str, Any] | None, norm: str) -> list[str]:
+    if not cached_data or not norm:
+        return []
+    artist_index = cached_data.get("artist_index", {})
+    rating_keys = artist_index.get(norm, [])
+    if not rating_keys:
+        return []
+    tracks = cached_data.get("tracks", [])
+    track_by_key = {t["key"]: t for t in tracks}
+    seen: set[str] = set()
+    raw_artists: list[str] = []
+    for key in rating_keys:
+        track = track_by_key.get(key)
+        if not track:
+            continue
+        raw = str(track.get("artist", "") or "").strip()
+        if raw and raw not in seen:
+            seen.add(raw)
+            raw_artists.append(raw)
+    return raw_artists
+
+
+def _pick_library_artist(display_name: str, norm: str, cached_data: dict[str, Any] | None) -> str:
+    raw_artists = _distinct_library_artists_for_norm(cached_data, norm)
+    identity_matches = [r for r in raw_artists if artist_identity_matches(display_name, r)]
+    pool = identity_matches or raw_artists
+    if not pool:
+        return display_name
+    return max(
+        pool,
+        key=lambda r: SequenceMatcher(None, display_name.lower(), r.lower()).ratio(),
+    )
+
+
+def resolve_artist_track_keys(
+    cached_data: dict[str, Any] | None, resolved: ResolvedArtist
+) -> list[str]:
+    """Rating keys for a resolved artist, filtered by identity and optional MBID index."""
+    if not cached_data:
+        return []
+    artist_index = cached_data.get("artist_index", {})
+    norm_keys = artist_index.get(resolved.norm, [])
+    if not norm_keys:
+        return []
+
+    tracks = cached_data.get("tracks", [])
+    track_by_key = {t["key"]: t for t in tracks}
+    keys: list[str] = []
+    for key in norm_keys:
+        track = track_by_key.get(key)
+        if not track:
+            continue
+        raw = str(track.get("artist", "") or "")
+        if artist_identity_matches(resolved.display_name, raw):
+            keys.append(key)
+
+    mbid_index = cached_data.get("mbid_index", {})
+    if resolved.mbids and mbid_index:
+        mbid_keys: set[str] = set()
+        for mbid in resolved.mbids:
+            mbid_keys.update(mbid_index.get(mbid.lower(), []))
+        if mbid_keys:
+            filtered = [k for k in keys if k in mbid_keys]
+            if filtered:
+                keys = filtered
+
+    return keys
+
+
+def resolve_validated_artists(
+    artists_raw: list[str] | str,
+    cached_data: dict[str, Any] | None,
+    *,
+    lidarr_pairs: list[tuple[str, str]] | None = None,
+) -> tuple[list[ResolvedArtist], list[str]]:
+    """Validate artists and resolve display names, Lidarr MBIDs, and library raw artist strings."""
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    valid_norms, invalid = validate_artists_against_cache(names, cached_data)
+    valid_set = set(valid_norms)
+    pairs = lidarr_pairs if lidarr_pairs is not None else load_lidarr_artist_pairs_sync()
+
+    resolved: list[ResolvedArtist] = []
+    for name in names:
+        norm = normalize_text(name.lower())
+        if norm not in valid_set:
+            continue
+        mbids = _pick_lidarr_mbids(name, norm, pairs)
+        library_artist = _pick_library_artist(name, norm, cached_data)
+        resolved.append(
+            ResolvedArtist(
+                display_name=name,
+                norm=norm,
+                mbids=mbids,
+                library_artist=library_artist,
+            )
+        )
+    return resolved, invalid
 
 
 def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:

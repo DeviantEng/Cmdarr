@@ -17,6 +17,7 @@ from .playlist_generator_helpers import (
     compute_lfm_similar_playlist_title,
     delete_playlist_on_target,
     persist_playlist_identity,
+    resolve_validated_artists,
     validate_artists_against_cache,
 )
 
@@ -124,17 +125,15 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
                 self.logger.error("No artists in pool matched the library")
                 return False
 
-            valid_norms = set(valid_artists)
-            ordered_display_names = [
-                n for n in pool_names if normalize_text(n.lower()) in valid_norms
-            ]
-            seen_o: set[str] = set()
+            resolved_pool, _ = resolve_validated_artists(pool_names, cached_data)
+            resolved_by_norm = {r.norm: r for r in resolved_pool}
             ordered_unique: list[str] = []
-            for n in ordered_display_names:
-                k = normalize_text(n.lower())
-                if k in seen_o:
+            seen_o: set[str] = set()
+            for n in pool_names:
+                norm = normalize_text(n.lower())
+                if norm not in valid_artists or norm in seen_o:
                     continue
-                seen_o.add(k)
+                seen_o.add(norm)
                 ordered_unique.append(n)
 
             playlist_title = compute_lfm_similar_playlist_title(config)
@@ -156,19 +155,29 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
             async with self.lastfm_client:
                 for artist_name in ordered_unique:
                     norm = normalize_text(artist_name.lower())
-                    top_tracks = await self.lastfm_client.get_top_tracks(artist_name, limit=top_x)
+                    resolved = resolved_by_norm.get(norm)
+                    if not resolved:
+                        artists_skipped += 1
+                        continue
+                    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+                    top_tracks = await self.lastfm_client.get_top_tracks(
+                        resolved.display_name,
+                        limit=top_x,
+                        mbid=mbid,
+                    )
                     added = 0
                     for t in top_tracks[:top_x]:
                         track_name = t.get("name", "")
                         if not track_name:
                             continue
-                        tracks_for_playlist.append(
-                            {
-                                "artist": norm,
-                                "track": track_name,
-                                "album": t.get("album", ""),
-                            }
-                        )
+                        track_row: dict[str, Any] = {
+                            "artist": resolved.library_artist,
+                            "track": track_name,
+                            "album": t.get("album", ""),
+                        }
+                        if mbid:
+                            track_row["mbid"] = mbid
+                        tracks_for_playlist.append(track_row)
                         added += 1
                     if added > 0:
                         artists_processed += 1

@@ -83,3 +83,37 @@ def test_score_track_match_bmth_crucify_me_prefers_solo_over_featured(plex_clien
         featured, "Crucify Me", "Bring Me the Horizon", None, None
     )
     assert s_solo > s_feat
+
+
+def test_score_track_match_rejects_gore_period_vs_gore(plex_client: PlexClient):
+    wrong = {
+        "title": "Mean Man's Dream",
+        "grandparentTitle": "gore",
+        "parentTitle": "Album",
+        "guid": "",
+    }
+    total, artist_s, track_s = plex_client._score_track_match(
+        wrong, "Mean Man's Dream", "Gore.", None, None
+    )
+    assert artist_s == 0
+    assert track_s >= 50
+
+
+def test_score_track_match_optimized_gore_period_matches_library(plex_client: PlexClient):
+    track = {
+        "title": "mean man's dream",
+        "artist": "gore.",
+        "album": "album",
+        "artist_guid": "",
+    }
+    total, artist_s, track_s = plex_client._score_track_match_optimized(
+        track,
+        "mean man's dream",
+        "gore",
+        "album",
+        original_track="Mean Man's Dream",
+        original_artist="Gore.",
+    )
+    assert artist_s == 100
+    assert track_s == 100
+    assert total >= 100

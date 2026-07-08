@@ -118,8 +118,19 @@ def _resolve_tracks_for_plex(
         if not artist or not track_name:
             continue
         album = track.get("album", "")
+        mbids = track.get("mbid") or track.get("artist_mbid")
+        if isinstance(mbids, str):
+            mbids = [mbids] if mbids.strip() else None
+        elif isinstance(mbids, list):
+            mbids = [m for m in mbids if (m or "").strip()] or None
+        else:
+            mbids = None
         key = plex_client.search_for_track(
-            track_name, artist, cached_data=cached_data, album_name=album
+            track_name,
+            artist,
+            mbids=mbids,
+            cached_data=cached_data,
+            album_name=album,
         )
         if key:
             resolved.append({**track, "rating_key": key})

@@ -2,6 +2,8 @@
 
 from utils.text_normalizer import normalize_text
 from utils.track_match import (
+    artist_identity_matches,
+    extract_mbid_from_guid,
     normalized_artist_for_source_vs_library,
     primary_artist_segment_raw,
 )
@@ -34,3 +36,17 @@ def test_normalized_artist_unchanged_when_source_lists_collab():
         full_norm,
     )
     assert out == full_norm
+
+
+def test_artist_identity_matches_gore_period_vs_gore():
+    assert not artist_identity_matches("Gore.", "gore")
+    assert artist_identity_matches("Gore.", "gore.")
+
+
+def test_artist_identity_matches_unicode_fold():
+    assert artist_identity_matches("Motörhead", "Motorhead")
+
+
+def test_extract_mbid_from_guid():
+    guid = "com.plexapp.agents.music://f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4?lang=en"
+    assert extract_mbid_from_guid(guid) == "f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4"
