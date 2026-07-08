@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XM Playlist**: Fail the command with a Cloudflare-aware error when xmplaylist.com API requests fail (e.g. 403), instead of reporting success with zero tracks.
 
 ### Housekeeping
-- **Docker image**: Removed apt `curl` from the runtime image; HEALTHCHECK uses a Python stdlib probe (`docker/healthcheck.py`) to drop OS-level libcurl CVE surface. Regenerated `.trivyignore` from a fresh Trivy scan (22 → 9 OS CVEs).
-- **Security**: Review of .trivyignore; added 9 new Debian trixie ignores (util-linux/libblkid CVE-2026-53615; curl/libcurl4t64 CVE-2026-12064, CVE-2026-8286, CVE-2026-8927, CVE-2026-8932, CVE-2026-9079, CVE-2026-9080, CVE-2026-9545, CVE-2026-9547) with no trixie fix yet.
+- **Security**: Removed apt `curl` from the runtime image (HEALTHCHECK now uses a Python stdlib probe) and refreshed `.trivyignore` against a clean Trivy scan — dropped stale curl/libcurl and sqlite ignores; 9 documented Debian trixie OS exceptions remain (ncurses, gzip, libacl1, perl-base, util-linux/libblkid), each with no trixie fix yet.
 - **Python Package Update**: Review and update of Python packages.
 - **Node Package Update**: Review and update of Node packages.
 
