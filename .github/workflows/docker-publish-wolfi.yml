@@ -1,0 +1,160 @@
+name: Build and Publish Wolfi Docker image
+
+on:
+  push:
+    branches:
+      - develop-wolfi
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Force full rebuild (no cache) - use when frontend/cache is stale'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: devianteng/cmdarr
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
+
+  build-and-push:
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4
+
+      - name: Extract version from __version__.py
+        id: version
+        run: |
+          VERSION=$(python -c "from __version__ import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=develop-wolfi
+            type=ref,event=branch
+            type=sha,prefix=develop-wolfi-
+          labels: |
+            org.opencontainers.image.title=Cmdarr
+            org.opencontainers.image.description=Modular music automation platform (Wolfi/Chainguard experimental)
+            org.opencontainers.image.version=${{ steps.version.outputs.VERSION }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build image for scan
+        id: build-scan
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
+        with:
+          context: .
+          file: ./Dockerfile.wolfi
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan-wolfi
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_TAG=develop-wolfi
+          cache-from: type=gha,scope=wolfi
+          cache-to: type=gha,mode=max,scope=wolfi
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+
+      - name: Run Trivy vulnerability scanner (table)
+        run: |
+          if [ -f .trivyignore.wolfi ]; then
+            echo "### Ignored CVEs (Wolfi image)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat .trivyignore.wolfi >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "## Trivy Vulnerability Scan (Wolfi)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          set +e
+          output=$(trivy image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --format table \
+            --ignorefile .trivyignore.wolfi \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan-wolfi 2>&1)
+          exitcode=$?
+          set -e
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit $exitcode
+
+      - name: ZAP baseline scan
+        run: .github/scripts/zap-scan.sh ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan-wolfi ${{ github.workspace }}
+
+      - name: Stop container
+        if: always()
+        run: docker stop cmdarr-zap-target 2>/dev/null || true
+
+      - name: Build and push Docker image
+        if: success()
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
+        with:
+          context: .
+          file: ./Dockerfile.wolfi
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_TAG=develop-wolfi
+          cache-from: type=gha,scope=wolfi
+          cache-to: type=gha,mode=max,scope=wolfi
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}

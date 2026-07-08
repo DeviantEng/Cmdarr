@@ -1,0 +1,3 @@
+# Wolfi/Chainguard python:latest runtime CVE ignores.
+# Regenerate after Dockerfile.wolfi digest bumps:
+#   trivy image --severity HIGH,CRITICAL ghcr.io/devianteng/cmdarr:develop-wolfi
