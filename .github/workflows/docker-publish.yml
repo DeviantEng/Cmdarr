@@ -44,34 +44,25 @@ jobs:
       - name: Run unit tests
         run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing
 
-  prepare-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      include: ${{ steps.set-matrix.outputs.include }}
-    steps:
-      - id: set-matrix
-        run: |
-          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-            INCLUDE='[
-              {"variant":"debian","dockerfile":"./Dockerfile","trivyignore":".trivyignore","scan_suffix":"","gha_cache_scope":"debian","image_description":"Modular music automation platform (Debian fallback)"},
-              {"variant":"wolfi","dockerfile":"./Dockerfile.wolfi","trivyignore":".trivyignore.wolfi","scan_suffix":"-wolfi","gha_cache_scope":"wolfi","image_description":"Modular music automation platform (Wolfi/Chainguard)"}
-            ]'
-          else
-            INCLUDE='[
-              {"variant":"debian","dockerfile":"./Dockerfile","trivyignore":".trivyignore","scan_suffix":"","gha_cache_scope":"debian","image_description":"Modular music automation platform (Debian fallback)"}
-            ]'
-          fi
-          echo "include<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$INCLUDE" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
   build-and-push:
-    needs: [unit-tests, prepare-matrix]
+    needs: [unit-tests]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare-matrix.outputs.include) }}
+        include:
+          - variant: debian
+            dockerfile: ./Dockerfile
+            trivyignore: .trivyignore
+            scan_suffix: ""
+            gha_cache_scope: debian
+            image_description: Modular music automation platform (Debian fallback)
+          - variant: wolfi
+            dockerfile: ./Dockerfile.wolfi
+            trivyignore: .trivyignore.wolfi
+            scan_suffix: -wolfi
+            gha_cache_scope: wolfi
+            image_description: Modular music automation platform (Wolfi/Chainguard)
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
@@ -117,6 +108,7 @@ jobs:
           tags: |
             type=ref,event=branch,enable=${{ matrix.variant == 'debian' }}
             type=raw,value=develop,enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/develop' }}
+            type=raw,value=develop-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/develop' }}
             type=raw,value=latest,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.version.outputs.MAJOR }},enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.version.outputs.MINOR }},enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/main' }}
@@ -125,6 +117,7 @@ jobs:
             type=raw,value=${{ steps.version.outputs.MINOR }}-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.version.outputs.PATCH }}-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
             type=sha,prefix={{branch}}-,enable=${{ matrix.variant == 'debian' }}
+            type=sha,prefix=develop-wolfi-,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/develop' }}
           labels: |
             org.opencontainers.image.title=Cmdarr
             org.opencontainers.image.description=${{ matrix.image_description }}
@@ -145,7 +138,11 @@ jobs:
               echo "tag=${VERSION_PATCH}" >> $GITHUB_OUTPUT
             fi
           elif [ "$GITHUB_REF" = "refs/heads/develop" ]; then
-            echo "tag=develop" >> $GITHUB_OUTPUT
+            if [ "$VARIANT" = "wolfi" ]; then
+              echo "tag=develop-wolfi" >> $GITHUB_OUTPUT
+            else
+              echo "tag=develop" >> $GITHUB_OUTPUT
+            fi
           else
             echo "tag=$GITHUB_REF_NAME" >> $GITHUB_OUTPUT
           fi
