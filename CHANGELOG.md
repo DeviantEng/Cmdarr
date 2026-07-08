@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.19-dev] - TBD
 
+### Features
+- N/A
+
 ### Fixes
 - **Playlist matching**: Artist Essentials and related playlist commands disambiguate short punctuation-sensitive names (e.g. `Gore.` vs `gore`) using Lidarr MBIDs and strict artist identity checks so Last.fm and Plex lookups target the correct band.
 
