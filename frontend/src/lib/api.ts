@@ -355,12 +355,12 @@ class ApiClient {
     return this.request(`/api/new-releases/ignore/${itemId}`, { method: "POST" });
   }
 
-  async getIgnoredReleaseArtists(): Promise<{
+  async getIgnoredReleaseArtists(limit = 500): Promise<{
     success: boolean;
     total: number;
     items: NewReleaseIgnoredArtist[];
   }> {
-    return this.request("/api/new-releases/ignored-artists");
+    return this.request(`/api/new-releases/ignored-artists?limit=${limit}`);
   }
 
   async ignoreReleaseArtist(body: {
@@ -377,6 +377,14 @@ class ApiClient {
     return this.request(`/api/new-releases/unignore-artist/${encodeURIComponent(artistMbid)}`, {
       method: "POST",
     });
+  }
+
+  async restoreAllIgnoredReleaseArtists(): Promise<{
+    success: boolean;
+    restored_count?: number;
+    message?: string;
+  }> {
+    return this.request("/api/new-releases/unignore-all-artists", { method: "POST" });
   }
 
   async recheckRelease(itemId: number): Promise<{ success: boolean; removed?: boolean }> {
