@@ -46,7 +46,24 @@ jobs:
 
   build-and-push:
     needs: [unit-tests]
+    if: matrix.variant == 'debian' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: debian
+            dockerfile: ./Dockerfile
+            trivyignore: .trivyignore
+            scan_suffix: ""
+            gha_cache_scope: debian
+            image_description: Modular music automation platform (Debian fallback)
+          - variant: wolfi
+            dockerfile: ./Dockerfile.wolfi
+            trivyignore: .trivyignore.wolfi
+            scan_suffix: -wolfi
+            gha_cache_scope: wolfi
+            image_description: Modular music automation platform (Wolfi/Chainguard)
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
@@ -67,13 +84,12 @@ jobs:
         run: |
           VERSION=$(python -c "from __version__ import __version__; print(__version__)")
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          
-          # Parse semantic version (e.g., 0.1.0 -> 0, 0.1, 0.1.0)
+
           IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
           MAJOR="${VERSION_PARTS[0]}"
           MINOR="${VERSION_PARTS[0]}.${VERSION_PARTS[1]}"
           PATCH="$VERSION"
-          
+
           echo "MAJOR=v$MAJOR" >> $GITHUB_OUTPUT
           echo "MINOR=v$MINOR" >> $GITHUB_OUTPUT
           echo "PATCH=v$PATCH" >> $GITHUB_OUTPUT
@@ -91,25 +107,35 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
-            type=raw,value=${{ steps.version.outputs.MAJOR }},enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=${{ steps.version.outputs.MINOR }},enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=${{ steps.version.outputs.PATCH }},enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix={{branch}}-
+            type=ref,event=branch,enable=${{ matrix.variant == 'debian' }}
+            type=raw,value=develop,enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.MAJOR }},enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.MINOR }},enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.PATCH }},enable=${{ matrix.variant == 'debian' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.MAJOR }}-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.MINOR }}-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.PATCH }}-wolfi,enable=${{ matrix.variant == 'wolfi' && github.ref == 'refs/heads/main' }}
+            type=sha,prefix={{branch}}-,enable=${{ matrix.variant == 'debian' }}
           labels: |
             org.opencontainers.image.title=Cmdarr
-            org.opencontainers.image.description=Modular music automation platform
+            org.opencontainers.image.description=${{ matrix.image_description }}
             org.opencontainers.image.version=${{ steps.version.outputs.VERSION }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Set image tag for build
         id: image-tag
+        env:
+          VARIANT: ${{ matrix.variant }}
+          VERSION_PATCH: ${{ steps.version.outputs.PATCH }}
         run: |
           if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
+            if [ "$VARIANT" = "wolfi" ]; then
+              echo "tag=latest" >> $GITHUB_OUTPUT
+            else
+              echo "tag=${VERSION_PATCH}" >> $GITHUB_OUTPUT
+            fi
           elif [ "$GITHUB_REF" = "refs/heads/develop" ]; then
             echo "tag=develop" >> $GITHUB_OUTPUT
           else
@@ -121,16 +147,16 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64
           push: false
           load: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan${{ matrix.scan_suffix }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             IMAGE_TAG=${{ steps.image-tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.gha_cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.gha_cache_scope }}
           no-cache: ${{ github.event.inputs.no_cache == 'true' }}
 
       - name: Install Trivy
@@ -138,23 +164,23 @@ jobs:
 
       - name: Run Trivy vulnerability scanner (table)
         run: |
-          if [ -f .trivyignore ]; then
-            echo "### Ignored CVEs (revisit when upstream ships a fix)" >> $GITHUB_STEP_SUMMARY
+          if [ -f "${{ matrix.trivyignore }}" ]; then
+            echo "### Ignored CVEs (${{ matrix.variant }})" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            cat .trivyignore >> $GITHUB_STEP_SUMMARY
+            cat "${{ matrix.trivyignore }}" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
+          echo "## Trivy Vulnerability Scan (${{ matrix.variant }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           set +e
           output=$(trivy image \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             --format table \
-            --ignorefile .trivyignore \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan 2>&1)
+            --ignorefile "${{ matrix.trivyignore }}" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan${{ matrix.scan_suffix }} 2>&1)
           exitcode=$?
           set -e
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -163,7 +189,7 @@ jobs:
           exit $exitcode
 
       - name: ZAP baseline scan
-        run: .github/scripts/zap-scan.sh ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan ${{ github.workspace }}
+        run: .github/scripts/zap-scan.sh ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan${{ matrix.scan_suffix }} ${{ github.workspace }}
 
       - name: Stop container
         if: always()
@@ -174,15 +200,15 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             IMAGE_TAG=${{ steps.image-tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.gha_cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.gha_cache_scope }}
           no-cache: ${{ github.event.inputs.no_cache == 'true' }}
 
   notify-discord:
