@@ -5,6 +5,8 @@ import type {
   CommandExecution,
   CommandUpdateRequest,
   CommandExecutionRequest,
+  ExecutionHistoryResponse,
+  ExecutionHistorySince,
   ConfigSetting,
   ConfigUpdateRequest,
   ConnectivityTestResult,
@@ -139,23 +141,23 @@ class ApiClient {
     });
   }
 
-  async cleanupExecutions(
-    commandName?: string,
-    keepCount?: number
-  ): Promise<{ message: string; deleted_count?: number }> {
+  async getExecutions(options?: {
+    since?: ExecutionHistorySince | string;
+    commandName?: string | null;
+    limit?: number;
+  }): Promise<ExecutionHistoryResponse> {
     const params = new URLSearchParams();
-    if (commandName) params.set("command_name", commandName);
-    if (keepCount !== undefined) params.set("keep_count", String(keepCount));
+    if (options?.since) params.set("since", options.since);
+    if (options?.commandName) params.set("command_name", options.commandName);
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
     const query = params.toString();
-    return await this.request(`/api/commands/executions/cleanup${query ? `?${query}` : ""}`, {
-      method: "POST",
-    });
+    return await this.request<ExecutionHistoryResponse>(
+      `/api/status/executions/recent${query ? `?${query}` : ""}`
+    );
   }
 
   async getAllExecutions(limit = 50): Promise<CommandExecution[]> {
-    const response = await this.request<{ executions: CommandExecution[] }>(
-      `/api/status/executions/recent?limit=${limit}`
-    );
+    const response = await this.getExecutions({ limit });
     return response.executions;
   }
 
@@ -258,6 +260,13 @@ class ApiClient {
     return await this.request("/api/status/nrd-metrics");
   }
 
+  async getNrdNotScannedArtists(limit = 500): Promise<{
+    total: number;
+    items: { artist_mbid: string; artist_name: string }[];
+  }> {
+    return await this.request(`/api/status/nrd-metrics/not-scanned-artists?limit=${limit}`);
+  }
+
   async getMigrationStatus(): Promise<MigrationStatus> {
     return await this.request("/api/status/migrations");
   }
@@ -346,12 +355,12 @@ class ApiClient {
     return this.request(`/api/new-releases/ignore/${itemId}`, { method: "POST" });
   }
 
-  async getIgnoredReleaseArtists(): Promise<{
+  async getIgnoredReleaseArtists(limit = 500): Promise<{
     success: boolean;
     total: number;
     items: NewReleaseIgnoredArtist[];
   }> {
-    return this.request("/api/new-releases/ignored-artists");
+    return this.request(`/api/new-releases/ignored-artists?limit=${limit}`);
   }
 
   async ignoreReleaseArtist(body: {
@@ -368,6 +377,14 @@ class ApiClient {
     return this.request(`/api/new-releases/unignore-artist/${encodeURIComponent(artistMbid)}`, {
       method: "POST",
     });
+  }
+
+  async restoreAllIgnoredReleaseArtists(): Promise<{
+    success: boolean;
+    restored_count?: number;
+    message?: string;
+  }> {
+    return this.request("/api/new-releases/unignore-all-artists", { method: "POST" });
   }
 
   async recheckRelease(itemId: number): Promise<{ success: boolean; removed?: boolean }> {
@@ -563,11 +580,12 @@ class ApiClient {
     return this.request(`/api/events/upcoming${q ? `?${q}` : ""}`);
   }
 
-  async getHiddenEventArtists(): Promise<{
+  async getHiddenEventArtists(limit = 500): Promise<{
     success: boolean;
+    total?: number;
     items: { artist_mbid: string; artist_name: string; hidden_at: string | null }[];
   }> {
-    return this.request("/api/events/hidden");
+    return this.request(`/api/events/hidden?limit=${limit}`);
   }
 
   async hideEventArtist(artist_mbid: string, artist_name?: string): Promise<{ success: boolean }> {
@@ -586,8 +604,9 @@ class ApiClient {
     return this.request("/api/events/unhide-all", { method: "POST" });
   }
 
-  async getHiddenEvents(): Promise<{
+  async getHiddenEvents(limit = 500): Promise<{
     success: boolean;
+    total?: number;
     items: {
       event_id: number;
       artist_mbid: string;
@@ -598,7 +617,7 @@ class ApiClient {
       hidden_at: string | null;
     }[];
   }> {
-    return this.request("/api/events/hidden-events");
+    return this.request(`/api/events/hidden-events?limit=${limit}`);
   }
 
   async hideEventRow(eventId: number): Promise<{ success: boolean }> {

@@ -804,57 +804,6 @@ async def clear_execution_history():
         raise HTTPException(status_code=500, detail="Failed to clear execution history")
 
 
-@router.post("/executions/cleanup")
-async def cleanup_executions(
-    command_name: str | None = None,
-    keep_count: int | None = None,
-    db: Session = Depends(get_config_db),
-):
-    """Clean up old command executions, keeping only the most recent ones"""
-    try:
-        # Get retention count from config if not provided
-        if keep_count is None:
-            from services.config_service import config_service
-
-            keep_count = config_service.get_int("COMMAND_CLEANUP_RETENTION", 50)
-
-        # Build query
-        query = db.query(CommandExecution)
-        if command_name:
-            query = query.filter(CommandExecution.command_name == command_name)
-
-        # Get total count
-        total_count = query.count()
-
-        if total_count <= keep_count:
-            return {
-                "message": f"No cleanup needed. {total_count} executions found, keeping {keep_count}"
-            }
-
-        # Get executions to delete (oldest ones beyond keep_count)
-        executions_to_delete = (
-            query.order_by(CommandExecution.started_at.desc()).offset(keep_count).all()
-        )
-
-        # Delete them
-        for execution in executions_to_delete:
-            db.delete(execution)
-
-        deleted_count = len(executions_to_delete)
-        db.commit()
-
-        get_commands_logger().info(f"Cleaned up {deleted_count} old executions, kept {keep_count}")
-        return {
-            "message": f"Cleaned up {deleted_count} old executions, kept {keep_count}",
-            "deleted_count": deleted_count,
-            "kept_count": keep_count,
-        }
-
-    except Exception as e:
-        get_commands_logger().error(f"Failed to cleanup executions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to cleanup executions")
-
-
 @router.post("/library_cache_builder/refresh")
 async def execute_cache_builder(request: Request):
     """Execute library cache builder command manually"""

@@ -1,7 +1,12 @@
 import { Fragment, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, Loader2, Trash, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Loader2, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CommandConfig, CommandExecution } from "@/lib/types";
+import type {
+  CommandConfig,
+  CommandExecution,
+  ExecutionHistorySince,
+  ExecutionHistorySummary,
+} from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -115,6 +120,11 @@ type CommandExecutionsPanelProps = {
   collapsible?: boolean;
   commands?: CommandConfig[];
   pausePolling?: boolean;
+  historySince?: ExecutionHistorySince;
+  historyCommandName?: string | null;
+  refreshKey?: number;
+  onSummaryChange?: (summary: ExecutionHistorySummary) => void;
+  onExecutionsChange?: () => void;
 };
 
 export function CommandExecutionsPanel({
@@ -122,6 +132,11 @@ export function CommandExecutionsPanel({
   collapsible = false,
   commands,
   pausePolling = false,
+  historySince,
+  historyCommandName,
+  refreshKey = 0,
+  onSummaryChange,
+  onExecutionsChange,
 }: CommandExecutionsPanelProps) {
   const [recentExecutions, setRecentExecutions] = useState<CommandExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,11 +144,22 @@ export function CommandExecutionsPanel({
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
   const compactArr = useArrPanel && !collapsible;
+  const historyMode = compactArr && historySince != null;
 
   const loadExecutions = async () => {
     try {
-      const data = await api.getAllExecutions(50);
-      setRecentExecutions(Array.isArray(data) ? data : []);
+      if (historyMode) {
+        const data = await api.getExecutions({
+          since: historySince,
+          commandName: historyCommandName,
+          limit: 500,
+        });
+        setRecentExecutions(Array.isArray(data.executions) ? data.executions : []);
+        onSummaryChange?.(data.summary);
+      } else {
+        const data = await api.getAllExecutions(50);
+        setRecentExecutions(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
       console.error("Error loading executions:", err);
     } finally {
@@ -142,15 +168,16 @@ export function CommandExecutionsPanel({
   };
 
   useEffect(() => {
+    setLoading(true);
     void loadExecutions();
-  }, []);
+  }, [historySince, historyCommandName, refreshKey, historyMode]);
 
   useEffect(() => {
     const hasRunning = recentExecutions.some((e) => e.status === "running");
     if (!hasRunning || pausePolling) return;
     const id = setInterval(loadExecutions, 10000);
     return () => clearInterval(id);
-  }, [recentExecutions, pausePolling]);
+  }, [recentExecutions, pausePolling, historyMode]);
 
   const handleKillExecution = async (executionId: number) => {
     try {
@@ -158,6 +185,7 @@ export function CommandExecutionsPanel({
       await api.killExecution(executionId);
       toast.success("Execution cancelled");
       void loadExecutions();
+      onExecutionsChange?.();
     } catch {
       toast.error("Failed to cancel execution");
     } finally {
@@ -171,29 +199,11 @@ export function CommandExecutionsPanel({
       toast.success("Execution deleted");
       if (expandedExecutionId === executionId) setExpandedExecutionId(null);
       void loadExecutions();
+      onExecutionsChange?.();
     } catch {
       toast.error("Failed to delete execution");
     }
   };
-
-  const handleCleanupExecutions = async () => {
-    try {
-      const result = await api.cleanupExecutions(undefined, 50);
-      toast.success(
-        result.deleted_count ? `Cleaned up ${result.deleted_count} old executions` : result.message
-      );
-      void loadExecutions();
-    } catch {
-      toast.error("Failed to cleanup executions");
-    }
-  };
-
-  const cleanupButton = (
-    <Button variant="secondary" size="sm" onClick={handleCleanupExecutions}>
-      <Trash className="mr-2 h-4 w-4" />
-      Cleanup old
-    </Button>
-  );
 
   if (compactArr) {
     return (
@@ -202,10 +212,9 @@ export function CommandExecutionsPanel({
           title="Execution log"
           description={
             recentExecutions.length > 0
-              ? `${recentExecutions.length} recent run${recentExecutions.length === 1 ? "" : "s"}`
+              ? `${recentExecutions.length} run${recentExecutions.length === 1 ? "" : "s"} shown`
               : "Runs appear here after commands execute"
           }
-          actions={cleanupButton}
         />
         {loading ? (
           <ArrPanelBody className="flex min-h-[240px] items-center justify-center">
@@ -414,15 +423,6 @@ export function CommandExecutionsPanel({
             ) : null}
           </div>
         )}
-        <Button
-          variant={useArrPanel ? "secondary" : "outline"}
-          size="sm"
-          className="shrink-0 self-start sm:self-auto"
-          onClick={handleCleanupExecutions}
-        >
-          <Trash className="mr-2 h-4 w-4" />
-          Cleanup Old
-        </Button>
       </div>
       {isOpen ? (
         <div className={cn("p-4 md:p-6", useArrPanel && "arr-panel-body")}>

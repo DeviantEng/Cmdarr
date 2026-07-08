@@ -7,6 +7,7 @@ import pytest
 from clients.client_xmplaylist import (
     MOST_HEARD_DAYS,
     XmplaylistClient,
+    _is_cloudflare_body,
     _join_artists,
     _normalize_track_row,
 )
@@ -112,3 +113,45 @@ async def test_fetch_tracks_most_heard_invalid_days(xmplaylist_client):
     client = xmplaylist_client
     with pytest.raises(ValueError, match="most_heard days"):
         await client.fetch_tracks_most_heard("octane", days=99, max_tracks=5)
+
+
+def test_is_cloudflare_body_detects_challenge_page():
+    assert _is_cloudflare_body("<html>Just a moment...</html>")
+    assert _is_cloudflare_body("cloudflare ray id")
+    assert not _is_cloudflare_body('{"error":"not found"}')
+
+
+@pytest.mark.asyncio
+async def test_fetch_tracks_newest_sets_fetch_error_on_403(xmplaylist_client, monkeypatch):
+    client = xmplaylist_client
+
+    async def fake_curl(full_url, method, json_body):
+        client._set_fetch_error(
+            403,
+            full_url,
+            "Just a moment...",
+            cloudflare=True,
+        )
+        return None
+
+    monkeypatch.setattr(client, "_make_request_curl_cffi", fake_curl)
+
+    tracks = await client.fetch_tracks_newest("octane", max_tracks=10)
+    assert tracks == []
+    assert client.fetch_failed
+    assert "Cloudflare" in client.fetch_error_summary()
+    assert "403" in client.fetch_error_summary()
+
+
+@pytest.mark.asyncio
+async def test_fetch_tracks_newest_empty_200_not_fetch_failed(xmplaylist_client, monkeypatch):
+    client = xmplaylist_client
+
+    async def fake_make_request(endpoint, params=None, method="GET", **kwargs):
+        return {"results": []}
+
+    monkeypatch.setattr(client, "_make_request", fake_make_request)
+
+    tracks = await client.fetch_tracks_newest("octane", max_tracks=10)
+    assert tracks == []
+    assert not client.fetch_failed

@@ -38,6 +38,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { HiddenEventArtistsDialog } from "@/components/HiddenEventArtistsDialog";
+import { HiddenConcertEventsDialog } from "@/components/HiddenConcertEventsDialog";
+import { HiddenReleasesDialog } from "@/components/HiddenReleasesDialog";
+import { IgnoredReleaseArtistsDialog } from "@/components/IgnoredReleaseArtistsDialog";
+import { NrdNotScannedDialog } from "@/components/NrdNotScannedDialog";
 
 export type StatusSection =
   | "health"
@@ -107,6 +112,41 @@ function StatusSectionPanel({
   );
 }
 
+function ClickableKpiCell({
+  value,
+  label,
+  clickable,
+  onClick,
+  valueClassName = "text-lg font-semibold tabular-nums",
+}: {
+  value: string;
+  label: string;
+  clickable?: boolean;
+  onClick?: () => void;
+  valueClassName?: string;
+}) {
+  const content = (
+    <>
+      <div className={valueClassName}>{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </>
+  );
+
+  if (!clickable || !onClick) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {content}
+    </button>
+  );
+}
+
 type StatusPageProps = {
   sections?: StatusSection[];
   showPageHeader?: boolean;
@@ -132,20 +172,18 @@ export function StatusPage({
   const [cacheActionLoading, setCacheActionLoading] = useState<"refresh" | "rebuild" | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissedOpen, setDismissedOpen] = useState(false);
-  const [dismissed, setDismissed] = useState<
-    { id: number; artist_name: string; album_title: string; release_date?: string }[]
-  >([]);
-  const [dismissedTotal, setDismissedTotal] = useState(0);
-  const [confirmRestoreAllOpen, setConfirmRestoreAllOpen] = useState(false);
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [confirmInvalidateEventsOpen, setConfirmInvalidateEventsOpen] = useState(false);
-  const [confirmActionLoading, setConfirmActionLoading] = useState<
-    "restore-all" | "reset" | "invalidate-events" | null
-  >(null);
+  const [confirmActionLoading, setConfirmActionLoading] = useState<"invalidate-events" | null>(
+    null
+  );
   const [artistEventsStats, setArtistEventsStats] = useState<ArtistEventsStats | null>(null);
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hiddenEventArtistsOpen, setHiddenEventArtistsOpen] = useState(false);
+  const [hiddenConcertEventsOpen, setHiddenConcertEventsOpen] = useState(false);
+  const [notScannedOpen, setNotScannedOpen] = useState(false);
+  const [ignoredOpen, setIgnoredOpen] = useState(false);
 
   const showSection = (section: StatusSection) => sections.includes(section);
 
@@ -178,56 +216,6 @@ export function StatusPage({
     const interval = setInterval(loadStatus, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, []);
-
-  const loadDismissed = async () => {
-    try {
-      const data = await api.getDismissedReleases({ limit: 100 });
-      setDismissed(data.items);
-      setDismissedTotal(data.total);
-    } catch {
-      setDismissed([]);
-      setDismissedTotal(0);
-    }
-  };
-
-  const handleRestore = async (id: number) => {
-    try {
-      await api.restoreDismissed(id);
-      toast.success("Restored - will reappear on next scan");
-      loadDismissed();
-    } catch {
-      toast.error("Failed to restore");
-    }
-  };
-
-  const handleRestoreAll = async () => {
-    setConfirmActionLoading("restore-all");
-    try {
-      const res = await api.restoreAllDismissed();
-      toast.success(res.message ?? `Restored ${res.restored_count ?? 0} items`);
-      setConfirmRestoreAllOpen(false);
-      loadDismissed();
-    } catch {
-      toast.error("Failed to restore all");
-    } finally {
-      setConfirmActionLoading(null);
-    }
-  };
-
-  const handleReset = async () => {
-    setConfirmActionLoading("reset");
-    try {
-      const res = await api.resetNrdScanHistory();
-      toast.success(res.message ?? `Cleared ${res.deleted_count ?? 0} scan records`);
-      setConfirmResetOpen(false);
-      loadStatus();
-      loadDismissed();
-    } catch {
-      toast.error("Failed to reset scan history");
-    } finally {
-      setConfirmActionLoading(null);
-    }
-  };
 
   const handleInvalidateArtistEvents = async () => {
     setConfirmActionLoading("invalidate-events");
@@ -287,10 +275,8 @@ export function StatusPage({
     }
   };
 
-  const openDismissed = () => {
-    setDismissedOpen(true);
-    loadDismissed();
-  };
+  const openHiddenReleases = () => setDismissedOpen(true);
+  const openIgnoredArtists = () => setIgnoredOpen(true);
 
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / 86400);
@@ -609,18 +595,20 @@ export function StatusPage({
               </div>
               <div className="text-xs text-muted-foreground">Upcoming stored</div>
             </div>
-            <div>
-              <div className="text-lg font-semibold tabular-nums">
-                {artistEventsStats.hidden_artists.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">Hidden artists</div>
-            </div>
-            <div>
-              <div className="text-lg font-semibold tabular-nums">
-                {artistEventsStats.hidden_events.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">Hidden events</div>
-            </div>
+            <ClickableKpiCell
+              value={artistEventsStats.hidden_artists.toLocaleString()}
+              label="Hidden artists"
+              valueClassName="text-lg font-semibold tabular-nums"
+              clickable={useArrPanel && artistEventsStats.hidden_artists > 0}
+              onClick={() => setHiddenEventArtistsOpen(true)}
+            />
+            <ClickableKpiCell
+              value={artistEventsStats.hidden_events.toLocaleString()}
+              label="Hidden events"
+              valueClassName="text-lg font-semibold tabular-nums"
+              clickable={useArrPanel && artistEventsStats.hidden_events > 0}
+              onClick={() => setHiddenConcertEventsOpen(true)}
+            />
           </div>
         </StatusSectionPanel>
       ) : null}
@@ -729,13 +717,18 @@ export function StatusPage({
           title="New Releases"
           description={
             nrdMetrics?.available
-              ? `Lidarr artist scan coverage (within ${nrdMetrics.cache_ttl_days ?? 14}-day TTL). Dismissed releases can be restored below.`
-              : "Dismissed releases from New Releases can be restored here"
+              ? `Lidarr artist scan coverage (within ${nrdMetrics.cache_ttl_days ?? 14}-day TTL). Hidden releases and ignored artists can be restored from the KPIs below.`
+              : "Hidden releases from New Releases can be restored here"
           }
           bodyClassName="space-y-4"
         >
           {nrdMetrics?.available ? (
-            <div className={cn(useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3")}>
+            <div
+              className={cn(
+                useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3",
+                useArrPanel && "sm:grid-cols-2 lg:grid-cols-5"
+              )}
+            >
               <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.total_lidarr_artists?.toLocaleString() ?? "—"}
@@ -759,143 +752,44 @@ export function StatusPage({
                     </p>
                   )}
               </div>
-              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
-                <div className="text-2xl font-bold">
-                  {nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
-                </div>
-                <p className="text-sm text-muted-foreground">Not yet scanned</p>
-              </div>
+              <ClickableKpiCell
+                value={nrdMetrics.artists_not_scanned?.toLocaleString() ?? "—"}
+                label="Not yet scanned"
+                valueClassName="text-2xl font-bold tabular-nums"
+                clickable={
+                  useArrPanel &&
+                  nrdMetrics.artists_not_scanned != null &&
+                  nrdMetrics.artists_not_scanned > 0
+                }
+                onClick={() => setNotScannedOpen(true)}
+              />
+              {useArrPanel ? (
+                <>
+                  <ClickableKpiCell
+                    value={(nrdMetrics.dismissed_count ?? 0).toLocaleString()}
+                    label="Hidden releases"
+                    valueClassName="text-2xl font-bold tabular-nums"
+                    clickable={useArrPanel && (nrdMetrics.dismissed_count ?? 0) > 0}
+                    onClick={openHiddenReleases}
+                  />
+                  <ClickableKpiCell
+                    value={(nrdMetrics.ignored_count ?? 0).toLocaleString()}
+                    label="Ignored artists"
+                    valueClassName="text-2xl font-bold tabular-nums"
+                    clickable={useArrPanel && (nrdMetrics.ignored_count ?? 0) > 0}
+                    onClick={openIgnoredArtists}
+                  />
+                </>
+              ) : null}
             </div>
           ) : null}
-          <Button variant="outline" onClick={openDismissed}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            View / Restore Dismissed
-          </Button>
+          {!useArrPanel ? (
+            <Button variant="outline" onClick={openHiddenReleases}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              View / Restore Hidden Releases
+            </Button>
+          ) : null}
         </StatusSectionPanel>
-      ) : null}
-
-      {showSection("new-releases") ? (
-        <>
-          {/* Dismissed Dialog */}
-          <Dialog open={dismissedOpen} onOpenChange={setDismissedOpen}>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-              <DialogHeader>
-                <DialogTitle>Dismissed Releases</DialogTitle>
-                <DialogDescription>
-                  Restore to allow them to reappear on the next New Releases scan.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmRestoreAllOpen(true)}
-                    disabled={dismissedTotal === 0}
-                  >
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                    Restore All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmResetOpen(true)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                    Reset
-                  </Button>
-                </div>
-                <div className="flex-1 overflow-y-auto space-y-2">
-                  {dismissed.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No dismissed releases.</p>
-                  ) : (
-                    dismissed.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span className="font-medium">{item.artist_name}</span>
-                          <span className="mx-2 text-muted-foreground">—</span>
-                          <span>{item.album_title}</span>
-                          {item.release_date && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {item.release_date}
-                            </span>
-                          )}
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => handleRestore(item.id)}>
-                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                          Restore
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                  {dismissedTotal > dismissed.length && (
-                    <p className="text-xs text-muted-foreground">
-                      Showing {dismissed.length} of {dismissedTotal}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Restore All confirmation */}
-          <Dialog open={confirmRestoreAllOpen} onOpenChange={setConfirmRestoreAllOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Restore All Dismissed</DialogTitle>
-                <DialogDescription>
-                  This will restore all {dismissedTotal} dismissed release
-                  {dismissedTotal === 1 ? "" : "s"} so they reappear on the next New Releases scan.
-                  Continue?
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setConfirmRestoreAllOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleRestoreAll}
-                  disabled={confirmActionLoading === "restore-all"}
-                >
-                  {confirmActionLoading === "restore-all" ? "Restoring…" : "Restore All"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Reset scan history confirmation */}
-          <Dialog open={confirmResetOpen} onOpenChange={setConfirmResetOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-5 w-5" />
-                  Reset New Releases Discovery
-                </DialogTitle>
-                <DialogDescription>
-                  This will wipe all artist scan history from the database. Every Lidarr artist will
-                  be treated as "not yet scanned" and NRD will start fresh on the next run. This
-                  cannot be undone. Continue?
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setConfirmResetOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleReset}
-                  disabled={confirmActionLoading === "reset"}
-                >
-                  {confirmActionLoading === "reset" ? "Resetting…" : "Reset"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </>
       ) : null}
 
       {showSection("artist-events") ? (
@@ -981,6 +875,28 @@ export function StatusPage({
           </div>
         </StatusSectionPanel>
       ) : null}
+
+      <HiddenEventArtistsDialog
+        open={hiddenEventArtistsOpen}
+        onOpenChange={setHiddenEventArtistsOpen}
+        onChanged={loadStatus}
+      />
+      <HiddenConcertEventsDialog
+        open={hiddenConcertEventsOpen}
+        onOpenChange={setHiddenConcertEventsOpen}
+        onChanged={loadStatus}
+      />
+      <HiddenReleasesDialog
+        open={dismissedOpen}
+        onOpenChange={setDismissedOpen}
+        onChanged={loadStatus}
+      />
+      <NrdNotScannedDialog open={notScannedOpen} onOpenChange={setNotScannedOpen} />
+      <IgnoredReleaseArtistsDialog
+        open={ignoredOpen}
+        onOpenChange={setIgnoredOpen}
+        onChanged={loadStatus}
+      />
     </div>
   );
 }

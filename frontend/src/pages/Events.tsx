@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   ChevronDown,
   ExternalLink,
   EyeOff,
   Loader2,
   MinusCircle,
   RefreshCw,
-  RotateCcw,
   Search,
   Star,
 } from "lucide-react";
@@ -32,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,10 +50,10 @@ import {
   ArrSectionHeader,
 } from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
+import { HiddenEventArtistsDialog } from "@/components/HiddenEventArtistsDialog";
+import { HiddenConcertEventsDialog } from "@/components/HiddenConcertEventsDialog";
 
 type ArtistEventRow = Awaited<ReturnType<typeof api.getUpcomingEvents>>["events"][number];
-
-type HiddenEventItem = Awaited<ReturnType<typeof api.getHiddenEvents>>["items"][number];
 
 function formatEventDate(ev: ArtistEventRow): string {
   if (ev.starts_at_utc) {
@@ -82,16 +81,10 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
   const [locationQuery, setLocationQuery] = useState("");
   const [radiusInput, setRadiusInput] = useState("100");
   const [geoLoading, setGeoLoading] = useState(false);
-  const [hiddenOpen, setHiddenOpen] = useState(false);
-  const [hiddenTab, setHiddenTab] = useState("artists");
-  const [hiddenItems, setHiddenItems] = useState<
-    { artist_mbid: string; artist_name: string; hidden_at: string | null }[]
-  >([]);
-  const [hiddenEventItems, setHiddenEventItems] = useState<HiddenEventItem[]>([]);
+  const [hiddenArtistsOpen, setHiddenArtistsOpen] = useState(false);
+  const [hiddenEventsOpen, setHiddenEventsOpen] = useState(false);
   const [hiddenArtistCount, setHiddenArtistCount] = useState(0);
   const [hiddenEventCount, setHiddenEventCount] = useState(0);
-  const [confirmRestoreAll, setConfirmRestoreAll] = useState(false);
-  const [confirmRestoreAllEvents, setConfirmRestoreAllEvents] = useState(false);
   const [refreshRunning, setRefreshRunning] = useState(false);
   const [confirmForceRefreshAll, setConfirmForceRefreshAll] = useState(false);
   const [festivalDialogOpen, setFestivalDialogOpen] = useState(false);
@@ -144,10 +137,8 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
       setUpcomingStoredCount(ev.upcoming_stored_count ?? null);
       setRadiusInput(String(st.radius_miles ?? 100));
       setLocationQuery(st.user_label ?? "");
-      setHiddenArtistCount(hA.items.length);
-      setHiddenEventCount(hE.items.length);
-      setHiddenItems(hA.items);
-      setHiddenEventItems(hE.items);
+      setHiddenArtistCount(hA.total ?? hA.items.length);
+      setHiddenEventCount(hE.total ?? hE.items.length);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load events");
     } finally {
@@ -279,19 +270,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
     }
   };
 
-  const openHidden = async () => {
-    setHiddenOpen(true);
-    try {
-      const [h, e] = await Promise.all([api.getHiddenEventArtists(), api.getHiddenEvents()]);
-      setHiddenItems(h.items);
-      setHiddenEventItems(e.items);
-      setHiddenArtistCount(h.items.length);
-      setHiddenEventCount(e.items.length);
-    } catch {
-      toast.error("Failed to load hidden items");
-    }
-  };
-
   const runRefreshAllDue = async () => {
     setRefreshRunning(true);
     try {
@@ -351,54 +329,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
     }
   };
 
-  const restoreHidden = async (mbid: string) => {
-    try {
-      await api.unhideEventArtist(mbid);
-      toast.success("Restored");
-      const h = await api.getHiddenEventArtists();
-      setHiddenItems(h.items);
-      setHiddenArtistCount(h.items.length);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  };
-
-  const restoreHiddenEvent = async (eventId: number) => {
-    try {
-      await api.unhideEventRow(eventId);
-      toast.success("Restored");
-      const e = await api.getHiddenEvents();
-      setHiddenEventItems(e.items);
-      setHiddenEventCount(e.items.length);
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
-    }
-  };
-
-  const restoreAll = async () => {
-    try {
-      await api.unhideAllEventArtists();
-      toast.success("All artists restored");
-      setConfirmRestoreAll(false);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  };
-
-  const restoreAllEvents = async () => {
-    try {
-      await api.unhideAllHiddenEvents();
-      toast.success("All hidden events restored");
-      setConfirmRestoreAllEvents(false);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  };
-
   const toggleInterested = async (ev: ArtistEventRow) => {
     const next = !ev.interested;
     if (interestFilter === "interested" && !next) {
@@ -437,8 +367,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
     if (p === "deezer") return "DZ";
     return p.slice(0, 3).toUpperCase();
   };
-
-  const hiddenTotal = hiddenArtistCount + hiddenEventCount;
 
   const providersDescription =
     "Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in Configuration > Event Sources. At least one provider must be ready before refresh runs.";
@@ -584,18 +512,23 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
       <Button variant="outline" size="sm" onClick={() => void openFestivals()} className="shrink-0">
         Festivals
       </Button>
-      <Button variant="outline" size="sm" onClick={openHidden} className="shrink-0">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setHiddenArtistsOpen(true)}
+        className="shrink-0"
+      >
         <EyeOff className="mr-2 h-4 w-4" />
-        Hidden
-        {hiddenTotal > 0 ? (
-          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-            {hiddenArtistCount > 0 &&
-              `${hiddenArtistCount} artist${hiddenArtistCount === 1 ? "" : "s"}`}
-            {hiddenArtistCount > 0 && hiddenEventCount > 0 ? " | " : ""}
-            {hiddenEventCount > 0 &&
-              `${hiddenEventCount} event${hiddenEventCount === 1 ? "" : "s"}`}
-          </span>
-        ) : null}
+        Hidden artists ({hiddenArtistCount})
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setHiddenEventsOpen(true)}
+        className="shrink-0"
+      >
+        <CalendarDays className="mr-2 h-4 w-4" />
+        Hidden events ({hiddenEventCount})
       </Button>
     </>
   );
@@ -1043,103 +976,16 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
         </DialogContent>
       </Dialog>
 
-      <Dialog open={hiddenOpen} onOpenChange={setHiddenOpen}>
-        <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Hidden from list</DialogTitle>
-            <DialogDescription>
-              Data is still refreshed; restore to show items in the upcoming list again.
-            </DialogDescription>
-          </DialogHeader>
-          <Tabs
-            value={hiddenTab}
-            onValueChange={setHiddenTab}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="artists">Artists ({hiddenItems.length})</TabsTrigger>
-              <TabsTrigger value="events">Events ({hiddenEventItems.length})</TabsTrigger>
-            </TabsList>
-            <TabsContent value="artists" className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConfirmRestoreAll(true)}
-                  disabled={hiddenItems.length === 0}
-                >
-                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                  Restore all artists
-                </Button>
-              </div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                {hiddenItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hidden artists.</p>
-                ) : (
-                  hiddenItems.map((h) => (
-                    <div
-                      key={h.artist_mbid}
-                      className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate font-medium">
-                        {h.artist_name || h.artist_mbid}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => restoreHidden(h.artist_mbid)}
-                      >
-                        Restore
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </TabsContent>
-            <TabsContent value="events" className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConfirmRestoreAllEvents(true)}
-                  disabled={hiddenEventItems.length === 0}
-                >
-                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                  Restore all events
-                </Button>
-              </div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                {hiddenEventItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hidden single events.</p>
-                ) : (
-                  hiddenEventItems.map((h) => (
-                    <div
-                      key={h.event_id}
-                      className="flex flex-col gap-1 rounded border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-medium">{h.artist_name}</div>
-                        <div className="text-muted-foreground text-xs">
-                          {[h.venue_name, h.venue_city].filter(Boolean).join(" | ")} |{" "}
-                          {h.local_date}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0"
-                        onClick={() => restoreHiddenEvent(h.event_id)}
-                      >
-                        Restore
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+      <HiddenEventArtistsDialog
+        open={hiddenArtistsOpen}
+        onOpenChange={setHiddenArtistsOpen}
+        onChanged={load}
+      />
+      <HiddenConcertEventsDialog
+        open={hiddenEventsOpen}
+        onOpenChange={setHiddenEventsOpen}
+        onChanged={load}
+      />
 
       <Dialog open={!!confirmHideArtist} onOpenChange={(o) => !o && setConfirmHideArtist(null)}>
         <DialogContent>
@@ -1147,7 +993,7 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
             <DialogTitle>Hide all shows for this artist?</DialogTitle>
             <DialogDescription>
               {confirmHideArtist
-                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden > Artists.`
+                ? `"${confirmHideArtist.artist_name}" will disappear from this list until you restore the artist from Hidden artists.`
                 : null}
             </DialogDescription>
           </DialogHeader>
@@ -1185,30 +1031,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmRestoreAll} onOpenChange={setConfirmRestoreAll}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restore all hidden artists?</DialogTitle>
-            <DialogDescription>
-              This clears every artist-level hide. Their events will appear in the list again (if
-              any).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmRestoreAll(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                void restoreAll();
-              }}
-            >
-              Restore all
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={confirmForceRefreshAll} onOpenChange={setConfirmForceRefreshAll}>
         <DialogContent>
           <DialogHeader>
@@ -1226,29 +1048,6 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
               Cancel
             </Button>
             <Button onClick={() => void runForceRefreshAll()}>Start force refresh</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmRestoreAllEvents} onOpenChange={setConfirmRestoreAllEvents}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restore all hidden events?</DialogTitle>
-            <DialogDescription>
-              This clears every single-event hide. Those shows will appear in the list again.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setConfirmRestoreAllEvents(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                void restoreAllEvents();
-              }}
-            >
-              Restore all
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -69,9 +69,12 @@ def init_default_commands():
             "timeout_minutes": 30,
             "command_type": "discovery",
             "config_json": {
-                "artists_per_run": 5,
+                "artists_per_run": 25,
                 "album_types": "album",
                 "new_releases_source": "deezer",
+                "continual_validation_enabled": False,
+                "continual_validation_batch_size": 50,
+                "continual_validation_interval_days": 14,
             },
         },
         {

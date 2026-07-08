@@ -209,6 +209,8 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
             if token_override:
                 target_client = PlexClient(self.config, token_override=token_override)
 
+            fetch_failed = False
+            fetch_error = ""
             async with XmplaylistClient(self.config) as xm:
                 if kind == "most_heard":
                     raw_tracks = await xm.fetch_tracks_most_heard(
@@ -216,13 +218,15 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                     )
                 else:
                     raw_tracks = await xm.fetch_tracks_newest(deeplink, max_tracks=max_tracks)
+                fetch_failed = xm.fetch_failed
+                if fetch_failed:
+                    fetch_error = xm.fetch_error_summary()
 
             tracks = _dedupe_tracks(raw_tracks)
             source_count = len(tracks)
 
             if not tracks:
-                self.logger.warning("No tracks returned from xmplaylist for this station/mode")
-                self.last_run_stats = {
+                empty_stats = {
                     "source_tracks": 0,
                     "matched_tracks": 0,
                     "added_tracks": 0,
@@ -233,6 +237,12 @@ class PlaylistGeneratorXmplaylistCommand(BaseCommand):
                     "most_heard_days": most_days if kind == "most_heard" else None,
                     "target": target_name.lower(),
                 }
+                if fetch_failed:
+                    self.logger.error(fetch_error)
+                    self.last_run_stats = {**empty_stats, "error": fetch_error}
+                    return False
+                self.logger.warning("No tracks returned from xmplaylist for this station/mode")
+                self.last_run_stats = empty_stats
                 return True
 
             sync_title = _build_xmplaylist_sync_title(cfg)

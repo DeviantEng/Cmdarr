@@ -593,7 +593,14 @@ class CommandExecutor:
         """Build New Releases Discovery summary from command result"""
         scanned = stats.get("artists_scanned", 0)
         detected = stats.get("new_releases_detected", 0)
+        validation_checked = stats.get("validation_checked", 0)
+        validation_removed = stats.get("validation_removed", 0)
         parts = [f"New Releases Discovery completed in {duration:.1f}s"]
+        if validation_checked > 0:
+            parts.append(
+                f"Validated {validation_checked:,} pending/dismissed release(s), "
+                f"removed {validation_removed:,} already in MusicBrainz"
+            )
         if scanned == 0:
             parts.append("No artists to scan")
         elif detected == 0:

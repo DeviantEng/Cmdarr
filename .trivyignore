@@ -4,52 +4,59 @@
 #
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
-#   dpkg-query -W libssh2-1t64 curl libcurl4t64 libncursesw6 libsqlite3-0 perl-base
+#   dpkg-query -W libncursesw6 perl-base gzip libacl1 util-linux libblkid1 gosu
 # ---------------------------------------------------------------------------
 #
-# CVE-2025-69720 — ncurses infocmp stack overflow (CLI tool mitigations)
-#   Debian trixie: open (no-dsa); fixed in Debian sid ncurses 6.6+20251231-1 onward.
+# CVE-2025-69720 — libncursesw6: infocmp stack overflow (CLI tool)
+#   Debian trixie: ncurses 6.5+20250216-2 vulnerable; no-dsa (minor). Fixed in sid 6.6+20251231-1 onward.
 #   Headless CMDARR workload does not run infocmp; exposure is incidental library install.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2025-69720
 CVE-2025-69720 exp:2026-09-01
 #
-# CVE-2026-7598 — libssh2: integer overflow in userauth_password (username/password lengths)
-#   Debian trixie: open (libssh2 1.11.1-1); sid 1.11.1-3 fixed per tracker. CMDARR does not expose SSH client to untrusted callers.
-CVE-2026-7598 exp:2026-09-01
+# CVE-2026-41992 — gzip: global buffer over-read in LZH decompressor via stale shared state
+#   Debian trixie: gzip 1.13-1 vulnerable; no-dsa (minor). Upstream fix in commit 63dbf6b; gzip 1.15 not released yet.
+#   Requires crafted LZW then LZH files in the same gzip -d invocation; CMDARR does not decompress untrusted legacy archives.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-41992
+CVE-2026-41992 exp:2026-09-01
 #
-# CVE-2026-55200 — libssh2: out-of-bounds write via unchecked packet_length in transport.c
-#   Debian trixie: open (libssh2 1.11.1-1); upstream fix in commit 7acf3df, no trixie DSA yet.
-#   libssh2 is a transitive curl dependency; HEALTHCHECK uses curl for local HTTP only—not SSH/SFTP.
-#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-55200
-CVE-2026-55200 exp:2026-09-01
+# CVE-2026-54369 — libacl1: symlink traversal in pathname-based ACL functions (acl < 2.4.0)
+#   Debian trixie: libacl1 2.3.2-2 vulnerable; fixed in sid acl 2.4.0-1, no trixie DSA yet.
+#   Incidental base-image package; CMDARR does not call getfacl/setfacl/chacl or libacl pathname APIs.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-54369
+CVE-2026-54369 exp:2026-09-01
 #
-# CVE-2026-55199 — libssh2: pre-auth DoS via SSH_MSG_EXT_INFO extension count loop
-#   Debian trixie: open (libssh2 1.11.1-1); upstream fix in commit 1762685, no trixie DSA yet.
-#   Requires a malicious SSH server; CMDARR does not initiate SSH sessions (curl HTTP healthcheck only).
-#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-55199
-CVE-2026-55199 exp:2026-09-01
-#
-# CVE-2026-5773 — libcurl: wrongful SMBConnection reuse loads wrong SMB share/path
-#   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64; fixed in Debian sid curl 8.20.0-2 onward (no trixie DSA yet).
-#   Affects libcurl SMB(S) transfers only; CMDARR uses curl only for plain HTTP(S) HEALTHCHECK—not SMB.
-#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-5773
-CVE-2026-5773 exp:2026-09-01
-#
-# CVE-2026-6276 - libcurl: Information disclosure due to cookie leak when reusing connections
-#   Debian trixie: vulnerable curl 8.14.1-2+deb13u3 / libcurl4t64
-CVE-2026-6276 exp:2026-09-01
-#
-# CVE-2026-11822 / CVE-2026-11824 — libsqlite3-0: SQLite memory corruption / heap overflow (< 3.53.2)
-#   Debian trixie: libsqlite3-0 3.46.1-7+deb13u1; no trixie security upload yet. CMDARR uses SQLite
-#   only for its local application database, not for parsing untrusted SQLite files from external sources.
-CVE-2026-11822 exp:2026-09-01
-CVE-2026-11824 exp:2026-09-01
-#
-# perl-base — incidental Debian base-image package (python:3.14-slim-trixie); CMDARR runtime is Python-only.
-#   Archive::Tar / IO::Compress issues require attacker-controlled tar/zip extraction; not in app workload.
-#   Debian trixie: perl-base 5.40.1-6; fixes deferred / not yet in trixie-security.
+# CVE-2026-42496 — perl-base / Archive::Tar: symlink extraction to attacker-controlled path (< 3.08)
+#   Debian trixie: perl-base 5.40.1-6 vulnerable; fix deferred pending upstream Archive::Tar 3.08 (no trixie DSA yet).
+#   Incidental base-image package; CMDARR runtime is Python-only and does not extract attacker-controlled tar archives.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-42496
 CVE-2026-42496 exp:2026-09-01
+#
+# CVE-2026-8376 — perl-base: heap buffer overflow compiling regex with repeated fixed string (32-bit builds)
+#   Debian trixie: perl-base 5.40.1-6 vulnerable; no-dsa (minor). Fixed in sid perl 5.40.1-8 onward.
+#   Requires attacker-controlled regex compilation on 32-bit Perl; CMDARR runs Python on amd64/arm64 only.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-8376
 CVE-2026-8376 exp:2026-09-01
+#
+# CVE-2026-42497 — perl-base / Archive::Tar: hardlink extraction to attacker-controlled path (< 3.08)
+#   Debian trixie: perl-base 5.40.1-6 vulnerable; fix deferred pending upstream Archive::Tar 3.08 (no trixie DSA yet).
+#   Incidental base-image package; CMDARR runtime is Python-only and does not extract attacker-controlled tar archives.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-42497
 CVE-2026-42497 exp:2026-09-01
-CVE-2026-48959 exp:2026-09-01
+#
+# CVE-2026-48962 — perl-base / IO::Compress: arbitrary code via attacker-controlled output glob (< 2.220)
+#   Debian trixie: perl-base 5.40.1-6 / libio-compress-perl 2.213-1 vulnerable; fixed in sid libio-compress-perl 2.220-1 onward.
+#   Requires attacker-controlled output glob passed to IO::Compress; CMDARR does not invoke Perl compression utilities.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-48962
 CVE-2026-48962 exp:2026-09-01
+#
+# CVE-2026-9538 — perl-base / Archive::Tar: memory exhaustion via unbounded tar entry size field (< 3.10)
+#   Debian trixie: perl-base 5.40.1-6 vulnerable; fix deferred pending upstream Archive::Tar 3.10 (no trixie DSA yet).
+#   Requires parsing attacker-controlled tar headers; CMDARR does not extract untrusted tar archives via Perl.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-9538
 CVE-2026-9538 exp:2026-09-01
+#
+# CVE-2026-53615 — util-linux / libblkid1: integer overflow parsing DOS partition tables (util-linux < 2.42.3)
+#   Debian trixie: util-linux 2.41-5 / libblkid1 2.41-5 vulnerable; unfixed in sid (no trixie DSA yet).
+#   Requires parsing a crafted partition table with libblkid; CMDARR does not invoke blkid/fdisk or mount untrusted block devices.
+#   Tracker: https://security-tracker.debian.org/tracker/CVE-2026-53615
+CVE-2026-53615 exp:2026-09-01

@@ -164,6 +164,7 @@ class NewReleasePending(ConfigBase):
     )  # pending, recheck_requested, resolved, dismissed
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_reason = Column(String(100), nullable=True)  # in_mb, manual_dismiss, etc.
+    last_mb_recheck_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class ArtistScanLog(ConfigBase):
