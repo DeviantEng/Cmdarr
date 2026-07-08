@@ -5,7 +5,6 @@
 # Tracker hub: https://security-tracker.debian.org/
 # Typical removal check (in a built container):
 #   dpkg-query -W libncursesw6 perl-base gzip libacl1 util-linux libblkid1 gosu
-# Regenerate: clear CVE lines, build image, run Trivy without --ignorefile, document each finding.
 # ---------------------------------------------------------------------------
 #
 # CVE-2025-69720 — libncursesw6: infocmp stack overflow (CLI tool)
