@@ -216,10 +216,12 @@ def resolve_validated_artists(
     pairs = lidarr_pairs if lidarr_pairs is not None else load_lidarr_artist_pairs_sync()
 
     resolved: list[ResolvedArtist] = []
+    seen_norms: set[str] = set()
     for name in names:
         norm = normalize_text(name.lower())
-        if norm not in valid_set:
+        if norm not in valid_set or norm in seen_norms:
             continue
+        seen_norms.add(norm)
         mbids = _pick_lidarr_mbids(name, norm, pairs)
         library_artist = _pick_library_artist(name, norm, cached_data)
         resolved.append(
@@ -231,6 +233,107 @@ def resolve_validated_artists(
             )
         )
     return resolved, invalid
+
+
+def _lastfm_rows_for_resolved(
+    resolved: ResolvedArtist, lastfm_tracks: list[dict[str, Any]], limit: int
+) -> list[dict[str, Any]]:
+    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+    rows: list[dict[str, Any]] = []
+    for t in lastfm_tracks[:limit]:
+        track_name = (t.get("name") or "").strip()
+        if not track_name:
+            continue
+        row: dict[str, Any] = {
+            "artist": resolved.library_artist,
+            "track": track_name,
+            "album": t.get("album", ""),
+        }
+        if mbid:
+            row["mbid"] = mbid
+        rows.append(row)
+    return rows
+
+
+def _plex_popular_rows_for_resolved(
+    resolved: ResolvedArtist,
+    plex_client: Any,
+    library_key: str,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    track_keys = resolve_artist_track_keys(cached_data, resolved)
+    if not track_keys:
+        return []
+    first_track_key = track_keys[0]
+    artist_rk = plex_client.get_artist_rating_key_from_track(first_track_key)
+    if not artist_rk:
+        return []
+    popular = plex_client.get_artist_popular_tracks(library_key, artist_rk, limit=limit)
+    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+    rows: list[dict[str, Any]] = []
+    for t in popular[:limit]:
+        rows.append(
+            {
+                "rating_key": t["key"],
+                "artist": t.get("artist") or resolved.library_artist,
+                "track": t["title"],
+                "album": t.get("album", ""),
+                **({"mbid": mbid} if mbid else {}),
+            }
+        )
+    return rows
+
+
+async def fetch_top_tracks_for_artist(
+    resolved: ResolvedArtist,
+    *,
+    lastfm_client: Any,
+    plex_client: Any | None,
+    library_key: str | None,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+    logger: Any,
+) -> tuple[list[dict[str, Any]], str]:
+    """Resolve top tracks for one artist: Last.fm (MBID/name/library name) then Plex library."""
+    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+
+    lastfm_tracks = await lastfm_client.get_top_tracks(
+        resolved.display_name,
+        limit=limit,
+        mbid=mbid,
+    )
+    if lastfm_tracks:
+        return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm"
+
+    library_name = (resolved.library_artist or "").strip()
+    if library_name and library_name.lower() != resolved.display_name.lower():
+        lastfm_tracks = await lastfm_client.get_top_tracks(library_name, limit=limit)
+        if lastfm_tracks:
+            logger.info(
+                "Using Last.fm library artist name '%s' for '%s'",
+                library_name,
+                resolved.display_name,
+            )
+            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm_library_name"
+
+    if plex_client and library_key:
+        plex_rows = _plex_popular_rows_for_resolved(
+            resolved, plex_client, library_key, cached_data, limit
+        )
+        if plex_rows:
+            logger.info(
+                "Using Plex library tracks for '%s' (Last.fm had no data)",
+                resolved.display_name,
+            )
+            return plex_rows, "plex"
+
+    logger.warning(
+        "No top tracks for '%s' (tried Last.fm mbid=%s, name, library name; Plex fallback empty)",
+        resolved.display_name,
+        mbid or "none",
+    )
+    return [], "none"
 
 
 def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:

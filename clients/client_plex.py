@@ -390,8 +390,7 @@ class PlexClient(BaseAPIClient):
                         str(tracks_by_key.get(key, {}).get("artist", "") or ""),
                     )
                 }
-                if identity_candidates:
-                    artist_candidates = identity_candidates
+                artist_candidates = identity_candidates
             candidate_keys.update(artist_candidates)
             self.logger.debug(
                 f"🔍 CACHED SEARCH: Artist '{artist_lower}' found {len(artist_candidates)} candidates: {sorted(artist_candidates)[:10]}"
