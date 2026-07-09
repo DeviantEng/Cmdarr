@@ -15,7 +15,6 @@ from utils.track_match import (
     lastfm_tracks_match_artist,
 )
 
-DEFAULT_LASTFM_FETCH_CONCURRENCY = 8
 SEP = " · "
 MAX_ARTIST_LEN = 40
 PLAYLIST_TITLE_TOP_TRACKS_PREFIX = "[Cmdarr] Artist Essentials"
@@ -421,7 +420,7 @@ async def fetch_top_tracks_for_artists_parallel(
     cached_data: dict[str, Any] | None,
     limit: int,
     logger: Any,
-    concurrency: int = DEFAULT_LASTFM_FETCH_CONCURRENCY,
+    concurrency: int,
 ) -> list[tuple[list[dict[str, Any]], str]]:
     """Fetch top tracks for many artists concurrently (Last.fm rate limit still applies)."""
     if not resolved_artists:
