@@ -77,7 +77,7 @@ def test_resolve_validated_artists_dedupes_duplicate_norms():
 
 
 @pytest.mark.asyncio
-async def test_fetch_top_tracks_for_artist_prefers_lastfm_name_over_mbid():
+async def test_fetch_top_tracks_for_artist_tries_mbid_then_exact_name():
     from commands.playlist_generator_helpers import fetch_top_tracks_for_artist
 
     class FakeLastFM:
@@ -108,11 +108,12 @@ async def test_fetch_top_tracks_for_artist_prefers_lastfm_name_over_mbid():
         limit=5,
         logger=logger,
     )
-    assert source == "lastfm"
+    assert source == "lastfm_exact"
     assert len(rows) == 1
     assert rows[0]["track"] == "Pray"
-    assert FakeLastFM.calls[0] == ("Gore.", None)
-    assert all(call[1] is None for call in FakeLastFM.calls)
+    assert "match_context" in rows[0]
+    assert FakeLastFM.calls[0][1] == "f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4"
+    assert FakeLastFM.calls[1] == ("Gore.", None)
 
 
 @pytest.mark.asyncio
@@ -124,6 +125,11 @@ async def test_fetch_top_tracks_for_artist_plex_fallback():
             return []
 
     class FakePlex:
+        def search_for_track_escalating(
+            self, track_name, match_context, cached_data=None, album_name=""
+        ):
+            return None
+
         def get_artist_rating_key_from_track(self, track_key):
             return "artist-1"
 

@@ -185,12 +185,19 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             success = result.get("success", False)
             found = result.get("found_tracks", 0)
             total = result.get("total_tracks", 0)
+            artist_match_stats = result.get("artist_match_stats") or {}
+            matching_failures = [
+                s["display_name"]
+                for s in artist_match_stats.values()
+                if s.get("in_lidarr") and s.get("expected", 0) > 0 and s.get("matched", 0) == 0
+            ]
 
             artists_total = len(resolved_artists) + len(invalid_artists)
             self.last_run_stats = {
                 "artists_processed": artists_processed,
                 "artists_skipped": artists_skipped,
                 "skipped_artists": skipped_artists[:20],
+                "matching_failures": matching_failures[:20],
                 "artists_invalid": len(invalid_artists),
                 "artists_total": artists_total,
                 "invalid_artists": invalid_artists[:10],

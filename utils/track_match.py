@@ -9,6 +9,7 @@ names (e.g. grandparentTitle vs AlbumArtist), cache record shape, and auth/HTTP 
 from __future__ import annotations
 
 import re
+from typing import Any
 
 # Subtracted from total score when Plex/Jellyfin credits collaborators but the source does not.
 # Large enough that album bonuses (+50) cannot flip the winner vs the primary-artist line.
@@ -181,6 +182,100 @@ def artist_identity_matches(source: str, library: str) -> bool:
             return False
         return True
     return True
+
+
+def lastfm_exact_name_candidates(display_name: str, library_artist: str) -> list[str]:
+    """Distinct Last.fm artist names preserving punctuation."""
+    seen_lower: set[str] = set()
+    names: list[str] = []
+    for raw in (display_name, library_artist):
+        name = (raw or "").strip()
+        key = name.lower()
+        if name and key not in seen_lower:
+            seen_lower.add(key)
+            names.append(name)
+    return names
+
+
+def lastfm_query_plan(
+    display_name: str,
+    library_artist: str,
+    norm: str,
+    mbids: list[str],
+) -> list[tuple[str, str | None, str]]:
+    """Last.fm lookup order: MBID, exact names, normalized name (last resort)."""
+    from utils.text_normalizer import normalize_text
+
+    plan: list[tuple[str, str | None, str]] = []
+    mbid = mbids[0] if len(mbids) == 1 else None
+    exact = lastfm_exact_name_candidates(display_name, library_artist)
+
+    if mbid:
+        plan.append((display_name or (exact[0] if exact else ""), mbid, "mbid"))
+
+    for name in exact:
+        plan.append((name, None, "exact"))
+
+    norm_key = (norm or "").strip()
+    if norm_key:
+        exact_norms = {normalize_text(n) for n in exact}
+        if norm_key not in exact_norms:
+            plan.append((norm_key, None, "normalized"))
+
+    return plan
+
+
+def plex_search_variants(match_context: dict[str, Any]) -> list[tuple[str, list[str] | None, str]]:
+    """Plex track search order: MBID + exact names, exact names, normalized (last)."""
+    from utils.text_normalizer import normalize_text
+
+    display = (match_context.get("display_name") or "").strip()
+    library = (match_context.get("library_artist") or "").strip()
+    norm = (match_context.get("norm") or "").strip()
+    mbids_raw = match_context.get("mbids") or []
+    mbid_list = [m for m in mbids_raw if (m or "").strip()] or None
+
+    exact = lastfm_exact_name_candidates(display, library)
+    variants: list[tuple[str, list[str] | None, str]] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    def add(name: str, mbids: list[str] | None, label: str) -> None:
+        name = (name or "").strip()
+        if not name:
+            return
+        mb_key = tuple(mbids) if mbids else None
+        key = (name.lower(), mb_key)
+        if key in seen:
+            return
+        seen.add(key)
+        variants.append((name, mbids, label))
+
+    if mbid_list:
+        for name in exact:
+            add(name, mbid_list, "mbid_exact")
+
+    for name in exact:
+        add(name, None, "exact")
+
+    if norm:
+        exact_norms = {normalize_text(n) for n in exact}
+        if norm not in exact_norms:
+            add(norm, None, "normalized")
+
+    return variants
+
+
+def lastfm_tracks_match_artist(
+    tracks: list[dict[str, Any]], display_name: str, library_artist: str
+) -> bool:
+    """True if any Last.fm row artist string matches the expected identity."""
+    for track in tracks:
+        lfm_artist = (track.get("artist") or "").strip()
+        if artist_identity_matches(display_name, lfm_artist):
+            return True
+        if library_artist and artist_identity_matches(library_artist, lfm_artist):
+            return True
+    return False
 
 
 def normalized_artist_for_source_vs_library(

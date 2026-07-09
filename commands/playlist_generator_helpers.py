@@ -8,7 +8,11 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from utils.text_normalizer import normalize_text
-from utils.track_match import artist_identity_matches
+from utils.track_match import (
+    artist_identity_matches,
+    lastfm_query_plan,
+    lastfm_tracks_match_artist,
+)
 
 SEP = " · "
 MAX_ARTIST_LEN = 40
@@ -235,6 +239,22 @@ def resolve_validated_artists(
     return resolved, invalid
 
 
+def artist_match_context(resolved: ResolvedArtist) -> dict[str, Any]:
+    return {
+        "display_name": resolved.display_name,
+        "library_artist": resolved.library_artist,
+        "norm": resolved.norm,
+        "mbids": list(resolved.mbids),
+        "in_lidarr": bool(resolved.mbids),
+    }
+
+
+def attach_match_context(row: dict[str, Any], resolved: ResolvedArtist) -> dict[str, Any]:
+    enriched = dict(row)
+    enriched["match_context"] = artist_match_context(resolved)
+    return enriched
+
+
 def _lastfm_rows_for_resolved(
     resolved: ResolvedArtist, lastfm_tracks: list[dict[str, Any]], limit: int
 ) -> list[dict[str, Any]]:
@@ -251,7 +271,7 @@ def _lastfm_rows_for_resolved(
         }
         if mbid:
             row["mbid"] = mbid
-        rows.append(row)
+        rows.append(attach_match_context(row, resolved))
     return rows
 
 
@@ -274,28 +294,43 @@ def _plex_popular_rows_for_resolved(
     rows: list[dict[str, Any]] = []
     for t in popular[:limit]:
         rows.append(
-            {
-                "rating_key": t["key"],
-                "artist": t.get("artist") or resolved.library_artist,
-                "track": t["title"],
-                "album": t.get("album", ""),
-                **({"mbid": mbid} if mbid else {}),
-            }
+            attach_match_context(
+                {
+                    "rating_key": t["key"],
+                    "artist": t.get("artist") or resolved.library_artist,
+                    "track": t["title"],
+                    "album": t.get("album", ""),
+                    **({"mbid": mbid} if mbid else {}),
+                },
+                resolved,
+            )
         )
     return rows
 
 
-def _lastfm_name_candidates(resolved: ResolvedArtist) -> list[str]:
-    """Distinct Last.fm artist query names; preserve punctuation (``Gore.`` not ``gore``)."""
-    seen_lower: set[str] = set()
-    names: list[str] = []
-    for raw in (resolved.display_name, resolved.library_artist):
-        name = (raw or "").strip()
-        key = name.lower()
-        if name and key not in seen_lower:
-            seen_lower.add(key)
-            names.append(name)
-    return names
+def _probe_tracks_match_library(
+    track_rows: list[dict[str, Any]],
+    resolved: ResolvedArtist,
+    plex_client: Any,
+    cached_data: dict[str, Any] | None,
+) -> int:
+    """Return how many track titles resolve in Plex using escalating artist search."""
+    if not plex_client or not cached_data or not track_rows:
+        return 0
+    ctx = artist_match_context(resolved)
+    matched = 0
+    for row in track_rows:
+        track_name = (row.get("track") or "").strip()
+        if not track_name:
+            continue
+        if plex_client.search_for_track_escalating(
+            track_name,
+            ctx,
+            cached_data=cached_data,
+            album_name=row.get("album", ""),
+        ):
+            matched += 1
+    return matched
 
 
 async def fetch_top_tracks_for_artist(
@@ -308,24 +343,48 @@ async def fetch_top_tracks_for_artist(
     limit: int,
     logger: Any,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Resolve top tracks for one artist: Last.fm names, then MBID, then Plex library."""
-    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+    """Resolve top tracks: Last.fm (MBID → exact name → normalized), then Plex library."""
+    plan = lastfm_query_plan(
+        resolved.display_name,
+        resolved.library_artist,
+        resolved.norm,
+        resolved.mbids,
+    )
 
-    # Last.fm often lacks Lidarr/MusicBrainz MBID links (e.g. Gore. has mbid=None on Last.fm).
-    # Name lookup with punctuation is required — "gore" resolves to a different artist.
-    for name in _lastfm_name_candidates(resolved):
-        lastfm_tracks = await lastfm_client.get_top_tracks(name, limit=limit)
-        if lastfm_tracks:
-            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm"
+    for name, mbid, label in plan:
+        lastfm_tracks = await lastfm_client.get_top_tracks(name, limit=limit, mbid=mbid)
+        if not lastfm_tracks:
+            continue
+        if label == "normalized" and not lastfm_tracks_match_artist(
+            lastfm_tracks, resolved.display_name, resolved.library_artist
+        ):
+            logger.warning(
+                "Last.fm normalized name '%s' returned unrelated artist for '%s'; skipping",
+                name,
+                resolved.display_name,
+            )
+            continue
 
-    if mbid:
-        lastfm_tracks = await lastfm_client.get_top_tracks(
-            resolved.display_name,
-            limit=limit,
-            mbid=mbid,
-        )
-        if lastfm_tracks:
-            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm_mbid"
+        rows = _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit)
+        if resolved.mbids and plex_client and cached_data:
+            matched = _probe_tracks_match_library(rows, resolved, plex_client, cached_data)
+            if matched == 0:
+                logger.warning(
+                    "Last.fm returned %s tracks for '%s' (%s) but none matched Plex; trying next source",
+                    len(rows),
+                    resolved.display_name,
+                    label,
+                )
+                continue
+            if matched < len(rows):
+                logger.info(
+                    "Last.fm '%s': %s/%s tracks verified in Plex library",
+                    resolved.display_name,
+                    matched,
+                    len(rows),
+                )
+
+        return rows, f"lastfm_{label}"
 
     if plex_client and library_key:
         plex_rows = _plex_popular_rows_for_resolved(
@@ -333,16 +392,16 @@ async def fetch_top_tracks_for_artist(
         )
         if plex_rows:
             logger.info(
-                "Using Plex library tracks for '%s' (Last.fm had no data)",
+                "Using Plex library tracks for '%s' (Last.fm lookups exhausted)",
                 resolved.display_name,
             )
             return plex_rows, "plex"
 
+    tried = [f"{label}:{name}" + (f"(mbid={mbid})" if mbid else "") for name, mbid, label in plan]
     logger.warning(
-        "No top tracks for '%s' (tried Last.fm names=%s, mbid=%s; Plex fallback empty)",
+        "No top tracks for '%s' (tried %s; Plex fallback empty)",
         resolved.display_name,
-        _lastfm_name_candidates(resolved),
-        mbid or "none",
+        ", ".join(tried) or "nothing",
     )
     return [], "none"
 

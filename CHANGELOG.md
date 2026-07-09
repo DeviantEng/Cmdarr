@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixes
 - **Playlist matching**: Artist Essentials and related playlist commands disambiguate short punctuation-sensitive names (e.g. `Gore.` vs `gore`) using Lidarr MBIDs and strict artist identity checks so Last.fm and Plex lookups target the correct band.
-- **Artist Essentials**: Last.fm top-track fetch prefers punctuation-preserving artist names before Lidarr MBIDs (Last.fm often lacks MB links — e.g. `Gore.` is found by name but not by MusicBrainz ID), falls back to Plex library popular tracks when needed, logs skipped artists, and deduplicates duplicate entries in a command list.
+- **Artist Essentials**: Last.fm lookup order is MBID → exact artist name (punctuation preserved) → normalized fallback; Lidarr artists validate fetched tracks against Plex before use, Plex sync escalates artist matching the same way, and logs a warning when 0/N tracks match for a library artist.
 
 ### Housekeeping
 - **Docker**: Drop Debian-based runtime image; Wolfi/Chainguard (`Dockerfile`, digest-pinned Python 3.14) is now the sole published image. Develop publishes `:develop`; releases publish `latest`, `v0`, `v0.3`, and patch tags only (no `-wolfi` suffix or Debian fallback).

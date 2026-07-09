@@ -727,6 +727,36 @@ class PlexClient(BaseAPIClient):
 
         return self._search_for_track_live(track_name, artist_name, mbids, album_name)
 
+    def search_for_track_escalating(
+        self,
+        track_name: str,
+        match_context: dict[str, Any],
+        cached_data: dict[str, Any] | None = None,
+        album_name: str = "",
+    ) -> str | None:
+        """Try MBID + exact artist names, then normalized name, for Plex track lookup."""
+        from utils.track_match import plex_search_variants
+
+        display = match_context.get("display_name") or ""
+        for artist_name, mbids, strategy in plex_search_variants(match_context):
+            key = self.search_for_track(
+                track_name,
+                artist_name,
+                mbids=mbids,
+                cached_data=cached_data,
+                album_name=album_name,
+            )
+            if key:
+                if strategy == "normalized":
+                    self.logger.warning(
+                        "Plex matched '%s' via normalized artist '%s' (expected '%s')",
+                        track_name,
+                        artist_name,
+                        display,
+                    )
+                return key
+        return None
+
     def _search_for_track_live(self, track_name, artist_name, mbids=None, album_name=None):
         """
         Live API search using mediaQuery on /all (fallback when cache unavailable).
@@ -842,6 +872,25 @@ class PlexClient(BaseAPIClient):
             found_track_keys = []
             failed_matches = []
             processed = 0
+            artist_match_stats: dict[str, dict[str, Any]] = {}
+
+            def _artist_stat_key(track_row: dict[str, Any]) -> str:
+                ctx = track_row.get("match_context") or {}
+                return str(ctx.get("norm") or track_row.get("artist") or "").strip() or "unknown"
+
+            def _record_artist_match(track_row: dict[str, Any], matched: bool) -> None:
+                ctx = track_row.get("match_context") or {}
+                key = _artist_stat_key(track_row)
+                if key not in artist_match_stats:
+                    artist_match_stats[key] = {
+                        "display_name": ctx.get("display_name") or track_row.get("artist", key),
+                        "expected": 0,
+                        "matched": 0,
+                        "in_lidarr": bool(ctx.get("in_lidarr")),
+                    }
+                artist_match_stats[key]["expected"] += 1
+                if matched:
+                    artist_match_stats[key]["matched"] += 1
 
             for _i, track in enumerate(tracks):
                 # Support pre-resolved rating keys (e.g. from Plex popular tracks)
@@ -851,6 +900,7 @@ class PlexClient(BaseAPIClient):
                     processed += 1
                     artist = track.get("artist", "")
                     track_name = track.get("track", "")
+                    _record_artist_match(track, True)
                     progress = f"[{processed}/{len(tracks)}]"
                     if artist and track_name:
                         self.logger.info(f"{progress} ✅ {artist} - {track_name}")
@@ -879,20 +929,44 @@ class PlexClient(BaseAPIClient):
                 self.logger.debug(
                     f"Searching for track: '{artist}' - '{track_name}' - Album: '{album}' - Cache: {cached_data is not None}"
                 )
-                rating_key = self.search_for_track(
-                    track_name,
-                    artist,
-                    mbids=mbids,
-                    cached_data=cached_data,
-                    album_name=album,
-                )
+                match_context = track.get("match_context")
+                if match_context:
+                    rating_key = self.search_for_track_escalating(
+                        track_name,
+                        match_context,
+                        cached_data=cached_data,
+                        album_name=album,
+                    )
+                else:
+                    rating_key = self.search_for_track(
+                        track_name,
+                        artist,
+                        mbids=mbids,
+                        cached_data=cached_data,
+                        album_name=album,
+                    )
 
                 if rating_key:
                     found_track_keys.append(rating_key)
+                    _record_artist_match(track, True)
                     self.logger.info(f"{progress} ✅ {artist} - {track_name}")
                 else:
                     failed_matches.append(f"{artist} - {track_name}")
+                    _record_artist_match(track, False)
                     self.logger.info(f"{progress} ❌ {artist} - {track_name}")
+
+            for stat in artist_match_stats.values():
+                if (
+                    stat.get("in_lidarr")
+                    and stat.get("expected", 0) > 0
+                    and stat.get("matched", 0) == 0
+                ):
+                    self.logger.warning(
+                        "Likely Plex matching failure for '%s': 0/%s tracks matched "
+                        "(artist is in Lidarr/library)",
+                        stat.get("display_name"),
+                        stat.get("expected"),
+                    )
 
             tracks_found = len(found_track_keys)
             tracks_total = len(tracks)
@@ -962,6 +1036,7 @@ class PlexClient(BaseAPIClient):
                     "total_tracks": tracks_total,
                     "found_tracks": tracks_found,
                     "unmatched_tracks": failed_matches,
+                    "artist_match_stats": artist_match_stats,
                     "message": f"Successfully synced playlist '{title}' with {tracks_found} tracks",
                 }
             else:
