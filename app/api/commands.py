@@ -345,71 +345,27 @@ async def update_command(
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
-            prev_config_snapshot = dict(command.config_json or {})
             command.config_json = request.config_json
-            # Playlist generators: keep display_name in sync with playlist title on save; delete prior
-            # playlist on Plex/Jellyfin when title or target changes so orphans are not left behind.
+            # Playlist generators: keep display_name in sync with playlist title on save.
             if command_name.startswith("lfm_similar_"):
                 from commands.playlist_generator_helpers import compute_lfm_similar_playlist_title
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_lfm_similar_playlist_title(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_lfm_similar_playlist_title(merged)
             elif command_name.startswith("top_tracks_"):
                 from commands.playlist_generator_helpers import (
                     compute_top_tracks_playlist_title_from_config,
                 )
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_top_tracks_playlist_title_from_config(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_top_tracks_playlist_title_from_config(merged)
             elif command_name.startswith("setlistfm_"):
                 from commands.playlist_generator_helpers import (
                     compute_setlistfm_playlist_title_from_config,
                 )
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_setlistfm_playlist_title_from_config(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_setlistfm_playlist_title_from_config(merged)
             # display_name for daylist/local_discovery: sync when plex_history_account_id changes
             elif command_name.startswith("daylist_") or command_name.startswith("local_discovery_"):
                 plex_account_id = request.config_json.get("plex_history_account_id")
