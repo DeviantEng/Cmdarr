@@ -16,7 +16,7 @@ from .playlist_generator_helpers import (
     build_lfm_similar_artist_pool,
     compute_lfm_similar_playlist_title,
     delete_playlist_on_target,
-    fetch_top_tracks_for_artist,
+    fetch_top_tracks_for_artists_parallel,
     persist_playlist_identity,
     resolve_validated_artists,
     validate_artists_against_cache,
@@ -153,24 +153,28 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
             artists_processed = 0
             artists_skipped = 0
             skipped_artists: list[str] = []
+            resolved_to_fetch: list[Any] = []
+
+            for artist_name in ordered_unique:
+                norm = normalize_text(artist_name.lower())
+                resolved = resolved_by_norm.get(norm)
+                if not resolved:
+                    artists_skipped += 1
+                    skipped_artists.append(artist_name)
+                    continue
+                resolved_to_fetch.append(resolved)
 
             async with self.lastfm_client:
-                for artist_name in ordered_unique:
-                    norm = normalize_text(artist_name.lower())
-                    resolved = resolved_by_norm.get(norm)
-                    if not resolved:
-                        artists_skipped += 1
-                        skipped_artists.append(artist_name)
-                        continue
-                    rows, _source = await fetch_top_tracks_for_artist(
-                        resolved,
-                        lastfm_client=self.lastfm_client,
-                        plex_client=self.plex_client,
-                        library_key=library_key,
-                        cached_data=cached_data,
-                        limit=top_x,
-                        logger=self.logger,
-                    )
+                results = await fetch_top_tracks_for_artists_parallel(
+                    resolved_to_fetch,
+                    lastfm_client=self.lastfm_client,
+                    plex_client=self.plex_client,
+                    library_key=library_key,
+                    cached_data=cached_data,
+                    limit=top_x,
+                    logger=self.logger,
+                )
+                for resolved, (rows, _source) in zip(resolved_to_fetch, results, strict=True):
                     if rows:
                         tracks_for_playlist.extend(rows)
                         artists_processed += 1

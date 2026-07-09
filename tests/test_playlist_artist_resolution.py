@@ -163,3 +163,87 @@ async def test_fetch_top_tracks_for_artist_plex_fallback():
     assert len(rows) == 1
     assert rows[0]["rating_key"] == "99"
     assert rows[0]["track"] == "Mean Man's Dream"
+
+
+@pytest.mark.asyncio
+async def test_fetch_top_tracks_for_artist_attaches_rating_keys_from_lastfm():
+    from commands.playlist_generator_helpers import fetch_top_tracks_for_artist
+
+    class FakeLastFM:
+        async def get_top_tracks(self, artist_name, limit=10, *, mbid=None):
+            if mbid:
+                return []
+            if artist_name == "Gore.":
+                return [
+                    {"name": "Pray", "artist": "gore.", "album": "A"},
+                    {"name": "Wrath", "artist": "gore.", "album": "A"},
+                ]
+            return []
+
+    class FakePlex:
+        def __init__(self):
+            self.search_calls = 0
+
+        def search_for_track_escalating(
+            self, track_name, match_context, cached_data=None, album_name=""
+        ):
+            self.search_calls += 1
+            return {"Pray": "101", "Wrath": "102"}.get(track_name)
+
+    resolved = ResolvedArtist(
+        display_name="Gore.",
+        norm=normalize_text("gore."),
+        mbids=["f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4"],
+        library_artist="gore.",
+    )
+    plex = FakePlex()
+    logger = __import__("logging").getLogger("test.fetch")
+    rows, source = await fetch_top_tracks_for_artist(
+        resolved,
+        lastfm_client=FakeLastFM(),
+        plex_client=plex,
+        library_key="7",
+        cached_data=_cache_with_gore_artists(),
+        limit=5,
+        logger=logger,
+    )
+    assert source == "lastfm_exact"
+    assert len(rows) == 2
+    assert rows[0]["rating_key"] == "101"
+    assert rows[1]["rating_key"] == "102"
+    assert plex.search_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_top_tracks_for_artists_parallel_preserves_order():
+    from commands.playlist_generator_helpers import fetch_top_tracks_for_artists_parallel
+
+    class FakeLastFM:
+        async def get_top_tracks(self, artist_name, limit=10, *, mbid=None):
+            return [{"name": f"Track-{artist_name}", "artist": artist_name}]
+
+    resolved_a = ResolvedArtist(
+        display_name="A",
+        norm=normalize_text("a"),
+        mbids=[],
+        library_artist="a",
+    )
+    resolved_b = ResolvedArtist(
+        display_name="B",
+        norm=normalize_text("b"),
+        mbids=[],
+        library_artist="b",
+    )
+    logger = __import__("logging").getLogger("test.parallel")
+    results = await fetch_top_tracks_for_artists_parallel(
+        [resolved_a, resolved_b],
+        lastfm_client=FakeLastFM(),
+        plex_client=None,
+        library_key=None,
+        cached_data=None,
+        limit=1,
+        logger=logger,
+    )
+    assert len(results) == 2
+    assert results[0][0][0]["track"] == "Track-A"
+    assert results[1][0][0]["track"] == "Track-B"

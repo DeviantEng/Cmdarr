@@ -15,7 +15,7 @@ from .command_base import BaseCommand
 from .playlist_generator_helpers import (
     compute_top_tracks_playlist_title,
     delete_playlist_on_target,
-    fetch_top_tracks_for_artist,
+    fetch_top_tracks_for_artists_parallel,
     persist_playlist_identity,
     resolve_artist_track_keys,
     resolve_validated_artists,
@@ -144,16 +144,16 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
             else:
                 # Last.fm with Plex library fallback when chart data is missing
                 async with self.lastfm_client:
-                    for resolved in resolved_artists:
-                        rows, _source = await fetch_top_tracks_for_artist(
-                            resolved,
-                            lastfm_client=self.lastfm_client,
-                            plex_client=self.plex_client,
-                            library_key=library_key,
-                            cached_data=cached_data,
-                            limit=top_x,
-                            logger=self.logger,
-                        )
+                    results = await fetch_top_tracks_for_artists_parallel(
+                        resolved_artists,
+                        lastfm_client=self.lastfm_client,
+                        plex_client=self.plex_client,
+                        library_key=library_key,
+                        cached_data=cached_data,
+                        limit=top_x,
+                        logger=self.logger,
+                    )
+                    for resolved, (rows, _source) in zip(resolved_artists, results, strict=True):
                         if rows:
                             tracks_for_playlist.extend(rows)
                             artists_processed += 1

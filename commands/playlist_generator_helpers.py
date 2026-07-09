@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared helpers for playlist generator commands (Artist Essentials, Last.fm Similar, etc.)."""
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from utils.track_match import (
     lastfm_tracks_match_artist,
 )
 
+DEFAULT_LASTFM_FETCH_CONCURRENCY = 8
 SEP = " · "
 MAX_ARTIST_LEN = 40
 PLAYLIST_TITLE_TOP_TRACKS_PREFIX = "[Cmdarr] Artist Essentials"
@@ -308,29 +310,32 @@ def _plex_popular_rows_for_resolved(
     return rows
 
 
-def _probe_tracks_match_library(
+def _resolve_tracks_in_library(
     track_rows: list[dict[str, Any]],
     resolved: ResolvedArtist,
     plex_client: Any,
     cached_data: dict[str, Any] | None,
-) -> int:
-    """Return how many track titles resolve in Plex using escalating artist search."""
+) -> list[dict[str, Any]]:
+    """Resolve Plex rating keys once per track row (used by fetch and sync)."""
     if not plex_client or not cached_data or not track_rows:
-        return 0
+        return track_rows
     ctx = artist_match_context(resolved)
-    matched = 0
+    resolved_rows: list[dict[str, Any]] = []
     for row in track_rows:
-        track_name = (row.get("track") or "").strip()
-        if not track_name:
-            continue
-        if plex_client.search_for_track_escalating(
-            track_name,
-            ctx,
-            cached_data=cached_data,
-            album_name=row.get("album", ""),
-        ):
-            matched += 1
-    return matched
+        enriched = dict(row)
+        if not enriched.get("rating_key"):
+            track_name = (row.get("track") or "").strip()
+            if track_name:
+                rating_key = plex_client.search_for_track_escalating(
+                    track_name,
+                    ctx,
+                    cached_data=cached_data,
+                    album_name=row.get("album", ""),
+                )
+                if rating_key:
+                    enriched["rating_key"] = rating_key
+        resolved_rows.append(enriched)
+    return resolved_rows
 
 
 async def fetch_top_tracks_for_artist(
@@ -367,7 +372,8 @@ async def fetch_top_tracks_for_artist(
 
         rows = _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit)
         if resolved.mbids and plex_client and cached_data:
-            matched = _probe_tracks_match_library(rows, resolved, plex_client, cached_data)
+            rows = _resolve_tracks_in_library(rows, resolved, plex_client, cached_data)
+            matched = sum(1 for row in rows if row.get("rating_key"))
             if matched == 0:
                 logger.warning(
                     "Last.fm returned %s tracks for '%s' (%s) but none matched Plex; trying next source",
@@ -378,7 +384,7 @@ async def fetch_top_tracks_for_artist(
                 continue
             if matched < len(rows):
                 logger.info(
-                    "Last.fm '%s': %s/%s tracks verified in Plex library",
+                    "Last.fm '%s': %s/%s tracks resolved in Plex library",
                     resolved.display_name,
                     matched,
                     len(rows),
@@ -404,6 +410,37 @@ async def fetch_top_tracks_for_artist(
         ", ".join(tried) or "nothing",
     )
     return [], "none"
+
+
+async def fetch_top_tracks_for_artists_parallel(
+    resolved_artists: list[ResolvedArtist],
+    *,
+    lastfm_client: Any,
+    plex_client: Any | None,
+    library_key: str | None,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+    logger: Any,
+    concurrency: int = DEFAULT_LASTFM_FETCH_CONCURRENCY,
+) -> list[tuple[list[dict[str, Any]], str]]:
+    """Fetch top tracks for many artists concurrently (Last.fm rate limit still applies)."""
+    if not resolved_artists:
+        return []
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _fetch(resolved: ResolvedArtist) -> tuple[list[dict[str, Any]], str]:
+        async with sem:
+            return await fetch_top_tracks_for_artist(
+                resolved,
+                lastfm_client=lastfm_client,
+                plex_client=plex_client,
+                library_key=library_key,
+                cached_data=cached_data,
+                limit=limit,
+                logger=logger,
+            )
+
+    return list(await asyncio.gather(*[_fetch(resolved) for resolved in resolved_artists]))
 
 
 def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:
