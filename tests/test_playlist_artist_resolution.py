@@ -243,6 +243,7 @@ async def test_fetch_top_tracks_for_artists_parallel_preserves_order():
         cached_data=None,
         limit=1,
         logger=logger,
+        concurrency=2,
     )
     assert len(results) == 2
     assert results[0][0][0]["track"] == "Track-A"

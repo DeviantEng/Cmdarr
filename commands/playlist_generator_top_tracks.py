@@ -152,6 +152,7 @@ class PlaylistGeneratorTopTracksCommand(BaseCommand):
                         cached_data=cached_data,
                         limit=top_x,
                         logger=self.logger,
+                        concurrency=self.config.LASTFM_FETCH_CONCURRENCY,
                     )
                     for resolved, (rows, _source) in zip(resolved_artists, results, strict=True):
                         if rows:
