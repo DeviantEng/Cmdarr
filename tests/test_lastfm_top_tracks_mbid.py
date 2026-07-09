@@ -68,6 +68,30 @@ async def test_get_top_tracks_mbid_empty_falls_back_to_name(lastfm_client, monke
 
 
 @pytest.mark.asyncio
+async def test_get_top_tracks_mbid_error_falls_back_to_name(lastfm_client, monkeypatch):
+    calls: list[dict] = []
+
+    async def fake_request(params, context_info=""):
+        calls.append(dict(params))
+        if "mbid" in params:
+            return {"error": 6, "message": "The artist you supplied could not be found"}
+        return {
+            "toptracks": {
+                "track": [{"name": "Pray", "artist": {"name": "gore."}, "playcount": "5"}]
+            }
+        }
+
+    monkeypatch.setattr(lastfm_client, "_make_request", fake_request)
+    tracks = await lastfm_client.get_top_tracks(
+        "Gore.", limit=5, mbid="f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4"
+    )
+    assert len(calls) == 2
+    assert calls[1]["artist"] == "Gore."
+    assert len(tracks) == 1
+    assert tracks[0]["name"] == "Pray"
+
+
+@pytest.mark.asyncio
 async def test_get_top_tracks_mbid_failure_falls_back_to_name(lastfm_client, monkeypatch):
     calls: list[dict] = []
 

@@ -285,6 +285,19 @@ def _plex_popular_rows_for_resolved(
     return rows
 
 
+def _lastfm_name_candidates(resolved: ResolvedArtist) -> list[str]:
+    """Distinct Last.fm artist query names; preserve punctuation (``Gore.`` not ``gore``)."""
+    seen_lower: set[str] = set()
+    names: list[str] = []
+    for raw in (resolved.display_name, resolved.library_artist):
+        name = (raw or "").strip()
+        key = name.lower()
+        if name and key not in seen_lower:
+            seen_lower.add(key)
+            names.append(name)
+    return names
+
+
 async def fetch_top_tracks_for_artist(
     resolved: ResolvedArtist,
     *,
@@ -295,27 +308,24 @@ async def fetch_top_tracks_for_artist(
     limit: int,
     logger: Any,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Resolve top tracks for one artist: Last.fm (MBID/name/library name) then Plex library."""
+    """Resolve top tracks for one artist: Last.fm names, then MBID, then Plex library."""
     mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
 
-    lastfm_tracks = await lastfm_client.get_top_tracks(
-        resolved.display_name,
-        limit=limit,
-        mbid=mbid,
-    )
-    if lastfm_tracks:
-        return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm"
-
-    library_name = (resolved.library_artist or "").strip()
-    if library_name and library_name.lower() != resolved.display_name.lower():
-        lastfm_tracks = await lastfm_client.get_top_tracks(library_name, limit=limit)
+    # Last.fm often lacks Lidarr/MusicBrainz MBID links (e.g. Gore. has mbid=None on Last.fm).
+    # Name lookup with punctuation is required — "gore" resolves to a different artist.
+    for name in _lastfm_name_candidates(resolved):
+        lastfm_tracks = await lastfm_client.get_top_tracks(name, limit=limit)
         if lastfm_tracks:
-            logger.info(
-                "Using Last.fm library artist name '%s' for '%s'",
-                library_name,
-                resolved.display_name,
-            )
-            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm_library_name"
+            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm"
+
+    if mbid:
+        lastfm_tracks = await lastfm_client.get_top_tracks(
+            resolved.display_name,
+            limit=limit,
+            mbid=mbid,
+        )
+        if lastfm_tracks:
+            return _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit), "lastfm_mbid"
 
     if plex_client and library_key:
         plex_rows = _plex_popular_rows_for_resolved(
@@ -329,8 +339,9 @@ async def fetch_top_tracks_for_artist(
             return plex_rows, "plex"
 
     logger.warning(
-        "No top tracks for '%s' (tried Last.fm mbid=%s, name, library name; Plex fallback empty)",
+        "No top tracks for '%s' (tried Last.fm names=%s, mbid=%s; Plex fallback empty)",
         resolved.display_name,
+        _lastfm_name_candidates(resolved),
         mbid or "none",
     )
     return [], "none"

@@ -215,6 +215,13 @@ class LastFMClient(BaseAPIClient):
     ) -> list[dict[str, Any]]:
         if not response:
             return []
+        if response.get("error"):
+            self.logger.debug(
+                "Last.fm top tracks error %s: %s",
+                response.get("error"),
+                response.get("message", ""),
+            )
+            return []
         toptracks = response.get("toptracks", {})
         track_list = toptracks.get("track", [])
         if isinstance(track_list, dict):

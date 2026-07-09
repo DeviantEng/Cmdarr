@@ -77,6 +77,45 @@ def test_resolve_validated_artists_dedupes_duplicate_norms():
 
 
 @pytest.mark.asyncio
+async def test_fetch_top_tracks_for_artist_prefers_lastfm_name_over_mbid():
+    from commands.playlist_generator_helpers import fetch_top_tracks_for_artist
+
+    class FakeLastFM:
+        calls: list[tuple[str | None, str | None]] = []
+
+        async def get_top_tracks(self, artist_name, limit=10, *, mbid=None):
+            FakeLastFM.calls.append((artist_name, mbid))
+            if mbid:
+                return []
+            if artist_name == "Gore.":
+                return [{"name": "Pray", "artist": "gore."}]
+            return []
+
+    resolved = ResolvedArtist(
+        display_name="Gore.",
+        norm=normalize_text("gore."),
+        mbids=["f5d4e4ae-90b8-4b30-aa74-a9bf36170bd4"],
+        library_artist="gore.",
+    )
+    logger = __import__("logging").getLogger("test.fetch")
+    FakeLastFM.calls = []
+    rows, source = await fetch_top_tracks_for_artist(
+        resolved,
+        lastfm_client=FakeLastFM(),
+        plex_client=None,
+        library_key=None,
+        cached_data=_cache_with_gore_artists(),
+        limit=5,
+        logger=logger,
+    )
+    assert source == "lastfm"
+    assert len(rows) == 1
+    assert rows[0]["track"] == "Pray"
+    assert FakeLastFM.calls[0] == ("Gore.", None)
+    assert all(call[1] is None for call in FakeLastFM.calls)
+
+
+@pytest.mark.asyncio
 async def test_fetch_top_tracks_for_artist_plex_fallback():
     from commands.playlist_generator_helpers import fetch_top_tracks_for_artist
 
