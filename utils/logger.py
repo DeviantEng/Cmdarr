@@ -259,6 +259,11 @@ class CmdarrLogger:
         urllib3_logger = logging.getLogger("urllib3.connectionpool")
         urllib3_logger.setLevel(logging.WARNING)  # Only show warnings and errors, not INFO requests
 
+        # httpx/httpcore (spotifyscraper, etc.): request lines at DEBUG unless app logging is DEBUG
+        httpx_log_level = logging.DEBUG if config_level <= logging.DEBUG else logging.WARNING
+        for _http_client_logger in ("httpx", "httpcore"):
+            logging.getLogger(_http_client_logger).setLevel(httpx_log_level)
+
         # Clean up old log files
         cls._cleanup_old_logs(config)
 
