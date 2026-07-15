@@ -1152,8 +1152,30 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                     f"Lidarr context: {len(existing_mbids)} existing MBIDs, {len(existing_names)} existing names, {len(excluded_mbids)} excluded MBIDs"
                 )
 
-                # Process artists through MusicBrainz
-                artists_without_mbids = [{"name": artist_name} for artist_name in unmatched_artists]
+                # Process artists through MusicBrainz (cap lookups before querying)
+                # Stable order so deferred artists are predictable across runs
+                ordered_artists = sorted(unmatched_artists)
+                candidates = [
+                    name for name in ordered_artists if name.lower() not in existing_names
+                ]
+                skipped_known = len(ordered_artists) - len(candidates)
+                if skipped_known > 0:
+                    self.logger.info(
+                        f"Skipped {skipped_known} unmatched artists already in Lidarr by name"
+                    )
+
+                limit = self.config_json.get("artist_discovery_max_per_run", 2)
+                artists_deferred = 0
+                to_lookup = candidates
+                if limit > 0 and len(candidates) > limit:
+                    artists_deferred = len(candidates) - limit
+                    to_lookup = candidates[:limit]
+                    self.logger.info(
+                        f"Limiting MusicBrainz lookups to {limit} artists per run; "
+                        f"{artists_deferred} deferred to next run"
+                    )
+
+                artists_without_mbids = [{"name": artist_name} for artist_name in to_lookup]
                 self.logger.info(
                     f"Processing {len(artists_without_mbids)} artists through MusicBrainz..."
                 )
@@ -1164,6 +1186,7 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                     existing_names,
                     excluded_mbids,
                     f"listenbrainz_playlist_sync_{self.config_json.get('unique_id', 'unknown')}",
+                    max_lookups=limit if limit > 0 else None,
                 )
 
                 artists_discovered = len(discovered_artists) if discovered_artists else 0
@@ -1174,19 +1197,10 @@ class PlaylistSyncListenBrainzCommand(PlaylistSyncCommand):
                 is_first_run = self.config_json.get("is_first_run", False)
                 enable_artist_discovery = self.config_json.get("enable_artist_discovery", False)
                 to_save = []
-                artists_deferred = 0
 
                 if discovered_artists and not is_first_run and enable_artist_discovery:
-                    limit = self.config_json.get("artist_discovery_max_per_run", 2)
-                    if limit == 0:
-                        to_save = discovered_artists
-                    else:
-                        to_save = discovered_artists[:limit]
-                        artists_deferred = len(discovered_artists) - len(to_save)
-                        if artists_deferred > 0:
-                            self.logger.info(
-                                f"Limiting to {limit} new artists per run; {artists_deferred} deferred to next run"
-                            )
+                    # Lookups were already capped; save all successful discoveries
+                    to_save = discovered_artists
 
                 if to_save:
                     await self._save_discovered_artists(to_save)

@@ -998,6 +998,7 @@ class PlexClient(BaseAPIClient):
                         "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
+                        "unmatched_tracks": failed_matches,
                         "message": f"Skipped creating empty playlist '{title}'",
                     }
                 else:
@@ -1011,6 +1012,7 @@ class PlexClient(BaseAPIClient):
                         "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
+                        "unmatched_tracks": failed_matches,
                         "message": f"Skipped creating empty playlist '{title}'",
                     }
 
