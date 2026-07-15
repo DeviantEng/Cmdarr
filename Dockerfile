@@ -8,8 +8,8 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
-# Locked Python: 3.14.6 (digest pinned 2026-07-08)
-FROM cgr.dev/chainguard/python@sha256:6dd180984927051df465a1914772a4675119e6a998ab9dcfbb7a9269badad387 AS python-builder
+# Locked Python: 3.14.6-r3 (digest pinned 2026-07-15; fixes CVE-2026-11940)
+FROM cgr.dev/chainguard/python@sha256:0416c4863f2d0fb0e2e58d125e03b73cf4876cb02efc7927fd4a248a04f78c24 AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -19,7 +19,7 @@ RUN python -m venv /app/venv \
     && /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python@sha256:6dd180984927051df465a1914772a4675119e6a998ab9dcfbb7a9269badad387 AS runtime-assembler
+FROM cgr.dev/chainguard/python@sha256:0416c4863f2d0fb0e2e58d125e03b73cf4876cb02efc7927fd4a248a04f78c24 AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -33,8 +33,8 @@ COPY docker/entrypoint.py /app/docker/entrypoint.py
 RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
-# Locked Python: 3.14.6 (digest pinned 2026-07-08)
-FROM cgr.dev/chainguard/python@sha256:522a5ff629869272271784d864da372e03612822902878ecb20b4afc9e797779
+# Locked Python: 3.14.6-r3 (digest pinned 2026-07-15; fixes CVE-2026-11940)
+FROM cgr.dev/chainguard/python@sha256:ce9aaca1f826f7f963cd031e98f8c19f993b1843096d395ea919b646e72cb8de
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}

@@ -1,3 +1,13 @@
-# Wolfi/Chainguard python:latest runtime CVE ignores.
-# Regenerate after Dockerfile digest bumps:
+# Trivy ignorefile for the published Cmdarr image (Wolfi/Chainguard python runtime).
+#
+# Runtime is Wolfi-only — do not re-add Debian/trixie OS CVE ignores from the
+# retired slim-trixie image. Prefer fixing findings by bumping Dockerfile
+# Chainguard digests (.github/scripts/check-chainguard-python-digest.sh).
+#
+# Only list CVE IDs here when Trivy reports HIGH/CRITICAL with no fixed package
+# yet. Use `exp:YYYY-MM-DD` so CI resurfaces them for review.
+#
+# Verify after digest bumps:
 #   trivy image --severity HIGH,CRITICAL ghcr.io/devianteng/cmdarr:develop
+#
+# No CVE ignores currently (Wolfi python 3.14.6-r3 clean as of 2026-07-15).

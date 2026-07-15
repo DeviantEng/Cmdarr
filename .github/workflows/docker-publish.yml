@@ -137,11 +137,11 @@ jobs:
 
       - name: Run Trivy vulnerability scanner (table)
         run: |
-          if [ -f .trivyignore ]; then
+          if [ -f .trivyignore ] && grep -qE '^CVE-' .trivyignore; then
             echo "### Ignored CVEs (revisit when upstream ships a fix)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            cat .trivyignore >> $GITHUB_STEP_SUMMARY
+            grep -E '^CVE-|^#' .trivyignore >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
