@@ -171,9 +171,7 @@ class DiscoveryUtils:
             )
             candidates = limited
 
-        self.logger.info(
-            f"Processing {len(candidates)} unique artist names through MusicBrainz..."
-        )
+        self.logger.info(f"Processing {len(candidates)} unique artist names through MusicBrainz...")
 
         for artist_name, artist_data in candidates.items():
             try:

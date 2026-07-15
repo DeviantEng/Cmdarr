@@ -332,9 +332,7 @@ class PlaylistSyncCommand(BaseCommand):
                 for artist_name in unique_artists:
                     if artist_name.lower() in existing_names:
                         artists_skipped += 1
-                        skipped_artists.append(
-                            {"name": artist_name, "reason": "Already in Lidarr"}
-                        )
+                        skipped_artists.append({"name": artist_name, "reason": "Already in Lidarr"})
                     else:
                         candidates.append(artist_name)
 

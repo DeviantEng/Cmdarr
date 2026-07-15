@@ -88,13 +88,11 @@ async def test_discover_and_add_artists_caps_mb_lookups_before_query():
 
     discovery_utils = MagicMock()
     discovery_utils.get_lidarr_context = AsyncMock(return_value=(set(), set(), set()))
-    discovery_utils.create_artist_entry = (
-        lambda mbid, name, source, **kwargs: {
-            "MusicBrainzId": mbid,
-            "ArtistName": name,
-            "source": source,
-        }
-    )
+    discovery_utils.create_artist_entry = lambda mbid, name, source, **kwargs: {
+        "MusicBrainzId": mbid,
+        "ArtistName": name,
+        "source": source,
+    }
 
     tracks = [{"artist": f"Artist {i}", "track": f"Song {i}"} for i in range(20)]
 
