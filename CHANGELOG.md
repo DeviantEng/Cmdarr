@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Fixes
+- **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.
 - **Artist Essentials & playlist matching**: Disambiguate punctuation-sensitive artist names (e.g. `Gore.` vs `gore`) via Lidarr MBIDs and strict Plex identity checks; Last.fm lookup tries MBID → exact name → normalized fallback with Plex validation before accepting results; resolve Plex track keys once during fetch (parallel Last.fm requests, concurrency via `LASTFM_FETCH_CONCURRENCY`, default 3) instead of re-matching at sync; log when 0/N tracks match for a library artist; do not delete target playlists when saving command settings (only on run when the title changes, or when deleting the command).
 
 ### Housekeeping

@@ -113,6 +113,7 @@ class DiscoveryUtils:
         existing_names: set[str],
         excluded_mbids: set[str],
         source_name: str,
+        max_lookups: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Process artists without MBIDs through MusicBrainz fuzzy matching with filtering
@@ -123,6 +124,8 @@ class DiscoveryUtils:
             existing_names: Set of artist names already in Lidarr
             excluded_mbids: Set of excluded MBIDs
             source_name: Source identifier for recovered artists
+            max_lookups: Optional cap on MusicBrainz fuzzy searches (None/0 = unlimited).
+                Applied after de-duplicating names and skipping Lidarr-known names.
 
         Returns:
             List of recovered artist dictionaries
@@ -135,18 +138,44 @@ class DiscoveryUtils:
         success_count = 0
         excluded_during_recovery = 0
 
-        # Group by name to avoid duplicate lookups
+        # Group by name to avoid duplicate lookups (preserve first-seen order)
         unique_artists = {}
         for artist in artists_without_mbids:
             name = artist.get("name", artist.get("artistName", ""))
             if name and name not in unique_artists:
                 unique_artists[name] = artist
 
+        # Skip names already in Lidarr before any MusicBrainz queries
+        candidates = {
+            name: data
+            for name, data in unique_artists.items()
+            if name.lower() not in existing_names
+        }
+        skipped_known = len(unique_artists) - len(candidates)
+        if skipped_known > 0:
+            self.logger.debug(
+                f"Skipped {skipped_known} artists already in Lidarr before MusicBrainz lookup"
+            )
+
+        if max_lookups and max_lookups > 0 and len(candidates) > max_lookups:
+            # Preserve insertion order from unique_artists
+            limited = {}
+            for name, data in candidates.items():
+                if len(limited) >= max_lookups:
+                    break
+                limited[name] = data
+            deferred = len(candidates) - len(limited)
+            self.logger.info(
+                f"Limiting MusicBrainz lookups to {max_lookups} artists; "
+                f"{deferred} deferred to next run"
+            )
+            candidates = limited
+
         self.logger.info(
-            f"Processing {len(unique_artists)} unique artist names through MusicBrainz..."
+            f"Processing {len(candidates)} unique artist names through MusicBrainz..."
         )
 
-        for artist_name, artist_data in unique_artists.items():
+        for artist_name, artist_data in candidates.items():
             try:
                 # Fuzzy search in MusicBrainz
                 mb_result = await self.musicbrainz.fuzzy_search_artist(artist_name)

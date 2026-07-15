@@ -78,3 +78,27 @@ def test_plex_sync_playlist_skipped_empty_return_shape():
     assert SYNC_PLAYLIST_KEYS.issubset(result.keys())
     assert result["playlist_id"] is None
     assert result["playlist_title"] == "Test Playlist"
+
+
+def test_plex_sync_playlist_skipped_empty_includes_unmatched_tracks():
+    """0-match sync must still return unmatched_tracks so artist discovery can run."""
+    client = PlexClient(MagicMock())
+    client.logger = MagicMock()
+    client.config = MagicMock()
+    client.config.PLAYLIST_SYNC_LISTENBRAINZ_CURATED_CLEANUP = True
+    client.search_for_track = MagicMock(return_value=None)
+
+    tracks = [
+        {"artist": "Artist A", "track": "Song 1"},
+        {"artist": "Artist B", "track": "Song 2"},
+    ]
+    result = client.sync_playlist("Empty Library Playlist", tracks, summary="test")
+
+    assert result["success"] is True
+    assert result["action"] == "skipped_empty"
+    assert result["found_tracks"] == 0
+    assert result["total_tracks"] == 2
+    assert result["unmatched_tracks"] == [
+        "Artist A - Song 1",
+        "Artist B - Song 2",
+    ]
