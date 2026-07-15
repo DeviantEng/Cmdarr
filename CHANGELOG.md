@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Artist Essentials & playlist matching**: Disambiguate punctuation-sensitive artist names (e.g. `Gore.` vs `gore`) via Lidarr MBIDs and strict Plex identity checks; Last.fm lookup tries MBID → exact name → normalized fallback with Plex validation before accepting results; resolve Plex track keys once during fetch (parallel Last.fm requests, concurrency via `LASTFM_FETCH_CONCURRENCY`, default 3) instead of re-matching at sync; log when 0/N tracks match for a library artist; do not delete target playlists when saving command settings (only on run when the title changes, or when deleting the command).
 
 ### Housekeeping
+- **Docker / Trivy**: Bump Chainguard Python digests to **3.14.6-r3** (fixes CVE-2026-11940 on Wolfi runtime); refresh `.trivyignore` comments for Wolfi-only images (no Debian/trixie ignores).
 - **Docker**: Drop Debian-based runtime image; Wolfi/Chainguard (`Dockerfile`, digest-pinned Python 3.14) is now the sole published image. Develop publishes `:develop`; releases publish `latest`, `v0`, `v0.3`, and patch tags only (no `-wolfi` suffix or Debian fallback).
 
 ## [0.3.18] - 2026-07-08
