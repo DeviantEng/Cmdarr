@@ -647,6 +647,7 @@ from app.api import (
     events,
     import_lists,
     new_releases,
+    similarr,
     status,
     test_connectivity,
 )
@@ -660,6 +661,7 @@ app.include_router(import_lists.router, prefix="/import_lists", tags=["import_li
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
+app.include_router(similarr.router, prefix="/api/similarr", tags=["similarr"])
 
 
 _SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "import_lists/", "assets/")

@@ -367,12 +367,15 @@ class LastFMClient(BaseAPIClient):
                 return None
 
             artist_data = response.get("artist", {})
+            wiki = artist_data.get("wiki") or {}
             return {
                 "name": artist_data.get("name", ""),
                 "mbid": artist_data.get("mbid", ""),
                 "url": artist_data.get("url", ""),
                 "playcount": artist_data.get("stats", {}).get("playcount", 0),
                 "listeners": artist_data.get("stats", {}).get("listeners", 0),
+                "bio_summary": wiki.get("summary") or "",
+                "bio_content": wiki.get("content") or "",
             }
 
         except Exception as e:

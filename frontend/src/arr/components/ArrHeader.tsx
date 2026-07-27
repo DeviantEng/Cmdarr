@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { arrPageTitle } from "@/arr/arr-nav";
 import { useHealthStatus } from "@/hooks/useHealthStatus";
 import { cn } from "@/lib/utils";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 
 type ArrHeaderProps = {
   onOpenSidebar: () => void;

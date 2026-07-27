@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.19-dev] - TBD
 
 ### Features
-- N/A
+- **Similarr**: Interactive Last.fm similar-artist discovery page (searchable Lidarr library seeds, Run/Stop session with configurable timeout, bios, one-click Lidarr add with album search). Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
 
 ### Fixes
 - **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.
 - **Artist Essentials & playlist matching**: Disambiguate punctuation-sensitive artist names (e.g. `Gore.` vs `gore`) via Lidarr MBIDs and strict Plex identity checks; Last.fm lookup tries MBID → exact name → normalized fallback with Plex validation before accepting results; resolve Plex track keys once during fetch (parallel Last.fm requests, concurrency via `LASTFM_FETCH_CONCURRENCY`, default 3) instead of re-matching at sync; log when 0/N tracks match for a library artist; do not delete target playlists when saving command settings (only on run when the title changes, or when deleting the command).
 
 ### Housekeeping
+- **Security (npm)**: Clear high `npm audit` findings — override transitive `brace-expansion` to **5.0.8** (CVE-2026-14257); bump `postcss` to **8.5.23** (GHSA-r28c-9q8g-f849); replace `react-router-dom` with patched `react-router` **8.3.0** (GHSA-qwww-vcr4-c8h2) and bump React peers to **19.2.7**.
 - **Docker / Trivy**: Bump Chainguard Python digests to **3.14.6-r3** (fixes CVE-2026-11940 on Wolfi runtime); refresh `.trivyignore` comments for Wolfi-only images (no Debian/trixie ignores).
 - **Docker**: Drop Debian-based runtime image; Wolfi/Chainguard (`Dockerfile`, digest-pinned Python 3.14) is now the sole published image. Develop publishes `:develop`; releases publish `latest`, `v0`, `v0.3`, and patch tags only (no `-wolfi` suffix or Debian fallback).
 

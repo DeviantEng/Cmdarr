@@ -662,6 +662,106 @@ class ApiClient {
       body: JSON.stringify(params),
     });
   }
+
+  // Similarr (interactive Last.fm similar-artist discovery)
+  async getSimilarrArtists(
+    q = "",
+    limit = 5000
+  ): Promise<{
+    success: boolean;
+    artists: LidarrArtistSuggestion[];
+    count: number;
+  }> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (q.trim()) params.set("q", q.trim());
+    return this.request(`/api/similarr/artists?${params}`);
+  }
+
+  async syncSimilarrArtists(): Promise<{
+    success: boolean;
+    synced?: number;
+    inserted?: number;
+    updated?: number;
+  }> {
+    return this.request(`/api/similarr/sync-artists`, { method: "POST", timeout: 120_000 });
+  }
+
+  async startSimilarrSession(seeds: { mbid: string; name: string }[]): Promise<{
+    success: boolean;
+    session_id: string;
+    status: string;
+    elapsed_seconds: number;
+    seed_count: number;
+    result_count: number;
+    results: SimilarrResult[];
+    error?: string | null;
+  }> {
+    return this.request(`/api/similarr/sessions`, {
+      method: "POST",
+      body: JSON.stringify({ seeds }),
+    });
+  }
+
+  async getSimilarrSession(sessionId: string): Promise<{
+    success: boolean;
+    session_id: string;
+    status: string;
+    elapsed_seconds: number;
+    seed_count: number;
+    result_count: number;
+    results: SimilarrResult[];
+    error?: string | null;
+  }> {
+    return this.request(`/api/similarr/sessions/${encodeURIComponent(sessionId)}`);
+  }
+
+  async stopSimilarrSession(sessionId: string): Promise<{
+    success: boolean;
+    session_id: string;
+    status: string;
+    elapsed_seconds: number;
+    seed_count: number;
+    result_count: number;
+    results: SimilarrResult[];
+    error?: string | null;
+  }> {
+    return this.request(`/api/similarr/sessions/${encodeURIComponent(sessionId)}/stop`, {
+      method: "POST",
+    });
+  }
+
+  async getSimilarrBio(
+    mbid?: string,
+    name?: string
+  ): Promise<{
+    success: boolean;
+    artist: {
+      name: string;
+      mbid: string;
+      url: string;
+      playcount: number | string;
+      listeners: number | string;
+      bio_summary: string;
+      bio_content: string;
+    };
+  }> {
+    const params = new URLSearchParams();
+    if (mbid) params.set("mbid", mbid);
+    if (name) params.set("name", name);
+    return this.request(`/api/similarr/bio?${params}`);
+  }
+
+  async addSimilarrArtist(params: {
+    mbid: string;
+    artist_name: string;
+    search_for_missing_albums?: boolean;
+  }): Promise<{ success: boolean; message?: string }> {
+    return this.request(`/api/similarr/add`, {
+      method: "POST",
+      body: JSON.stringify(params),
+      timeout: 60_000,
+    });
+  }
 }
 
 // Export singleton instance
@@ -669,3 +769,12 @@ export const api = new ApiClient();
 
 // Export class for testing
 export { ApiClient, ApiError };
+
+export type SimilarrResult = {
+  mbid: string;
+  name: string;
+  match_score: number;
+  seed_count: number;
+  seed_names: string[];
+  url: string;
+};

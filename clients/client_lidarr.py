@@ -289,6 +289,7 @@ class LidarrClient(BaseAPIClient):
         quality_profile_id: int = None,
         metadata_profile_id: int = None,
         monitored: bool = True,
+        search_for_missing_albums: bool = False,
     ) -> dict[str, Any]:
         """Add a new artist to Lidarr by MusicBrainz ID"""
         try:
@@ -332,7 +333,7 @@ class LidarrClient(BaseAPIClient):
                 "rootFolderPath": root_folder_path,
                 "addOptions": {
                     "monitor": "all",
-                    "searchForMissingAlbums": False,  # Don't auto-search on add
+                    "searchForMissingAlbums": bool(search_for_missing_albums),
                 },
             }
 

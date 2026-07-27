@@ -1,10 +1,11 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import { ArrCommandsPage } from "@/arr/pages/ArrCommandsPage";
 import { ArrAddCommandPage } from "@/arr/pages/ArrAddCommandPage";
 import { ArrCommandHistoryPage } from "@/arr/pages/ArrCommandHistoryPage";
 import { ArrNewReleasesPage } from "@/arr/pages/ArrNewReleasesPage";
 import { ArrEventsPage } from "@/arr/pages/ArrEventsPage";
 import { ArrImportListsPage } from "@/arr/pages/ArrImportListsPage";
+import { ArrSimilarrPage } from "@/arr/pages/ArrSimilarrPage";
 import { ArrSettingsPage } from "@/arr/pages/settings/ArrSettingsPage";
 import { ArrSystemStatusPage } from "@/arr/pages/system/ArrSystemStatusPage";
 import { ArrSystemArtistEventsPage } from "@/arr/pages/system/ArrSystemArtistEventsPage";
@@ -20,6 +21,7 @@ export function ArrRoutes() {
       <Route path="/commands/history" element={<ArrCommandHistoryPage />} />
       <Route path="/new-releases" element={<ArrNewReleasesPage />} />
       <Route path="/events" element={<ArrEventsPage />} />
+      <Route path="/similarr" element={<ArrSimilarrPage />} />
       <Route path="/import-lists" element={<ArrImportListsPage />} />
       <Route path="/settings" element={<Navigate to="/settings/application" replace />} />
       <Route path="/settings/:section" element={<ArrSettingsPage />} />

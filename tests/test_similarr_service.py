@@ -1,0 +1,152 @@
+"""Unit tests for Similarr session service."""
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from services.similarr_service import SimilarrService
+
+
+@pytest.mark.asyncio
+async def test_start_session_requires_mbid():
+    svc = SimilarrService()
+    with pytest.raises(ValueError, match="At least one seed"):
+        await svc.start_session([{"mbid": "", "name": "Nobody"}])
+
+
+@pytest.mark.asyncio
+async def test_start_session_rejects_overlapping():
+    svc = SimilarrService()
+
+    async def slow_run(_self, session):
+        session.status = "running"
+        await asyncio.sleep(10)
+
+    with patch.object(SimilarrService, "_run_session", new=slow_run):
+        s1 = await svc.start_session([{"mbid": "mbid-1", "name": "A"}])
+        assert s1.status == "running"
+        with pytest.raises(RuntimeError, match="already running"):
+            await svc.start_session([{"mbid": "mbid-2", "name": "B"}])
+        if s1.task and not s1.task.done():
+            s1.task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await s1.task
+
+
+@pytest.mark.asyncio
+async def test_session_discovers_and_filters():
+    svc = SimilarrService()
+
+    lidarr = AsyncMock()
+    lidarr.__aenter__.return_value = lidarr
+    lidarr.__aexit__.return_value = None
+    lidarr.get_all_artists = AsyncMock(
+        return_value=[
+            {"musicBrainzId": "seed-mbid", "artistName": "Seed Artist"},
+            {"musicBrainzId": "owned-mbid", "artistName": "Already Owned"},
+        ]
+    )
+    lidarr.get_import_list_exclusions = AsyncMock(return_value=set())
+
+    lastfm = AsyncMock()
+    lastfm.__aenter__.return_value = lastfm
+    lastfm.__aexit__.return_value = None
+    lastfm.get_similar_artists = AsyncMock(
+        return_value=(
+            [
+                {
+                    "mbid": "owned-mbid",
+                    "name": "Already Owned",
+                    "match": "0.99",
+                    "url": "",
+                },
+                {
+                    "mbid": "new-mbid",
+                    "name": "New Discovery",
+                    "match": "0.88",
+                    "url": "https://last.fm/music/New+Discovery",
+                },
+                {
+                    "mbid": "new-mbid-2",
+                    "name": "Also New",
+                    "match": "0.70",
+                    "url": "",
+                },
+            ],
+            [],
+        )
+    )
+
+    with (
+        patch("services.similarr_service.ConfigAdapter") as cfg_cls,
+        patch("services.similarr_service.LidarrClient", return_value=lidarr),
+        patch("services.similarr_service.LastFMClient", return_value=lastfm),
+    ):
+        cfg = MagicMock()
+        cfg.SIMILARR_SEARCH_TIMEOUT_SECONDS = 60
+        cfg_cls.return_value = cfg
+
+        session = await svc.start_session([{"mbid": "seed-mbid", "name": "Seed Artist"}])
+        assert session.task is not None
+        await session.task
+
+    assert session.status == "exhausted"
+    mbids = {r.mbid for r in session.results.values()}
+    assert "new-mbid" in mbids
+    assert "new-mbid-2" in mbids
+    assert "owned-mbid" not in mbids
+    assert "seed-mbid" not in mbids
+
+
+@pytest.mark.asyncio
+async def test_affinity_bumps_seed_count():
+    svc = SimilarrService()
+
+    lidarr = AsyncMock()
+    lidarr.__aenter__.return_value = lidarr
+    lidarr.__aexit__.return_value = None
+    lidarr.get_all_artists = AsyncMock(return_value=[])
+    lidarr.get_import_list_exclusions = AsyncMock(return_value=set())
+
+    lastfm = AsyncMock()
+    lastfm.__aenter__.return_value = lastfm
+    lastfm.__aexit__.return_value = None
+
+    async def similar_side_effect(mbid=None, artist_name=None, limit=None, **_kwargs):
+        return (
+            [
+                {
+                    "mbid": "shared-mbid",
+                    "name": "Shared Artist",
+                    "match": "0.5" if mbid == "seed-a" else "0.9",
+                    "url": "",
+                }
+            ],
+            [],
+        )
+
+    lastfm.get_similar_artists = AsyncMock(side_effect=similar_side_effect)
+
+    with (
+        patch("services.similarr_service.ConfigAdapter") as cfg_cls,
+        patch("services.similarr_service.LidarrClient", return_value=lidarr),
+        patch("services.similarr_service.LastFMClient", return_value=lastfm),
+    ):
+        cfg = MagicMock()
+        cfg.SIMILARR_SEARCH_TIMEOUT_SECONDS = 60
+        cfg_cls.return_value = cfg
+
+        session = await svc.start_session(
+            [
+                {"mbid": "seed-a", "name": "Artist A"},
+                {"mbid": "seed-b", "name": "Artist B"},
+            ]
+        )
+        await session.task
+
+    assert session.status == "exhausted"
+    shared = session.results["shared-mbid"]
+    assert shared.seed_count == 2
+    assert set(shared.seed_names) == {"Artist A", "Artist B"}
+    assert shared.match_score == 0.9

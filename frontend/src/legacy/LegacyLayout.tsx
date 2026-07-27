@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { Moon, Sun, Menu, X, LogOut } from "lucide-react";
 import { useTheme } from "@/lib/use-theme";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ const navItems = [
   { path: "/", label: "Commands" },
   { path: "/new-releases", label: "New Releases" },
   { path: "/events", label: "Artist Events" },
+  { path: "/similarr", label: "Similarr" },
   { path: "/import-lists", label: "Import Lists" },
   { path: "/config", label: "Configuration" },
   { path: "/status", label: "Status" },
