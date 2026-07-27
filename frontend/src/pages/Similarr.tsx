@@ -37,7 +37,7 @@ import {
   ArrSectionHeader,
 } from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useUiShell } from "@/lib/use-ui-shell";
 
 type SeedArtist = {
