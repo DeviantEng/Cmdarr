@@ -9,6 +9,7 @@ import {
   ListMusic,
   Monitor,
   Plus,
+  Radio,
   Settings2,
   Timer,
   Zap,
@@ -45,6 +46,7 @@ export const arrCommandsNav: ArrNavLink[] = [
 export const arrPrimaryNav: ArrNavLink[] = [
   { path: "/new-releases", label: "New Releases", icon: Disc3 },
   { path: "/events", label: "Artist Events", icon: CalendarDays },
+  { path: "/similarr", label: "Similarr", icon: Radio },
   { path: "/import-lists", label: "Import Lists", icon: Import },
 ];
 

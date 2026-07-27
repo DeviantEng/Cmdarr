@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.19-dev] - TBD
 
 ### Features
-- N/A
+- **Similarr**: Interactive Last.fm similar-artist discovery page (searchable Lidarr library seeds, Run/Stop session with configurable timeout, bios, one-click Lidarr add with album search). Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
 
 ### Fixes
 - **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.

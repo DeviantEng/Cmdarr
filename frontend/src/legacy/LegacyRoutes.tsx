@@ -5,6 +5,7 @@ import { StatusPage } from "@/pages/Status";
 import { ImportListsPage } from "@/pages/ImportLists";
 import { NewReleasesPage } from "@/pages/NewReleases";
 import { EventsPage } from "@/pages/Events";
+import { SimilarrPage } from "@/pages/Similarr";
 
 export function LegacyRoutes() {
   return (
@@ -15,6 +16,7 @@ export function LegacyRoutes() {
       <Route path="/import-lists" element={<ImportListsPage />} />
       <Route path="/new-releases" element={<NewReleasesPage />} />
       <Route path="/events" element={<EventsPage />} />
+      <Route path="/similarr" element={<SimilarrPage />} />
     </Routes>
   );
 }
