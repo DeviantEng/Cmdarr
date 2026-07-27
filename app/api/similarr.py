@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,11 +11,14 @@ from sqlalchemy.orm import Session
 
 from clients.client_lastfm import LastFMClient
 from clients.client_lidarr import LidarrClient
+from clients.client_plex import PlexClient
 from commands.config_adapter import ConfigAdapter
 from database.config_models import LidarrArtist
 from database.database import get_config_db
 from services.similarr_service import similarr_service
 from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
+from utils.similarr_plex import rank_plex_top_artists
+from utils.timezone import get_scheduler_timezone
 
 router = APIRouter()
 
@@ -78,6 +81,76 @@ async def sync_artists(db: Annotated[Session, Depends(get_config_db)]):
         "synced": len(artists),
         "inserted": inserted,
         "updated": updated,
+    }
+
+
+@router.get("/plex-top-artists")
+async def plex_top_artists(
+    account_id: Annotated[str, Query(min_length=1)],
+    lookback_days: Annotated[int, Query(ge=7, le=365)] = 90,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    db: Session = Depends(get_config_db),
+):
+    """Rank Plex top-listened artists and map matched names to Lidarr MBIDs."""
+    config = ConfigAdapter()
+    if not config.get("PLEX_CLIENT_ENABLED", False):
+        raise HTTPException(status_code=503, detail="Plex client is not enabled")
+
+    plex = PlexClient(config)
+    library_key = plex.get_resolved_library_key()
+    if not library_key:
+        raise HTTPException(status_code=503, detail="Plex music library not configured")
+
+    tz = get_scheduler_timezone()
+    now = datetime.now(tz)
+    history_start = now - timedelta(days=lookback_days)
+
+    try:
+        history_raw = plex.get_play_history(
+            library_key=library_key,
+            account_id=account_id,
+            mindate=history_start,
+            maxresults=3000,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch Plex history: {e}") from e
+
+    ranked = rank_plex_top_artists(
+        history_raw,
+        lookback_days=lookback_days,
+        limit=limit,
+        now=now,
+    )
+
+    name_to_row: dict[str, LidarrArtist] = {}
+    for row in db.query(LidarrArtist).all():
+        key = (row.artist_name or "").strip().lower()
+        if key and key not in name_to_row:
+            name_to_row[key] = row
+
+    artists: list[dict[str, Any]] = []
+    unmatched: list[dict[str, Any]] = []
+    for name, play_count in ranked:
+        cached = name_to_row.get(name.lower())
+        if cached and cached.artist_mbid:
+            artists.append(
+                {
+                    "artist_name": cached.artist_name or name,
+                    "play_count": play_count,
+                    "artist_mbid": cached.artist_mbid,
+                    "lidarr_id": cached.lidarr_id,
+                }
+            )
+        else:
+            unmatched.append({"artist_name": name, "play_count": play_count})
+
+    return {
+        "success": True,
+        "account_id": str(account_id),
+        "lookback_days": lookback_days,
+        "artists": artists,
+        "unmatched": unmatched,
+        "count": len(artists),
     }
 
 
@@ -150,6 +223,7 @@ async def get_artist_bio(
         info = await lastfm.get_artist_info(
             mbid=mbid_clean or None,
             artist_name=name_clean or None,
+            prefer_bio=True,
         )
 
     if not info:

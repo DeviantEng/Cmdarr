@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from clients.client_deezer import DeezerClient
 from clients.client_lastfm import LastFMClient
 from clients.client_lidarr import LidarrClient
 from commands.config_adapter import ConfigAdapter
@@ -18,6 +19,9 @@ logger = logging.getLogger("cmdarr.similarr")
 
 # Per-seed Last.fm similar fetch size (discovery_lastfm uses a tiny default).
 _SIMILAR_PER_SEED = 50
+# Hard failsafe only — not a user-facing setting. One-shot jobs normally finish far sooner.
+_SESSION_FAILSAFE_SECONDS = 600.0
+_DEEZER_IMAGE_CONCURRENCY = 5
 
 
 @dataclass
@@ -28,6 +32,7 @@ class SimilarrResult:
     seed_count: int
     seed_names: list[str]
     url: str = ""
+    image_url: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -37,6 +42,7 @@ class SimilarrResult:
             "seed_count": self.seed_count,
             "seed_names": list(self.seed_names),
             "url": self.url,
+            "image_url": self.image_url,
         }
 
 
@@ -44,7 +50,7 @@ class SimilarrResult:
 class SimilarrSession:
     session_id: str
     seeds: list[dict[str, str]]  # {mbid, name}
-    status: str = "running"  # running | stopped | timed_out | exhausted | error
+    status: str = "running"  # running | completed | stopped | timed_out | error
     started_at: float = field(default_factory=time.monotonic)
     error: str | None = None
     results: dict[str, SimilarrResult] = field(default_factory=dict)
@@ -116,120 +122,18 @@ class SimilarrService:
             return session
 
     async def _run_session(self, session: SimilarrSession) -> None:
-        config = ConfigAdapter()
-        timeout = float(config.SIMILARR_SEARCH_TIMEOUT_SECONDS)
-
+        """One-shot: query each selected seed once, then complete."""
         try:
-            async with LidarrClient(config) as lidarr, LastFMClient(config) as lastfm:
-                discovery = DiscoveryUtils(config, lidarr)
-                (
-                    existing_mbids,
-                    existing_names,
-                    excluded_mbids,
-                ) = await discovery.get_lidarr_context()
-                # Never recommend the seeds themselves.
-                for seed in session.seeds:
-                    existing_mbids.add(seed["mbid"])
-                    existing_names.add(seed["name"].lower())
-
-                while True:
-                    if session.stop_requested:
-                        session.status = "stopped"
-                        return
-                    if session.elapsed_seconds() >= timeout:
-                        session.status = "timed_out"
-                        return
-
-                    found_this_pass = 0
-                    for seed in session.seeds:
-                        if session.stop_requested:
-                            session.status = "stopped"
-                            return
-                        if session.elapsed_seconds() >= timeout:
-                            session.status = "timed_out"
-                            return
-
-                        remaining = timeout - session.elapsed_seconds()
-                        if remaining <= 0:
-                            session.status = "timed_out"
-                            return
-
-                        try:
-                            similar, _skipped = await asyncio.wait_for(
-                                lastfm.get_similar_artists(
-                                    mbid=seed["mbid"],
-                                    artist_name=seed["name"],
-                                    limit=_SIMILAR_PER_SEED,
-                                    include_similar_without_mbid=False,
-                                ),
-                                timeout=max(1.0, remaining),
-                            )
-                        except TimeoutError:
-                            session.status = "timed_out"
-                            return
-                        except Exception as e:
-                            logger.warning(
-                                "Similarr similar lookup failed for %s: %s",
-                                seed["name"],
-                                e,
-                            )
-                            continue
-
-                        for row in similar:
-                            if session.stop_requested:
-                                session.status = "stopped"
-                                return
-                            if session.elapsed_seconds() >= timeout:
-                                session.status = "timed_out"
-                                return
-
-                            mbid = (row.get("mbid") or "").strip()
-                            name = (row.get("name") or "").strip()
-                            if not mbid or not name:
-                                continue
-
-                            try:
-                                match_score = float(row.get("match") or 0)
-                            except TypeError, ValueError:
-                                match_score = 0.0
-
-                            if mbid in session.results:
-                                existing = session.results[mbid]
-                                if seed["name"] not in existing.seed_names:
-                                    existing.seed_names.append(seed["name"])
-                                    existing.seed_count = len(existing.seed_names)
-                                if match_score > existing.match_score:
-                                    existing.match_score = match_score
-                                continue
-
-                            ok, _reason = discovery.filter_artist_candidate(
-                                mbid,
-                                name,
-                                existing_mbids,
-                                existing_names,
-                                excluded_mbids,
-                            )
-                            if not ok:
-                                continue
-
-                            session.results[mbid] = SimilarrResult(
-                                mbid=mbid,
-                                name=name,
-                                match_score=match_score,
-                                seed_count=1,
-                                seed_names=[seed["name"]],
-                                url=(row.get("url") or ""),
-                            )
-                            session.result_order.append(mbid)
-                            # Prevent re-adding if later seeds suggest same name/mbid.
-                            existing_mbids.add(mbid)
-                            existing_names.add(name.lower())
-                            found_this_pass += 1
-
-                    if found_this_pass == 0:
-                        session.status = "exhausted"
-                        return
-
+            await asyncio.wait_for(
+                self._run_one_shot(session),
+                timeout=_SESSION_FAILSAFE_SECONDS,
+            )
+        except TimeoutError:
+            if session.status == "running":
+                session.status = "timed_out"
+                session.error = (
+                    f"Search exceeded internal failsafe ({int(_SESSION_FAILSAFE_SECONDS)}s)"
+                )
         except asyncio.CancelledError:
             session.status = "stopped"
             raise
@@ -237,6 +141,128 @@ class SimilarrService:
             logger.exception("Similarr session failed: %s", e)
             session.status = "error"
             session.error = str(e)
+
+    async def _fill_missing_images(self, session: SimilarrSession, config) -> None:
+        missing = [r for r in session.results.values() if not r.image_url]
+        if not missing:
+            return
+
+        sem = asyncio.Semaphore(_DEEZER_IMAGE_CONCURRENCY)
+
+        async with DeezerClient(config) as deezer:
+
+            async def _one(result: SimilarrResult) -> None:
+                if session.stop_requested:
+                    return
+                async with sem:
+                    try:
+                        res = await deezer.search_artists(result.name, limit=1)
+                        artists = res.get("artists") or []
+                        if artists:
+                            image_url = (artists[0].get("image_url") or "").strip()
+                            if image_url:
+                                result.image_url = image_url
+                    except Exception as e:
+                        logger.debug("Deezer image lookup failed for %s: %s", result.name, e)
+
+            await asyncio.gather(*[_one(r) for r in missing])
+
+    async def _run_one_shot(self, session: SimilarrSession) -> None:
+        config = ConfigAdapter()
+
+        async with LidarrClient(config) as lidarr, LastFMClient(config) as lastfm:
+            discovery = DiscoveryUtils(config, lidarr)
+            (
+                existing_mbids,
+                existing_names,
+                excluded_mbids,
+            ) = await discovery.get_lidarr_context()
+            # Never recommend the seeds themselves.
+            for seed in session.seeds:
+                existing_mbids.add(seed["mbid"])
+                existing_names.add(seed["name"].lower())
+
+            for seed in session.seeds:
+                if session.stop_requested:
+                    session.status = "stopped"
+                    return
+
+                try:
+                    similar, _skipped = await lastfm.get_similar_artists(
+                        mbid=seed["mbid"],
+                        artist_name=seed["name"],
+                        limit=_SIMILAR_PER_SEED,
+                        include_similar_without_mbid=False,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Similarr similar lookup failed for %s: %s",
+                        seed["name"],
+                        e,
+                    )
+                    continue
+
+                for row in similar:
+                    if session.stop_requested:
+                        session.status = "stopped"
+                        return
+
+                    mbid = (row.get("mbid") or "").strip()
+                    name = (row.get("name") or "").strip()
+                    if not mbid or not name:
+                        continue
+
+                    try:
+                        match_score = float(row.get("match") or 0)
+                    except TypeError, ValueError:
+                        match_score = 0.0
+
+                    image_url = (row.get("image_url") or "").strip() or None
+
+                    if mbid in session.results:
+                        existing = session.results[mbid]
+                        if seed["name"] not in existing.seed_names:
+                            existing.seed_names.append(seed["name"])
+                            existing.seed_count = len(existing.seed_names)
+                        if match_score > existing.match_score:
+                            existing.match_score = match_score
+                        if image_url and not existing.image_url:
+                            existing.image_url = image_url
+                        continue
+
+                    ok, _reason = discovery.filter_artist_candidate(
+                        mbid,
+                        name,
+                        existing_mbids,
+                        existing_names,
+                        excluded_mbids,
+                    )
+                    if not ok:
+                        continue
+
+                    session.results[mbid] = SimilarrResult(
+                        mbid=mbid,
+                        name=name,
+                        match_score=match_score,
+                        seed_count=1,
+                        seed_names=[seed["name"]],
+                        url=(row.get("url") or ""),
+                        image_url=image_url,
+                    )
+                    session.result_order.append(mbid)
+                    existing_mbids.add(mbid)
+                    existing_names.add(name.lower())
+
+            if session.stop_requested:
+                session.status = "stopped"
+                return
+
+            await self._fill_missing_images(session, config)
+
+            if session.stop_requested:
+                session.status = "stopped"
+            else:
+                session.status = "completed"
 
 
 similarr_service = SimilarrService()
