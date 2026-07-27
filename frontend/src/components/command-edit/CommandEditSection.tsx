@@ -17,6 +17,7 @@ import { ScheduleSection } from "./sections/ScheduleSection";
 import { ExpirationSection } from "./sections/ExpirationSection";
 import { NewReleasesDiscoverySection } from "./sections/NewReleasesDiscoverySection";
 import { ArtistEventsRefreshSection } from "./sections/ArtistEventsRefreshSection";
+import { LidarrWantedSearchSection } from "./sections/LidarrWantedSearchSection";
 import { LastRunSection } from "./sections/LastRunSection";
 import { LastStatusSection } from "./sections/LastStatusSection";
 
@@ -62,6 +63,8 @@ export function CommandEditSection({
       return <NewReleasesDiscoverySection ctx={ctx} />;
     case "artist_events_refresh":
       return <ArtistEventsRefreshSection ctx={ctx} />;
+    case "lidarr_wanted_search":
+      return <LidarrWantedSearchSection ctx={ctx} />;
     case "last_run":
       return <LastRunSection ctx={ctx} />;
     case "last_status":

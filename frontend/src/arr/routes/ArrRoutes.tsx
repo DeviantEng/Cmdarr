@@ -13,6 +13,7 @@ import { ArrSystemArtistEventsPage } from "@/arr/pages/system/ArrSystemArtistEve
 import { ArrSystemLibraryCachePage } from "@/arr/pages/system/ArrSystemLibraryCachePage";
 import { ArrSystemNewReleasesPage } from "@/arr/pages/system/ArrSystemNewReleasesPage";
 import { ArrSystemDiscoveryPage } from "@/arr/pages/system/ArrSystemDiscoveryPage";
+import { ArrSystemLidarrMaintenancePage } from "@/arr/pages/system/ArrSystemLidarrMaintenancePage";
 
 export function ArrRoutes() {
   return (
@@ -33,6 +34,7 @@ export function ArrRoutes() {
       <Route path="/system/artist-events" element={<ArrSystemArtistEventsPage />} />
       <Route path="/system/new-releases" element={<ArrSystemNewReleasesPage />} />
       <Route path="/system/discovery" element={<ArrSystemDiscoveryPage />} />
+      <Route path="/system/lidarr-maintenance" element={<ArrSystemLidarrMaintenancePage />} />
       <Route path="/system" element={<Navigate to="/system/status" replace />} />
       <Route path="/config" element={<Navigate to="/settings/application" replace />} />
       <Route path="/status" element={<Navigate to="/system/status" replace />} />

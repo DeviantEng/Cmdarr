@@ -80,14 +80,20 @@ class LidarrClient(BaseAPIClient):
                 self.logger.debug(f"Making {method} request to: {url}")
 
                 async with session.request(method, url, **kwargs) as response:
-                    # Lidarr returns 201 Created for POSTs (e.g. add artist).
+                    # Lidarr returns 201 Created for POSTs (e.g. add artist, queue command).
                     if 200 <= response.status < 300:
                         if response.status == 204:
                             self.logger.debug(f"Successful empty response from {endpoint}")
                             return {}
-                        data = await response.json()
+                        try:
+                            data = await response.json(content_type=None)
+                        except Exception:
+                            text = await response.text()
+                            if not text:
+                                return {"status": response.status}
+                            return {"status": response.status, "raw": text}
                         self.logger.debug(f"Successful response from {endpoint}")
-                        return data
+                        return data if data is not None else {"status": response.status}
                     else:
                         self.logger.error(
                             f"Lidarr API error {response.status}: {await response.text()}"
@@ -501,6 +507,131 @@ class LidarrClient(BaseAPIClient):
         except Exception as e:
             self.logger.error(f"Failed to get albums from Lidarr: {e}")
             return []
+
+    async def post_command(self, name: str, **params: Any) -> dict[str, Any] | None:
+        """
+        Queue a Lidarr command (POST /api/v1/command).
+
+        Examples:
+          await post_command("RefreshArtist")  # Update All (empty artistIds)
+          await post_command("AlbumSearch", albumIds=[1, 2, 3])
+        """
+        body: dict[str, Any] = {"name": name, **params}
+        self.logger.info("Queuing Lidarr command: %s", name)
+        return await self._make_request("command", method="POST", json=body)
+
+    async def get_command(self, command_id: int) -> dict[str, Any] | None:
+        """Get a Lidarr command by id (poll for status)."""
+        return await self._make_request(f"command/{command_id}")
+
+    async def wait_for_command(
+        self,
+        command_id: int,
+        *,
+        poll_interval: float = 2.0,
+        timeout_seconds: float = 600.0,
+    ) -> dict[str, Any] | None:
+        """Poll Lidarr until a command completes, fails, or times out."""
+        import asyncio
+        import time
+
+        deadline = time.monotonic() + timeout_seconds
+        terminal = {"completed", "failed", "aborted", "cancelled"}
+        last: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            last = await self.get_command(command_id)
+            if not last:
+                return None
+            status = str(last.get("status") or "").lower()
+            if status in terminal:
+                return last
+            await asyncio.sleep(poll_interval)
+        self.logger.warning(
+            "Timed out waiting for Lidarr command %s after %.0fs", command_id, timeout_seconds
+        )
+        return last
+
+    async def get_wanted_missing(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        sort_key: str = "releaseDate",
+        sort_direction: str = "ascending",
+        monitored: bool = True,
+        include_artist: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Fetch a page of Wanted / Missing albums.
+
+        Returns Lidarr paging resource: { page, pageSize, totalRecords, records, ... }
+        """
+        params = {
+            "page": page,
+            "pageSize": page_size,
+            "sortKey": sort_key,
+            "sortDirection": sort_direction,
+            "monitored": str(monitored).lower(),
+            "includeArtist": str(include_artist).lower(),
+        }
+        result = await self._make_request("wanted/missing", params=params)
+        if isinstance(result, dict):
+            return result
+        if isinstance(result, list):
+            return {
+                "page": page,
+                "pageSize": page_size,
+                "totalRecords": len(result),
+                "records": result,
+            }
+        return {"page": page, "pageSize": page_size, "totalRecords": 0, "records": []}
+
+    async def get_queue(self) -> list[dict[str, Any]]:
+        """Get download queue records (handles paginated and list responses)."""
+        result = await self._make_request("queue", params={"pageSize": 1000})
+        if isinstance(result, dict):
+            records = result.get("records") or result.get("items") or []
+            return records if isinstance(records, list) else []
+        if isinstance(result, list):
+            return result
+        return []
+
+    async def get_history_for_albums(
+        self,
+        album_ids: list[int],
+        *,
+        event_type: int | None = None,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch recent history entries for the given album IDs.
+
+        event_type: Lidarr history event type (1=grabbed) when supported.
+        """
+        if not album_ids:
+            return []
+        params: dict[str, Any] = {
+            "page": 1,
+            "pageSize": page_size,
+            "sortKey": "date",
+            "sortDirection": "descending",
+        }
+        # Lidarr accepts repeated albumIds query params
+        # aiohttp encodes list values as multiple keys when using MultiDict-style;
+        # pass as sequence via params list of tuples for compatibility.
+        param_list: list[tuple[str, str]] = [(k, str(v)) for k, v in params.items()]
+        for aid in album_ids:
+            param_list.append(("albumIds", str(aid)))
+        if event_type is not None:
+            param_list.append(("eventType", str(event_type)))
+
+        result = await self._make_request("history", params=param_list)
+        if isinstance(result, dict):
+            records = result.get("records") or result.get("items") or []
+            return records if isinstance(records, list) else []
+        if isinstance(result, list):
+            return result
+        return []
 
     async def get_api_stats(self) -> dict[str, Any]:
         """Get basic API usage statistics"""

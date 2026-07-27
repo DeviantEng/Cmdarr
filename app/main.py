@@ -654,6 +654,7 @@ from app.api import (
     discovery_lastfm_api,
     events,
     import_lists,
+    lidarr_maintenance,
     new_releases,
     status,
     test_connectivity,
@@ -670,6 +671,9 @@ app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(
     discovery_lastfm_api.router, prefix="/api/discovery/lastfm", tags=["discovery-lastfm"]
+)
+app.include_router(
+    lidarr_maintenance.router, prefix="/api/lidarr-maintenance", tags=["lidarr_maintenance"]
 )
 
 

@@ -295,3 +295,22 @@ class ArtistConcertHiddenEvent(ConfigBase):
         Integer, ForeignKey("concert_event.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     hidden_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LidarrWantedSearchIgnore(ConfigBase):
+    """Wanted albums temporarily skipped after a search found no release."""
+
+    __tablename__ = "lidarr_wanted_search_ignore"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lidarr_album_id = Column(Integer, nullable=False, unique=True, index=True)
+    foreign_album_id = Column(String(100), nullable=True)
+    artist_name = Column(String(500), nullable=True)
+    album_title = Column(String(500), nullable=False, default="")
+    album_type = Column(String(50), nullable=True)
+    release_date = Column(String(50), nullable=True)
+    ignored_at = Column(DateTime(timezone=True), server_default=func.now())
+    ignored_until = Column(DateTime(timezone=True), nullable=False, index=True)
+    reason = Column(String(100), nullable=False, default="no_release_found")
+    command_name = Column(String(100), nullable=True, index=True)
+    search_count = Column(Integer, nullable=False, default=1)

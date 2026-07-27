@@ -70,6 +70,9 @@ export type CommandEditFormState = {
   xm_playlist_kind?: "newest" | "most_heard";
   xm_most_heard_days?: number;
   plex_playlist_account_id?: string;
+  ignore_days?: number;
+  settle_seconds?: number;
+  sort_by?: string;
 };
 
 export type XmplaylistStationRow = {

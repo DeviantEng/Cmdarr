@@ -21,6 +21,8 @@ export type CreateCommandScheduleExpiryBlockProps = {
   onExpiresAtChange: (value: string) => void;
   expiresAtDeletePlaylist: boolean;
   onExpiresAtDeletePlaylistChange: (value: boolean) => void;
+  /** When false, hide expiration fields (e.g. Lidarr maintenance). Default true. */
+  showExpiration?: boolean;
   children?: ReactNode;
 };
 
@@ -38,6 +40,7 @@ export function CreateCommandScheduleExpiryBlock({
   onExpiresAtChange,
   expiresAtDeletePlaylist,
   onExpiresAtDeletePlaylistChange,
+  showExpiration = true,
   children,
 }: CreateCommandScheduleExpiryBlockProps) {
   const scheduleOverrideId = `${idPrefix}-schedule-override`;
@@ -83,21 +86,23 @@ export function CreateCommandScheduleExpiryBlock({
         <span className="text-sm">{cw.enableAfterCreation}</span>
       </label>
       {children}
-      <ExpirationFields
-        idPrefix={idPrefix}
-        enabled={expiresAtEnabled}
-        onEnabledChange={(v) => {
-          onExpiresAtEnabledChange(v);
-          if (v && !expiresAt) {
-            onExpiresAtChange("");
-          }
-        }}
-        value={expiresAt}
-        onValueChange={onExpiresAtChange}
-        showDeletePlaylistOption={true}
-        deletePlaylistOnExpiry={expiresAtDeletePlaylist}
-        onDeletePlaylistChange={onExpiresAtDeletePlaylistChange}
-      />
+      {showExpiration ? (
+        <ExpirationFields
+          idPrefix={idPrefix}
+          enabled={expiresAtEnabled}
+          onEnabledChange={(v) => {
+            onExpiresAtEnabledChange(v);
+            if (v && !expiresAt) {
+              onExpiresAtChange("");
+            }
+          }}
+          value={expiresAt}
+          onValueChange={onExpiresAtChange}
+          showDeletePlaylistOption={true}
+          deletePlaylistOnExpiry={expiresAtDeletePlaylist}
+          onDeletePlaylistChange={onExpiresAtDeletePlaylistChange}
+        />
+      ) : null}
     </>
   );
 }
