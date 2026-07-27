@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from clients.client_deezer import DeezerClient
 from clients.client_lastfm import LastFMClient
 from clients.client_lidarr import LidarrClient
 from commands.config_adapter import ConfigAdapter
@@ -20,6 +21,7 @@ logger = logging.getLogger("cmdarr.similarr")
 _SIMILAR_PER_SEED = 50
 # Hard failsafe only — not a user-facing setting. One-shot jobs normally finish far sooner.
 _SESSION_FAILSAFE_SECONDS = 600.0
+_DEEZER_IMAGE_CONCURRENCY = 5
 
 
 @dataclass
@@ -30,6 +32,7 @@ class SimilarrResult:
     seed_count: int
     seed_names: list[str]
     url: str = ""
+    image_url: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +42,7 @@ class SimilarrResult:
             "seed_count": self.seed_count,
             "seed_names": list(self.seed_names),
             "url": self.url,
+            "image_url": self.image_url,
         }
 
 
@@ -138,6 +142,31 @@ class SimilarrService:
             session.status = "error"
             session.error = str(e)
 
+    async def _fill_missing_images(self, session: SimilarrSession, config) -> None:
+        missing = [r for r in session.results.values() if not r.image_url]
+        if not missing:
+            return
+
+        sem = asyncio.Semaphore(_DEEZER_IMAGE_CONCURRENCY)
+
+        async with DeezerClient(config) as deezer:
+
+            async def _one(result: SimilarrResult) -> None:
+                if session.stop_requested:
+                    return
+                async with sem:
+                    try:
+                        res = await deezer.search_artists(result.name, limit=1)
+                        artists = res.get("artists") or []
+                        if artists:
+                            image_url = (artists[0].get("image_url") or "").strip()
+                            if image_url:
+                                result.image_url = image_url
+                    except Exception as e:
+                        logger.debug("Deezer image lookup failed for %s: %s", result.name, e)
+
+            await asyncio.gather(*[_one(r) for r in missing])
+
     async def _run_one_shot(self, session: SimilarrSession) -> None:
         config = ConfigAdapter()
 
@@ -188,6 +217,8 @@ class SimilarrService:
                     except TypeError, ValueError:
                         match_score = 0.0
 
+                    image_url = (row.get("image_url") or "").strip() or None
+
                     if mbid in session.results:
                         existing = session.results[mbid]
                         if seed["name"] not in existing.seed_names:
@@ -195,6 +226,8 @@ class SimilarrService:
                             existing.seed_count = len(existing.seed_names)
                         if match_score > existing.match_score:
                             existing.match_score = match_score
+                        if image_url and not existing.image_url:
+                            existing.image_url = image_url
                         continue
 
                     ok, _reason = discovery.filter_artist_candidate(
@@ -214,10 +247,17 @@ class SimilarrService:
                         seed_count=1,
                         seed_names=[seed["name"]],
                         url=(row.get("url") or ""),
+                        image_url=image_url,
                     )
                     session.result_order.append(mbid)
                     existing_mbids.add(mbid)
                     existing_names.add(name.lower())
+
+            if session.stop_requested:
+                session.status = "stopped"
+                return
+
+            await self._fill_missing_images(session, config)
 
             if session.stop_requested:
                 session.status = "stopped"

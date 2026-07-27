@@ -8,6 +8,7 @@ import {
   Search,
   Square,
   BookOpen,
+  Disc3,
 } from "lucide-react";
 import { api, type SimilarrResult } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { NumericInput } from "@/components/NumericInput";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +44,7 @@ type SeedArtist = {
   artist_mbid: string;
   artist_name: string;
   lidarr_id?: number | null;
+  play_count?: number;
 };
 
 type SeedSource = "lidarr" | "plex";
@@ -75,6 +78,15 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   const [artistFilter, setArtistFilter] = useState("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
+  const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
+  const [plexAccountId, setPlexAccountId] = useState("");
+  const [lookbackDays, setLookbackDays] = useState(90);
+  const [plexLimit, setPlexLimit] = useState(20);
+  const [loadingPlex, setLoadingPlex] = useState(false);
+  const [unmatchedPlex, setUnmatchedPlex] = useState<{ artist_name: string; play_count: number }[]>(
+    []
+  );
+
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -94,11 +106,12 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   const pollRef = useRef<number | null>(null);
   const terminalNotified = useRef<string | null>(null);
 
-  const loadArtists = useCallback(async () => {
+  const loadLidarrArtists = useCallback(async () => {
     setLoadingArtists(true);
     try {
       const res = await api.getSimilarrArtists("", 10000);
       setArtists(res.artists ?? []);
+      setUnmatchedPlex([]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load Lidarr artists");
     } finally {
@@ -106,9 +119,33 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     }
   }, []);
 
+  const loadPlexAccounts = useCallback(async () => {
+    try {
+      const res = await api.getPlexAccounts();
+      setPlexAccounts(res.accounts ?? []);
+      if (!plexAccountId && res.accounts?.length) {
+        setPlexAccountId(res.accounts[0].id);
+      }
+    } catch {
+      setPlexAccounts([]);
+    }
+  }, [plexAccountId]);
+
   useEffect(() => {
-    void loadArtists();
-  }, [loadArtists]);
+    void loadLidarrArtists();
+    void loadPlexAccounts();
+  }, [loadLidarrArtists, loadPlexAccounts]);
+
+  useEffect(() => {
+    setSelected({});
+    setArtistFilter("");
+    if (seedSource === "lidarr") {
+      void loadLidarrArtists();
+    } else {
+      setArtists([]);
+      setUnmatchedPlex([]);
+    }
+  }, [seedSource, loadLidarrArtists]);
 
   const filteredArtists = useMemo(() => {
     const q = artistFilter.trim().toLowerCase();
@@ -185,11 +222,44 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     try {
       const res = await api.syncSimilarrArtists();
       toast.success(`Synced ${res.synced ?? 0} Lidarr artists`);
-      await loadArtists();
+      if (seedSource === "lidarr") await loadLidarrArtists();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to sync Lidarr artists");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleLoadPlexTop = async () => {
+    if (!plexAccountId) {
+      toast.error("Select a Plex account");
+      return;
+    }
+    setLoadingPlex(true);
+    try {
+      const res = await api.getSimilarrPlexTopArtists({
+        account_id: plexAccountId,
+        lookback_days: lookbackDays,
+        limit: plexLimit,
+      });
+      setArtists(
+        (res.artists ?? []).map((a) => ({
+          artist_mbid: a.artist_mbid,
+          artist_name: a.artist_name,
+          lidarr_id: a.lidarr_id,
+          play_count: a.play_count,
+        }))
+      );
+      setUnmatchedPlex(res.unmatched ?? []);
+      setSelected({});
+      toast.success(
+        `Loaded ${res.artists?.length ?? 0} matched artists` +
+          (res.unmatched?.length ? ` (${res.unmatched.length} unmatched)` : "")
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load Plex top artists");
+    } finally {
+      setLoadingPlex(false);
     }
   };
 
@@ -214,6 +284,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     }
     setStarting(true);
     terminalNotified.current = null;
+    setAddedMbids({});
     try {
       const data = await api.startSimilarrSession(
         selectedSeeds.map((a) => ({ mbid: a.artist_mbid, name: a.artist_name }))
@@ -294,25 +365,25 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="lidarr">Lidarr library</SelectItem>
-              <SelectItem value="plex" disabled>
-                Plex top listened (Phase 2)
-              </SelectItem>
+              <SelectItem value="plex">Plex top listened</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void handleSync()}
-          disabled={syncing || running}
-        >
-          {syncing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh cache
-        </Button>
+        {seedSource === "lidarr" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleSync()}
+            disabled={syncing || running}
+          >
+            {syncing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh cache
+          </Button>
+        )}
         {!running ? (
           <Button
             size="sm"
@@ -343,139 +414,241 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     </ArrPageToolbar>
   );
 
-  const body = (
-    <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
-      <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Seed artists</CardTitle>
-          <CardDescription>
-            Search and select artists from your Lidarr library, then run a Last.fm similar search.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search artists…"
-              value={artistFilter}
-              onChange={(e) => setArtistFilter(e.target.value)}
-              disabled={running}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
+  const seedPanel = (
+    <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Seed artists</CardTitle>
+        <CardDescription>
+          {seedSource === "lidarr"
+            ? "Search and select artists from your Lidarr library, then run a Last.fm similar search."
+            : "Load your most-played Plex artists (matched to Lidarr), select seeds, then run."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {seedSource === "plex" && (
+          <div className="space-y-3 rounded-md border p-3">
+            <div className="space-y-2">
+              <Label>Plex account</Label>
+              <Select
+                value={plexAccountId}
+                onValueChange={setPlexAccountId}
+                disabled={running || loadingPlex}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plexAccounts.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      No Plex accounts (enable Plex in settings)
+                    </SelectItem>
+                  ) : (
+                    plexAccounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name || acc.id}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Lookback days</Label>
+                <NumericInput
+                  value={lookbackDays}
+                  onChange={(v) => setLookbackDays(v ?? 90)}
+                  min={7}
+                  max={365}
+                  defaultValue={90}
+                  disabled={running || loadingPlex}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Top artists</Label>
+                <NumericInput
+                  value={plexLimit}
+                  onChange={(v) => setPlexLimit(v ?? 20)}
+                  min={1}
+                  max={50}
+                  defaultValue={20}
+                  disabled={running || loadingPlex}
+                />
+              </div>
+            </div>
             <Button
-              type="button"
+              size="sm"
               variant="outline"
-              size="sm"
-              onClick={selectFiltered}
-              disabled={running || filteredArtists.length === 0}
+              onClick={() => void handleLoadPlexTop()}
+              disabled={running || loadingPlex || !plexAccountId}
             >
-              Select filtered
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-              disabled={running || selectedCount === 0}
-            >
-              Clear
-            </Button>
-            <span className="self-center text-xs text-muted-foreground">
-              {selectedCount} selected · {filteredArtists.length}/{artists.length} shown
-            </span>
-          </div>
-          <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-md border">
-            {loadingArtists ? (
-              <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+              {loadingPlex ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading artists…
-              </div>
-            ) : artists.length === 0 ? (
-              <div className="space-y-2 p-4 text-sm text-muted-foreground">
-                <p>
-                  No cached Lidarr artists. Click Refresh cache, or ensure Lidarr is configured.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleSync()}
-                  disabled={syncing}
-                >
-                  Refresh cache
-                </Button>
-              </div>
-            ) : filteredArtists.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground">No artists match your search.</div>
-            ) : (
-              <ul className="divide-y">
-                {filteredArtists.map((a) => {
-                  const checked = !!selected[a.artist_mbid];
-                  return (
-                    <li key={a.artist_mbid}>
-                      <label
-                        className={cn(
-                          "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent/50",
-                          checked && "bg-accent/30",
-                          running && "pointer-events-none opacity-70"
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-primary"
-                          checked={checked}
-                          onChange={() => toggleArtist(a.artist_mbid)}
-                          disabled={running}
-                        />
-                        <span className="truncate">{a.artist_name}</span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              ) : (
+                <Disc3 className="h-4 w-4" />
+              )}
+              Load top artists
+            </Button>
+            {unmatchedPlex.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {unmatchedPlex.length} Plex artist{unmatchedPlex.length === 1 ? "" : "s"} not in
+                Lidarr cache (skipped as seeds).
+              </p>
             )}
           </div>
-        </CardContent>
-      </Card>
+        )}
 
-      <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Similar artists</CardTitle>
-          <CardDescription>
-            One-shot Last.fm lookup for your selected seeds. Results exclude artists already in
-            Lidarr. Affinity rises when multiple seeds recommend the same artist.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {results.length === 0 ? (
-            <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-              {running
-                ? "Searching Last.fm for similar artists…"
-                : "Select seed artists and click Run to discover similar artists."}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            placeholder="Search artists…"
+            value={artistFilter}
+            onChange={(e) => setArtistFilter(e.target.value)}
+            disabled={running}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={selectFiltered}
+            disabled={running || filteredArtists.length === 0}
+          >
+            Select filtered
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={clearSelection}
+            disabled={running || selectedCount === 0}
+          >
+            Clear
+          </Button>
+          <span className="self-center text-xs text-muted-foreground">
+            {selectedCount} selected · {filteredArtists.length}/{artists.length} shown
+          </span>
+        </div>
+        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-md border">
+          {loadingArtists && seedSource === "lidarr" ? (
+            <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading artists…
             </div>
-          ) : (
-            <ul className="space-y-2">
-              {results.map((r) => {
-                const added = !!addedMbids[r.mbid];
-                return (
-                  <li
-                    key={r.mbid}
-                    className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+          ) : artists.length === 0 ? (
+            <div className="space-y-2 p-4 text-sm text-muted-foreground">
+              {seedSource === "lidarr" ? (
+                <>
+                  <p>
+                    No cached Lidarr artists. Click Refresh cache, or ensure Lidarr is configured.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleSync()}
+                    disabled={syncing}
                   >
+                    Refresh cache
+                  </Button>
+                </>
+              ) : (
+                <p>Load top artists from Plex to populate this list.</p>
+              )}
+            </div>
+          ) : filteredArtists.length === 0 ? (
+            <div className="p-4 text-sm text-muted-foreground">No artists match your search.</div>
+          ) : (
+            <ul className="divide-y">
+              {filteredArtists.map((a) => {
+                const checked = !!selected[a.artist_mbid];
+                return (
+                  <li key={a.artist_mbid}>
+                    <label
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent/50",
+                        checked && "bg-accent/30",
+                        running && "pointer-events-none opacity-70"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={checked}
+                        onChange={() => toggleArtist(a.artist_mbid)}
+                        disabled={running}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{a.artist_name}</span>
+                      {typeof a.play_count === "number" && (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {a.play_count} plays
+                        </span>
+                      )}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const resultsPanel = (
+    <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Similar artists</CardTitle>
+        <CardDescription>
+          One-shot Last.fm lookup for your selected seeds. Results exclude artists already in
+          Lidarr. Affinity rises when multiple seeds recommend the same artist.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {results.length === 0 ? (
+          <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {running
+              ? "Searching Last.fm for similar artists…"
+              : "Select seed artists and click Run to discover similar artists."}
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {results.map((r) => {
+              const added = !!addedMbids[r.mbid];
+              return (
+                <div
+                  key={r.mbid}
+                  className="flex flex-col overflow-hidden rounded-md border bg-card"
+                >
+                  <div className="relative aspect-square bg-muted">
+                    {r.image_url ? (
+                      <img
+                        src={r.image_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                        <Disc3 className="h-12 w-12 opacity-40" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-2 p-3">
                     <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium truncate">{r.name}</span>
+                      <div className="font-medium leading-snug line-clamp-2">{r.name}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant="secondary">{formatMatch(r.match_score)}</Badge>
                         {r.seed_count > 1 && <Badge variant="outline">{r.seed_count} seeds</Badge>}
                       </div>
                       {r.seed_names.length > 0 && (
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
                           Similar to: {r.seed_names.join(", ")}
                         </p>
                       )}
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
+                    <div className="mt-auto flex flex-wrap gap-2 pt-1">
                       <Button
                         type="button"
                         variant="outline"
@@ -507,13 +680,20 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
                         {added ? "Added" : "Add"}
                       </Button>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const body = (
+    <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
+      {seedPanel}
+      {resultsPanel}
     </div>
   );
 

@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from utils.playlist_parser import parse_playlist_url
+from utils.similarr_images import pick_deezer_image_url
 
 from .client_base import BaseAPIClient
 
@@ -253,6 +254,7 @@ class DeezerClient(BaseAPIClient):
                 "success": True,
                 "id": str(result.get("id", "")),
                 "name": result.get("name"),
+                "image_url": pick_deezer_image_url(result),
             }
         except Exception as e:
             self.logger.error(f"Error fetching artist {artist_id}: {e}")
@@ -279,6 +281,7 @@ class DeezerClient(BaseAPIClient):
                             "name": artist.get("name"),
                             "uri": artist.get("link", ""),
                             "external_url": artist.get("link", ""),
+                            "image_url": pick_deezer_image_url(artist),
                         }
                     )
             return {"success": True, "artists": artists}

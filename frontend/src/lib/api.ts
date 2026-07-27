@@ -762,6 +762,39 @@ class ApiClient {
       timeout: 60_000,
     });
   }
+
+  async getPlexAccounts(): Promise<{
+    accounts: { id: string; name: string; admin?: boolean }[];
+    daylist_used_ids: string[];
+    local_discovery_used_ids: string[];
+  }> {
+    return this.request(`/api/commands/plex-accounts`);
+  }
+
+  async getSimilarrPlexTopArtists(params: {
+    account_id: string;
+    lookback_days?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    account_id: string;
+    lookback_days: number;
+    artists: {
+      artist_name: string;
+      play_count: number;
+      artist_mbid: string;
+      lidarr_id?: number | null;
+    }[];
+    unmatched: { artist_name: string; play_count: number }[];
+    count: number;
+  }> {
+    const qs = new URLSearchParams({
+      account_id: params.account_id,
+      lookback_days: String(params.lookback_days ?? 90),
+      limit: String(params.limit ?? 20),
+    });
+    return this.request(`/api/similarr/plex-top-artists?${qs}`, { timeout: 120_000 });
+  }
 }
 
 // Export singleton instance
@@ -777,4 +810,5 @@ export type SimilarrResult = {
   seed_count: number;
   seed_names: string[];
   url: string;
+  image_url?: string | null;
 };
