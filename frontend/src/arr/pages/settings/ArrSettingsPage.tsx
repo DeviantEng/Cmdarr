@@ -1,4 +1,4 @@
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router";
 import { Loader2 } from "lucide-react";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import {

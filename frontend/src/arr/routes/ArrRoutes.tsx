@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import { ArrCommandsPage } from "@/arr/pages/ArrCommandsPage";
 import { ArrAddCommandPage } from "@/arr/pages/ArrAddCommandPage";
 import { ArrCommandHistoryPage } from "@/arr/pages/ArrCommandHistoryPage";

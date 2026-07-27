@@ -27,9 +27,9 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-router-dom": "^7.15.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "^8.3.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"
@@ -48,7 +48,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
-    "postcss": "^8.5.13",
+    "postcss": "^8.5.23",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.1",
@@ -58,6 +58,7 @@
     "picomatch": "4.0.4",
     "rollup": "4.59.0",
     "minimatch": "9.0.7",
+    "brace-expansion": "5.0.8",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "9.0.7"
     }

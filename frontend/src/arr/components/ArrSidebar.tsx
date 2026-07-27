@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { arrNavSections, arrPrimaryNav, type ArrNavLink, type ArrNavSection } from "@/arr/arr-nav";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { cn } from "@/lib/utils";

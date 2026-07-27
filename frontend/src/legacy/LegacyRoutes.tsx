@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router";
 import { CommandsPage } from "@/pages/Commands";
 import { ConfigPage } from "@/pages/Config";
 import { StatusPage } from "@/pages/Status";

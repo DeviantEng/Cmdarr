@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { ArrHeader } from "@/arr/components/ArrHeader";
 import { ArrSidebar } from "@/arr/components/ArrSidebar";
 import { ConfigSettingsProvider } from "@/hooks/useConfigSettings";
