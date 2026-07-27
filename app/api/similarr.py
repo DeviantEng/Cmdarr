@@ -150,6 +150,7 @@ async def get_artist_bio(
         info = await lastfm.get_artist_info(
             mbid=mbid_clean or None,
             artist_name=name_clean or None,
+            prefer_bio=True,
         )
 
     if not info:

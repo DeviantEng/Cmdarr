@@ -37,8 +37,6 @@ import {
   ArrSectionHeader,
 } from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router";
-import { useUiShell } from "@/lib/use-ui-shell";
 
 type SeedArtist = {
   artist_mbid: string;
@@ -70,9 +68,6 @@ function formatMatch(score: number): string {
 }
 
 export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: SimilarrPageProps) {
-  const { shell } = useUiShell();
-  const musicSourcesPath = shell === "arr" ? "/settings/music-sources" : "/config";
-
   const [seedSource, setSeedSource] = useState<SeedSource>("lidarr");
   const [artists, setArtists] = useState<SeedArtist[]>([]);
   const [loadingArtists, setLoadingArtists] = useState(true);
@@ -157,8 +152,9 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
         if (terminalNotified.current !== key) {
           terminalNotified.current = key;
           if (data.status === "stopped") toast.message("Search stopped");
-          else if (data.status === "timed_out") toast.message("Search timed out");
-          else if (data.status === "exhausted")
+          else if (data.status === "timed_out")
+            toast.error(data.error || "Search hit internal failsafe timeout");
+          else if (data.status === "completed")
             toast.success(`Search finished — ${data.results?.length ?? 0} artists found`);
           else if (data.status === "error") toast.error(data.error || "Search failed");
         }
@@ -440,13 +436,6 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
               </ul>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Timeout is configured under{" "}
-            <Link className="underline underline-offset-2" to={musicSourcesPath}>
-              Music Sources
-            </Link>{" "}
-            (Similarr search timeout).
-          </p>
         </CardContent>
       </Card>
 
@@ -454,8 +443,8 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Similar artists</CardTitle>
           <CardDescription>
-            Results exclude artists already in Lidarr. Affinity rises when multiple seeds recommend
-            the same artist.
+            One-shot Last.fm lookup for your selected seeds. Results exclude artists already in
+            Lidarr. Affinity rises when multiple seeds recommend the same artist.
           </CardDescription>
         </CardHeader>
         <CardContent>

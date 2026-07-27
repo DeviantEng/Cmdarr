@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.19-dev] - TBD
 
 ### Features
-- **Similarr**: Interactive Last.fm similar-artist discovery page (searchable Lidarr library seeds, Run/Stop session with configurable timeout, bios, one-click Lidarr add with album search). Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
+- **Similarr**: Interactive Last.fm similar-artist discovery page (searchable Lidarr library seeds, one-shot Run/Stop search, bios, one-click Lidarr add with album search). Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
 - **Lidarr Maintenance commands**: New `lidarr_maintenance` command category with **Update All** (queues Lidarr `RefreshArtist` for the whole library) and **Wanted Search** (searches top X Wanted albums with Album/EP/Single filters and sort; empty results are ignored for a configurable cooldown, default 14 days). Create from **Commands → Add New** (grouped by category). Stats and ignore-list management live under **System → Lidarr Maintenance**.
 
 ### Fixes

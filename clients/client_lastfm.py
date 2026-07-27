@@ -345,38 +345,83 @@ class LastFMClient(BaseAPIClient):
                     )
             return []
 
+    def _parse_artist_info_response(self, response: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not response:
+            return None
+        artist_data = response.get("artist", {})
+        if not artist_data:
+            return None
+        wiki = artist_data.get("wiki") or {}
+        return {
+            "name": artist_data.get("name", ""),
+            "mbid": artist_data.get("mbid", ""),
+            "url": artist_data.get("url", ""),
+            "playcount": artist_data.get("stats", {}).get("playcount", 0),
+            "listeners": artist_data.get("stats", {}).get("listeners", 0),
+            "bio_summary": wiki.get("summary") or "",
+            "bio_content": wiki.get("content") or "",
+        }
+
     async def get_artist_info(
-        self, mbid: str = None, artist_name: str = None
+        self,
+        mbid: str = None,
+        artist_name: str = None,
+        *,
+        prefer_bio: bool = False,
     ) -> dict[str, Any] | None:
-        """Get artist information by MBID or name (for validation)"""
-        if not mbid and not artist_name:
+        """Get artist information by MBID or name.
+
+        Last.fm often omits wiki/bio when queried by MBID alone. When prefer_bio is True,
+        name lookup (with autocorrect) is tried first, then MBID if wiki is still empty.
+        """
+        mbid_clean = (mbid or "").strip() or None
+        name_clean = (artist_name or "").strip() or None
+        if not mbid_clean and not name_clean:
             self.logger.error("Either MBID or artist name must be provided")
             return None
 
-        params = {"method": "artist.getinfo"}
-
-        if mbid:
-            params["mbid"] = mbid
-        else:
-            params["artist"] = artist_name
-
         try:
-            response = await self._make_request(params)
+            if prefer_bio:
+                info = None
+                if name_clean:
+                    info = self._parse_artist_info_response(
+                        await self._make_request(
+                            {
+                                "method": "artist.getinfo",
+                                "artist": name_clean,
+                                "autocorrect": "1",
+                            }
+                        )
+                    )
+                has_bio = bool(info and (info.get("bio_summary") or info.get("bio_content")))
+                if not has_bio and mbid_clean:
+                    mbid_info = self._parse_artist_info_response(
+                        await self._make_request({"method": "artist.getinfo", "mbid": mbid_clean})
+                    )
+                    if mbid_info:
+                        if info:
+                            # Prefer name payload; fill gaps from MBID lookup.
+                            for key in (
+                                "mbid",
+                                "url",
+                                "playcount",
+                                "listeners",
+                                "bio_summary",
+                                "bio_content",
+                            ):
+                                if not info.get(key) and mbid_info.get(key):
+                                    info[key] = mbid_info[key]
+                        else:
+                            info = mbid_info
+                return info
 
-            if not response:
-                return None
-
-            artist_data = response.get("artist", {})
-            wiki = artist_data.get("wiki") or {}
-            return {
-                "name": artist_data.get("name", ""),
-                "mbid": artist_data.get("mbid", ""),
-                "url": artist_data.get("url", ""),
-                "playcount": artist_data.get("stats", {}).get("playcount", 0),
-                "listeners": artist_data.get("stats", {}).get("listeners", 0),
-                "bio_summary": wiki.get("summary") or "",
-                "bio_content": wiki.get("content") or "",
-            }
+            params: dict[str, str] = {"method": "artist.getinfo"}
+            if mbid_clean:
+                params["mbid"] = mbid_clean
+            else:
+                params["artist"] = name_clean
+                params["autocorrect"] = "1"
+            return self._parse_artist_info_response(await self._make_request(params))
 
         except Exception as e:
             self.logger.error(f"Error getting artist info: {e}")

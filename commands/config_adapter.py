@@ -53,9 +53,6 @@ class ConfigAdapter:
         )
         self.LASTFM_SIMILAR_COUNT = config_service.get("LASTFM_SIMILAR_COUNT", 1)
         self.LASTFM_MIN_MATCH_SCORE = config_service.get("LASTFM_MIN_MATCH_SCORE", 0.0)
-        self.SIMILARR_SEARCH_TIMEOUT_SECONDS = max(
-            10, min(int(config_service.get("SIMILARR_SEARCH_TIMEOUT_SECONDS", 120)), 3600)
-        )
 
         # Setlist.fm (concert setlists)
         self.SETLIST_FM_API_KEY = config_service.get("SETLIST_FM_API_KEY", "")

@@ -141,13 +141,6 @@ class ConfigService:
                 "description": "Max concurrent Last.fm top-track fetches when building playlist commands (Artist Essentials, Last.fm Similar)",
             },
             {
-                "key": "SIMILARR_SEARCH_TIMEOUT_SECONDS",
-                "default_value": "120",
-                "data_type": "int",
-                "category": "lastfm",
-                "description": "Max seconds for a Similarr interactive similar-artist search session before auto-stop (default 120)",
-            },
-            {
                 "key": "SETLIST_FM_API_KEY",
                 "default_value": "",
                 "data_type": "string",
