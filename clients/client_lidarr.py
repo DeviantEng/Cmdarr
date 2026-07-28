@@ -275,6 +275,17 @@ class LidarrClient(BaseAPIClient):
             self.logger.error(f"Error getting quality profiles: {e}")
             return []
 
+    async def get_metadata_profiles(self) -> list[dict[str, Any]]:
+        """Get all metadata profiles from Lidarr"""
+        try:
+            response = await self._make_request("metadataprofile")
+            if response:
+                return response
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting metadata profiles: {e}")
+            return []
+
     async def get_root_folders(self) -> list[dict[str, Any]]:
         """Get all root folders from Lidarr"""
         try:
@@ -308,20 +319,26 @@ class LidarrClient(BaseAPIClient):
 
             # Get actual configuration from Lidarr
             quality_profiles = await self.get_quality_profiles()
+            metadata_profiles = await self.get_metadata_profiles()
             root_folders = await self.get_root_folders()
 
             if not quality_profiles:
                 return {"success": False, "error": "No quality profiles found in Lidarr"}
 
+            if not metadata_profiles:
+                return {"success": False, "error": "No metadata profiles found in Lidarr"}
+
             if not root_folders:
                 return {"success": False, "error": "No root folders found in Lidarr"}
 
-            # Use provided IDs or default to first available
-            if quality_profile_id is None:
+            quality_ids = {p["id"] for p in quality_profiles if "id" in p}
+            metadata_ids = {p["id"] for p in metadata_profiles if "id" in p}
+
+            if quality_profile_id is None or quality_profile_id not in quality_ids:
                 quality_profile_id = quality_profiles[0]["id"]
 
-            if metadata_profile_id is None:
-                metadata_profile_id = 1  # Default metadata profile ID
+            if metadata_profile_id is None or metadata_profile_id not in metadata_ids:
+                metadata_profile_id = metadata_profiles[0]["id"]
 
             # Use first root folder
             root_folder_path = root_folders[0]["path"]
@@ -343,7 +360,9 @@ class LidarrClient(BaseAPIClient):
 
             self.logger.info(f"Adding artist '{artist_name}' (MBID: {mbid}) to Lidarr")
             self.logger.debug(
-                f"Using quality profile ID: {quality_profile_id}, root folder: {root_folder_path}"
+                f"Using quality profile ID: {quality_profile_id}, "
+                f"metadata profile ID: {metadata_profile_id}, "
+                f"root folder: {root_folder_path}"
             )
 
             # Make POST request to add artist

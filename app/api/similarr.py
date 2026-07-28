@@ -35,6 +35,8 @@ class AddArtistRequest(BaseModel):
     mbid: str = Field(..., min_length=1, max_length=100)
     artist_name: str = Field(..., min_length=1, max_length=500)
     search_for_missing_albums: bool = True
+    quality_profile_id: int | None = Field(default=None, ge=1)
+    metadata_profile_id: int | None = Field(default=None, ge=1)
 
 
 @router.get("/artists")
@@ -232,6 +234,34 @@ async def get_artist_bio(
     return {"success": True, "artist": info}
 
 
+@router.get("/lidarr-profiles")
+async def get_lidarr_profiles():
+    """Return Lidarr quality and metadata profiles for Similarr add options."""
+    config = ConfigAdapter()
+    if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+        raise HTTPException(status_code=503, detail="Lidarr not configured")
+
+    async with LidarrClient(config) as lidarr:
+        quality = await lidarr.get_quality_profiles()
+        metadata = await lidarr.get_metadata_profiles()
+
+    def _compact(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for row in rows or []:
+            pid = row.get("id")
+            name = (row.get("name") or "").strip()
+            if pid is None or not name:
+                continue
+            out.append({"id": int(pid), "name": name})
+        return out
+
+    return {
+        "success": True,
+        "quality_profiles": _compact(quality),
+        "metadata_profiles": _compact(metadata),
+    }
+
+
 @router.post("/add")
 async def add_artist_to_lidarr(body: AddArtistRequest):
     """Add an artist to Lidarr (optionally start missing-album search)."""
@@ -243,6 +273,8 @@ async def add_artist_to_lidarr(body: AddArtistRequest):
         result: dict[str, Any] = await lidarr.add_artist(
             mbid=body.mbid.strip(),
             artist_name=body.artist_name.strip(),
+            quality_profile_id=body.quality_profile_id,
+            metadata_profile_id=body.metadata_profile_id,
             search_for_missing_albums=body.search_for_missing_albums,
         )
 

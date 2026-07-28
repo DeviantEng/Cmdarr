@@ -751,10 +751,20 @@ class ApiClient {
     return this.request(`/api/similarr/bio?${params}`);
   }
 
+  async getSimilarrLidarrProfiles(): Promise<{
+    success: boolean;
+    quality_profiles: { id: number; name: string }[];
+    metadata_profiles: { id: number; name: string }[];
+  }> {
+    return this.request(`/api/similarr/lidarr-profiles`);
+  }
+
   async addSimilarrArtist(params: {
     mbid: string;
     artist_name: string;
     search_for_missing_albums?: boolean;
+    quality_profile_id?: number;
+    metadata_profile_id?: number;
   }): Promise<{ success: boolean; message?: string }> {
     return this.request(`/api/similarr/add`, {
       method: "POST",
