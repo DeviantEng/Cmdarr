@@ -21,6 +21,7 @@ export type CommandEditSectionId =
   | "expiration"
   | "new_releases_discovery"
   | "artist_events_refresh"
+  | "lidarr_wanted_search"
   | "last_run"
   | "last_status";
 
@@ -83,6 +84,14 @@ export function getCommandEditSectionOrder(cmd: CommandConfig): CommandEditSecti
 
   if (name === "artist_events_refresh") {
     return [...base, "artist_events_refresh", "schedule", "last_run", "last_status"];
+  }
+
+  if (name.startsWith("lidarr_update_all_")) {
+    return [...base, "schedule", "last_run", "last_status"];
+  }
+
+  if (name.startsWith("lidarr_wanted_search_")) {
+    return [...base, "lidarr_wanted_search", "schedule", "last_run", "last_status"];
   }
 
   return [...base, "schedule", "last_run", "last_status"];

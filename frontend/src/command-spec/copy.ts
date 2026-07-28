@@ -349,5 +349,42 @@ export const commandUiCopy = {
     submitXmplaylist: "Create XMPlaylist",
     submitPlaylistSync: "Create Playlist Sync",
     submitMoodPlaylist: "Create Mood Playlist",
+    submitLidarrUpdateAll: "Create Update All",
+    submitLidarrWantedSearch: "Create Wanted Search",
+    categoryPlaylistGenerator: "Playlist Generator",
+    categoryPlaylistSync: "Playlist Sync",
+    categoryLidarrMaintenance: "Lidarr Maintenance",
+    titleLidarrUpdateAll: "Configure Lidarr Update All",
+    titleLidarrWantedSearch: "Configure Lidarr Wanted Search",
+    descLidarrUpdateAll:
+      "Queue Lidarr’s Update All (RefreshArtist) on a schedule so new MusicBrainz releases appear without a manual click.",
+    descLidarrWantedSearch:
+      "Search the top Wanted albums in Lidarr. Albums with no release found are ignored for a cooldown so the backlog can progress.",
+    cardLidarrUpdateAllTitle: "Update All",
+    cardLidarrUpdateAllBlurb:
+      "Trigger Lidarr Update All to refresh artist/album metadata across your library.",
+    cardLidarrWantedSearchTitle: "Wanted Search",
+    cardLidarrWantedSearchBlurb:
+      "Search top X Wanted albums (filter by Album/EP/Single). Empty results are ignored for a while.",
+  },
+  lidarrMaintenance: {
+    topXLabel: "Albums to search per run",
+    topXHelp: "How many Wanted albums to search each run (1–50). Default 10.",
+    ignoreDaysLabel: "Ignore empty results (days)",
+    ignoreDaysHelp:
+      "If no download is found after searching, skip that album for this many days (1–365). Default 14.",
+    settleSecondsLabel: "Settle time after search (seconds)",
+    settleSecondsHelp:
+      "Wait this long after AlbumSearch completes before checking the queue for grabs (0–300). Default 15.",
+    sortByLabel: "Wanted sort order",
+    sortByHelp: "How to order Lidarr’s Wanted list before taking the top X.",
+    sortOldest: "Oldest Release Date",
+    sortNewest: "Newest Release Date",
+    sortArtist: "Artist Name (A–Z)",
+    sortTitle: "Album Title (A–Z)",
+    releaseTypesHeading: "Release types to include",
+    releaseTypesHelp: "Only search Wanted items matching these types (Album, EP, Single, Other).",
+    displayNameLabel: "Display name",
+    displayNameHelp: "Shown on the Commands list.",
   },
 } as const;

@@ -16,6 +16,7 @@ import {
   Zap,
   BarChart3,
   Database,
+  Wrench,
 } from "lucide-react";
 import { configCategoryGroups } from "@/lib/config-categories";
 
@@ -82,6 +83,7 @@ export const arrSystemNav: ArrNavLink[] = [
   { path: "/system/artist-events", label: "Artist Events", icon: CalendarDays },
   { path: "/system/new-releases", label: "New Releases", icon: BarChart3 },
   { path: "/system/discovery", label: "Discovery", icon: Radio },
+  { path: "/system/lidarr-maintenance", label: "Lidarr Maintenance", icon: Wrench },
 ];
 
 export const arrNavSections: ArrNavSection[] = [

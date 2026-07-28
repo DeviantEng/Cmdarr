@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CommandConfig } from "@/lib/types";
+import { formatCommandTypeLabel } from "@/lib/commandTypeLabels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -181,7 +182,7 @@ function CommandsToolbarControls({
                   <SelectContent>
                     {commandTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type === "all" ? "All" : type}
+                        {type === "all" ? "All" : formatCommandTypeLabel(type)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -326,7 +327,7 @@ function CommandsListBody({
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                 {command.command_type ? (
-                  <span className="truncate">{command.command_type}</span>
+                  <span className="truncate">{formatCommandTypeLabel(command.command_type)}</span>
                 ) : null}
                 <span className="font-mono">
                   {command.schedule_override && command.schedule_cron
@@ -448,7 +449,7 @@ function CommandsListBody({
                 <td className="px-4 py-3">
                   {command.command_type ? (
                     <Badge variant="outline" className="text-xs">
-                      {command.command_type}
+                      {formatCommandTypeLabel(command.command_type)}
                     </Badge>
                   ) : null}
                 </td>
@@ -812,6 +813,9 @@ export function CommandsPage({
       xm_playlist_kind: (cfg.playlist_kind as string) === "most_heard" ? "most_heard" : "newest",
       xm_most_heard_days: typeof cfg.most_heard_days === "number" ? cfg.most_heard_days : 30,
       plex_playlist_account_id: "",
+      ignore_days: typeof cfg.ignore_days === "number" ? cfg.ignore_days : 14,
+      settle_seconds: typeof cfg.settle_seconds === "number" ? cfg.settle_seconds : 15,
+      sort_by: (cfg.sort_by as string) || "oldest_release_date",
     });
     if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       const editingParam = `editing_command=${encodeURIComponent(command.command_name)}`;
@@ -1141,7 +1145,7 @@ export function CommandsPage({
                       variant="outline"
                       className="max-w-[10rem] truncate text-[10px] md:text-xs"
                     >
-                      {command.command_type || "unknown"}
+                      {formatCommandTypeLabel(command.command_type)}
                     </Badge>
                   )}
                   <span className="text-[10px] text-muted-foreground md:hidden">
@@ -1325,6 +1329,30 @@ export function CommandsPage({
                           365,
                           Math.max(1, editForm.refresh_ttl_days ?? 14)
                         ),
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lidarr_update_all_") && (
+                <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lidarr_wanted_search_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        top_x: Math.min(50, Math.max(1, editForm.top_x ?? 10)),
+                        ignore_days: Math.min(365, Math.max(1, editForm.ignore_days ?? 14)),
+                        settle_seconds: Math.min(300, Math.max(0, editForm.settle_seconds ?? 15)),
+                        sort_by: editForm.sort_by || "oldest_release_date",
+                        album_types: (editForm.album_types ?? ["album"]).join(","),
                       },
                     })
                   }
@@ -1570,7 +1598,9 @@ export function CommandsPage({
                 !editingCommand.command_name.startsWith("setlistfm_") &&
                 !editingCommand.command_name.startsWith("mood_playlist_") &&
                 !editingCommand.command_name.startsWith("xmplaylist_") &&
-                !editingCommand.command_name.startsWith("local_discovery_") && (
+                !editingCommand.command_name.startsWith("local_discovery_") &&
+                !editingCommand.command_name.startsWith("lidarr_update_all_") &&
+                !editingCommand.command_name.startsWith("lidarr_wanted_search_") && (
                   <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
                     Save
                   </Button>

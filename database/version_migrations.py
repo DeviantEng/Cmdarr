@@ -604,6 +604,36 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         except Exception:
             pass
 
+    def migrate_lidarr_wanted_search_ignore(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lidarr_wanted_search_ignore (
+                id INTEGER PRIMARY KEY,
+                lidarr_album_id INTEGER NOT NULL UNIQUE,
+                foreign_album_id VARCHAR(100),
+                artist_name VARCHAR(500),
+                album_title VARCHAR(500) NOT NULL DEFAULT '',
+                album_type VARCHAR(50),
+                release_date VARCHAR(50),
+                ignored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ignored_until TIMESTAMP NOT NULL,
+                reason VARCHAR(100) NOT NULL DEFAULT 'no_release_found',
+                command_name VARCHAR(100),
+                search_count INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_lidarr_album_id "
+            "ON lidarr_wanted_search_ignore (lidarr_album_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_ignored_until "
+            "ON lidarr_wanted_search_ignore (ignored_until)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_command_name "
+            "ON lidarr_wanted_search_ignore (command_name)"
+        )
+
     runner.add_migration(
         VersionMigration(
             version="0.3.19",
@@ -614,6 +644,16 @@ def create_version_migration_runner() -> VersionMigrationRunner:
             ),
             up_func=migrate_remove_discovery_lastfm_import_list,
             applied_check=lambda c: False,
+        )
+    )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.19",
+            name="lidarr_wanted_search_ignore",
+            description="Add ignore list for Lidarr Wanted Search maintenance command",
+            up_func=migrate_lidarr_wanted_search_ignore,
+            applied_check=lambda c: _table_exists(c, "lidarr_wanted_search_ignore"),
         )
     )
 

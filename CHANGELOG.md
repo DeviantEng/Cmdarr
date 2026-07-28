@@ -9,15 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - **Last.fm Discovery**: Unified interactive page at `/discovery/lastfm` (Lidarr or Plex seeds, bios, artwork, Lidarr profile pickers, direct API add) plus scheduled `discovery_lastfm` command that adds artists to Lidarr via API (required quality/metadata profiles; optional search-on-add). Discovery hub at `/discovery`; KPIs under **System → Discovery**. Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
-- **Last.fm Discovery cards**: Show Last.fm listeners and scrobbles on each similar-artist result card.
-- **Lidarr Maintenance commands**: New `lidarr_maintenance` command category with **Update All** (queues Lidarr `RefreshArtist` for the whole library) and **Wanted Search** (searches top X Wanted albums with Album/EP/Single filters and sort; empty results are ignored for a configurable cooldown, default 14 days). Create from **Commands → Add New** (grouped by category). Stats and ignore-list management live under **System → Lidarr Maintenance**.
+- **Lidarr Maintenance**: New command category with Update All (queues Lidarr library metadata refresh) and Wanted Search (top X Wanted albums with Album/EP/Single filters, sort options, and temporary ignore for empty results); Add New groups commands by category; System → Lidarr Maintenance tracks stats and the ignore list.
 
 ### Fixes
-- **Last.fm Discovery Lidarr filter cache**: Force-refresh the Lidarr artists API cache on discovery runs, Sync Lidarr artists, and after successful adds so already-added artists (e.g. recently added) are not recommended; daily Playlist Sync Discovery Maintenance now refreshes that cache + `lidarr_artist` table. Discovery toolbar always shows Sync Lidarr artists (including Plex seed mode).
-- **Discovery nav**: Nest Last.fm under a Discovery sidebar section (same pattern as Commands → Add New); remove redundant Interactive/Commands links from System → Discovery.
-- **Lidarr add artist**: Treat HTTP 201 Created as success when posting artists (Last.fm Discovery interactive and scheduled); Lidarr returns 201, not 200.
-- **Last.fm Discovery bios**: Parse Last.fm `artist.getInfo` `bio` (not obsolete `wiki`) so biography dialogs show real summaries.
-- **Last.fm Discovery artwork CSP**: Allow Deezer and Last.fm image CDNs in `img-src` so result card artwork is not blocked by Content-Security-Policy.
 - **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.
 - **Artist Essentials & playlist matching**: Disambiguate punctuation-sensitive artist names (e.g. `Gore.` vs `gore`) via Lidarr MBIDs and strict Plex identity checks; Last.fm lookup tries MBID → exact name → normalized fallback with Plex validation before accepting results; resolve Plex track keys once during fetch (parallel Last.fm requests, concurrency via `LASTFM_FETCH_CONCURRENCY`, default 3) instead of re-matching at sync; log when 0/N tracks match for a library artist; do not delete target playlists when saving command settings (only on run when the title changes, or when deleting the command).
 
@@ -26,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Last.fm Discovery import list removed**: Scheduled Last.fm Discovery no longer writes a Lidarr custom-list feed; artists are added via Lidarr API. Removes `/import_lists/discovery_lastfm`, `OUTPUT_FILE`, and related UI/docs. Migration deletes `discovery_lastfm.json` and relocates cooldown state to `data/discovery/`. Playlist sync import list is unchanged.
 - **Docker / Trivy**: Bump Chainguard Python digests to **3.14.6-r4** (fixes CVE-2026-15308 on Wolfi runtime).
 - **Security (npm)**: Clear high `npm audit` findings — override transitive `brace-expansion` to **5.0.8** (CVE-2026-14257); bump `postcss` to **8.5.23** (GHSA-r28c-9q8g-f849); replace `react-router-dom` with patched `react-router` **8.3.0** (GHSA-qwww-vcr4-c8h2) and bump React peers to **19.2.7**.
-- **Docker / Trivy**: Bump Chainguard Python digests to **3.14.6-r3** (fixes CVE-2026-11940 on Wolfi runtime); refresh `.trivyignore` comments for Wolfi-only images (no Debian/trixie ignores).
 - **Docker**: Drop Debian-based runtime image; Wolfi/Chainguard (`Dockerfile`, digest-pinned Python 3.14) is now the sole published image. Develop publishes `:develop`; releases publish `latest`, `v0`, `v0.3`, and patch tags only (no `-wolfi` suffix or Debian fallback).
 
 ## [0.3.18] - 2026-07-08

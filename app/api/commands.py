@@ -1724,6 +1724,136 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
         raise HTTPException(status_code=500, detail="Failed to create xmplaylist command") from None
 
 
+def _next_command_suffix(db: Session, prefix: str) -> int:
+    """Allocate next NNNNN suffix for prefix_% command names."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like(f"{prefix}_%")).all()
+    used_ids: set[int] = set()
+    for cmd in existing:
+        try:
+            used_ids.add(int(cmd.command_name.split("_")[-1]))
+        except ValueError, IndexError:
+            pass
+    next_id = 1
+    while next_id in used_ids:
+        next_id += 1
+    return next_id
+
+
+@router.post("/lidarr-update-all/create")
+async def create_lidarr_update_all(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a Lidarr Update All (RefreshArtist) maintenance command."""
+    try:
+        display_name = (request.get("display_name") or "").strip() or "Lidarr Update All"
+        description = (request.get("description") or "").strip() or (
+            "Trigger Lidarr Update All to refresh metadata for the entire library."
+        )
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        enabled = bool(request.get("enabled", True))
+
+        next_id = _next_command_suffix(db, "lidarr_update_all")
+        command_name = f"lidarr_update_all_{next_id:05d}"
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description=description,
+            enabled=enabled,
+            schedule_cron=schedule_cron,
+            timeout_minutes=15,
+            config_json={},
+            command_type="lidarr_maintenance",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_lidarr_maintenance_commands()
+        return {"message": "Lidarr Update All command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create Lidarr Update All: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create Lidarr Update All") from None
+
+
+@router.post("/lidarr-wanted-search/create")
+async def create_lidarr_wanted_search(
+    request: dict, db: Annotated[Session, Depends(get_config_db)]
+):
+    """Create a Lidarr Wanted Search maintenance command."""
+    try:
+        display_name = (request.get("display_name") or "").strip() or "Lidarr Wanted Search"
+        description = (request.get("description") or "").strip() or (
+            "Search the top Wanted albums in Lidarr and temporarily ignore empty results."
+        )
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        enabled = bool(request.get("enabled", True))
+
+        top_x = max(1, min(50, int(request.get("top_x", 10))))
+        ignore_days = max(1, min(365, int(request.get("ignore_days", 14))))
+        settle_seconds = max(0, min(300, int(request.get("settle_seconds", 15))))
+        sort_by = str(request.get("sort_by") or "oldest_release_date").strip().lower()
+        allowed_sorts = {
+            "oldest_release_date",
+            "newest_release_date",
+            "artist_name_asc",
+            "album_title_asc",
+        }
+        if sort_by not in allowed_sorts:
+            sort_by = "oldest_release_date"
+
+        album_types_raw = request.get("album_types", ["album"])
+        if isinstance(album_types_raw, str):
+            album_types_list = [t.strip().lower() for t in album_types_raw.split(",") if t.strip()]
+        else:
+            album_types_list = [
+                str(t).strip().lower() for t in (album_types_raw or []) if str(t).strip()
+            ]
+        album_types_list = [t for t in album_types_list if t in ("album", "ep", "single", "other")]
+        if not album_types_list:
+            album_types_list = ["album"]
+
+        next_id = _next_command_suffix(db, "lidarr_wanted_search")
+        command_name = f"lidarr_wanted_search_{next_id:05d}"
+
+        config_json = {
+            "top_x": top_x,
+            "ignore_days": ignore_days,
+            "settle_seconds": settle_seconds,
+            "sort_by": sort_by,
+            "album_types": ",".join(album_types_list),
+            "lifetime_searched": 0,
+            "lifetime_downloads_found": 0,
+            "lifetime_ignored": 0,
+        }
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description=description,
+            enabled=enabled,
+            schedule_cron=schedule_cron,
+            timeout_minutes=60,
+            config_json=config_json,
+            command_type="lidarr_maintenance",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_lidarr_maintenance_commands()
+        return {"message": "Lidarr Wanted Search command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create Lidarr Wanted Search: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to create Lidarr Wanted Search"
+        ) from None
+
+
 @router.post("/playlist-sync/create")
 async def create_playlist_sync(request: dict, db: Annotated[Session, Depends(get_config_db)]):
     """Create a new playlist sync command"""
