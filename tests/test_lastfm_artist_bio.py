@@ -18,7 +18,7 @@ def _client() -> LastFMClient:
 
 
 @pytest.mark.asyncio
-async def test_get_artist_info_prefer_bio_uses_name_wiki():
+async def test_get_artist_info_prefer_bio_uses_name_bio():
     client = _client()
     client._make_request = AsyncMock(
         side_effect=[
@@ -28,7 +28,7 @@ async def test_get_artist_info_prefer_bio_uses_name_wiki():
                     "mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
                     "url": "https://www.last.fm/music/Radiohead",
                     "stats": {"listeners": "10", "playcount": "20"},
-                    "wiki": {"summary": "A band from Oxford.", "content": "Full bio."},
+                    "bio": {"summary": "A band from Oxford.", "content": "Full bio."},
                 }
             }
         ]
@@ -48,7 +48,7 @@ async def test_get_artist_info_prefer_bio_uses_name_wiki():
 
 
 @pytest.mark.asyncio
-async def test_get_artist_info_prefer_bio_falls_back_to_mbid_wiki():
+async def test_get_artist_info_prefer_bio_falls_back_to_mbid_bio():
     client = _client()
     client._make_request = AsyncMock(
         side_effect=[
@@ -66,7 +66,7 @@ async def test_get_artist_info_prefer_bio_falls_back_to_mbid_wiki():
                     "mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
                     "url": "https://www.last.fm/music/Radiohead",
                     "stats": {"listeners": "10", "playcount": "20"},
-                    "wiki": {"summary": "MBID bio.", "content": ""},
+                    "bio": {"summary": "MBID bio.", "content": ""},
                 }
             },
         ]
@@ -81,3 +81,22 @@ async def test_get_artist_info_prefer_bio_falls_back_to_mbid_wiki():
     assert info is not None
     assert info["bio_summary"] == "MBID bio."
     assert client._make_request.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_parse_artist_info_falls_back_to_wiki_key():
+    """Legacy/docs shape used wiki; live JSON uses bio — accept either."""
+    client = _client()
+    info = client._parse_artist_info_response(
+        {
+            "artist": {
+                "name": "Radiohead",
+                "mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                "url": "https://www.last.fm/music/Radiohead",
+                "stats": {"listeners": "10", "playcount": "20"},
+                "wiki": {"summary": "Wiki-shaped summary.", "content": ""},
+            }
+        }
+    )
+    assert info is not None
+    assert info["bio_summary"] == "Wiki-shaped summary."

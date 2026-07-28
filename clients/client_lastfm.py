@@ -355,15 +355,16 @@ class LastFMClient(BaseAPIClient):
         artist_data = response.get("artist", {})
         if not artist_data:
             return None
-        wiki = artist_data.get("wiki") or {}
+        # JSON API uses ``bio``; older docs/examples sometimes say ``wiki``.
+        bio = artist_data.get("bio") or artist_data.get("wiki") or {}
         return {
             "name": artist_data.get("name", ""),
             "mbid": artist_data.get("mbid", ""),
             "url": artist_data.get("url", ""),
             "playcount": artist_data.get("stats", {}).get("playcount", 0),
             "listeners": artist_data.get("stats", {}).get("listeners", 0),
-            "bio_summary": wiki.get("summary") or "",
-            "bio_content": wiki.get("content") or "",
+            "bio_summary": bio.get("summary") or "",
+            "bio_content": bio.get("content") or "",
         }
 
     async def get_artist_info(
@@ -375,8 +376,8 @@ class LastFMClient(BaseAPIClient):
     ) -> dict[str, Any] | None:
         """Get artist information by MBID or name.
 
-        Last.fm often omits wiki/bio when queried by MBID alone. When prefer_bio is True,
-        name lookup (with autocorrect) is tried first, then MBID if wiki is still empty.
+        Last.fm often omits bio when queried by MBID alone. When prefer_bio is True,
+        name lookup (with autocorrect) is tried first, then MBID if bio is still empty.
         """
         mbid_clean = (mbid or "").strip() or None
         name_clean = (artist_name or "").strip() or None
