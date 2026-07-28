@@ -80,7 +80,11 @@ class LidarrClient(BaseAPIClient):
                 self.logger.debug(f"Making {method} request to: {url}")
 
                 async with session.request(method, url, **kwargs) as response:
-                    if response.status == 200:
+                    # Lidarr returns 201 Created for POSTs (e.g. add artist).
+                    if 200 <= response.status < 300:
+                        if response.status == 204:
+                            self.logger.debug(f"Successful empty response from {endpoint}")
+                            return {}
                         data = await response.json()
                         self.logger.debug(f"Successful response from {endpoint}")
                         return data

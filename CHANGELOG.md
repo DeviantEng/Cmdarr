@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lidarr Maintenance commands**: New `lidarr_maintenance` command category with **Update All** (queues Lidarr `RefreshArtist` for the whole library) and **Wanted Search** (searches top X Wanted albums with Album/EP/Single filters and sort; empty results are ignored for a configurable cooldown, default 14 days). Create from **Commands → Add New** (grouped by category). Stats and ignore-list management live under **System → Lidarr Maintenance**.
 
 ### Fixes
+- **Lidarr add artist**: Treat HTTP 201 Created as success when posting artists (Similarr and discovery); Lidarr returns 201, not 200.
 - **Similarr bios**: Parse Last.fm `artist.getInfo` `bio` (not obsolete `wiki`) so biography dialogs show real summaries.
 - **Similarr artwork CSP**: Allow Deezer and Last.fm image CDNs in `img-src` so result card artwork is not blocked by Content-Security-Policy.
 - **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.
