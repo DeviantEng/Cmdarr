@@ -102,18 +102,19 @@ The job fails if CRITICAL/HIGH are found; the image is not pushed until the scan
 ### Discovery Commands
 
 #### `discovery_lastfm`
-**What it does**: Discovers similar artists by querying Last.fm for each artist in your Lidarr library  
+**What it does**: Samples Lidarr artists, finds similar artists via Last.fm (MusicBrainz fallback), and **adds them to Lidarr via API**  
 **Benefits**:
+- Interactive companion UI at `/discovery/lastfm` (manual seed selection; independent of command enablement)
 - Uses MusicBrainz fuzzy matching as fallback for artists missing MBIDs
 - Intelligent caching with 7-day TTL for optimal performance
-- Real-time filtering against current Lidarr library state
-- Comprehensive deduplication and quality-based output limiting
-- Generates JSON import list for Lidarr integration
+- Real-time filtering against current Lidarr library state and Import List Exclusions
+- Requires explicit Lidarr quality + metadata profiles before enable; optional search-for-missing on add
+- Cooldown / recent-add state under `data/discovery/` (not an import list)
 
-**Configuration**:
-- `DISCOVERY_LASTFM_ENABLED=true`
-- `DISCOVERY_LASTFM_SCHEDULE_HOURS=24`
-- `DISCOVERY_LASTFM_LIMIT=5`
+**Configuration** (Commands → Edit Last.fm Discovery):
+- `artists_to_query`, `similar_per_artist`, `artist_cooldown_days`, `limit`, `min_match_score`
+- `quality_profile_id`, `metadata_profile_id` (required to enable)
+- `search_for_missing_albums` (default false)
 
 #### `playlist_sync_discovery_maintenance`
 **What it does**: Maintains the unified discovery import list by removing stale entries  
@@ -238,11 +239,13 @@ REST API: `GET /api/events/...` (see OpenAPI docs in the running app).
 
 ### Lidarr Integration
 
-Add Cmdarr as a Custom List in Lidarr:
+**Playlist sync discovery** still uses a Custom List feed:
 1. Go to Settings → Import Lists
-2. Add a new "Custom List" 
-3. Set URL to: `http://cmdarr:8080/import_lists/discovery_lastfm` or `http://cmdarr:8080/import_lists/discovery_playlistsync`
+2. Add a new "Custom List"
+3. Set URL to: `http://cmdarr:8080/import_lists/discovery_playlistsync`
 4. Configure sync interval as desired (recommend 24-48 hours)
+
+**Last.fm Discovery** does **not** use an import list. Use **Discovery → Last.fm** for interactive adds, or enable the `discovery_lastfm` command (with Lidarr profiles set) for scheduled API adds. Remove any old Lidarr list pointing at `/import_lists/discovery_lastfm`.
 
 ### Environment Variables
 
@@ -518,7 +521,8 @@ LOG_RETENTION_DAYS=7
 
 Mount `/app/data` to persist:
 - **Database**: `cmdarr.db` (SQLite database with all data)
-- **Import Lists**: `import_lists/discovery_lastfm.json`, `import_lists/discovery_playlistsync.json`
+- **Import Lists**: `import_lists/discovery_playlistsync.json`
+- **Last.fm Discovery state**: `discovery/lastfm_queried.json`, `discovery/lastfm_recent_adds.json`, `discovery/lastfm_last_run_stats.json`
 - **Logs**: `logs/cmdarr.log` and rotated files
 
 ### Manual Commands
@@ -540,9 +544,9 @@ docker logs cmdarr --tail 50
 
 ### API Endpoints
 - **Import Lists**: 
-  - `/import_lists/discovery_lastfm` - JSON endpoint for Lidarr similar artist imports
   - `/import_lists/discovery_playlistsync` - JSON endpoint for playlist sync discovered artists
   - `/import_lists/metrics` - Metrics for import list files
+- **Last.fm Discovery**: `/api/discovery/lastfm/` - Interactive sessions, bios, Lidarr add, profiles, system-stats
 - **New Releases**: `/api/new-releases/` - Pending releases, dismiss, recheck, run-batch, scan-artist, lidarr-artists, sync, command-status, dismissed, restore
 - **Health Check**: `/health` - Service health status (200/503) for Docker health checks
 - **Configuration API**: `/api/config/` - RESTful configuration management

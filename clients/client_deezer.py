@@ -7,8 +7,8 @@ Handles authentication and playlist operations for Deezer
 import time
 from typing import Any
 
+from utils.discovery_images import pick_deezer_image_url
 from utils.playlist_parser import parse_playlist_url
-from utils.similarr_images import pick_deezer_image_url
 
 from .client_base import BaseAPIClient
 

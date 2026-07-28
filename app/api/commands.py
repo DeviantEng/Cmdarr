@@ -420,6 +420,23 @@ async def update_command(
                 )
 
         command.updated_at = datetime.utcnow()
+
+        if command_name == "discovery_lastfm" and command.enabled:
+            cfg = command.config_json or {}
+            try:
+                qid = int(cfg.get("quality_profile_id") or 0)
+                mid = int(cfg.get("metadata_profile_id") or 0)
+            except TypeError, ValueError:
+                qid, mid = 0, 0
+            if qid < 1 or mid < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Last.fm Discovery requires quality_profile_id and metadata_profile_id "
+                        "before it can be enabled"
+                    ),
+                )
+
         db.commit()
 
         # Refresh the command object to ensure we have the latest data

@@ -6,7 +6,7 @@ export function ArrImportListsPage() {
     <div>
       <ArrPageHeader
         title="Import Lists"
-        description="Lidarr import list endpoints for Last.fm and playlist sync discovery."
+        description="Lidarr import list endpoint for playlist sync discovery."
       />
       <ImportListsPage showPageHeader={false} useArrPanel />
     </div>

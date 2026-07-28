@@ -626,7 +626,19 @@ export function CommandsPage({
 
   const handleToggleEnabled = async (command: CommandConfig) => {
     try {
-      await api.updateCommand(command.command_name, { enabled: !command.enabled });
+      const enabling = !command.enabled;
+      if (enabling && command.command_name === "discovery_lastfm") {
+        const cfg = command.config_json || {};
+        const q = Number(cfg.quality_profile_id || 0);
+        const m = Number(cfg.metadata_profile_id || 0);
+        if (!Number.isFinite(q) || q < 1 || !Number.isFinite(m) || m < 1) {
+          toast.error(
+            "Set Lidarr quality and metadata profiles in command settings before enabling Last.fm Discovery"
+          );
+          return;
+        }
+      }
+      await api.updateCommand(command.command_name, { enabled: enabling });
       toast.success(`Command ${command.enabled ? "disabled" : "enabled"}`);
       await loadCommands();
       if (editingCommand?.command_name === command.command_name) {
@@ -636,7 +648,7 @@ export function CommandsPage({
         if (updated) setEditingCommand(updated);
       }
     } catch (error) {
-      toast.error("Failed to update command");
+      toast.error(error instanceof Error ? error.message : "Failed to update command");
       console.error(error);
     }
   };
@@ -715,6 +727,15 @@ export function CommandsPage({
         typeof cfg.artist_cooldown_days === "number" ? cfg.artist_cooldown_days : 30,
       limit: typeof cfg.limit === "number" ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === "number" ? cfg.min_match_score : 0.9,
+      quality_profile_id:
+        typeof cfg.quality_profile_id === "number" && cfg.quality_profile_id > 0
+          ? cfg.quality_profile_id
+          : null,
+      metadata_profile_id:
+        typeof cfg.metadata_profile_id === "number" && cfg.metadata_profile_id > 0
+          ? cfg.metadata_profile_id
+          : null,
+      search_for_missing_albums: !!cfg.search_for_missing_albums,
       enable_artist_discovery: !!cfg.enable_artist_discovery,
       artist_discovery_max_per_run:
         typeof cfg.artist_discovery_max_per_run === "number" ? cfg.artist_discovery_max_per_run : 2,
@@ -1264,8 +1285,16 @@ export function CommandsPage({
               )}
               {editingCommand.command_name === "discovery_lastfm" && (
                 <Button
-                  onClick={() =>
-                    handleSaveCommand({
+                  onClick={() => {
+                    const q = Number(editForm.quality_profile_id || 0);
+                    const m = Number(editForm.metadata_profile_id || 0);
+                    if (!Number.isFinite(q) || q < 1 || !Number.isFinite(m) || m < 1) {
+                      toast.error(
+                        "Select Lidarr quality and metadata profiles before saving (required to enable)"
+                      );
+                      return;
+                    }
+                    void handleSaveCommand({
                       ...buildSchedulePayload(editForm),
                       config_json: {
                         ...(editingCommand.config_json || {}),
@@ -1274,9 +1303,12 @@ export function CommandsPage({
                         artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
                         limit: editForm.limit ?? 5,
                         min_match_score: editForm.min_match_score ?? 0.9,
+                        quality_profile_id: q,
+                        metadata_profile_id: m,
+                        search_for_missing_albums: !!editForm.search_for_missing_albums,
                       },
-                    })
-                  }
+                    });
+                  }}
                 >
                   Save
                 </Button>

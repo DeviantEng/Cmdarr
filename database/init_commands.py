@@ -40,7 +40,7 @@ def init_default_commands():
         {
             "command_name": "discovery_lastfm",
             "display_name": "Last.fm Discovery",
-            "description": "Discover similar artists from Last.fm and MusicBrainz for Lidarr import",
+            "description": "Discover similar artists from Last.fm and add them to Lidarr via API",
             "enabled": False,
             "timeout_minutes": 30,
             "command_type": "discovery",
@@ -50,6 +50,7 @@ def init_default_commands():
                 "artist_cooldown_days": 30,
                 "limit": 5,
                 "min_match_score": 0.9,
+                "search_for_missing_albums": False,
             },
         },
         {

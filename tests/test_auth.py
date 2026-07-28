@@ -63,7 +63,7 @@ def test_api_and_import_list_paths_require_auth():
 
     assert _requires_auth("/api/commands") is True
     assert _requires_auth("/api/auth/status") is False
-    assert _requires_auth("/import_lists/discovery_lastfm") is False
+    assert _requires_auth("/import_lists/discovery_playlistsync") is False
     assert _requires_auth("/import_lists/metrics") is True
 
 

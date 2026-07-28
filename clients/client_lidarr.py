@@ -334,11 +334,21 @@ class LidarrClient(BaseAPIClient):
             quality_ids = {p["id"] for p in quality_profiles if "id" in p}
             metadata_ids = {p["id"] for p in metadata_profiles if "id" in p}
 
-            if quality_profile_id is None or quality_profile_id not in quality_ids:
+            if quality_profile_id is None:
                 quality_profile_id = quality_profiles[0]["id"]
+            elif quality_profile_id not in quality_ids:
+                return {
+                    "success": False,
+                    "error": f"Quality profile id {quality_profile_id} not found in Lidarr",
+                }
 
-            if metadata_profile_id is None or metadata_profile_id not in metadata_ids:
+            if metadata_profile_id is None:
                 metadata_profile_id = metadata_profiles[0]["id"]
+            elif metadata_profile_id not in metadata_ids:
+                return {
+                    "success": False,
+                    "error": f"Metadata profile id {metadata_profile_id} not found in Lidarr",
+                }
 
             # Use first root folder
             root_folder_path = root_folders[0]["path"]

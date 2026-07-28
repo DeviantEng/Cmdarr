@@ -540,13 +540,6 @@ class ConfigService:
             },
             # Output Configuration
             {
-                "key": "OUTPUT_FILE",
-                "default_value": "data/import_lists/discovery_lastfm.json",
-                "data_type": "string",
-                "category": "output",
-                "description": "Output file for Last.fm Lidarr import list",
-            },
-            {
                 "key": "LISTENBRAINZ_OUTPUT_FILE",
                 "default_value": "data/import_lists/discovery_listenbrainz.json",
                 "data_type": "string",

@@ -46,7 +46,7 @@ export const arrCommandsNav: ArrNavLink[] = [
 export const arrPrimaryNav: ArrNavLink[] = [
   { path: "/new-releases", label: "New Releases", icon: Disc3 },
   { path: "/events", label: "Artist Events", icon: CalendarDays },
-  { path: "/similarr", label: "Similarr", icon: Radio },
+  { path: "/discovery", label: "Discovery", icon: Radio, end: true },
   { path: "/import-lists", label: "Import Lists", icon: Import },
 ];
 
@@ -71,6 +71,7 @@ export const arrSystemNav: ArrNavLink[] = [
   { path: "/system/library-cache", label: "Library Cache", icon: Database },
   { path: "/system/artist-events", label: "Artist Events", icon: CalendarDays },
   { path: "/system/new-releases", label: "New Releases", icon: BarChart3 },
+  { path: "/system/discovery", label: "Discovery", icon: Radio },
 ];
 
 export const arrNavSections: ArrNavSection[] = [
@@ -128,6 +129,10 @@ export function arrPageTitle(pathname: string): string {
 
   const systemMatch = arrSystemNav.find((item) => pathname.startsWith(item.path));
   if (systemMatch) return systemMatch.label;
+
+  if (pathname === "/discovery" || pathname === "/discovery/") return "Discovery";
+  if (pathname.startsWith("/discovery/lastfm")) return "Last.fm Discovery";
+  if (pathname.startsWith("/discovery")) return "Discovery";
 
   const primaryMatch = arrPrimaryNav.find((item) =>
     item.end ? pathname === item.path : pathname.startsWith(item.path)

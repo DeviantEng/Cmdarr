@@ -13,7 +13,7 @@ import os
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-# Artist artwork for Similarr cards (Deezer primary; Last.fm when non-placeholder).
+# Artist artwork for Last.fm Discovery cards (Deezer primary; Last.fm when non-placeholder).
 _IMG_SRC_EXTRA = (
     "https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net https://lastfm.freetls.fastly.net"
 )

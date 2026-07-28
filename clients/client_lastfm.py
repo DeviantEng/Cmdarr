@@ -6,7 +6,7 @@ Refactored to use BaseAPIClient for reduced code duplication
 
 from typing import Any
 
-from utils.similarr_images import pick_lastfm_image_url
+from utils.discovery_images import pick_lastfm_image_url
 
 from .client_base import BaseAPIClient
 

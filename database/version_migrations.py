@@ -565,6 +565,58 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_remove_discovery_lastfm_import_list(cursor):
+        """Filesystem cleanup for Last.fm Discovery import-list retirement."""
+        from pathlib import Path
+
+        from database.database import _get_data_dir
+
+        data_dir = Path(_get_data_dir())
+        import_lists = data_dir / "import_lists"
+        discovery_dir = data_dir / "discovery"
+        discovery_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in ("discovery_lastfm.json", "discovery_lastfm.json.backup"):
+            path = import_lists / name
+            if path.exists():
+                path.unlink()
+
+        try:
+            from services.config_service import config_service
+
+            configured = (config_service.get("OUTPUT_FILE") or "").strip()
+            if configured:
+                cfg_path = Path(configured)
+                if cfg_path.exists() and "discovery_lastfm" in cfg_path.name:
+                    cfg_path.unlink()
+        except Exception:
+            pass
+
+        old_queried = import_lists / "discovery_lastfm_queried.json"
+        new_queried = discovery_dir / "lastfm_queried.json"
+        if old_queried.exists() and not new_queried.exists():
+            old_queried.replace(new_queried)
+        elif old_queried.exists():
+            old_queried.unlink()
+
+        try:
+            cursor.execute("DELETE FROM config_settings WHERE key = ?", ("OUTPUT_FILE",))
+        except Exception:
+            pass
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.19",
+            name="remove_discovery_lastfm_import_list",
+            description=(
+                "Delete obsolete Last.fm Discovery import-list JSON; move cooldown file "
+                "to data/discovery/"
+            ),
+            up_func=migrate_remove_discovery_lastfm_import_list,
+            applied_check=lambda c: False,
+        )
+    )
+
     return runner
 
 

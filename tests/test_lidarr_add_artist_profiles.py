@@ -63,7 +63,6 @@ async def test_add_artist_falls_back_when_profile_id_invalid():
         metadata_profile_id=999,
     )
 
-    assert result["success"] is True
-    payload = client._make_request.await_args.kwargs["json"]
-    assert payload["qualityProfileId"] == 1
-    assert payload["metadataProfileId"] == 10
+    assert result["success"] is False
+    assert "Quality profile" in result["error"]
+    client._make_request.assert_not_awaited()

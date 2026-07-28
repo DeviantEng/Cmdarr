@@ -1,11 +1,11 @@
-"""Unit tests for Similarr image helpers and Plex ranking."""
+"""Unit tests for Last.fm Discovery image helpers and Plex ranking."""
 
 from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from utils.similarr_images import pick_deezer_image_url, pick_lastfm_image_url
-from utils.similarr_plex import rank_plex_top_artists
+from utils.discovery_images import pick_deezer_image_url, pick_lastfm_image_url
+from utils.discovery_plex import rank_plex_top_artists
 
 
 def test_pick_lastfm_image_rejects_placeholder():
@@ -49,6 +49,6 @@ def test_rank_plex_top_artists():
         {"type": "track", "grandparentTitle": "Beta", "viewedAt": viewed},
         {"type": "album", "grandparentTitle": "Gamma", "viewedAt": viewed},
     ]
-    with patch("utils.similarr_plex.get_scheduler_timezone", return_value=tz):
+    with patch("utils.discovery_plex.get_scheduler_timezone", return_value=tz):
         ranked = rank_plex_top_artists(history, lookback_days=90, limit=10, now=now)
     assert ranked == [("Alpha", 2), ("Beta", 1)]

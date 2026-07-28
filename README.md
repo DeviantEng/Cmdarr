@@ -106,16 +106,18 @@ Visit `http://localhost:8080`. For frontend dev with hot reload: `npm run dev` i
 Access `http://localhost:8080` for:
 
 - **Commands** – Dashboard, enable/disable, manual run, edit; create Daylist, Local Discovery, Artist Essentials, Mood Playlist, or playlist sync via New
+- **Discovery** – Interactive Last.fm similar-artist discovery (`/discovery/lastfm`); scheduled command under Commands
 - **Config** – Web-based configuration with validation
 - **Status** – Health, cache status, system info
 - **New Releases** – Deezer/Spotify releases missing from MusicBrainz; scan artist by URL
 
 ## Lidarr Integration
 
-Add Cmdarr as a Custom List in Lidarr (Settings → Import Lists):
+Add Cmdarr as a Custom List in Lidarr (Settings → Import Lists) for playlist sync discovery:
 
-- `http://cmdarr:8080/import_lists/discovery_lastfm` – similar artists
 - `http://cmdarr:8080/import_lists/discovery_playlistsync` – playlist sync artists
+
+Last.fm Discovery adds artists directly to Lidarr via API (interactive page or scheduled command); do not configure a Last.fm import list.
 
 ## Contributing
 

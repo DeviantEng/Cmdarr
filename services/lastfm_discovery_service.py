@@ -1,4 +1,4 @@
-"""In-memory Similarr interactive similar-artist discovery sessions."""
+"""In-memory Last.fm Discovery interactive similar-artist discovery sessions."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from clients.client_lidarr import LidarrClient
 from commands.config_adapter import ConfigAdapter
 from utils.discovery import DiscoveryUtils
 
-logger = logging.getLogger("cmdarr.similarr")
+logger = logging.getLogger("cmdarr.discovery.lastfm")
 
 # Per-seed Last.fm similar fetch size (discovery_lastfm uses a tiny default).
 _SIMILAR_PER_SEED = 50
@@ -25,7 +25,7 @@ _DEEZER_IMAGE_CONCURRENCY = 5
 
 
 @dataclass
-class SimilarrResult:
+class LastfmDiscoveryResult:
     mbid: str
     name: str
     match_score: float
@@ -47,13 +47,13 @@ class SimilarrResult:
 
 
 @dataclass
-class SimilarrSession:
+class LastfmDiscoverySession:
     session_id: str
     seeds: list[dict[str, str]]  # {mbid, name}
     status: str = "running"  # running | completed | stopped | timed_out | error
     started_at: float = field(default_factory=time.monotonic)
     error: str | None = None
-    results: dict[str, SimilarrResult] = field(default_factory=dict)
+    results: dict[str, LastfmDiscoveryResult] = field(default_factory=dict)
     result_order: list[str] = field(default_factory=list)
     stop_requested: bool = False
     task: asyncio.Task | None = None
@@ -73,21 +73,21 @@ class SimilarrSession:
         }
 
 
-class SimilarrService:
+class LastfmDiscoveryService:
     """Single active interactive discovery session per process."""
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._session: SimilarrSession | None = None
+        self._session: LastfmDiscoverySession | None = None
 
-    def get_session(self, session_id: str | None = None) -> SimilarrSession | None:
+    def get_session(self, session_id: str | None = None) -> LastfmDiscoverySession | None:
         if self._session is None:
             return None
         if session_id is not None and self._session.session_id != session_id:
             return None
         return self._session
 
-    async def start_session(self, seeds: list[dict[str, str]]) -> SimilarrSession:
+    async def start_session(self, seeds: list[dict[str, str]]) -> LastfmDiscoverySession:
         cleaned: list[dict[str, str]] = []
         seen: set[str] = set()
         for s in seeds:
@@ -103,16 +103,16 @@ class SimilarrService:
 
         async with self._lock:
             if self._session and self._session.status == "running":
-                raise RuntimeError("A Similarr search is already running")
+                raise RuntimeError("A Last.fm Discovery search is already running")
 
-            session = SimilarrSession(session_id=str(uuid.uuid4()), seeds=cleaned)
+            session = LastfmDiscoverySession(session_id=str(uuid.uuid4()), seeds=cleaned)
             self._session = session
             session.task = asyncio.create_task(
-                self._run_session(session), name=f"similarr-{session.session_id}"
+                self._run_session(session), name=f"lastfm-discovery-{session.session_id}"
             )
             return session
 
-    async def stop_session(self, session_id: str) -> SimilarrSession:
+    async def stop_session(self, session_id: str) -> LastfmDiscoverySession:
         async with self._lock:
             session = self._session
             if session is None or session.session_id != session_id:
@@ -121,7 +121,7 @@ class SimilarrService:
                 session.stop_requested = True
             return session
 
-    async def _run_session(self, session: SimilarrSession) -> None:
+    async def _run_session(self, session: LastfmDiscoverySession) -> None:
         """One-shot: query each selected seed once, then complete."""
         try:
             await asyncio.wait_for(
@@ -138,11 +138,11 @@ class SimilarrService:
             session.status = "stopped"
             raise
         except Exception as e:
-            logger.exception("Similarr session failed: %s", e)
+            logger.exception("Last.fm Discovery session failed: %s", e)
             session.status = "error"
             session.error = str(e)
 
-    async def _fill_missing_images(self, session: SimilarrSession, config) -> None:
+    async def _fill_missing_images(self, session: LastfmDiscoverySession, config) -> None:
         missing = [r for r in session.results.values() if not r.image_url]
         if not missing:
             return
@@ -151,7 +151,7 @@ class SimilarrService:
 
         async with DeezerClient(config) as deezer:
 
-            async def _one(result: SimilarrResult) -> None:
+            async def _one(result: LastfmDiscoveryResult) -> None:
                 if session.stop_requested:
                     return
                 async with sem:
@@ -167,7 +167,7 @@ class SimilarrService:
 
             await asyncio.gather(*[_one(r) for r in missing])
 
-    async def _run_one_shot(self, session: SimilarrSession) -> None:
+    async def _run_one_shot(self, session: LastfmDiscoverySession) -> None:
         config = ConfigAdapter()
 
         async with LidarrClient(config) as lidarr, LastFMClient(config) as lastfm:
@@ -196,7 +196,7 @@ class SimilarrService:
                     )
                 except Exception as e:
                     logger.warning(
-                        "Similarr similar lookup failed for %s: %s",
+                        "Last.fm Discovery similar lookup failed for %s: %s",
                         seed["name"],
                         e,
                     )
@@ -240,7 +240,7 @@ class SimilarrService:
                     if not ok:
                         continue
 
-                    session.results[mbid] = SimilarrResult(
+                    session.results[mbid] = LastfmDiscoveryResult(
                         mbid=mbid,
                         name=name,
                         match_score=match_score,
@@ -265,4 +265,4 @@ class SimilarrService:
                 session.status = "completed"
 
 
-similarr_service = SimilarrService()
+lastfm_discovery_service = LastfmDiscoveryService()

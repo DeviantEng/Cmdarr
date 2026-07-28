@@ -59,7 +59,6 @@ export interface ExecutionHistoryResponse {
 }
 
 export interface ImportListMetrics {
-  lastfm: ImportListMetric;
   unified: ImportListMetric;
   timestamp?: string;
 }

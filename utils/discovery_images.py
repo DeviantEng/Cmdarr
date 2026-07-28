@@ -1,4 +1,4 @@
-"""Helpers for Similarr artist artwork (Last.fm + Deezer)."""
+"""Helpers for Last.fm Discovery artist artwork (Last.fm + Deezer)."""
 
 from __future__ import annotations
 

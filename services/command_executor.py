@@ -572,21 +572,25 @@ class CommandExecutor:
 
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
+        if stats.get("error"):
+            return f"Last.fm Discovery failed: {stats['error']} ({duration:.1f}s)"
+
         total = stats.get("total_candidates", 0)
         already_in = stats.get("filtered_already_in_lidarr", 0)
         excluded = stats.get("filtered_in_exclusions", 0)
-        output = stats.get("final_count", 0)
+        candidates = stats.get("final_count", 0)
+        added = stats.get("added_count", 0)
+        failed = stats.get("failed_count", 0)
 
         parts = [f"Last.fm Discovery completed in {duration:.1f}s"]
         if total > 0:
-            if output == 0:
-                parts.append(
-                    f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, no new artists to add"
-                )
-            else:
-                parts.append(
-                    f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, {output:,} new artists ready for import"
-                )
+            parts.append(
+                f"{total:,} candidates: {already_in:,} already in Lidarr, "
+                f"{excluded:,} excluded, {candidates:,} selected"
+            )
+        parts.append(f"added {added:,} via Lidarr API")
+        if failed:
+            parts.append(f"{failed:,} add failures")
         return " • ".join(parts)
 
     def _build_new_releases_summary(self, stats: dict[str, Any], duration: float) -> str:
