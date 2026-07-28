@@ -814,7 +814,7 @@ export function CommandsPage({
       xm_most_heard_days: typeof cfg.most_heard_days === "number" ? cfg.most_heard_days : 30,
       plex_playlist_account_id: "",
       ignore_days: typeof cfg.ignore_days === "number" ? cfg.ignore_days : 14,
-      settle_seconds: typeof cfg.settle_seconds === "number" ? cfg.settle_seconds : 15,
+      settle_seconds: typeof cfg.settle_seconds === "number" ? cfg.settle_seconds : 30,
       sort_by: (cfg.sort_by as string) || "oldest_release_date",
     });
     if (isDaylist || command.command_name.startsWith("local_discovery_")) {
@@ -1350,7 +1350,7 @@ export function CommandsPage({
                         ...(editingCommand.config_json || {}),
                         top_x: Math.min(50, Math.max(1, editForm.top_x ?? 10)),
                         ignore_days: Math.min(365, Math.max(1, editForm.ignore_days ?? 14)),
-                        settle_seconds: Math.min(300, Math.max(0, editForm.settle_seconds ?? 15)),
+                        settle_seconds: Math.min(300, Math.max(0, editForm.settle_seconds ?? 30)),
                         sort_by: editForm.sort_by || "oldest_release_date",
                         album_types: (editForm.album_types ?? ["album"]).join(","),
                       },

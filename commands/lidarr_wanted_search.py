@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search top X Lidarr Wanted albums, ignore empties for a cooldown period."""
+"""Search top X Lidarr Wanted albums; cooldown grabs and empty results."""
 
 from __future__ import annotations
 
@@ -145,6 +145,7 @@ class LidarrWantedSearchCommand(BaseCommand):
             ignored_until = now + timedelta(days=ignore_days)
             downloads_found = 0
             ignored_added = 0
+            grabbed_cooled = 0
             found_titles: list[str] = []
             ignored_titles: list[str] = []
 
@@ -156,40 +157,30 @@ class LidarrWantedSearchCommand(BaseCommand):
                 if aid in found_ids:
                     downloads_found += 1
                     found_titles.append(label)
-                    self.logger.info("Download activity for Wanted album: %s", label)
+                    self._upsert_ignore(
+                        session,
+                        album,
+                        command_name=command_name,
+                        now=now,
+                        ignored_until=ignored_until,
+                        reason="grabbed",
+                    )
+                    grabbed_cooled += 1
+                    self.logger.info(
+                        "Download activity for Wanted album: %s — cooling down until %s",
+                        label,
+                        ignored_until.date().isoformat(),
+                    )
                     continue
 
-                existing = (
-                    session.query(LidarrWantedSearchIgnore)
-                    .filter(LidarrWantedSearchIgnore.lidarr_album_id == aid)
-                    .first()
+                self._upsert_ignore(
+                    session,
+                    album,
+                    command_name=command_name,
+                    now=now,
+                    ignored_until=ignored_until,
+                    reason="no_release_found",
                 )
-                if existing:
-                    existing.ignored_until = ignored_until
-                    existing.ignored_at = now
-                    existing.reason = "no_release_found"
-                    existing.command_name = command_name
-                    existing.search_count = int(existing.search_count or 0) + 1
-                    existing.album_title = album.get("album_title") or existing.album_title
-                    existing.artist_name = album.get("artist_name") or existing.artist_name
-                    existing.album_type = album.get("album_type") or existing.album_type
-                    existing.release_date = album.get("release_date") or existing.release_date
-                else:
-                    session.add(
-                        LidarrWantedSearchIgnore(
-                            lidarr_album_id=aid,
-                            foreign_album_id=album.get("foreign_album_id"),
-                            artist_name=album.get("artist_name"),
-                            album_title=album.get("album_title") or "",
-                            album_type=album.get("album_type"),
-                            release_date=album.get("release_date"),
-                            ignored_at=now,
-                            ignored_until=ignored_until,
-                            reason="no_release_found",
-                            command_name=command_name,
-                            search_count=1,
-                        )
-                    )
                 ignored_added += 1
                 ignored_titles.append(label)
                 self.logger.info(
@@ -212,6 +203,7 @@ class LidarrWantedSearchCommand(BaseCommand):
                 "albums_selected": len(album_ids),
                 "albums_searched": len(album_ids),
                 "downloads_found": downloads_found,
+                "grabbed_cooled": grabbed_cooled,
                 "ignored_added": ignored_added,
                 "ignores_expired_purged": expired,
                 "active_ignores": active_after,
@@ -234,6 +226,52 @@ class LidarrWantedSearchCommand(BaseCommand):
             session_obj = getattr(client, "session", None)
             if session_obj and not session_obj.closed:
                 await session_obj.close()
+
+    def _upsert_ignore(
+        self,
+        session,
+        album: dict[str, Any],
+        *,
+        command_name: str,
+        now: datetime,
+        ignored_until: datetime,
+        reason: str,
+    ) -> None:
+        """Put/refresh an album on the temporary skip list (no release or already grabbed)."""
+        aid = album.get("lidarr_album_id")
+        if aid is None:
+            return
+        existing = (
+            session.query(LidarrWantedSearchIgnore)
+            .filter(LidarrWantedSearchIgnore.lidarr_album_id == aid)
+            .first()
+        )
+        if existing:
+            existing.ignored_until = ignored_until
+            existing.ignored_at = now
+            existing.reason = reason
+            existing.command_name = command_name
+            existing.search_count = int(existing.search_count or 0) + 1
+            existing.album_title = album.get("album_title") or existing.album_title
+            existing.artist_name = album.get("artist_name") or existing.artist_name
+            existing.album_type = album.get("album_type") or existing.album_type
+            existing.release_date = album.get("release_date") or existing.release_date
+            return
+        session.add(
+            LidarrWantedSearchIgnore(
+                lidarr_album_id=aid,
+                foreign_album_id=album.get("foreign_album_id"),
+                artist_name=album.get("artist_name"),
+                album_title=album.get("album_title") or "",
+                album_type=album.get("album_type"),
+                release_date=album.get("release_date"),
+                ignored_at=now,
+                ignored_until=ignored_until,
+                reason=reason,
+                command_name=command_name,
+                search_count=1,
+            )
+        )
 
     async def _select_wanted_albums(
         self,

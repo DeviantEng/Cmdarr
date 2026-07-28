@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Trash2, Loader2 } from "lucide-react";
+import { Link } from "react-router";
+import { RefreshCw, Loader2 } from "lucide-react";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import { ArrContentPanel, ArrPanelBody, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
+import { LidarrWantedIgnoreDialog } from "@/components/LidarrWantedIgnoreDialog";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type MaintenanceStats = {
   update_all: {
@@ -24,8 +27,6 @@ type MaintenanceStats = {
   wanted_search: {
     command_count: number;
     total_execution_count: number;
-    total_success_count: number;
-    total_failure_count: number;
     lifetime_searched: number;
     lifetime_downloads_found: number;
     lifetime_ignored: number;
@@ -39,56 +40,81 @@ type MaintenanceStats = {
     }>;
   };
   ignore: { active_count: number; total_count: number };
-  recent_runs: Array<{
-    id: number;
-    command_name: string;
-    success: boolean | null;
-    status: string;
-    started_at: string | null;
-    duration: number | null;
-    output_summary: string | null;
-    triggered_by: string | null;
-  }>;
 };
 
-type IgnoreItem = {
-  id: number;
-  lidarr_album_id: number;
-  artist_name: string | null;
-  album_title: string;
-  album_type: string | null;
-  release_date: string | null;
-  ignored_until: string | null;
-  search_count: number;
-  command_name: string | null;
-};
-
-function StatBox({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-border bg-background/50 px-3 py-2">
+function StatBox({
+  label,
+  value,
+  clickable,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  clickable?: boolean;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value}</div>
-    </div>
+    </>
+  );
+  if (clickable && onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "rounded-md border border-border bg-background/50 px-3 py-2 text-left transition-colors",
+          "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        )}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className="rounded-md border border-border bg-background/50 px-3 py-2">{body}</div>;
+}
+
+function CommandSummary({
+  commands,
+}: {
+  commands: Array<{
+    display_name: string;
+    enabled: boolean;
+    last_run: string | null;
+    total_execution_count: number;
+  }>;
+}) {
+  if (!commands.length) return null;
+  return (
+    <ul className="mt-3 space-y-1 text-sm">
+      {commands.map((c) => (
+        <li key={c.display_name} className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{c.display_name}</span>
+          <Badge variant={c.enabled ? "default" : "secondary"} className="text-xs">
+            {c.enabled ? "Enabled" : "Disabled"}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {c.total_execution_count} runs
+            {c.last_run ? ` · last ${new Date(c.last_run).toLocaleString()}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export function ArrSystemLidarrMaintenancePage() {
   const [stats, setStats] = useState<MaintenanceStats | null>(null);
-  const [ignores, setIgnores] = useState<IgnoreItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [ignoreOpen, setIgnoreOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, ign] = await Promise.all([
-        api.request<MaintenanceStats>("/api/lidarr-maintenance/stats"),
-        api.request<{ total: number; items: IgnoreItem[] }>(
-          "/api/lidarr-maintenance/ignore?active_only=true&limit=200"
-        ),
-      ]);
+      const s = await api.request<MaintenanceStats>("/api/lidarr-maintenance/stats");
       setStats(s);
-      setIgnores(ign.items || []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load Lidarr maintenance stats");
     } finally {
@@ -100,43 +126,13 @@ export function ArrSystemLidarrMaintenancePage() {
     void load();
   }, [load]);
 
-  const restoreOne = async (id: number) => {
-    setBusy(true);
-    try {
-      await api.request(`/api/lidarr-maintenance/ignore/${id}`, { method: "DELETE" });
-      toast.success("Removed from ignore list");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to restore");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const restoreAll = async () => {
-    if (!confirm("Clear the entire Wanted-search ignore list?")) return;
-    setBusy(true);
-    try {
-      const r = await api.request<{ deleted: number }>(
-        "/api/lidarr-maintenance/ignore/restore-all",
-        {
-          method: "POST",
-        }
-      );
-      toast.success(`Cleared ${r.deleted} ignore(s)`);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to clear ignore list");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const ignoreCount = stats?.ignore.active_count ?? 0;
 
   return (
     <div>
       <ArrPageHeader
         title="Lidarr Maintenance"
-        description="Update All / Wanted Search run stats and temporary ignore list."
+        description="Update All and Wanted Search status. Run history lives under Commands → History."
         actions={
           <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
             {loading ? (
@@ -151,7 +147,10 @@ export function ArrSystemLidarrMaintenancePage() {
 
       <div className="space-y-4">
         <ArrContentPanel>
-          <ArrSectionHeader title="Update All" description="Library metadata refresh commands." />
+          <ArrSectionHeader
+            title="Update All"
+            description="Library metadata refresh (RefreshArtist)."
+          />
           <ArrPanelBody>
             {stats ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -163,21 +162,15 @@ export function ArrSystemLidarrMaintenancePage() {
             ) : (
               <p className="text-sm text-muted-foreground">Loading…</p>
             )}
-            {stats?.update_all.commands.length ? (
-              <ul className="mt-3 space-y-1 text-sm">
-                {stats.update_all.commands.map((c) => (
-                  <li key={c.command_name} className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{c.display_name}</span>
-                    <Badge variant={c.enabled ? "default" : "secondary"} className="text-xs">
-                      {c.enabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {c.total_execution_count} runs
-                      {c.last_run ? ` · last ${new Date(c.last_run).toLocaleString()}` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            <CommandSummary commands={stats?.update_all.commands ?? []} />
+            {!stats?.update_all.command_count ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No Update All command yet — create one from{" "}
+                <Link className="underline underline-offset-2" to="/commands/add">
+                  Commands → Add New
+                </Link>
+                .
+              </p>
             ) : null}
           </ArrPanelBody>
         </ArrContentPanel>
@@ -185,7 +178,7 @@ export function ArrSystemLidarrMaintenancePage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Wanted Search"
-            description="Top-X Wanted album searches and ignore cooldown."
+            description="Top-X Wanted album searches. Grabs and empty results share a cooldown."
           />
           <ArrPanelBody>
             {stats ? (
@@ -196,124 +189,43 @@ export function ArrSystemLidarrMaintenancePage() {
                   label="Downloads found"
                   value={stats.wanted_search.lifetime_downloads_found}
                 />
-                <StatBox label="Times ignored" value={stats.wanted_search.lifetime_ignored} />
+                <StatBox
+                  label="Ignored albums"
+                  value={ignoreCount}
+                  clickable={ignoreCount > 0}
+                  onClick={() => setIgnoreOpen(true)}
+                />
               </div>
             ) : null}
-            {stats?.wanted_search.commands.length ? (
-              <ul className="mt-3 space-y-1 text-sm">
-                {stats.wanted_search.commands.map((c) => (
-                  <li key={c.command_name} className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{c.display_name}</span>
-                    <Badge variant={c.enabled ? "default" : "secondary"} className="text-xs">
-                      {c.enabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      top {String(c.config_json?.top_x ?? "—")} ·{" "}
-                      {String(c.config_json?.album_types ?? "album")} · {c.total_execution_count}{" "}
-                      runs
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            <CommandSummary commands={stats?.wanted_search.commands ?? []} />
+            {!stats?.wanted_search.command_count ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No Wanted Search command yet — create one from{" "}
+                <Link className="underline underline-offset-2" to="/commands/add">
+                  Commands → Add New
+                </Link>
+                .
+              </p>
+            ) : ignoreCount === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No albums currently ignored. Expired ignore rows are purged automatically on each
+                Wanted Search run.
+              </p>
             ) : (
               <p className="mt-2 text-sm text-muted-foreground">
-                No Wanted Search commands yet — create one from Commands → Add New.
+                Click <span className="font-medium text-foreground">Ignored albums</span> to search,
+                restore, or clear the cooldown list.
               </p>
             )}
           </ArrPanelBody>
         </ArrContentPanel>
-
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Ignore list"
-            description={`${stats?.ignore.active_count ?? 0} active · albums with no release found are skipped until cooldown ends.`}
-            actions={
-              ignores.length > 0 ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void restoreAll()}
-                  disabled={busy}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Clear all
-                </Button>
-              ) : null
-            }
-          />
-          <ArrPanelBody>
-            {ignores.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No albums currently ignored.</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {ignores.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        {item.artist_name || "?"} – {item.album_title}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.album_type || "?"}
-                        {item.release_date ? ` · ${item.release_date}` : ""}
-                        {item.ignored_until
-                          ? ` · until ${new Date(item.ignored_until).toLocaleDateString()}`
-                          : ""}
-                        {item.search_count > 1 ? ` · searched ${item.search_count}×` : ""}
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void restoreOne(item.id)}
-                    >
-                      Restore
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ArrPanelBody>
-        </ArrContentPanel>
-
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Recent runs"
-            description="Latest Update All and Wanted Search executions."
-          />
-          <ArrPanelBody>
-            {!stats?.recent_runs?.length ? (
-              <p className="text-sm text-muted-foreground">No recent runs.</p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {stats.recent_runs.map((run) => (
-                  <li key={run.id} className="rounded-md border border-border px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{run.command_name}</span>
-                      <Badge variant={run.success ? "default" : "destructive"} className="text-xs">
-                        {run.status}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {run.started_at ? new Date(run.started_at).toLocaleString() : ""}
-                        {run.duration != null ? ` · ${run.duration.toFixed(1)}s` : ""}
-                        {run.triggered_by ? ` · ${run.triggered_by}` : ""}
-                      </span>
-                    </div>
-                    {run.output_summary ? (
-                      <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-                        {run.output_summary}
-                      </pre>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ArrPanelBody>
-        </ArrContentPanel>
       </div>
+
+      <LidarrWantedIgnoreDialog
+        open={ignoreOpen}
+        onOpenChange={setIgnoreOpen}
+        onChanged={() => void load()}
+      />
     </div>
   );
 }

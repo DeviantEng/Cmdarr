@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from database.config_models import CommandConfig, CommandExecution, LidarrWantedSearchIgnore
+from database.config_models import CommandConfig, LidarrWantedSearchIgnore
 from database.database import get_config_db
 
 router = APIRouter()
@@ -93,36 +93,18 @@ def _command_rollups(db: Session, prefix: str) -> dict[str, Any]:
 async def lidarr_maintenance_stats(db: Annotated[Session, Depends(get_config_db)]):
     """Aggregate stats for Lidarr maintenance commands and ignore list."""
     now = datetime.now(UTC)
+    # Drop expired rows so the table does not accumulate indefinitely between runs.
+    db.query(LidarrWantedSearchIgnore).filter(LidarrWantedSearchIgnore.ignored_until <= now).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
     active_ignores = (
         db.query(LidarrWantedSearchIgnore)
         .filter(LidarrWantedSearchIgnore.ignored_until > now)
         .count()
     )
     total_ignores = db.query(LidarrWantedSearchIgnore).count()
-
-    recent = (
-        db.query(CommandExecution)
-        .filter(
-            (CommandExecution.command_name.like("lidarr_update_all_%"))
-            | (CommandExecution.command_name.like("lidarr_wanted_search_%"))
-        )
-        .order_by(CommandExecution.started_at.desc())
-        .limit(20)
-        .all()
-    )
-    recent_runs = [
-        {
-            "id": e.id,
-            "command_name": e.command_name,
-            "success": e.success,
-            "status": e.status,
-            "started_at": e.started_at.isoformat() if e.started_at else None,
-            "duration": e.duration,
-            "output_summary": e.output_summary,
-            "triggered_by": e.triggered_by,
-        }
-        for e in recent
-    ]
 
     update_all = _command_rollups(db, "lidarr_update_all")
     wanted_search = _command_rollups(db, "lidarr_wanted_search")
@@ -134,7 +116,6 @@ async def lidarr_maintenance_stats(db: Annotated[Session, Depends(get_config_db)
             "active_count": active_ignores,
             "total_count": total_ignores,
         },
-        "recent_runs": recent_runs,
     }
 
 
@@ -147,6 +128,11 @@ async def list_wanted_search_ignores(
 ):
     """List Wanted-search ignore entries."""
     now = datetime.now(UTC)
+    db.query(LidarrWantedSearchIgnore).filter(LidarrWantedSearchIgnore.ignored_until <= now).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
     q = db.query(LidarrWantedSearchIgnore)
     if active_only:
         q = q.filter(LidarrWantedSearchIgnore.ignored_until > now)

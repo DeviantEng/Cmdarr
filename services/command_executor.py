@@ -601,7 +601,9 @@ class CommandExecutor:
         summary = " • ".join(parts)
         found_sample = stats.get("found_sample") or []
         if found_sample:
-            summary += "\n\nDownloads:\n• " + "\n• ".join(str(x) for x in found_sample[:10])
+            summary += "\n\nDownloads (cooled):\n• " + "\n• ".join(
+                str(x) for x in found_sample[:10]
+            )
         ignored_sample = stats.get("ignored_sample") or []
         if ignored_sample:
             summary += "\n\nIgnored (no release):\n• " + "\n• ".join(

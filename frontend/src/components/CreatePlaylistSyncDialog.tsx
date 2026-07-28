@@ -35,9 +35,11 @@ import {
   Mic2,
   RefreshCw,
   Search,
+  Info,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { CreateCommandScheduleExpiryBlock } from "@/components/CreateCommandScheduleExpiryBlock";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
@@ -50,7 +52,6 @@ import {
 } from "@/command-spec";
 import { PlaylistSyncArtistDiscoveryControl } from "@/components/command-edit/PlaylistSyncArtistDiscoveryControl";
 import { ArrContentPanel, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
-import { cn } from "@/lib/utils";
 
 type PlaylistType =
   | "listenbrainz"
@@ -299,17 +300,15 @@ export function CreatePlaylistSyncDialog({
   const [xmplaylistStationFilter, setXmplaylistStationFilter] = useState("");
 
   const [lidarrUpdateAllForm, setLidarrUpdateAllForm] = useState({
-    display_name: "Lidarr Update All",
     schedule_cron: "0 4 * * 0",
-    schedule_override: true,
+    schedule_override: false,
     enabled: true,
   });
 
   const [lidarrWantedSearchForm, setLidarrWantedSearchForm] = useState({
-    display_name: "Lidarr Wanted Search",
     top_x: 10,
     ignore_days: 14,
-    settle_seconds: 15,
+    settle_seconds: 30,
     sort_by: "oldest_release_date" as
       | "oldest_release_date"
       | "newest_release_date"
@@ -317,9 +316,13 @@ export function CreatePlaylistSyncDialog({
       | "album_title_asc",
     album_types: ["album"] as string[],
     schedule_cron: "0 5 * * *",
-    schedule_override: true,
+    schedule_override: false,
     enabled: true,
   });
+
+  const [singletonAvailability, setSingletonAvailability] = useState<
+    Record<string, { available: boolean; reason?: string | null }>
+  >({});
 
   const filteredXmStations = useMemo(() => {
     const q = xmplaylistStationFilter.trim().toLowerCase();
@@ -350,7 +353,7 @@ export function CreatePlaylistSyncDialog({
         setLocalDiscoveryUsedIds(new Set());
       });
 
-  // Fetch mood playlist moods and plex accounts when dialog opens
+  // Fetch mood playlist moods, plex accounts, and singleton availability when dialog opens
   useEffect(() => {
     if (!isActive) return;
     api
@@ -358,6 +361,12 @@ export function CreatePlaylistSyncDialog({
       .then((r) => setMoodsList(r.moods || []))
       .catch(() => setMoodsList([]));
     fetchPlexAccounts();
+    api
+      .request<{
+        singletons?: Record<string, { available: boolean; reason?: string | null }>;
+      }>("/api/commands/create-availability")
+      .then((r) => setSingletonAvailability(r.singletons || {}))
+      .catch(() => setSingletonAvailability({}));
   }, [isActive]);
 
   // Refetch plex accounts when showing Daylist or Local Discovery form (ensures used_ids are current)
@@ -484,6 +493,21 @@ export function CreatePlaylistSyncDialog({
     });
     setXmplaylistStationFilter("");
     setXmplaylistStations([]);
+    setLidarrUpdateAllForm({
+      schedule_cron: "0 4 * * 0",
+      schedule_override: false,
+      enabled: true,
+    });
+    setLidarrWantedSearchForm({
+      top_x: 10,
+      ignore_days: 14,
+      settle_seconds: 30,
+      sort_by: "oldest_release_date",
+      album_types: ["album"],
+      schedule_cron: "0 5 * * *",
+      schedule_override: false,
+      enabled: true,
+    });
   }, [embedded, open]);
 
   const validatePlaylistUrl = useCallback(async () => {
@@ -536,6 +560,8 @@ export function CreatePlaylistSyncDialog({
   }, [formData.playlist_url, playlistType, validatePlaylistUrl]);
 
   const handleSelectType = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    if (avail && avail.available === false) return;
     setPlaylistType(type);
     setStep("form");
     if (type === "listenbrainz") {
@@ -544,6 +570,13 @@ export function CreatePlaylistSyncDialog({
         playlist_types: ["weekly_exploration"],
       }));
     }
+  };
+
+  const singletonCardProps = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    const blocked = avail?.available === false;
+    const reason = avail?.reason || commandUiCopy.lidarrMaintenance.singletonOnlyOne;
+    return { blocked, reason };
   };
 
   const handleTogglePlaylistType = (type: string) => {
@@ -631,10 +664,9 @@ export function CreatePlaylistSyncDialog({
       return true;
     }
     if (playlistType === "lidarr_update_all") {
-      return lidarrUpdateAllForm.display_name.trim().length > 0;
+      return true;
     }
     if (playlistType === "lidarr_wanted_search") {
-      if (!lidarrWantedSearchForm.display_name.trim()) return false;
       if ((lidarrWantedSearchForm.album_types ?? []).length === 0) return false;
       return true;
     }
@@ -847,7 +879,6 @@ export function CreatePlaylistSyncDialog({
         toast.success(response.message || "XM Playlist command created");
       } else if (playlistType === "lidarr_update_all") {
         const payload = {
-          display_name: lidarrUpdateAllForm.display_name.trim(),
           schedule_cron: lidarrUpdateAllForm.schedule_override
             ? lidarrUpdateAllForm.schedule_cron
             : undefined,
@@ -860,7 +891,6 @@ export function CreatePlaylistSyncDialog({
         toast.success(response.message || "Lidarr Update All command created");
       } else if (playlistType === "lidarr_wanted_search") {
         const payload = {
-          display_name: lidarrWantedSearchForm.display_name.trim(),
           top_x: lidarrWantedSearchForm.top_x,
           ignore_days: lidarrWantedSearchForm.ignore_days,
           settle_seconds: lidarrWantedSearchForm.settle_seconds,
@@ -982,44 +1012,82 @@ export function CreatePlaylistSyncDialog({
             {cw.categoryPlaylistGenerator}
           </div>
           {/* Daylist */}
-          <button
-            onClick={() => handleSelectType("daylist")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-amber-100 dark:bg-amber-900")}>
-              <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardDaylistTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
-            </div>
-          </button>
+          {(() => {
+            const { blocked, reason } = singletonCardProps("daylist");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("daylist")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-amber-100 dark:bg-amber-900")}>
+                  <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardDaylistTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
 
           {/* Local Discovery */}
-          <button
-            onClick={() => handleSelectType("local_discovery")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-teal-100 dark:bg-teal-900")}>
-              <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardLocalDiscoveryTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
-            </div>
-          </button>
+          {(() => {
+            const { blocked, reason } = singletonCardProps("local_discovery");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("local_discovery")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-teal-100 dark:bg-teal-900")}>
+                  <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLocalDiscoveryTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
 
           {/* Top Tracks / Artist Essentials */}
           <button
@@ -1182,44 +1250,82 @@ export function CreatePlaylistSyncDialog({
           </div>
 
           {/* Lidarr Update All */}
-          <button
-            onClick={() => handleSelectType("lidarr_update_all")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-orange-100 dark:bg-orange-900")}>
-              <RefreshCw className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardLidarrUpdateAllTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardLidarrUpdateAllBlurb}</p>
-            </div>
-          </button>
+          {(() => {
+            const { blocked, reason } = singletonCardProps("lidarr_update_all");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("lidarr_update_all")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-orange-100 dark:bg-orange-900")}>
+                  <RefreshCw className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLidarrUpdateAllTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLidarrUpdateAllBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
 
           {/* Lidarr Wanted Search */}
-          <button
-            onClick={() => handleSelectType("lidarr_wanted_search")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-cyan-100 dark:bg-cyan-900")}>
-              <Search className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardLidarrWantedSearchTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardLidarrWantedSearchBlurb}</p>
-            </div>
-          </button>
+          {(() => {
+            const { blocked, reason } = singletonCardProps("lidarr_wanted_search");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("lidarr_wanted_search")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-cyan-100 dark:bg-cyan-900")}>
+                  <Search className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLidarrWantedSearchTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLidarrWantedSearchBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
         </div>
       ) : (
         <div className={embedded ? "arr-panel-body space-y-4" : "space-y-4 py-4"}>
@@ -2525,21 +2631,13 @@ export function CreatePlaylistSyncDialog({
             </>
           ) : playlistType === "lidarr_update_all" ? (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="create-lidarr-ua-name">
-                  {commandUiCopy.lidarrMaintenance.displayNameLabel}
-                </Label>
-                <Input
-                  id="create-lidarr-ua-name"
-                  value={lidarrUpdateAllForm.display_name}
-                  onChange={(e) =>
-                    setLidarrUpdateAllForm((prev) => ({ ...prev, display_name: e.target.value }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  {commandUiCopy.lidarrMaintenance.displayNameHelp}
-                </p>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Display name is fixed as{" "}
+                <span className="font-medium text-foreground">
+                  Lidarr Maintenance - Artist Refresh
+                </span>
+                .
+              </p>
               <CreateCommandScheduleExpiryBlock
                 idPrefix="create-lidarr-ua"
                 scheduleOverride={lidarrUpdateAllForm.schedule_override}
@@ -2563,18 +2661,13 @@ export function CreatePlaylistSyncDialog({
             </>
           ) : playlistType === "lidarr_wanted_search" ? (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="create-lidarr-ws-name">
-                  {commandUiCopy.lidarrMaintenance.displayNameLabel}
-                </Label>
-                <Input
-                  id="create-lidarr-ws-name"
-                  value={lidarrWantedSearchForm.display_name}
-                  onChange={(e) =>
-                    setLidarrWantedSearchForm((prev) => ({ ...prev, display_name: e.target.value }))
-                  }
-                />
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Display name is fixed as{" "}
+                <span className="font-medium text-foreground">
+                  Lidarr Maintenance - Missing Search
+                </span>
+                .
+              </p>
               <div className="space-y-2">
                 <Label htmlFor="create-lidarr-ws-topx">
                   {commandUiCopy.lidarrMaintenance.topXLabel}
@@ -2680,7 +2773,7 @@ export function CreatePlaylistSyncDialog({
                   id="create-lidarr-ws-settle"
                   value={lidarrWantedSearchForm.settle_seconds}
                   onChange={(v) =>
-                    setLidarrWantedSearchForm((prev) => ({ ...prev, settle_seconds: v ?? 15 }))
+                    setLidarrWantedSearchForm((prev) => ({ ...prev, settle_seconds: v ?? 30 }))
                   }
                   min={0}
                   max={300}

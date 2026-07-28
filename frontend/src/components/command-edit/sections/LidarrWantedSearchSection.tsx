@@ -88,8 +88,8 @@ export function LidarrWantedSearchSection({ ctx }: { ctx: CommandEditRenderConte
         <Label htmlFor="edit-lidarr-ws-settle">{lm.settleSecondsLabel}</Label>
         <NumericInput
           id="edit-lidarr-ws-settle"
-          value={editForm.settle_seconds ?? 15}
-          onChange={(v) => setEditForm((f) => ({ ...f, settle_seconds: v ?? 15 }))}
+          value={editForm.settle_seconds ?? 30}
+          onChange={(v) => setEditForm((f) => ({ ...f, settle_seconds: v ?? 30 }))}
           min={0}
           max={300}
           defaultValue={15}
