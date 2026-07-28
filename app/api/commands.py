@@ -181,16 +181,20 @@ async def get_plex_accounts(
         raise HTTPException(status_code=500, detail="Failed to get Plex accounts") from None
 
 
+@router.get("/create-availability")
+async def create_availability(db: Annotated[Session, Depends(get_config_db)]):
+    """Which Add New types are blocked because a singleton instance already exists."""
+    from utils.command_singleton import availability_for_create
+
+    return {"success": True, "singletons": availability_for_create(db)}
+
+
 @router.get("/daylist/exists")
 async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a daylist command already exists (for New Command UI grey-out)."""
-    existing = (
-        db.query(CommandConfig)
-        .filter(CommandConfig.command_name.like("daylist_%"))
-        .filter(CommandConfig.deleted_at.is_(None))
-        .first()
-    )
-    return {"exists": existing is not None}
+    from utils.command_singleton import singleton_occupied
+
+    return {"exists": singleton_occupied(db, "daylist")}
 
 
 @router.get("/status/scheduler")
@@ -832,9 +836,12 @@ async def execute_cache_builder(request: Request):
 
 @router.post("/daylist/create")
 async def create_daylist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new daylist command (supports multiple instances per user)."""
+    """Create a new daylist command (singleton — only one active instance)."""
     try:
         from database.config_models import CommandConfig
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "daylist")
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -898,6 +905,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             schedule_cron=None,
             config_json=config_json,
             command_type="playlist_generator",
+            singleton_group=family.group if family else "daylist",
         )
         db.add(cmd)
         db.commit()
@@ -917,20 +925,19 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
 @router.get("/local-discovery/exists")
 async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a local discovery command already exists (for New Command UI grey-out)."""
-    existing = (
-        db.query(CommandConfig)
-        .filter(CommandConfig.command_name.like("local_discovery_%"))
-        .filter(CommandConfig.deleted_at.is_(None))
-        .first()
-    )
-    return {"exists": existing is not None}
+    from utils.command_singleton import singleton_occupied
+
+    return {"exists": singleton_occupied(db, "local_discovery")}
 
 
 @router.post("/local-discovery/create")
 async def create_local_discovery(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new Local Discovery command (supports multiple instances per user)."""
+    """Create a new Local Discovery command (singleton — only one active instance)."""
     try:
         from database.config_models import CommandConfig
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "local_discovery")
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -1004,6 +1011,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
             timeout_minutes=30,
             config_json=config_json,
             command_type="playlist_generator",
+            singleton_group=family.group if family else "local_discovery",
         )
         db.add(cmd)
         db.commit()
@@ -1741,9 +1749,14 @@ def _next_command_suffix(db: Session, prefix: str) -> int:
 
 @router.post("/lidarr-update-all/create")
 async def create_lidarr_update_all(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a Lidarr Update All (RefreshArtist) maintenance command."""
+    """Create a Lidarr Update All (RefreshArtist) maintenance command (singleton)."""
     try:
-        display_name = (request.get("display_name") or "").strip() or "Lidarr Update All"
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "lidarr_update_all")
+        display_name = (
+            family.fixed_display_name if family else "Lidarr Maintenance - Artist Refresh"
+        )
         description = (request.get("description") or "").strip() or (
             "Trigger Lidarr Update All to refresh metadata for the entire library."
         )
@@ -1762,6 +1775,7 @@ async def create_lidarr_update_all(request: dict, db: Annotated[Session, Depends
             timeout_minutes=15,
             config_json={},
             command_type="lidarr_maintenance",
+            singleton_group=family.group if family else "lidarr_update_all",
         )
         db.add(cmd)
         db.commit()
@@ -1781,18 +1795,26 @@ async def create_lidarr_update_all(request: dict, db: Annotated[Session, Depends
 async def create_lidarr_wanted_search(
     request: dict, db: Annotated[Session, Depends(get_config_db)]
 ):
-    """Create a Lidarr Wanted Search maintenance command."""
+    """Create a Lidarr Wanted Search maintenance command (singleton)."""
     try:
-        display_name = (request.get("display_name") or "").strip() or "Lidarr Wanted Search"
+        from utils.command_singleton import require_singleton_available
+        from utils.lidarr_maintenance import DEFAULT_SETTLE_SECONDS
+
+        family = require_singleton_available(db, "lidarr_wanted_search")
+        display_name = (
+            family.fixed_display_name if family else "Lidarr Maintenance - Missing Search"
+        )
         description = (request.get("description") or "").strip() or (
-            "Search the top Wanted albums in Lidarr and temporarily ignore empty results."
+            "Search the top Wanted albums in Lidarr and temporarily ignore albums with no download."
         )
         schedule_cron = (request.get("schedule_cron") or "").strip() or None
         enabled = bool(request.get("enabled", True))
 
         top_x = max(1, min(50, int(request.get("top_x", 10))))
         ignore_days = max(1, min(365, int(request.get("ignore_days", 14))))
-        settle_seconds = max(0, min(300, int(request.get("settle_seconds", 15))))
+        settle_seconds = max(
+            0, min(300, int(request.get("settle_seconds", DEFAULT_SETTLE_SECONDS)))
+        )
         sort_by = str(request.get("sort_by") or "oldest_release_date").strip().lower()
         allowed_sorts = {
             "oldest_release_date",
@@ -1837,6 +1859,7 @@ async def create_lidarr_wanted_search(
             timeout_minutes=60,
             config_json=config_json,
             command_type="lidarr_maintenance",
+            singleton_group=family.group if family else "lidarr_wanted_search",
         )
         db.add(cmd)
         db.commit()

@@ -18,7 +18,7 @@ SORT_OPTIONS = {
 DEFAULT_SORT = "oldest_release_date"
 DEFAULT_TOP_X = 10
 DEFAULT_IGNORE_DAYS = 14
-DEFAULT_SETTLE_SECONDS = 15
+DEFAULT_SETTLE_SECONDS = 30
 
 
 def normalize_album_types(raw: str | list[str] | None) -> set[str]:

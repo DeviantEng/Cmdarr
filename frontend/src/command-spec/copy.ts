@@ -114,7 +114,7 @@ export const commandUiCopy = {
     selectPlexPlaceholder: "Select Plex account",
     accountSuffixInUse: " (already has Daylist)",
     plexAccountHelp:
-      "Plex Home users only. Daylist uses this account's play history. One Daylist per user.",
+      "Plex Home users only. Daylist uses this account's play history. Only one Daylist command is allowed.",
     runAtMinuteLabel: "Run at minute of hour (0–59)",
     runAtMinuteHelp:
       "Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.). Min: 0, max: 59.",
@@ -149,7 +149,7 @@ export const commandUiCopy = {
     selectPlaceholder: "Select account",
     accountSuffixInUse: " (already has Local Discovery)",
     plexAccountHelp:
-      "Plex Home users only. Local Discovery uses this account's play history. One Local Discovery per user.",
+      "Plex Home users only. Local Discovery uses this account's play history. Only one Local Discovery command is allowed.",
     lookbackDaysLabel: "Lookback days",
     lookbackDaysHelp:
       "How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.",
@@ -365,17 +365,17 @@ export const commandUiCopy = {
       "Trigger Lidarr Update All to refresh artist/album metadata across your library.",
     cardLidarrWantedSearchTitle: "Wanted Search",
     cardLidarrWantedSearchBlurb:
-      "Search top X Wanted albums (filter by Album/EP/Single). Empty results are ignored for a while.",
+      "Search top X Wanted albums (filter by Album/EP/Single). Albums with no grab are ignored for a while.",
   },
   lidarrMaintenance: {
     topXLabel: "Albums to search per run",
     topXHelp: "How many Wanted albums to search each run (1–50). Default 10.",
     ignoreDaysLabel: "Ignore empty results (days)",
     ignoreDaysHelp:
-      "If no download is found after searching, skip that album for this many days (1–365). Default 14.",
+      "After AlbumSearch, if the album is not queued and nothing is grabbed/downloaded, skip that album for this many days (1–365). Default 14. Does not mean “Wanted list was empty.”",
     settleSecondsLabel: "Settle time after search (seconds)",
     settleSecondsHelp:
-      "Wait this long after AlbumSearch completes before checking the queue for grabs (0–300). Default 15.",
+      "Wait this long after AlbumSearch completes before checking the queue/history for grabs (0–300). Default 30.",
     sortByLabel: "Wanted sort order",
     sortByHelp: "How to order Lidarr’s Wanted list before taking the top X.",
     sortOldest: "Oldest Release Date",
@@ -384,7 +384,6 @@ export const commandUiCopy = {
     sortTitle: "Album Title (A–Z)",
     releaseTypesHeading: "Release types to include",
     releaseTypesHelp: "Only search Wanted items matching these types (Album, EP, Single, Other).",
-    displayNameLabel: "Display name",
-    displayNameHelp: "Shown on the Commands list.",
+    singletonOnlyOne: "Only one instance of this command is allowed.",
   },
 } as const;
