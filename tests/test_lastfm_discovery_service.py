@@ -78,12 +78,29 @@ async def test_session_discovers_and_filters():
         )
     )
 
+    async def _artist_info(mbid=None, artist_name=None, **_kwargs):
+        if mbid == "new-mbid":
+            return {"listeners": "12500", "playcount": "890000"}
+        if mbid == "new-mbid-2":
+            return {"listeners": "42", "playcount": "100"}
+        return {"listeners": "0", "playcount": "0"}
+
+    lastfm.get_artist_info = AsyncMock(side_effect=_artist_info)
+
     with (
         patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
         patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg_cls.return_value = MagicMock()
+        cfg = MagicMock()
+        cfg.LASTFM_FETCH_CONCURRENCY = 2
+        cfg_cls.return_value = cfg
+        deezer = AsyncMock()
+        deezer.__aenter__.return_value = deezer
+        deezer.__aexit__.return_value = None
+        deezer.search_artists = AsyncMock(return_value={"artists": []})
+        deezer_cls.return_value = deezer
         session = await svc.start_session([{"mbid": "seed-mbid", "name": "Seed Artist"}])
         assert session.task is not None
         await session.task
@@ -96,6 +113,10 @@ async def test_session_discovers_and_filters():
     assert "new-mbid-2" in mbids
     assert "owned-mbid" not in mbids
     assert "seed-mbid" not in mbids
+    assert session.results["new-mbid"].listeners == 12500
+    assert session.results["new-mbid"].playcount == 890000
+    assert session.results["new-mbid-2"].listeners == 42
+    lastfm.get_artist_info.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -126,13 +147,20 @@ async def test_affinity_bumps_seed_count():
         )
 
     lastfm.get_similar_artists = AsyncMock(side_effect=similar_side_effect)
+    lastfm.get_artist_info = AsyncMock(return_value={"listeners": "1000", "playcount": "5000"})
 
     with (
         patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
         patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg_cls.return_value = MagicMock()
+        cfg_cls.return_value = MagicMock(LASTFM_FETCH_CONCURRENCY=2)
+        deezer = AsyncMock()
+        deezer.__aenter__.return_value = deezer
+        deezer.__aexit__.return_value = None
+        deezer.search_artists = AsyncMock(return_value={"artists": []})
+        deezer_cls.return_value = deezer
         session = await svc.start_session(
             [
                 {"mbid": "seed-a", "name": "Artist A"},
@@ -146,6 +174,8 @@ async def test_affinity_bumps_seed_count():
     assert shared.seed_count == 2
     assert set(shared.seed_names) == {"Artist A", "Artist B"}
     assert shared.match_score == 0.9
+    assert shared.listeners == 1000
+    assert shared.playcount == 5000
 
 
 @pytest.mark.asyncio
@@ -170,13 +200,20 @@ async def test_stop_during_one_shot():
         )
 
     lastfm.get_similar_artists = AsyncMock(side_effect=slow_similar)
+    lastfm.get_artist_info = AsyncMock(return_value={"listeners": "1", "playcount": "1"})
 
     with (
         patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
         patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg_cls.return_value = MagicMock()
+        cfg_cls.return_value = MagicMock(LASTFM_FETCH_CONCURRENCY=2)
+        deezer = AsyncMock()
+        deezer.__aenter__.return_value = deezer
+        deezer.__aexit__.return_value = None
+        deezer.search_artists = AsyncMock(return_value={"artists": []})
+        deezer_cls.return_value = deezer
         session = await svc.start_session(
             [
                 {"mbid": "seed-a", "name": "Artist A"},

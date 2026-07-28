@@ -24,6 +24,15 @@ _SESSION_FAILSAFE_SECONDS = 600.0
 _DEEZER_IMAGE_CONCURRENCY = 5
 
 
+def _as_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except TypeError, ValueError:
+        return None
+
+
 @dataclass
 class LastfmDiscoveryResult:
     mbid: str
@@ -33,6 +42,8 @@ class LastfmDiscoveryResult:
     seed_names: list[str]
     url: str = ""
     image_url: str | None = None
+    listeners: int | None = None
+    playcount: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +54,8 @@ class LastfmDiscoveryResult:
             "seed_names": list(self.seed_names),
             "url": self.url,
             "image_url": self.image_url,
+            "listeners": self.listeners,
+            "playcount": self.playcount,
         }
 
 
@@ -167,6 +180,45 @@ class LastfmDiscoveryService:
 
             await asyncio.gather(*[_one(r) for r in missing])
 
+    async def _fill_lastfm_stats(
+        self, session: LastfmDiscoverySession, lastfm: LastFMClient, config
+    ) -> None:
+        """Attach listeners/playcount via artist.getInfo (not present on getsimilar)."""
+        results = [
+            r for r in session.results.values() if r.listeners is None or r.playcount is None
+        ]
+        if not results:
+            return
+
+        concurrency = max(1, int(getattr(config, "LASTFM_FETCH_CONCURRENCY", 3) or 3))
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _one(result: LastfmDiscoveryResult) -> None:
+            if session.stop_requested:
+                return
+            async with sem:
+                try:
+                    info = await lastfm.get_artist_info(
+                        mbid=result.mbid,
+                        artist_name=result.name,
+                    )
+                    if not info:
+                        return
+                    listeners = _as_optional_int(info.get("listeners"))
+                    playcount = _as_optional_int(info.get("playcount"))
+                    if listeners is not None:
+                        result.listeners = listeners
+                    if playcount is not None:
+                        result.playcount = playcount
+                except Exception as e:
+                    logger.debug(
+                        "Last.fm stats lookup failed for %s: %s",
+                        result.name,
+                        e,
+                    )
+
+        await asyncio.gather(*[_one(r) for r in results])
+
     async def _run_one_shot(self, session: LastfmDiscoverySession) -> None:
         config = ConfigAdapter()
 
@@ -253,6 +305,11 @@ class LastfmDiscoveryService:
                     existing_mbids.add(mbid)
                     existing_names.add(name.lower())
 
+            if session.stop_requested:
+                session.status = "stopped"
+                return
+
+            await self._fill_lastfm_stats(session, lastfm, config)
             if session.stop_requested:
                 session.status = "stopped"
                 return

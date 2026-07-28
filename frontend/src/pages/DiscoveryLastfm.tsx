@@ -103,6 +103,16 @@ function formatMatch(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
+function formatCount(value: number | string | null | undefined): string | null {
+  if (value == null || value === "") return null;
+  const num = typeof value === "string" ? Number(value) : value;
+  if (!Number.isFinite(num)) return null;
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(num);
+}
+
 export function DiscoveryLastfmPage({
   showPageHeader = true,
   useArrPanel = false,
@@ -769,6 +779,14 @@ export function DiscoveryLastfmPage({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {results.map((r) => {
               const added = !!addedMbids[r.mbid];
+              const listenersLabel = formatCount(r.listeners);
+              const scrobblesLabel = formatCount(r.playcount);
+              const statsLine = [
+                listenersLabel ? `${listenersLabel} listeners` : null,
+                scrobblesLabel ? `${scrobblesLabel} scrobbles` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
               return (
                 <div
                   key={r.mbid}
@@ -795,6 +813,9 @@ export function DiscoveryLastfmPage({
                         <Badge variant="secondary">{formatMatch(r.match_score)}</Badge>
                         {r.seed_count > 1 && <Badge variant="outline">{r.seed_count} seeds</Badge>}
                       </div>
+                      {statsLine ? (
+                        <p className="text-xs text-muted-foreground">{statsLine}</p>
+                      ) : null}
                       {r.seed_names.length > 0 && (
                         <p className="text-xs text-muted-foreground line-clamp-2">
                           Similar to: {r.seed_names.join(", ")}
