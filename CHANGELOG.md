@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.19-dev] - TBD
+## [0.4.0-dev] - TBD
 
 ### Features
 - **Modern *arr UI**: The Sonarr-style shell is now the only frontend — sidebar navigation, Settings/System sections, and panel layouts. Classic UI and the header shell toggle are removed (`/config` and `/status` redirect to the new routes).
