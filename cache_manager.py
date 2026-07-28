@@ -227,6 +227,23 @@ class CacheManager:
             self.logger.warning(f"Cache clear error: {e}")
             return 0
 
+    def delete(self, cache_key: str, source: str) -> bool:
+        """Delete a single cache entry by key and source. Returns True if a row was removed."""
+        try:
+            with self.db_manager.get_cache_session_context() as session:
+                deleted = (
+                    session.query(CacheEntry)
+                    .filter(CacheEntry.cache_key == cache_key, CacheEntry.source == source)
+                    .delete()
+                )
+                session.commit()
+                if deleted:
+                    self.logger.debug(f"Deleted cache entry: {source}:{cache_key}")
+                return bool(deleted)
+        except Exception as e:
+            self.logger.warning(f"Cache delete error for {source}:{cache_key}: {e}")
+            return False
+
 
 # Global cache instance
 _cache_manager: CacheManager | None = None

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lidarr Maintenance commands**: New `lidarr_maintenance` command category with **Update All** (queues Lidarr `RefreshArtist` for the whole library) and **Wanted Search** (searches top X Wanted albums with Album/EP/Single filters and sort; empty results are ignored for a configurable cooldown, default 14 days). Create from **Commands → Add New** (grouped by category). Stats and ignore-list management live under **System → Lidarr Maintenance**.
 
 ### Fixes
+- **Last.fm Discovery Lidarr filter cache**: Force-refresh the Lidarr artists API cache on discovery runs, Sync Lidarr artists, and after successful adds so already-added artists (e.g. recently added) are not recommended; daily Playlist Sync Discovery Maintenance now refreshes that cache + `lidarr_artist` table. Discovery toolbar always shows Sync Lidarr artists (including Plex seed mode).
 - **Discovery nav**: Nest Last.fm under a Discovery sidebar section (same pattern as Commands → Add New); remove redundant Interactive/Commands links from System → Discovery.
 - **Lidarr add artist**: Treat HTTP 201 Created as success when posting artists (Last.fm Discovery interactive and scheduled); Lidarr returns 201, not 200.
 - **Last.fm Discovery bios**: Parse Last.fm `artist.getInfo` `bio` (not obsolete `wiki`) so biography dialogs show real summaries.

@@ -176,7 +176,7 @@ class LastfmDiscoveryService:
                 existing_mbids,
                 existing_names,
                 excluded_mbids,
-            ) = await discovery.get_lidarr_context()
+            ) = await discovery.get_lidarr_context(force_refresh=True)
             # Never recommend the seeds themselves.
             for seed in session.seeds:
                 existing_mbids.add(seed["mbid"])

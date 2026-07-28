@@ -277,10 +277,12 @@ class DiscoveryLastfmCommand(BaseCommand):
     async def _discover_similar_artists(self) -> tuple[list[dict[str, Any]], list[str]]:
         """Main processing function using shared utilities. Returns (output_artists, sampled_mbids)."""
 
-        # Get Lidarr context (existing artists + exclusions)
-        existing_mbids, existing_names, excluded_mbids = await self.utils.get_lidarr_context()
+        # Get Lidarr context (existing artists + exclusions); refresh so recent adds are filtered.
+        existing_mbids, existing_names, excluded_mbids = await self.utils.get_lidarr_context(
+            force_refresh=True
+        )
 
-        # Get all Lidarr artists for Last.fm processing
+        # Get all Lidarr artists for Last.fm processing (already refreshed above)
         lidarr_artists = await self.lidarr.get_all_artists()
         artist_lookup = {
             a["musicBrainzId"]: a["artistName"] for a in lidarr_artists if a.get("musicBrainzId")

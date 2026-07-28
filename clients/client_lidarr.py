@@ -181,11 +181,22 @@ class LidarrClient(BaseAPIClient):
         """Generate cache key for Lidarr artists (v3 includes spotifyArtistId and deezerArtistId from links)"""
         return "lidarr_artists_v3"
 
-    async def get_all_artists(self) -> list[dict[str, Any]]:
-        """Get all artists from Lidarr with their MBIDs (cached 7 days)"""
+    def invalidate_artists_cache(self) -> None:
+        """Drop the cached Lidarr artist list so the next fetch hits the API."""
+        if self.cache_enabled and self.cache:
+            self.cache.delete(self._get_artists_cache_key(), "lidarr")
+
+    async def get_all_artists(self, *, force_refresh: bool = False) -> list[dict[str, Any]]:
+        """Get all artists from Lidarr with their MBIDs.
+
+        Cached under ``NEW_RELEASES_CACHE_DAYS`` (default 14). Pass ``force_refresh=True``
+        after library membership changes (sync / discovery) so newly added artists are visible.
+        """
         try:
             cache_key = self._get_artists_cache_key()
-            if self.cache_enabled and self.cache:
+            if force_refresh:
+                self.invalidate_artists_cache()
+            elif self.cache_enabled and self.cache:
                 cached = self.cache.get(cache_key, "lidarr")
                 if cached is not None:
                     self.logger.debug(f"Cache hit for Lidarr artists: {len(cached)} artists")
@@ -380,6 +391,8 @@ class LidarrClient(BaseAPIClient):
 
             if response:
                 self.logger.info(f"Successfully added artist '{artist_name}' to Lidarr")
+                # Membership changed — drop stale list so discovery/filtering sees the new artist.
+                self.invalidate_artists_cache()
                 return {
                     "success": True,
                     "artist": response,

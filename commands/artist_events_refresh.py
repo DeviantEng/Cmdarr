@@ -279,7 +279,7 @@ class ArtistEventsRefreshCommand(BaseCommand):
         """Refresh lidarr_artist from Lidarr API. Returns (inserted, updated, total_rows)."""
         log.info("Syncing Lidarr artist cache before event provider queries")
         async with LidarrClient(cfg) as lidarr_client:
-            lidarr_rows = await lidarr_client.get_all_artists()
+            lidarr_rows = await lidarr_client.get_all_artists(force_refresh=True)
         inserted, updated = upsert_lidarr_artists_from_payload(session, lidarr_rows, now=now)
         session.commit()
         total = session.query(func.count(LidarrArtist.id)).scalar() or 0
