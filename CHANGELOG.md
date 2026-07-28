@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - **Last.fm Discovery**: Unified interactive page at `/discovery/lastfm` (Lidarr or Plex seeds, bios, artwork, Lidarr profile pickers, direct API add) plus scheduled `discovery_lastfm` command that adds artists to Lidarr via API (required quality/metadata profiles; optional search-on-add). Discovery hub at `/discovery`; KPIs under **System → Discovery**. Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
+- **Last.fm Discovery cards**: Show Last.fm listeners and scrobbles on each similar-artist result card.
 - **Lidarr Maintenance commands**: New `lidarr_maintenance` command category with **Update All** (queues Lidarr `RefreshArtist` for the whole library) and **Wanted Search** (searches top X Wanted albums with Album/EP/Single filters and sort; empty results are ignored for a configurable cooldown, default 14 days). Create from **Commands → Add New** (grouped by category). Stats and ignore-list management live under **System → Lidarr Maintenance**.
 
 ### Fixes

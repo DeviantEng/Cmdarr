@@ -843,4 +843,6 @@ export type LastfmDiscoveryResult = {
   seed_names: string[];
   url: string;
   image_url?: string | null;
+  listeners?: number | null;
+  playcount?: number | null;
 };
