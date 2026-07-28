@@ -8,6 +8,7 @@ import {
   Import,
   ListMusic,
   Monitor,
+  Music2,
   Plus,
   Radio,
   Settings2,
@@ -43,12 +44,21 @@ export const arrCommandsNav: ArrNavLink[] = [
   { path: "/commands/history", label: "History", icon: History },
 ];
 
-export const arrPrimaryNav: ArrNavLink[] = [
+export const arrDiscoveryNav: ArrNavLink[] = [
+  { path: "/discovery/lastfm", label: "Last.fm", icon: Music2 },
+];
+
+/** Flat primary links rendered around the Discovery section (before / after). */
+export const arrPrimaryNavTop: ArrNavLink[] = [
   { path: "/new-releases", label: "New Releases", icon: Disc3 },
   { path: "/events", label: "Artist Events", icon: CalendarDays },
-  { path: "/discovery", label: "Discovery", icon: Radio, end: true },
+];
+
+export const arrPrimaryNavBottom: ArrNavLink[] = [
   { path: "/import-lists", label: "Import Lists", icon: Import },
 ];
+
+export const arrPrimaryNav: ArrNavLink[] = [...arrPrimaryNavTop, ...arrPrimaryNavBottom];
 
 const settingsIcons: Record<string, LucideIcon> = {
   application: Settings2,
@@ -83,6 +93,15 @@ export const arrNavSections: ArrNavSection[] = [
     indexEnd: true,
     icon: ListMusic,
     items: arrCommandsNav,
+  },
+  {
+    id: "discovery",
+    label: "Discovery",
+    pathPrefix: "/discovery",
+    indexPath: "/discovery",
+    indexEnd: true,
+    icon: Radio,
+    items: arrDiscoveryNav,
   },
   {
     id: "settings",
@@ -131,7 +150,7 @@ export function arrPageTitle(pathname: string): string {
   if (systemMatch) return systemMatch.label;
 
   if (pathname === "/discovery" || pathname === "/discovery/") return "Discovery";
-  if (pathname.startsWith("/discovery/lastfm")) return "Last.fm Discovery";
+  if (pathname.startsWith("/discovery/lastfm")) return "Last.fm";
   if (pathname.startsWith("/discovery")) return "Discovery";
 
   const primaryMatch = arrPrimaryNav.find((item) =>

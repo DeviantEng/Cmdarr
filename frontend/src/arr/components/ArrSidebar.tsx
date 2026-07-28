@@ -1,5 +1,11 @@
 import { NavLink, useLocation, useNavigate } from "react-router";
-import { arrNavSections, arrPrimaryNav, type ArrNavLink, type ArrNavSection } from "@/arr/arr-nav";
+import {
+  arrNavSections,
+  arrPrimaryNavBottom,
+  arrPrimaryNavTop,
+  type ArrNavLink,
+  type ArrNavSection,
+} from "@/arr/arr-nav";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { cn } from "@/lib/utils";
 
@@ -81,7 +87,10 @@ function ArrBrandMark() {
 export function ArrSidebar({ className }: { className?: string }) {
   const version = useAppVersion();
   const commandsSection = arrNavSections.find((section) => section.id === "commands");
-  const secondaryNavSections = arrNavSections.filter((section) => section.id !== "commands");
+  const discoverySection = arrNavSections.find((section) => section.id === "discovery");
+  const secondaryNavSections = arrNavSections.filter(
+    (section) => section.id !== "commands" && section.id !== "discovery"
+  );
 
   return (
     <aside
@@ -113,7 +122,13 @@ export function ArrSidebar({ className }: { className?: string }) {
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain p-2">
         {commandsSection ? <CollapsibleNavSection section={commandsSection} /> : null}
 
-        {arrPrimaryNav.map((item) => (
+        {arrPrimaryNavTop.map((item) => (
+          <SidebarLink key={item.path} item={item} />
+        ))}
+
+        {discoverySection ? <CollapsibleNavSection section={discoverySection} /> : null}
+
+        {arrPrimaryNavBottom.map((item) => (
           <SidebarLink key={item.path} item={item} />
         ))}
 

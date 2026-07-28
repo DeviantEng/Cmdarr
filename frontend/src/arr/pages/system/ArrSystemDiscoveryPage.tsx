@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import { ArrContentPanel, ArrPanelBody, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
 import { Badge } from "@/components/ui/badge";
@@ -67,12 +66,6 @@ export function ArrSystemDiscoveryPage() {
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           Refresh
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/discovery/lastfm">Interactive page</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/commands">Commands</Link>
         </Button>
       </div>
 
