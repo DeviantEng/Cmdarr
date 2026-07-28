@@ -11,7 +11,6 @@ from utils.event_geo import (
     parse_float,
     parse_place_city_region,
     venue_fingerprint,
-    venue_fingerprint_legacy,
 )
 
 
@@ -46,12 +45,6 @@ def test_compute_event_dedupe_key_matches_manual():
         )
         == manual
     )
-
-
-def test_venue_fingerprint_legacy_differs_when_region_present():
-    new_fp = venue_fingerprint("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
-    old_fp = venue_fingerprint_legacy("Brooklyn Bowl", "Nashville", "TN", 36.16, -86.77)
-    assert new_fp != old_fp
 
 
 def test_coerce_location_str_nested_region():

@@ -8,7 +8,7 @@ export function ArrImportListsPage() {
         title="Import Lists"
         description="Lidarr import list endpoint for playlist sync discovery."
       />
-      <ImportListsPage showPageHeader={false} useArrPanel />
+      <ImportListsPage />
     </div>
   );
 }

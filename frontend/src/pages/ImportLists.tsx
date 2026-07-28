@@ -1,5 +1,4 @@
 import { useState, useEffect, type ReactNode } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,8 +18,7 @@ import {
 import { api } from "@/lib/api";
 import type { ImportListMetrics } from "@/lib/types";
 import { toast } from "sonner";
-import { Copy, Disc, RefreshCw, RotateCcw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Copy, RefreshCw, RotateCcw } from "lucide-react";
 
 function formatFileSize(sizeBytes: number): string {
   if (sizeBytes < 1024) return `${sizeBytes} B`;
@@ -50,8 +48,6 @@ type ListMetricsEntry = {
 };
 
 type ImportListEndpointSectionProps = {
-  useArrPanel: boolean;
-  icon: ReactNode;
   title: string;
   description: string;
   url: string;
@@ -64,8 +60,6 @@ type ImportListEndpointSectionProps = {
 };
 
 function ImportListEndpointSection({
-  useArrPanel,
-  icon,
   title,
   description,
   url,
@@ -78,20 +72,8 @@ function ImportListEndpointSection({
 }: ImportListEndpointSectionProps) {
   const endpointBlock = (
     <div className="space-y-2">
-      <label className={cn("block text-sm font-medium", useArrPanel && "arr-field-label")}>
-        Endpoint URL
-      </label>
-      <input
-        type="text"
-        readOnly
-        value={url}
-        title={url}
-        className={cn(
-          useArrPanel
-            ? "arr-field-input"
-            : "w-full min-w-0 truncate rounded-md border bg-muted px-3 py-2 text-xs font-mono sm:text-sm"
-        )}
-      />
+      <label className="arr-field-label">Endpoint URL</label>
+      <input type="text" readOnly value={url} title={url} className="arr-field-input" />
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={onCopy}>
           <Copy className="mr-1 h-4 w-4" />
@@ -105,84 +87,40 @@ function ImportListEndpointSection({
     </div>
   );
 
-  const statsBlock =
-    metrics?.exists &&
-    (useArrPanel ? (
-      <div className="arr-stats-grid">
-        <div>
-          <div className="text-lg font-semibold">{metrics.entry_count.toLocaleString()}</div>
-          <div className="text-xs text-muted-foreground">Artists</div>
-        </div>
-        <div>
-          <div className="text-lg font-semibold">{formatFileSize(metrics.file_size)}</div>
-          <div className="text-xs text-muted-foreground">File Size</div>
-        </div>
-        <div>
-          <div className="text-lg font-semibold">{metrics.age_human}</div>
-          <div className="text-xs text-muted-foreground">Last Updated</div>
-        </div>
-        <div>
-          <div className="text-lg font-semibold">{formatStatus(metrics.status)}</div>
-          <div className="text-xs text-muted-foreground">Status</div>
-        </div>
+  const statsBlock = metrics?.exists && (
+    <div className="arr-stats-grid">
+      <div>
+        <div className="text-lg font-semibold">{metrics.entry_count.toLocaleString()}</div>
+        <div className="text-xs text-muted-foreground">Artists</div>
       </div>
-    ) : (
-      <div className="mt-4 rounded-lg bg-muted p-4">
-        <h4 className="mb-3 text-sm font-medium">File Statistics</h4>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div className="text-center">
-            <div className="text-lg font-semibold">{metrics.entry_count.toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">Artists</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold">{formatFileSize(metrics.file_size)}</div>
-            <div className="text-xs text-muted-foreground">File Size</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold">{metrics.age_human}</div>
-            <div className="text-xs text-muted-foreground">Last Updated</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold">{formatStatus(metrics.status)}</div>
-            <div className="text-xs text-muted-foreground">Status</div>
-          </div>
-        </div>
+      <div>
+        <div className="text-lg font-semibold">{formatFileSize(metrics.file_size)}</div>
+        <div className="text-xs text-muted-foreground">File Size</div>
       </div>
-    ));
-
-  if (useArrPanel) {
-    return (
-      <ArrContentPanel>
-        <ArrSectionHeader title={title} description={description} actions={badge} />
-        <ArrPanelBody className="space-y-4">
-          {endpointBlock}
-          {emptyHint}
-          {statsBlock}
-        </ArrPanelBody>
-      </ArrContentPanel>
-    );
-  }
+      <div>
+        <div className="text-lg font-semibold">{metrics.age_human}</div>
+        <div className="text-xs text-muted-foreground">Last Updated</div>
+      </div>
+      <div>
+        <div className="text-lg font-semibold">{formatStatus(metrics.status)}</div>
+        <div className="text-xs text-muted-foreground">Status</div>
+      </div>
+    </div>
+  );
 
   return (
-    <Card>
-      <CardContent className="p-4 md:p-6">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <h2 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
-            {icon}
-            <span className="min-w-0">{title}</span>
-          </h2>
-          {badge}
-        </div>
-        <p className="mb-4 text-muted-foreground">{description}</p>
+    <ArrContentPanel>
+      <ArrSectionHeader title={title} description={description} actions={badge} />
+      <ArrPanelBody className="space-y-4">
         {endpointBlock}
         {emptyHint}
         {statsBlock}
-      </CardContent>
-    </Card>
+      </ArrPanelBody>
+    </ArrContentPanel>
   );
 }
 
-function LidarrIntegrationGuide({ useArrPanel }: { useArrPanel: boolean }) {
+function LidarrIntegrationGuide() {
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const playlistsyncUrl = `${baseUrl}/import_lists/discovery_playlistsync`;
 
@@ -251,34 +189,15 @@ function LidarrIntegrationGuide({ useArrPanel }: { useArrPanel: boolean }) {
     </>
   );
 
-  if (useArrPanel) {
-    return (
-      <ArrContentPanel className="border-blue-500/50 bg-blue-500/5">
-        <ArrSectionHeader title="Lidarr Integration Guide" />
-        <ArrPanelBody>{body}</ArrPanelBody>
-      </ArrContentPanel>
-    );
-  }
-
   return (
-    <Card className="border-blue-500/50 bg-blue-500/5">
-      <CardContent className="p-4 md:p-6">
-        <h3 className="mb-4 text-lg font-semibold">Lidarr Integration Guide</h3>
-        {body}
-      </CardContent>
-    </Card>
+    <ArrContentPanel className="border-blue-500/50 bg-blue-500/5">
+      <ArrSectionHeader title="Lidarr Integration Guide" />
+      <ArrPanelBody>{body}</ArrPanelBody>
+    </ArrContentPanel>
   );
 }
 
-type ImportListsPageProps = {
-  showPageHeader?: boolean;
-  useArrPanel?: boolean;
-};
-
-export function ImportListsPage({
-  showPageHeader = true,
-  useArrPanel = false,
-}: ImportListsPageProps) {
+export function ImportListsPage() {
   const [metrics, setMetrics] = useState<ImportListMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -346,19 +265,9 @@ export function ImportListsPage({
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const playlistsyncUrl = `${baseUrl}/import_lists/discovery_playlistsync`;
 
-  const listHeader = showPageHeader ? (
-    <div>
-      <h1 className="text-3xl font-bold">Import Lists</h1>
-      <p className="mt-2 text-muted-foreground">
-        Available import list endpoints for Lidarr integration and music discovery automation.
-      </p>
-    </div>
-  ) : null;
-
   if (loading) {
     return (
-      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
-        {listHeader}
+      <div className="space-y-6 arr-page-panels">
         <div className="text-center text-muted-foreground py-12">Loading...</div>
       </div>
     );
@@ -366,36 +275,29 @@ export function ImportListsPage({
 
   if (error) {
     return (
-      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
-        {listHeader}
-        <Card className="border-destructive">
-          <CardContent className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-8">
+      <div className="space-y-6 arr-page-panels">
+        <ArrContentPanel>
+          <ArrPanelBody className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-8">
             <p className="text-lg font-medium text-destructive">Failed to Load</p>
             <p className="text-sm text-muted-foreground">{error}</p>
             <Button onClick={loadMetrics}>Try Again</Button>
-          </CardContent>
-        </Card>
+          </ArrPanelBody>
+        </ArrContentPanel>
       </div>
     );
   }
 
   return (
-    <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
-      {listHeader}
-
-      {useArrPanel ? (
-        <ArrPageToolbar>
-          <Button variant="outline" size="sm" onClick={() => void loadMetrics()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </ArrPageToolbar>
-      ) : null}
+    <div className="space-y-6 arr-page-panels">
+      <ArrPageToolbar>
+        <Button variant="outline" size="sm" onClick={() => void loadMetrics()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      </ArrPageToolbar>
 
       <div className="space-y-6">
         <ImportListEndpointSection
-          useArrPanel={useArrPanel}
-          icon={<Disc className="h-5 w-5 shrink-0" />}
           title="Playlist Sync Discovery"
           description='Artists discovered from playlist sync operations (Spotify, ListenBrainz, etc.) when tracks fail to match in your library. Requires "Add new artists" to be checked in the playlist sync command settings (Commands → Edit). Empty is normal when playlists have no new artists to add, or maintenance has already cleaned up.'
           url={playlistsyncUrl}
@@ -424,7 +326,7 @@ export function ImportListsPage({
           }
         />
 
-        <LidarrIntegrationGuide useArrPanel={useArrPanel} />
+        <LidarrIntegrationGuide />
       </div>
 
       {/* Reset confirmation dialog */}

@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { NewReleasePendingItem, ReleaseWithinFilter } from "@/lib/types";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +34,6 @@ import {
   ArrSectionHeader,
 } from "@/arr/components/ArrPageToolbar";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 const RELEASE_WITHIN_OPTIONS: { value: ReleaseWithinFilter; label: string }[] = [
   { value: "all", label: "All dates" },
@@ -68,15 +66,7 @@ function formatReleaseDate(value: string): string {
   return value;
 }
 
-type NewReleasesPageProps = {
-  showPageHeader?: boolean;
-  useArrPanel?: boolean;
-};
-
-export function NewReleasesPage({
-  showPageHeader = true,
-  useArrPanel = false,
-}: NewReleasesPageProps) {
+export function NewReleasesPage() {
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<NewReleasePendingItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -592,9 +582,7 @@ export function NewReleasesPage({
     </>
   );
 
-  const pendingDescription = useArrPanel
-    ? `${total} items matching filters. Clear reappears on rescan; Hide release hides one album; Ignore artist skips all future releases for that artist.`
-    : `${total} items matching filters. Links open Lidarr, MusicBrainz, or release source. Clear reappears on rescan; Ignore hides one album; Hide artist skips all future releases for that artist.`;
+  const pendingDescription = `${total} items matching filters. Clear reappears on rescan; Hide release hides one album; Ignore artist skips all future releases for that artist.`;
 
   const pendingListBody = loading ? (
     <div className="flex items-center justify-center py-12">
@@ -612,13 +600,12 @@ export function NewReleasesPage({
         </p>
       </div>
     </div>
-  ) : useArrPanel ? (
+  ) : (
     <ul className="arr-list-rows -mx-4">
       {pending.map((item) => (
         <li key={item.id} className="px-4 py-3">
           <PendingRow
             item={item}
-            useArrList
             onClear={() => handleClear(item)}
             onRecheck={() => handleRecheck(item)}
             onIgnore={() => handleIgnore(item)}
@@ -628,23 +615,9 @@ export function NewReleasesPage({
         </li>
       ))}
     </ul>
-  ) : (
-    <div className="space-y-2">
-      {pending.map((item) => (
-        <PendingRow
-          key={item.id}
-          item={item}
-          onClear={() => handleClear(item)}
-          onRecheck={() => handleRecheck(item)}
-          onIgnore={() => handleIgnore(item)}
-          onHideArtist={() => handleHideArtist(item)}
-          onOpenHarmony={openHarmony}
-        />
-      ))}
-    </div>
   );
 
-  const pendingToolbarActions = useArrPanel ? (
+  const pendingToolbarActions = (
     <>
       <Button
         variant="outline"
@@ -670,63 +643,18 @@ export function NewReleasesPage({
         </Button>
       ) : null}
     </>
-  ) : (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setIgnoredArtistsOpen(true)}
-        className="shrink-0"
-      >
-        <EyeOff className="mr-2 h-4 w-4" />
-        Hidden
-        {ignoredArtistCount > 0 ? (
-          <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums">
-            {ignoredArtistCount} artist{ignoredArtistCount === 1 ? "" : "s"}
-          </span>
-        ) : null}
-      </Button>
-      {pending.length > 0 ? (
-        <Button variant="outline" size="sm" onClick={handleClearAll}>
-          Clear all
-        </Button>
-      ) : null}
-    </>
   );
 
   return (
-    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
-      {showPageHeader ? (
-        <div>
-          <h1 className="text-3xl font-bold">New Releases Discovery</h1>
-          <p className="mt-2 text-muted-foreground">
-            Find releases on Deezer (or Spotify) from your Lidarr artists that are missing from
-            MusicBrainz.
-          </p>
-        </div>
-      ) : null}
-
+    <div className="min-w-0 space-y-6 arr-page-panels">
       {/* Scan by URL + Actions: shared release type filter */}
-      {useArrPanel ? (
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Scan by URL & Actions"
-            description="Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch / scan Lidarr artists. Release types apply to both."
-          />
-          <ArrPanelBody className="space-y-6">{scanPanelBody}</ArrPanelBody>
-        </ArrContentPanel>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Scan by URL & Actions</CardTitle>
-            <CardDescription>
-              Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch /
-              scan Lidarr artists. Release types apply to both.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">{scanPanelBody}</CardContent>
-        </Card>
-      )}
+      <ArrContentPanel>
+        <ArrSectionHeader
+          title="Scan by URL & Actions"
+          description="Paste a Spotify or Deezer artist or album URL to find missing releases, or run batch / scan Lidarr artists. Release types apply to both."
+        />
+        <ArrPanelBody className="space-y-6">{scanPanelBody}</ArrPanelBody>
+      </ArrContentPanel>
 
       {error && (
         <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -743,72 +671,35 @@ export function NewReleasesPage({
       )}
 
       {/* Pending table */}
-      {useArrPanel ? (
-        <>
-          <ArrPageToolbar>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-              <div className="w-full space-y-1.5 sm:w-52">
-                <Label className="text-xs text-muted-foreground">Release date</Label>
-                <Select
-                  value={releaseWithin}
-                  onValueChange={(v) => setReleaseWithin(v as ReleaseWithinFilter)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RELEASE_WITHIN_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-wrap gap-2">{pendingToolbarActions}</div>
+      <>
+        <ArrPageToolbar>
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+            <div className="w-full space-y-1.5 sm:w-52">
+              <Label className="text-xs text-muted-foreground">Release date</Label>
+              <Select
+                value={releaseWithin}
+                onValueChange={(v) => setReleaseWithin(v as ReleaseWithinFilter)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RELEASE_WITHIN_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </ArrPageToolbar>
-          <ArrContentPanel>
-            <ArrSectionHeader title="Pending Releases" description={pendingDescription} />
-            <ArrPanelBody>{pendingListBody}</ArrPanelBody>
-          </ArrContentPanel>
-        </>
-      ) : (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <CardTitle>Pending Releases</CardTitle>
-                  <CardDescription>{pendingDescription}</CardDescription>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">{pendingToolbarActions}</div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
-                <div className="w-full space-y-1.5 sm:w-52">
-                  <Label className="text-xs text-muted-foreground">Release date</Label>
-                  <Select
-                    value={releaseWithin}
-                    onValueChange={(v) => setReleaseWithin(v as ReleaseWithinFilter)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RELEASE_WITHIN_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>{pendingListBody}</CardContent>
-        </Card>
-      )}
+            <div className="flex flex-wrap gap-2">{pendingToolbarActions}</div>
+          </div>
+        </ArrPageToolbar>
+        <ArrContentPanel>
+          <ArrSectionHeader title="Pending Releases" description={pendingDescription} />
+          <ArrPanelBody>{pendingListBody}</ArrPanelBody>
+        </ArrContentPanel>
+      </>
 
       <ConfirmDialog
         open={confirmClearAll}
@@ -850,20 +741,17 @@ export function NewReleasesPage({
         onOpenChange={setIgnoredArtistsOpen}
         onChanged={loadExclusionCounts}
       />
-      {useArrPanel ? (
-        <HiddenReleasesDialog
-          open={hiddenReleasesOpen}
-          onOpenChange={setHiddenReleasesOpen}
-          onChanged={loadExclusionCounts}
-        />
-      ) : null}
+      <HiddenReleasesDialog
+        open={hiddenReleasesOpen}
+        onOpenChange={setHiddenReleasesOpen}
+        onChanged={loadExclusionCounts}
+      />
     </div>
   );
 }
 
 function PendingRow({
   item,
-  useArrList = false,
   onClear,
   onRecheck,
   onIgnore,
@@ -871,7 +759,6 @@ function PendingRow({
   onOpenHarmony,
 }: {
   item: NewReleasePendingItem;
-  useArrList?: boolean;
   onClear: () => void;
   onRecheck: () => void;
   onIgnore: () => void;
@@ -879,12 +766,7 @@ function PendingRow({
   onOpenHarmony: (url: string) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between",
-        !useArrList && "rounded-lg border bg-muted/30 px-4 py-3"
-      )}
-    >
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.artist_name}</span>
         <span className="mx-2 text-muted-foreground">—</span>
@@ -928,93 +810,48 @@ function PendingRow({
             </Button>
           )}
         </div>
-        {useArrList ? (
-          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto border-border/60 sm:max-w-none sm:border-l sm:pl-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
-              onClick={onRecheck}
-              title="Verify in MusicBrainz and remove if found"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Recheck
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
-              onClick={onClear}
-              title="Clear for now, will reappear on rescan"
-            >
-              <MinusCircle className="h-3 w-3" />
-              Clear
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
-              onClick={onIgnore}
-              title="Hide this album permanently"
-            >
-              <Ban className="h-3 w-3" />
-              Hide release
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap text-muted-foreground hover:text-destructive"
-              onClick={onHideArtist}
-              title="Ignore all releases for this artist"
-            >
-              <EyeOff className="h-3 w-3" />
-              Ignore artist
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1 border-border/60 sm:border-l sm:pl-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
-              onClick={onHideArtist}
-              title="Hide all releases for this artist"
-            >
-              <EyeOff className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:ml-1">Hide artist</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground sm:h-8 sm:w-auto sm:px-2"
-              onClick={onClear}
-              title="Clear for now, will reappear on rescan"
-            >
-              <MinusCircle className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:ml-1">Clear</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={onRecheck}
-              title="Verify in MusicBrainz and remove if found"
-              aria-label="Recheck release in MusicBrainz"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-              onClick={onIgnore}
-              title="Ignore this album permanently"
-              aria-label="Ignore release"
-            >
-              <Ban className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto border-border/60 sm:max-w-none sm:border-l sm:pl-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+            onClick={onRecheck}
+            title="Verify in MusicBrainz and remove if found"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Recheck
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+            onClick={onClear}
+            title="Clear for now, will reappear on rescan"
+          >
+            <MinusCircle className="h-3 w-3" />
+            Clear
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap"
+            onClick={onIgnore}
+            title="Hide this album permanently"
+          >
+            <Ban className="h-3 w-3" />
+            Hide release
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 px-1.5 text-[11px] whitespace-nowrap text-muted-foreground hover:text-destructive"
+            onClick={onHideArtist}
+            title="Ignore all releases for this artist"
+          >
+            <EyeOff className="h-3 w-3" />
+            Ignore artist
+          </Button>
+        </div>
       </div>
     </div>
   );

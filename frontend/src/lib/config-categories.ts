@@ -46,27 +46,6 @@ export function getConfigCategoryGroup(slug: string): ConfigCategoryGroup | unde
   return configCategoryGroups.find((g) => g.slug === slug);
 }
 
-/** Legacy tab values used by classic Config page (`group.name.toLowerCase()`). */
-export const legacyConfigCategoryGroups = configCategoryGroups.map((g) => ({
-  name: g.name,
-  icon: legacyIconForSlug(g.slug),
-  categories: g.categories,
-  tabValue: g.name.toLowerCase(),
-}));
-
-function legacyIconForSlug(slug: string): string {
-  const icons: Record<string, string> = {
-    application: "⚙️",
-    "music-sources": "🎵",
-    "event-sources": "🎫",
-    "media-servers": "📺",
-    "music-management": "🎯",
-    performance: "⚡",
-    scheduler: "🕐",
-  };
-  return icons[slug] ?? "⚙️";
-}
-
 const MEDIA_SERVER_ORDER: Record<string, number> = {
   PLEX_CLIENT_ENABLED: 0,
   PLEX_URL: 1,

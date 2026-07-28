@@ -1,24 +1,23 @@
 # Cmdarr Frontend
 
-Modern React frontend for Cmdarr built with TypeScript, Vite, TailwindCSS, and shadcn/ui.
+React SPA for Cmdarr — TypeScript, Vite, Tailwind CSS, and shadcn/ui — with a Sonarr-style (\*arr) shell.
 
 ## Tech Stack
 
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **TailwindCSS 4** - Utility-first CSS framework
-- **shadcn/ui** - Accessible component library
-- **React Router** - Client-side routing
-- **Sonner** - Toast notifications
-- **WebSocket** - Real-time updates
+- **React 19** — UI library
+- **TypeScript** — Type safety
+- **Vite** — Build tool and dev server
+- **Tailwind CSS 4** — Utility-first CSS
+- **shadcn/ui** — Accessible component primitives
+- **React Router** — Client-side routing
+- **Sonner** — Toast notifications
 
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- FastAPI backend running on http://localhost:8080
+- Node.js 24+ and npm (see repo `.nvmrc`)
+- FastAPI backend on http://localhost:8080
 
 ### Setup
 
@@ -33,126 +32,55 @@ npm install
 npm run dev
 ```
 
-The dev server will start on http://localhost:5173 with:
+Dev server on http://localhost:5173 with HMR and a proxy to the FastAPI backend.
 
-- Hot module replacement
-- Proxy to FastAPI backend (http://localhost:8080)
-- WebSocket proxy for real-time updates
-
-### Build for Production
+### Build / Preview
 
 ```bash
 npm run build
-```
-
-Builds the app to the `dist/` directory, which FastAPI will serve in production.
-
-### Preview Production Build
-
-```bash
 npm run preview
 ```
 
-## Features
+Production assets go to `dist/`, served by FastAPI.
 
-### Commands Page
+## App structure
 
-- Card and table view modes
-- Real-time status updates via WebSocket
-- Advanced filtering (status, type, search)
-- Sorting by name, last run, status
-- Command execution, editing, and management
-- Properly positioned "New Command" button (finally!)
+The UI is a single \*arr shell (sidebar + header). Shared page logic lives under `pages/`; shell wrappers and navigation live under `arr/`.
 
-### Configuration Page
+| Route                             | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `/commands`                       | Command list, enable/run                             |
+| `/commands/add`                   | Add command                                          |
+| `/commands/history`               | Execution history                                    |
+| `/new-releases`                   | New Release Discovery                                |
+| `/events`                         | Artist events                                        |
+| `/discovery`, `/discovery/lastfm` | Discovery hub + Last.fm                              |
+| `/import-lists`                   | Lidarr import list URLs                              |
+| `/settings/:section`              | Configuration                                        |
+| `/system/*`                       | Status KPIs, library cache, Lidarr maintenance, etc. |
 
-- Tabbed interface organized by category:
-  - Application (logging, web, output)
-  - Music Sources (LastFM, ListenBrainz, Spotify, etc.)
-  - Event Sources (API keys for artist events; enable toggles on the Artist events page)
-  - Media Servers (Plex, Jellyfin)
-  - Music Management (Lidarr)
-  - Performance (cache, library, commands)
-- Compact form design (no more massive boxes!)
-- Search across all settings
-- Connectivity testing
-- Real-time save tracking
-
-### Status Page
-
-- System health monitoring
-- Uptime tracking
-- Database and configuration status
-- API endpoint information
-
-### Dark Mode
-
-- Automatic dark mode support
-- Persisted user preference
-- System preference detection
-- Smooth transitions
-
-## Project Structure
+Bookmark redirects: `/` → `/commands`, `/config` → settings, `/status` → `/system/status`.
 
 ```
 frontend/
 ├── src/
-│   ├── components/
-│   │   ├── ui/              # shadcn/ui components
-│   │   └── Layout.tsx       # App layout with navigation
-│   ├── lib/
-│   │   ├── api.ts           # FastAPI client
-│   │   ├── websocket.ts     # WebSocket client
-│   │   ├── types.ts         # TypeScript types
-│   │   ├── utils.ts         # Utility functions
-│   │   └── theme.tsx        # Theme provider
-│   ├── pages/
-│   │   ├── Commands.tsx     # Commands page
-│   │   ├── Config.tsx       # Configuration page
-│   │   ├── Status.tsx       # Status page
-│   │   └── ImportLists.tsx  # Import lists page
-│   ├── App.tsx              # Main app component
-│   ├── main.tsx             # Entry point
-│   └── index.css            # Global styles
-├── public/                  # Static assets
-├── components.json          # shadcn/ui configuration
-├── tailwind.config.js       # Tailwind configuration
-├── vite.config.ts           # Vite configuration
-└── tsconfig.json            # TypeScript configuration
+│   ├── arr/                 # Shell layout, nav, route wrappers
+│   ├── components/          # Shared UI (dialogs, command edit, shadcn)
+│   ├── pages/               # Shared page implementations
+│   ├── hooks/
+│   ├── lib/                 # API client, theme, helpers
+│   ├── App.tsx
+│   └── main.tsx
+├── public/
+├── vite.config.ts
+└── package.json
 ```
 
 ## API Integration
 
-The frontend communicates with the FastAPI backend through:
+- **REST** — Commands, config, status, discovery, new releases, import lists
+- **Dev proxy** — Vite proxies `/api` (and related paths) to FastAPI
 
-1. **REST API** - CRUD operations for commands and configuration
-2. **WebSocket** - Real-time command status updates
-3. **Proxy** - Development proxy configuration in vite.config.ts
+## Dark Mode
 
-## Design Philosophy
-
-- **Minimal & Clean** - Reduced visual clutter, compact layouts
-- **Type-Safe** - Full TypeScript coverage
-- **Accessible** - Built on Radix UI primitives
-- **Responsive** - Mobile-first design with Tailwind
-- **Fast** - Optimized build with code splitting
-
-## Troubleshooting
-
-### Port 5173 already in use
-
-```bash
-lsof -ti:5173 | xargs kill -9
-```
-
-### Build fails
-
-```bash
-rm -rf node_modules dist
-npm install
-npm run build
-```
-
-### WebSocket connection issues
-
-Ensure FastAPI backend is running on http://localhost:8080
+Theme preference is stored in `localStorage` (`cmdarr-ui-theme`) and toggled from the header.

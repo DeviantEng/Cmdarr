@@ -8,7 +8,7 @@ export function ArrDiscoveryLastfmPage() {
         title="Last.fm Discovery"
         description="Browse similar artists and add them to Lidarr. Scheduled auto-add lives under Commands (independent of this page)."
       />
-      <DiscoveryLastfmPage showPageHeader={false} useArrPanel />
+      <DiscoveryLastfmPage />
     </div>
   );
 }

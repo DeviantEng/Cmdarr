@@ -148,7 +148,6 @@ export function ArrCommandHistoryPage() {
         </ArrContentPanel>
 
         <CommandExecutionsPanel
-          useArrPanel
           commands={commands}
           historySince={since}
           historyCommandName={commandName === "all" ? null : commandName}

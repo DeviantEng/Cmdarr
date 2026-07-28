@@ -8,7 +8,7 @@ export function ArrCommandsPage() {
         title="Commands"
         description="Manage, enable, and run Cmdarr commands manually or on a schedule."
       />
-      <CommandsPage showPageHeader={false} showExecutions={false} useArrPanel />
+      <CommandsPage showExecutions={false} />
     </div>
   );
 }

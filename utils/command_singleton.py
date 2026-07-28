@@ -24,7 +24,6 @@ class SingletonFamily:
 
     group: str
     create_type: str
-    name_prefix: str
     fixed_display_name: str | None = None
 
 
@@ -32,24 +31,20 @@ SINGLETON_FAMILIES: dict[str, SingletonFamily] = {
     "lidarr_update_all": SingletonFamily(
         group="lidarr_update_all",
         create_type="lidarr_update_all",
-        name_prefix="lidarr_update_all_",
         fixed_display_name="Lidarr Maintenance - Artist Refresh",
     ),
     "lidarr_wanted_search": SingletonFamily(
         group="lidarr_wanted_search",
         create_type="lidarr_wanted_search",
-        name_prefix="lidarr_wanted_search_",
         fixed_display_name="Lidarr Maintenance - Missing Search",
     ),
     "daylist": SingletonFamily(
         group="daylist",
         create_type="daylist",
-        name_prefix="daylist_",
     ),
     "local_discovery": SingletonFamily(
         group="local_discovery",
         create_type="local_discovery",
-        name_prefix="local_discovery_",
     ),
 }
 
@@ -59,25 +54,11 @@ def get_family(create_type: str) -> SingletonFamily | None:
 
 
 def find_active_singleton(db: Session, family: SingletonFamily) -> CommandConfig | None:
-    """Return an active command for this family, if any.
-
-    Prefer ``singleton_group`` match; also treat legacy rows by ``command_name`` prefix
-    so older Daylist / Local Discovery instances still block a second create.
-    """
-    by_group = (
-        db.query(CommandConfig)
-        .filter(
-            CommandConfig.singleton_group == family.group,
-            CommandConfig.deleted_at.is_(None),
-        )
-        .first()
-    )
-    if by_group is not None:
-        return by_group
+    """Return an active command for this family, if any."""
     return (
         db.query(CommandConfig)
         .filter(
-            CommandConfig.command_name.like(f"{family.name_prefix}%"),
+            CommandConfig.singleton_group == family.group,
             CommandConfig.deleted_at.is_(None),
         )
         .first()

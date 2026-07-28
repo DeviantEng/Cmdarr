@@ -226,15 +226,6 @@ class ListenBrainzClient(BaseAPIClient):
             self.logger.error(f"Error getting full playlist details: {e}")
             return None
 
-    async def get_discovery_playlist(self, username: str) -> dict[str, Any] | None:
-        """Find and return the Weekly Discovery playlist for a user (legacy method)"""
-        try:
-            curated = await self.get_curated_playlists(username)
-            return curated.get("weekly_exploration")
-        except Exception as e:
-            self.logger.error(f"Error getting Weekly Discovery playlist for {username}: {e}")
-            return None
-
     async def get_playlist_details(self, playlist_mbid: str) -> dict[str, Any] | None:
         """Get detailed playlist information including tracks"""
         try:
@@ -348,75 +339,6 @@ class ListenBrainzClient(BaseAPIClient):
 
         except Exception as e:
             self.logger.error(f"Error extracting tracks from playlist: {e}")
-            return []
-
-    async def extract_artists_from_playlist(self, playlist: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extract unique artists from playlist tracks with MBIDs (legacy method for discovery)"""
-        try:
-            artists = []
-            seen_mbids = set()
-            skipped_no_mbid = 0
-
-            tracks = playlist.get("track", [])
-            self.logger.info(
-                f"Processing {len(tracks)} tracks from playlist '{playlist.get('title', 'Unknown')}'"
-            )
-
-            for track in tracks:
-                # Get artist information from track
-                artist_name = track.get("creator", "")
-
-                # Extract MBID from track extension data (ListenBrainz format)
-                artist_mbid = None
-                if "extension" in track:
-                    mb_track_data = track["extension"].get(
-                        "https://musicbrainz.org/doc/jspf#track", {}
-                    )
-                    additional_metadata = mb_track_data.get("additional_metadata", {})
-                    artists_list = additional_metadata.get("artists", [])
-
-                    if artists_list and len(artists_list) > 0:
-                        # Take the first artist's MBID
-                        artist_mbid = artists_list[0].get("artist_mbid")
-
-                # Skip if no artist name
-                if not artist_name:
-                    continue
-
-                # Skip if no MBID (unexpected for ListenBrainz)
-                if not artist_mbid:
-                    skipped_no_mbid += 1
-                    self.logger.debug(
-                        f"Skipping artist '{artist_name}' - no MBID found (unexpected)"
-                    )
-                    continue
-
-                # Skip if we've already seen this artist MBID
-                if artist_mbid in seen_mbids:
-                    continue
-
-                seen_mbids.add(artist_mbid)
-
-                artists.append(
-                    {
-                        "name": artist_name,
-                        "mbid": artist_mbid,
-                        "track_title": track.get("title", ""),
-                        "source": "listenbrainz_weekly_exploration",
-                    }
-                )
-
-            if skipped_no_mbid > 0:
-                self.logger.warning(
-                    f"Skipped {skipped_no_mbid} artists without MBIDs (this is unexpected for ListenBrainz)"
-                )
-
-            self.logger.info(f"Extracted {len(artists)} unique artists with MBIDs from playlist")
-
-            return artists
-
-        except Exception as e:
-            self.logger.error(f"Error extracting artists from playlist: {e}")
             return []
 
     async def test_connection(self) -> bool:

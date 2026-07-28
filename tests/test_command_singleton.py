@@ -64,7 +64,7 @@ def test_require_blocks_second_lidarr_update_all(session):
     assert avail["lidarr_wanted_search"]["available"] is True
 
 
-def test_legacy_prefix_counts_without_singleton_group(session):
+def test_singleton_group_is_required_to_block(session):
     session.add(
         CommandConfig(
             command_name="daylist_00001",
@@ -74,8 +74,8 @@ def test_legacy_prefix_counts_without_singleton_group(session):
         )
     )
     session.commit()
-    assert singleton_occupied(session, "daylist") is True
-    assert availability_for_create(session)["daylist"]["available"] is False
+    assert singleton_occupied(session, "daylist") is False
+    assert availability_for_create(session)["daylist"]["available"] is True
 
 
 def test_soft_deleted_does_not_block(session):

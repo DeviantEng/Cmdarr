@@ -82,11 +82,6 @@ function pickProfileId(profiles: LidarrProfile[], preferred: number | null): str
   return String(profiles[0].id);
 }
 
-type DiscoveryLastfmPageProps = {
-  showPageHeader?: boolean;
-  useArrPanel?: boolean;
-};
-
 function stripHtml(html: string): string {
   if (!html) return "";
   const withBreaks = html
@@ -113,10 +108,7 @@ function formatCount(value: number | string | null | undefined): string | null {
   }).format(num);
 }
 
-export function DiscoveryLastfmPage({
-  showPageHeader = true,
-  useArrPanel = false,
-}: DiscoveryLastfmPageProps) {
+export function DiscoveryLastfmPage() {
   const [seedSource, setSeedSource] = useState<SeedSource>("lidarr");
   const [artists, setArtists] = useState<SeedArtist[]>([]);
   const [loadingArtists, setLoadingArtists] = useState(true);
@@ -495,7 +487,7 @@ export function DiscoveryLastfmPage({
   );
 
   const seedPanel = (
-    <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
+    <Card className="border-0 bg-transparent shadow-none">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Seed artists</CardTitle>
         <CardDescription>
@@ -760,7 +752,7 @@ export function DiscoveryLastfmPage({
   );
 
   const resultsPanel = (
-    <Card className={cn(useArrPanel && "border-0 shadow-none bg-transparent")}>
+    <Card className="border-0 bg-transparent shadow-none">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Similar artists</CardTitle>
         <CardDescription>
@@ -909,35 +901,17 @@ export function DiscoveryLastfmPage({
     </Dialog>
   );
 
-  if (useArrPanel) {
-    return (
-      <>
-        {toolbar}
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Last.fm Discovery"
-            description="Discover similar artists via Last.fm and add them to Lidarr."
-          />
-          <ArrPanelBody>{body}</ArrPanelBody>
-        </ArrContentPanel>
-        {dialog}
-      </>
-    );
-  }
-
   return (
-    <div className="space-y-4 p-4 sm:p-6">
-      {showPageHeader && (
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Last.fm Discovery</h1>
-          <p className="text-muted-foreground">
-            Discover similar artists via Last.fm and add them to Lidarr.
-          </p>
-        </div>
-      )}
+    <>
       {toolbar}
-      {body}
+      <ArrContentPanel>
+        <ArrSectionHeader
+          title="Last.fm Discovery"
+          description="Discover similar artists via Last.fm and add them to Lidarr."
+        />
+        <ArrPanelBody>{body}</ArrPanelBody>
+      </ArrContentPanel>
       {dialog}
-    </div>
+    </>
   );
 }

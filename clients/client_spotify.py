@@ -9,7 +9,6 @@ Caches API usability (403 Premium required) to avoid repeated token fetch + 403 
 import asyncio
 import base64
 import hashlib
-import inspect
 import json
 import time
 from typing import Any
@@ -21,13 +20,6 @@ from utils.playlist_parser import parse_playlist_url
 from utils.text_normalizer import normalize_text
 
 from .client_base import BaseAPIClient
-
-
-def _scraper_uses_legacy_init() -> bool:
-    """spotifyscraper 2.x accepts browser_type; 3.x removed it."""
-    from spotify_scraper import SpotifyClient as ScraperClient
-
-    return "browser_type" in inspect.signature(ScraperClient.__init__).parameters
 
 
 def _normalize_scraper_owner(owner: Any) -> str:
@@ -81,16 +73,6 @@ def _scraper_playlist_result(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _scraper_get_playlist_v2(url: str) -> dict[str, Any]:
-    from spotify_scraper import SpotifyClient as ScraperClient
-
-    client = ScraperClient(browser_type="requests")
-    try:
-        return _scraper_playlist_result(client.get_playlist_info(url))
-    finally:
-        client.close()
-
-
 def _scraper_get_playlist_v3(url: str) -> dict[str, Any]:
     from spotify_scraper import SpotifyClient as ScraperClient
 
@@ -105,8 +87,6 @@ def _scraper_get_playlist_v3(url: str) -> dict[str, Any]:
 def _scraper_get_playlist(url: str) -> dict[str, Any]:
     """Sync helper: fetch playlist via SpotifyScraper (no auth). Returns normalized dict."""
     try:
-        if _scraper_uses_legacy_init():
-            return _scraper_get_playlist_v2(url)
         return _scraper_get_playlist_v3(url)
     except Exception as e:
         return {"success": False, "error": f"Scraper failed: {str(e)}"}
@@ -195,9 +175,7 @@ def _scraper_iter_discography_releases(client: Any, artist_id: str):
 
 
 def _scraper_supports_discography() -> bool:
-    """spotifyscraper 3.x exposes get_discography; 2.x does not."""
-    if _scraper_uses_legacy_init():
-        return False
+    """Return whether the installed scraper exposes get_discography."""
     try:
         from spotify_scraper import SpotifyClient as ScraperClient
 
@@ -267,12 +245,6 @@ def _scraper_enrich_nrd_album(
 ) -> dict[str, Any]:
     """Fetch one album via get_album for NRD pending metadata."""
     try:
-        if _scraper_uses_legacy_init():
-            return {
-                "success": False,
-                "error": "Album lookup requires spotifyscraper 3.x",
-                "album": None,
-            }
         from spotify_scraper import SpotifyClient as ScraperClient
 
         with ScraperClient() as client:
@@ -286,21 +258,10 @@ def _scraper_enrich_nrd_album(
 
 def _scraper_get_artist(artist_id: str) -> dict[str, Any]:
     try:
-        if _scraper_uses_legacy_init():
-            from spotify_scraper import SpotifyClient as ScraperClient
+        from spotify_scraper import SpotifyClient as ScraperClient
 
-            client = ScraperClient(browser_type="requests")
-            try:
-                data = client.get_artist_info(artist_id)
-                if not isinstance(data, dict):
-                    data = _scraper_model_to_dict(data)
-            finally:
-                client.close()
-        else:
-            from spotify_scraper import SpotifyClient as ScraperClient
-
-            with ScraperClient() as client:
-                data = _scraper_model_to_dict(client.get_artist(artist_id))
+        with ScraperClient() as client:
+            data = _scraper_model_to_dict(client.get_artist(artist_id))
         if not data.get("id") and not data.get("name"):
             return {"success": False, "error": "Artist not found", "name": None}
         return {
@@ -314,12 +275,6 @@ def _scraper_get_artist(artist_id: str) -> dict[str, Any]:
 
 def _scraper_search_artists(name: str, limit: int = 5) -> dict[str, Any]:
     try:
-        if _scraper_uses_legacy_init():
-            return {
-                "success": False,
-                "error": "Artist search requires spotifyscraper 3.x",
-                "artists": [],
-            }
         from spotify_scraper import SpotifyClient as ScraperClient
 
         with ScraperClient() as client:
@@ -349,11 +304,6 @@ def _scraper_search_artists(name: str, limit: int = 5) -> dict[str, Any]:
 
 def _scraper_get_album(album_id: str) -> dict[str, Any]:
     try:
-        if _scraper_uses_legacy_init():
-            return {
-                "success": False,
-                "error": "Album lookup requires spotifyscraper 3.x",
-            }
         from spotify_scraper import SpotifyClient as ScraperClient
 
         with ScraperClient() as client:
