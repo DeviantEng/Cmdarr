@@ -8,4 +8,4 @@
 
 ## MAL-2026-4750 (pip-audit / OSV noise on FastAPI)
 
-**Status:** Temporary **false positive** in OSV advisory data for **FastAPI**; correct upstream. **`make check-audit`** and the PR **`pip-audit`** job pass **`--ignore-vuln MAL-2026-4750`** until the advisory is retracted or fixed. Then remove **`PIPAUDIT_IGNORES`** in the [Makefile](../Makefile) and the **`--ignore-vuln`** flag in [.github/workflows/pr-checks.yml](../.github/workflows/pr-checks.yml).
+**Status:** Cleared. OSV no longer flags this against current `requirements.txt`; **`--ignore-vuln MAL-2026-4750`** was removed from the [Makefile](../Makefile) and [.github/workflows/pr-checks.yml](../.github/workflows/pr-checks.yml).

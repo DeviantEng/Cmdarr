@@ -25,7 +25,13 @@ from utils.nrd_mb_validation import (
 
 @pytest.fixture()
 def session():
-    engine = create_engine("sqlite://")
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     ConfigBase.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine)
     s = TestSession()

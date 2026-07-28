@@ -4,7 +4,7 @@ Import Lists API endpoints (playlist sync discovery only).
 
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -86,7 +86,7 @@ async def get_import_list_metrics():
 
         return {
             "unified": unified_metrics,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
 
     except Exception as e:

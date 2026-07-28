@@ -13,7 +13,13 @@ from utils.event_ingest import persist_normalized_events
 @pytest.fixture()
 def session():
     """In-memory sqlite Session bound to the config models metadata."""
-    engine = create_engine("sqlite://")
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     ConfigBase.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine)
     s = TestSession()
