@@ -441,21 +441,19 @@ export function DiscoveryLastfmPage({
             </SelectContent>
           </Select>
         </div>
-        {seedSource === "lidarr" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void handleSync()}
-            disabled={syncing || running}
-          >
-            {syncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Refresh cache
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleSync()}
+          disabled={syncing || running}
+        >
+          {syncing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Sync Lidarr artists
+        </Button>
         {!running ? (
           <Button
             size="sm"
@@ -696,7 +694,8 @@ export function DiscoveryLastfmPage({
               {seedSource === "lidarr" ? (
                 <>
                   <p>
-                    No cached Lidarr artists. Click Refresh cache, or ensure Lidarr is configured.
+                    No cached Lidarr artists. Click Sync Lidarr artists, or ensure Lidarr is
+                    configured.
                   </p>
                   <Button
                     variant="outline"
@@ -704,7 +703,7 @@ export function DiscoveryLastfmPage({
                     onClick={() => void handleSync()}
                     disabled={syncing}
                   >
-                    Refresh cache
+                    Sync Lidarr artists
                   </Button>
                 </>
               ) : (

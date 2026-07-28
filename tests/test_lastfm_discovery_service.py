@@ -89,6 +89,8 @@ async def test_session_discovers_and_filters():
         await session.task
 
     assert session.status == "completed"
+    lidarr.get_all_artists.assert_awaited()
+    assert lidarr.get_all_artists.await_args.kwargs.get("force_refresh") is True
     mbids = {r.mbid for r in session.results.values()}
     assert "new-mbid" in mbids
     assert "new-mbid-2" in mbids

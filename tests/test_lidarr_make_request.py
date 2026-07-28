@@ -64,3 +64,59 @@ async def test_make_request_still_rejects_4xx():
         pytest.raises(Exception, match="400"),
     ):
         await client._make_request("artist", method="POST", json={})
+
+
+@pytest.mark.asyncio
+async def test_get_all_artists_force_refresh_bypasses_cache():
+    client = _client()
+    client.cache_enabled = True
+    cache = MagicMock()
+    cache.get.return_value = [
+        {"musicBrainzId": "stale", "artistName": "Stale"},
+    ]
+    cache.delete.return_value = True
+    cache.set.return_value = None
+    client.cache = cache
+    client.config.NEW_RELEASES_CACHE_DAYS = 14
+
+    live = [
+        {
+            "foreignArtistId": "fresh-mbid",
+            "artistName": "Sianvar",
+            "id": 1,
+            "status": "continuing",
+            "monitored": True,
+            "monitorNewItems": "all",
+            "links": [],
+        }
+    ]
+    client._make_request = AsyncMock(return_value=live)
+
+    artists = await client.get_all_artists(force_refresh=True)
+
+    cache.delete.assert_called_once_with("lidarr_artists_v3", "lidarr")
+    cache.get.assert_not_called()
+    assert len(artists) == 1
+    assert artists[0]["musicBrainzId"] == "fresh-mbid"
+    assert artists[0]["artistName"] == "Sianvar"
+
+
+@pytest.mark.asyncio
+async def test_add_artist_success_invalidates_artists_cache():
+    client = _client()
+    client.cache_enabled = True
+    cache = MagicMock()
+    client.cache = cache
+
+    client.get_artist_by_mbid = AsyncMock(return_value=None)
+    client.get_quality_profiles = AsyncMock(return_value=[{"id": 1}])
+    client.get_metadata_profiles = AsyncMock(return_value=[{"id": 2}])
+    client.get_root_folders = AsyncMock(return_value=[{"path": "/music"}])
+    client._make_request = AsyncMock(return_value={"id": 9, "artistName": "Sianvar"})
+
+    result = await client.add_artist(
+        "mbid-sianvar", "Sianvar", quality_profile_id=1, metadata_profile_id=2
+    )
+
+    assert result["success"] is True
+    cache.delete.assert_called_once_with("lidarr_artists_v3", "lidarr")

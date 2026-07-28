@@ -21,16 +21,21 @@ class DiscoveryUtils:
         self.musicbrainz = musicbrainz_client
         self.logger = logging.getLogger("cmdarr.discovery_utils")
 
-    async def get_lidarr_context(self) -> tuple[set[str], set[str], set[str]]:
+    async def get_lidarr_context(
+        self, *, force_refresh: bool = False
+    ) -> tuple[set[str], set[str], set[str]]:
         """
         Get current Lidarr context for filtering
+
+        Args:
+            force_refresh: Bypass the Lidarr artists API cache (needed after library adds).
 
         Returns:
             Tuple of (existing_mbids, existing_names_lower, excluded_mbids)
         """
         # Get existing artists from Lidarr
         self.logger.info("Fetching existing artists from Lidarr...")
-        lidarr_artists = await self.lidarr.get_all_artists()
+        lidarr_artists = await self.lidarr.get_all_artists(force_refresh=force_refresh)
         existing_mbids = {artist["musicBrainzId"] for artist in lidarr_artists}
         existing_names = {artist["artistName"].lower() for artist in lidarr_artists}
 
