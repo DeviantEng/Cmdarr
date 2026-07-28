@@ -1160,7 +1160,7 @@ async def sync_lidarr_artists(db: Annotated[Session, Depends(get_config_db)]):
         raise HTTPException(status_code=503, detail="Lidarr not configured")
 
     async with LidarrClient(config) as lidarr_client:
-        artists = await lidarr_client.get_all_artists()
+        artists = await lidarr_client.get_all_artists(force_refresh=True)
 
     now = datetime.now(UTC)
     _, updated = upsert_lidarr_artists_from_payload(db, artists, now=now)

@@ -632,6 +632,13 @@ async def react_settings(request: Request, full_path: str = ""):
     return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
+@app.get("/discovery", response_class=HTMLResponse)
+@app.get("/discovery/{full_path:path}", response_class=HTMLResponse)
+async def react_discovery(request: Request, full_path: str = ""):
+    """Serve React app for discovery routes"""
+    return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
 @app.get("/system", response_class=HTMLResponse)
 @app.get("/system/{full_path:path}", response_class=HTMLResponse)
 async def react_system(request: Request, full_path: str = ""):
@@ -644,8 +651,10 @@ from app.api import (
     auth_routes,
     commands,
     config,
+    discovery_lastfm_api,
     events,
     import_lists,
+    lidarr_maintenance,
     new_releases,
     status,
     test_connectivity,
@@ -660,6 +669,12 @@ app.include_router(import_lists.router, prefix="/import_lists", tags=["import_li
 app.include_router(test_connectivity.router, prefix="/api/config", tags=["configuration"])
 app.include_router(new_releases.router, prefix="/api", tags=["new_releases"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
+app.include_router(
+    discovery_lastfm_api.router, prefix="/api/discovery/lastfm", tags=["discovery-lastfm"]
+)
+app.include_router(
+    lidarr_maintenance.router, prefix="/api/lidarr-maintenance", tags=["lidarr_maintenance"]
+)
 
 
 _SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "import_lists/", "assets/")

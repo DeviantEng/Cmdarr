@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Compare pinned Chainguard python digests in Dockerfile.wolfi against :latest tag history.
+# Compare pinned Chainguard python digests in Dockerfile against :latest tag history.
 # Exits 0 when pinned digests match registry; exits 1 when newer digests are available.
 #
-# Usage: .github/scripts/check-chainguard-python-digest.sh [Dockerfile.wolfi]
+# Usage: .github/scripts/check-chainguard-python-digest.sh [Dockerfile]
 # Requires: curl, jq, docker (optional, for python --version on new digest)
 
 set -euo pipefail
 
-DOCKERFILE="${1:-Dockerfile.wolfi}"
+DOCKERFILE="${1:-Dockerfile}"
 IMAGE="chainguard/python"
 
 pinned_runtime=$(grep -E '^FROM cgr.dev/chainguard/python@sha256:' "$DOCKERFILE" | grep -v ' AS ' \
@@ -42,5 +42,5 @@ if command -v docker >/dev/null 2>&1; then
   fi
 fi
 
-echo "Newer Chainguard digests available — review SBOM/python version before bumping Dockerfile.wolfi."
+echo "Newer Chainguard digests available — review SBOM/python version before bumping Dockerfile."
 exit 1

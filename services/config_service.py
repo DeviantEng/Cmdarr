@@ -134,6 +134,13 @@ class ConfigService:
                 "description": "Rate limit in requests per second",
             },
             {
+                "key": "LASTFM_FETCH_CONCURRENCY",
+                "default_value": "3",
+                "data_type": "int",
+                "category": "lastfm",
+                "description": "Max concurrent Last.fm top-track fetches when building playlist commands (Artist Essentials, Last.fm Similar)",
+            },
+            {
                 "key": "SETLIST_FM_API_KEY",
                 "default_value": "",
                 "data_type": "string",
@@ -532,13 +539,6 @@ class ConfigService:
                 "description": "Age threshold in days for removing stale discovery entries",
             },
             # Output Configuration
-            {
-                "key": "OUTPUT_FILE",
-                "default_value": "data/import_lists/discovery_lastfm.json",
-                "data_type": "string",
-                "category": "output",
-                "description": "Output file for Last.fm Lidarr import list",
-            },
             {
                 "key": "LISTENBRAINZ_OUTPUT_FILE",
                 "default_value": "data/import_lists/discovery_listenbrainz.json",

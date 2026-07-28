@@ -565,6 +565,153 @@ def create_version_migration_runner() -> VersionMigrationRunner:
         )
     )
 
+    def migrate_remove_discovery_lastfm_import_list(cursor):
+        """Filesystem cleanup for Last.fm Discovery import-list retirement."""
+        from pathlib import Path
+
+        from database.database import _get_data_dir
+
+        data_dir = Path(_get_data_dir())
+        import_lists = data_dir / "import_lists"
+        discovery_dir = data_dir / "discovery"
+        discovery_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in ("discovery_lastfm.json", "discovery_lastfm.json.backup"):
+            path = import_lists / name
+            if path.exists():
+                path.unlink()
+
+        try:
+            from services.config_service import config_service
+
+            configured = (config_service.get("OUTPUT_FILE") or "").strip()
+            if configured:
+                cfg_path = Path(configured)
+                if cfg_path.exists() and "discovery_lastfm" in cfg_path.name:
+                    cfg_path.unlink()
+        except Exception:
+            pass
+
+        old_queried = import_lists / "discovery_lastfm_queried.json"
+        new_queried = discovery_dir / "lastfm_queried.json"
+        if old_queried.exists() and not new_queried.exists():
+            old_queried.replace(new_queried)
+        elif old_queried.exists():
+            old_queried.unlink()
+
+        try:
+            cursor.execute("DELETE FROM config_settings WHERE key = ?", ("OUTPUT_FILE",))
+        except Exception:
+            pass
+
+    def migrate_lidarr_wanted_search_ignore(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lidarr_wanted_search_ignore (
+                id INTEGER PRIMARY KEY,
+                lidarr_album_id INTEGER NOT NULL UNIQUE,
+                foreign_album_id VARCHAR(100),
+                artist_name VARCHAR(500),
+                album_title VARCHAR(500) NOT NULL DEFAULT '',
+                album_type VARCHAR(50),
+                release_date VARCHAR(50),
+                ignored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ignored_until TIMESTAMP NOT NULL,
+                reason VARCHAR(100) NOT NULL DEFAULT 'no_release_found',
+                command_name VARCHAR(100),
+                search_count INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_lidarr_album_id "
+            "ON lidarr_wanted_search_ignore (lidarr_album_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_ignored_until "
+            "ON lidarr_wanted_search_ignore (ignored_until)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_lidarr_wanted_search_ignore_command_name "
+            "ON lidarr_wanted_search_ignore (command_name)"
+        )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.19",
+            name="remove_discovery_lastfm_import_list",
+            description=(
+                "Delete obsolete Last.fm Discovery import-list JSON; move cooldown file "
+                "to data/discovery/"
+            ),
+            up_func=migrate_remove_discovery_lastfm_import_list,
+            applied_check=lambda c: False,
+        )
+    )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.19",
+            name="lidarr_wanted_search_ignore",
+            description="Add ignore list for Lidarr Wanted Search maintenance command",
+            up_func=migrate_lidarr_wanted_search_ignore,
+            applied_check=lambda c: _table_exists(c, "lidarr_wanted_search_ignore"),
+        )
+    )
+
+    def migrate_command_singleton_group(cursor):
+        if not _column_exists(cursor, "command_configs", "singleton_group"):
+            cursor.execute("ALTER TABLE command_configs ADD COLUMN singleton_group VARCHAR(100)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_command_configs_singleton_group "
+            "ON command_configs (singleton_group)"
+        )
+        # Backfill known singleton families (oldest row keeps the group if multiples exist).
+        for group, prefix in (
+            ("lidarr_update_all", "lidarr_update_all_%"),
+            ("lidarr_wanted_search", "lidarr_wanted_search_%"),
+            ("daylist", "daylist_%"),
+            ("local_discovery", "local_discovery_%"),
+        ):
+            cursor.execute(
+                """
+                UPDATE command_configs
+                SET singleton_group = ?
+                WHERE id = (
+                    SELECT id FROM command_configs
+                    WHERE command_name LIKE ? AND deleted_at IS NULL
+                    ORDER BY id ASC
+                    LIMIT 1
+                )
+                """,
+                (group, prefix),
+            )
+        cursor.execute(
+            """
+            UPDATE command_configs
+            SET display_name = 'Lidarr Maintenance - Artist Refresh'
+            WHERE command_name LIKE 'lidarr_update_all_%' AND deleted_at IS NULL
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE command_configs
+            SET display_name = 'Lidarr Maintenance - Missing Search'
+            WHERE command_name LIKE 'lidarr_wanted_search_%' AND deleted_at IS NULL
+            """
+        )
+
+    runner.add_migration(
+        VersionMigration(
+            version="0.3.19",
+            name="command_singleton_group",
+            description=(
+                "Add singleton_group on command_configs; backfill Daylist / Local Discovery / "
+                "Lidarr Maintenance; lock Lidarr maintenance display names"
+            ),
+            up_func=migrate_command_singleton_group,
+            applied_check=lambda c: _column_exists(c, "command_configs", "singleton_group"),
+        )
+    )
+
     return runner
 
 

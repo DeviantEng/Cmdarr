@@ -74,6 +74,8 @@ class CommandExecutor:
             self._load_dynamic_local_discovery_commands()
             # Load dynamic xmplaylist commands from database
             self._load_dynamic_xmplaylist_commands()
+            # Load Lidarr maintenance commands from database
+            self._load_dynamic_lidarr_maintenance_commands()
 
             # Clean up any stuck executions on startup
             import asyncio
@@ -454,6 +456,10 @@ class CommandExecutor:
             return self._build_new_releases_summary(stats, duration)
         elif command_name == "artist_events_refresh" and stats:
             return self._build_artist_events_summary(stats, duration)
+        elif command_name.startswith("lidarr_update_all_") and stats:
+            return self._build_lidarr_update_all_summary(stats, duration)
+        elif command_name.startswith("lidarr_wanted_search_") and stats:
+            return self._build_lidarr_wanted_search_summary(stats, duration)
         elif command_name.startswith("daylist_") and stats:
             return self._build_daylist_summary(stats, duration)
         elif command_name.startswith("top_tracks_") and stats:
@@ -570,23 +576,62 @@ class CommandExecutor:
         remaining = stats.get("remaining_count", 0)
         return f"Maintenance completed in {duration:.1f}s: {removed} removed, {remaining} remaining"
 
+    def _build_lidarr_update_all_summary(self, stats: dict[str, Any], duration: float) -> str:
+        parts = [f"Lidarr Update All completed in {duration:.1f}s"]
+        status = stats.get("lidarr_status")
+        if status:
+            parts.append(f"Lidarr status: {status}")
+        cmd_id = stats.get("lidarr_command_id")
+        if cmd_id is not None:
+            parts.append(f"command id {cmd_id}")
+        return " • ".join(parts)
+
+    def _build_lidarr_wanted_search_summary(self, stats: dict[str, Any], duration: float) -> str:
+        parts = [f"Lidarr Wanted Search completed in {duration:.1f}s"]
+        searched = stats.get("albums_searched", 0)
+        found = stats.get("downloads_found", 0)
+        ignored = stats.get("ignored_added", 0)
+        parts.append(f"searched {searched}, downloads {found}, ignored {ignored}")
+        active = stats.get("active_ignores")
+        if active is not None:
+            parts.append(f"{active} on ignore list")
+        msg = stats.get("message")
+        if msg and searched == 0:
+            parts.append(str(msg))
+        summary = " • ".join(parts)
+        found_sample = stats.get("found_sample") or []
+        if found_sample:
+            summary += "\n\nDownloads (cooled):\n• " + "\n• ".join(
+                str(x) for x in found_sample[:10]
+            )
+        ignored_sample = stats.get("ignored_sample") or []
+        if ignored_sample:
+            summary += "\n\nIgnored (no release):\n• " + "\n• ".join(
+                str(x) for x in ignored_sample[:10]
+            )
+        return summary
+
     def _build_lastfm_summary(self, stats: dict[str, Any], duration: float) -> str:
         """Build Last.fm discovery summary from command result"""
+        if stats.get("error"):
+            return f"Last.fm Discovery failed: {stats['error']} ({duration:.1f}s)"
+
         total = stats.get("total_candidates", 0)
         already_in = stats.get("filtered_already_in_lidarr", 0)
         excluded = stats.get("filtered_in_exclusions", 0)
-        output = stats.get("final_count", 0)
+        candidates = stats.get("final_count", 0)
+        added = stats.get("added_count", 0)
+        failed = stats.get("failed_count", 0)
 
         parts = [f"Last.fm Discovery completed in {duration:.1f}s"]
         if total > 0:
-            if output == 0:
-                parts.append(
-                    f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, no new artists to add"
-                )
-            else:
-                parts.append(
-                    f"✅ {total:,} artists detected: {already_in:,} already in Lidarr, {excluded:,} on exclusion list, {output:,} new artists ready for import"
-                )
+            parts.append(
+                f"{total:,} candidates: {already_in:,} already in Lidarr, "
+                f"{excluded:,} excluded, {candidates:,} selected"
+            )
+        parts.append(f"added {added:,} via Lidarr API")
+        if failed:
+            parts.append(f"{failed:,} add failures")
         return " • ".join(parts)
 
     def _build_new_releases_summary(self, stats: dict[str, Any], duration: float) -> str:
@@ -1097,6 +1142,47 @@ class CommandExecutor:
                 session.close()
         except Exception as e:
             self.logger.error(f"Failed to load dynamic xmplaylist commands: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def _load_dynamic_lidarr_maintenance_commands(self):
+        """Load Lidarr Update All / Wanted Search commands from database."""
+        try:
+            self._ensure_initialized()
+            from commands.lidarr_update_all import LidarrUpdateAllCommand
+            from commands.lidarr_wanted_search import LidarrWantedSearchCommand
+
+            db_manager = get_database_manager()
+            session = db_manager.get_config_session_sync()
+            try:
+                update_rows = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("lidarr_update_all_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in update_rows:
+                    self.command_classes[command_config.command_name] = LidarrUpdateAllCommand
+                    self.logger.debug(
+                        f"Loaded Lidarr Update All command: {command_config.command_name}"
+                    )
+
+                wanted_rows = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name.like("lidarr_wanted_search_%"))
+                    .filter(CommandConfig.deleted_at.is_(None))
+                    .all()
+                )
+                for command_config in wanted_rows:
+                    self.command_classes[command_config.command_name] = LidarrWantedSearchCommand
+                    self.logger.debug(
+                        f"Loaded Lidarr Wanted Search command: {command_config.command_name}"
+                    )
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.error(f"Failed to load Lidarr maintenance commands: {e}")
             import traceback
 
             self.logger.error(f"Traceback: {traceback.format_exc()}")

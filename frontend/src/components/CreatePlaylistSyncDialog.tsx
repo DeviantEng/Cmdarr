@@ -33,9 +33,13 @@ import {
   Radio,
   Users,
   Mic2,
+  RefreshCw,
+  Search,
+  Info,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { CreateCommandScheduleExpiryBlock } from "@/components/CreateCommandScheduleExpiryBlock";
 import { ExpirationFields } from "@/components/ExpirationFields";
 import { PlexPlaylistTargetSection } from "@/components/PlexPlaylistTargetSection";
@@ -48,7 +52,6 @@ import {
 } from "@/command-spec";
 import { PlaylistSyncArtistDiscoveryControl } from "@/components/command-edit/PlaylistSyncArtistDiscoveryControl";
 import { ArrContentPanel, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
-import { cn } from "@/lib/utils";
 
 type PlaylistType =
   | "listenbrainz"
@@ -59,7 +62,9 @@ type PlaylistType =
   | "setlistfm"
   | "local_discovery"
   | "mood_playlist"
-  | "xmplaylist";
+  | "xmplaylist"
+  | "lidarr_update_all"
+  | "lidarr_wanted_search";
 
 /** @see PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS in command-spec/createPlaylistSurface.ts */
 
@@ -294,6 +299,31 @@ export function CreatePlaylistSyncDialog({
   const [xmplaylistStationsLoading, setXmplaylistStationsLoading] = useState(false);
   const [xmplaylistStationFilter, setXmplaylistStationFilter] = useState("");
 
+  const [lidarrUpdateAllForm, setLidarrUpdateAllForm] = useState({
+    schedule_cron: "0 4 * * 0",
+    schedule_override: false,
+    enabled: true,
+  });
+
+  const [lidarrWantedSearchForm, setLidarrWantedSearchForm] = useState({
+    top_x: 10,
+    ignore_days: 14,
+    settle_seconds: 30,
+    sort_by: "oldest_release_date" as
+      | "oldest_release_date"
+      | "newest_release_date"
+      | "artist_name_asc"
+      | "album_title_asc",
+    album_types: ["album"] as string[],
+    schedule_cron: "0 5 * * *",
+    schedule_override: false,
+    enabled: true,
+  });
+
+  const [singletonAvailability, setSingletonAvailability] = useState<
+    Record<string, { available: boolean; reason?: string | null }>
+  >({});
+
   const filteredXmStations = useMemo(() => {
     const q = xmplaylistStationFilter.trim().toLowerCase();
     if (!q) return xmplaylistStations;
@@ -323,7 +353,7 @@ export function CreatePlaylistSyncDialog({
         setLocalDiscoveryUsedIds(new Set());
       });
 
-  // Fetch mood playlist moods and plex accounts when dialog opens
+  // Fetch mood playlist moods, plex accounts, and singleton availability when dialog opens
   useEffect(() => {
     if (!isActive) return;
     api
@@ -331,6 +361,12 @@ export function CreatePlaylistSyncDialog({
       .then((r) => setMoodsList(r.moods || []))
       .catch(() => setMoodsList([]));
     fetchPlexAccounts();
+    api
+      .request<{
+        singletons?: Record<string, { available: boolean; reason?: string | null }>;
+      }>("/api/commands/create-availability")
+      .then((r) => setSingletonAvailability(r.singletons || {}))
+      .catch(() => setSingletonAvailability({}));
   }, [isActive]);
 
   // Refetch plex accounts when showing Daylist or Local Discovery form (ensures used_ids are current)
@@ -457,6 +493,21 @@ export function CreatePlaylistSyncDialog({
     });
     setXmplaylistStationFilter("");
     setXmplaylistStations([]);
+    setLidarrUpdateAllForm({
+      schedule_cron: "0 4 * * 0",
+      schedule_override: false,
+      enabled: true,
+    });
+    setLidarrWantedSearchForm({
+      top_x: 10,
+      ignore_days: 14,
+      settle_seconds: 30,
+      sort_by: "oldest_release_date",
+      album_types: ["album"],
+      schedule_cron: "0 5 * * *",
+      schedule_override: false,
+      enabled: true,
+    });
   }, [embedded, open]);
 
   const validatePlaylistUrl = useCallback(async () => {
@@ -509,6 +560,8 @@ export function CreatePlaylistSyncDialog({
   }, [formData.playlist_url, playlistType, validatePlaylistUrl]);
 
   const handleSelectType = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    if (avail && avail.available === false) return;
     setPlaylistType(type);
     setStep("form");
     if (type === "listenbrainz") {
@@ -517,6 +570,13 @@ export function CreatePlaylistSyncDialog({
         playlist_types: ["weekly_exploration"],
       }));
     }
+  };
+
+  const singletonCardProps = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    const blocked = avail?.available === false;
+    const reason = avail?.reason || commandUiCopy.lidarrMaintenance.singletonOnlyOne;
+    return { blocked, reason };
   };
 
   const handleTogglePlaylistType = (type: string) => {
@@ -601,6 +661,13 @@ export function CreatePlaylistSyncDialog({
       ) {
         return false;
       }
+      return true;
+    }
+    if (playlistType === "lidarr_update_all") {
+      return true;
+    }
+    if (playlistType === "lidarr_wanted_search") {
+      if ((lidarrWantedSearchForm.album_types ?? []).length === 0) return false;
       return true;
     }
     if (
@@ -810,6 +877,35 @@ export function CreatePlaylistSyncDialog({
           { method: "POST", body: JSON.stringify(payload) }
         );
         toast.success(response.message || "XM Playlist command created");
+      } else if (playlistType === "lidarr_update_all") {
+        const payload = {
+          schedule_cron: lidarrUpdateAllForm.schedule_override
+            ? lidarrUpdateAllForm.schedule_cron
+            : undefined,
+          enabled: lidarrUpdateAllForm.enabled,
+        };
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lidarr-update-all/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Lidarr Update All command created");
+      } else if (playlistType === "lidarr_wanted_search") {
+        const payload = {
+          top_x: lidarrWantedSearchForm.top_x,
+          ignore_days: lidarrWantedSearchForm.ignore_days,
+          settle_seconds: lidarrWantedSearchForm.settle_seconds,
+          sort_by: lidarrWantedSearchForm.sort_by,
+          album_types: lidarrWantedSearchForm.album_types,
+          schedule_cron: lidarrWantedSearchForm.schedule_override
+            ? lidarrWantedSearchForm.schedule_cron
+            : undefined,
+          enabled: lidarrWantedSearchForm.enabled,
+        };
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lidarr-wanted-search/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Lidarr Wanted Search command created");
       } else {
         const payload: Record<string, unknown> = {
           ...formData,
@@ -862,9 +958,13 @@ export function CreatePlaylistSyncDialog({
                   ? cw.titleMoodPlaylist
                   : playlistType === "xmplaylist"
                     ? cw.titleXmplaylist
-                    : playlistType === "listenbrainz"
-                      ? cw.titleListenbrainz
-                      : cw.titleExternal;
+                    : playlistType === "lidarr_update_all"
+                      ? cw.titleLidarrUpdateAll
+                      : playlistType === "lidarr_wanted_search"
+                        ? cw.titleLidarrWantedSearch
+                        : playlistType === "listenbrainz"
+                          ? cw.titleListenbrainz
+                          : cw.titleExternal;
 
   const createDescription =
     step === "type"
@@ -883,7 +983,11 @@ export function CreatePlaylistSyncDialog({
                   ? cw.descMoodPlaylist
                   : playlistType === "xmplaylist"
                     ? cw.descXmplaylist
-                    : cw.descDefault;
+                    : playlistType === "lidarr_update_all"
+                      ? cw.descLidarrUpdateAll
+                      : playlistType === "lidarr_wanted_search"
+                        ? cw.descLidarrWantedSearch
+                        : cw.descDefault;
 
   const formBody = (
     <>
@@ -898,85 +1002,92 @@ export function CreatePlaylistSyncDialog({
 
       {step === "type" ? (
         <div className={embedded ? "arr-panel-body arr-create-type-grid" : "grid gap-3 py-4"}>
-          {/* Daylist */}
-          <button
-            onClick={() => handleSelectType("daylist")}
+          <div
             className={
               embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+                ? "arr-create-type-category"
+                : "col-span-full text-xs font-semibold uppercase tracking-wide text-muted-foreground"
             }
           >
-            <div className={typePickerIconClass(embedded, "bg-amber-100 dark:bg-amber-900")}>
-              <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardDaylistTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
-            </div>
-          </button>
+            {cw.categoryPlaylistGenerator}
+          </div>
+          {/* Daylist */}
+          {(() => {
+            const { blocked, reason } = singletonCardProps("daylist");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("daylist")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-amber-100 dark:bg-amber-900")}>
+                  <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardDaylistTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardDaylistBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
 
           {/* Local Discovery */}
-          <button
-            onClick={() => handleSelectType("local_discovery")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-teal-100 dark:bg-teal-900")}>
-              <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardLocalDiscoveryTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
-            </div>
-          </button>
-
-          {/* ListenBrainz Curated */}
-          <button
-            onClick={() => handleSelectType("listenbrainz")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-purple-100 dark:bg-purple-900")}>
-              <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardListenbrainzTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardListenbrainzBlurb}</p>
-            </div>
-          </button>
-
-          {/* External Playlist */}
-          <button
-            onClick={() => handleSelectType("other")}
-            className={
-              embedded
-                ? "arr-create-type-card"
-                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
-            }
-          >
-            <div className={typePickerIconClass(embedded, "bg-green-100 dark:bg-green-900")}>
-              <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
-                {cw.cardExternalTitle}
-              </h3>
-              <p className="text-xs text-muted-foreground">{cw.cardExternalBlurb}</p>
-            </div>
-          </button>
+          {(() => {
+            const { blocked, reason } = singletonCardProps("local_discovery");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("local_discovery")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-teal-100 dark:bg-teal-900")}>
+                  <Compass className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLocalDiscoveryTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLocalDiscoveryBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
 
           {/* Top Tracks / Artist Essentials */}
           <button
@@ -1077,6 +1188,144 @@ export function CreatePlaylistSyncDialog({
               <p className="text-xs text-muted-foreground">{cw.cardMoodBlurb}</p>
             </div>
           </button>
+
+          <div
+            className={
+              embedded
+                ? "arr-create-type-category"
+                : "col-span-full mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            }
+          >
+            {cw.categoryPlaylistSync}
+          </div>
+
+          {/* ListenBrainz Curated */}
+          <button
+            onClick={() => handleSelectType("listenbrainz")}
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
+          >
+            <div className={typePickerIconClass(embedded, "bg-purple-100 dark:bg-purple-900")}>
+              <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardListenbrainzTitle}
+              </h3>
+              <p className="text-xs text-muted-foreground">{cw.cardListenbrainzBlurb}</p>
+            </div>
+          </button>
+
+          {/* External Playlist */}
+          <button
+            onClick={() => handleSelectType("other")}
+            className={
+              embedded
+                ? "arr-create-type-card"
+                : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent"
+            }
+          >
+            <div className={typePickerIconClass(embedded, "bg-green-100 dark:bg-green-900")}>
+              <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                {cw.cardExternalTitle}
+              </h3>
+              <p className="text-xs text-muted-foreground">{cw.cardExternalBlurb}</p>
+            </div>
+          </button>
+
+          <div
+            className={
+              embedded
+                ? "arr-create-type-category"
+                : "col-span-full mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            }
+          >
+            {cw.categoryLidarrMaintenance}
+          </div>
+
+          {/* Lidarr Update All */}
+          {(() => {
+            const { blocked, reason } = singletonCardProps("lidarr_update_all");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("lidarr_update_all")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-orange-100 dark:bg-orange-900")}>
+                  <RefreshCw className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLidarrUpdateAllTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLidarrUpdateAllBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
+
+          {/* Lidarr Wanted Search */}
+          {(() => {
+            const { blocked, reason } = singletonCardProps("lidarr_wanted_search");
+            return (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => handleSelectType("lidarr_wanted_search")}
+                title={blocked ? reason : undefined}
+                className={cn(
+                  embedded
+                    ? "arr-create-type-card"
+                    : "flex items-center gap-3 rounded-lg border-2 border-border p-3 text-left transition-colors hover:border-primary hover:bg-accent",
+                  blocked &&
+                    "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                )}
+              >
+                <div className={typePickerIconClass(embedded, "bg-cyan-100 dark:bg-cyan-900")}>
+                  <Search className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className={embedded ? "text-sm font-medium leading-snug" : "font-semibold"}>
+                    {cw.cardLidarrWantedSearchTitle}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{cw.cardLidarrWantedSearchBlurb}</p>
+                </div>
+                {blocked ? (
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={reason}
+                    aria-label={reason}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })()}
         </div>
       ) : (
         <div className={embedded ? "arr-panel-body space-y-4" : "space-y-4 py-4"}>
@@ -2380,6 +2629,183 @@ export function CreatePlaylistSyncDialog({
                 }
               />
             </>
+          ) : playlistType === "lidarr_update_all" ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Display name is fixed as{" "}
+                <span className="font-medium text-foreground">
+                  Lidarr Maintenance - Artist Refresh
+                </span>
+                .
+              </p>
+              <CreateCommandScheduleExpiryBlock
+                idPrefix="create-lidarr-ua"
+                scheduleOverride={lidarrUpdateAllForm.schedule_override}
+                onScheduleOverrideChange={(v) =>
+                  setLidarrUpdateAllForm((prev) => ({ ...prev, schedule_override: v }))
+                }
+                scheduleCron={lidarrUpdateAllForm.schedule_cron}
+                onScheduleCronChange={(v) =>
+                  setLidarrUpdateAllForm((prev) => ({ ...prev, schedule_cron: v }))
+                }
+                enabled={lidarrUpdateAllForm.enabled}
+                onEnabledChange={(v) => setLidarrUpdateAllForm((prev) => ({ ...prev, enabled: v }))}
+                expiresAtEnabled={false}
+                onExpiresAtEnabledChange={() => {}}
+                expiresAt=""
+                onExpiresAtChange={() => {}}
+                expiresAtDeletePlaylist={false}
+                onExpiresAtDeletePlaylistChange={() => {}}
+                showExpiration={false}
+              />
+            </>
+          ) : playlistType === "lidarr_wanted_search" ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Display name is fixed as{" "}
+                <span className="font-medium text-foreground">
+                  Lidarr Maintenance - Missing Search
+                </span>
+                .
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="create-lidarr-ws-topx">
+                  {commandUiCopy.lidarrMaintenance.topXLabel}
+                </Label>
+                <NumericInput
+                  id="create-lidarr-ws-topx"
+                  value={lidarrWantedSearchForm.top_x}
+                  onChange={(v) =>
+                    setLidarrWantedSearchForm((prev) => ({ ...prev, top_x: v ?? 10 }))
+                  }
+                  min={1}
+                  max={50}
+                  defaultValue={10}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {commandUiCopy.lidarrMaintenance.topXHelp}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-lidarr-ws-ignore">
+                  {commandUiCopy.lidarrMaintenance.ignoreDaysLabel}
+                </Label>
+                <NumericInput
+                  id="create-lidarr-ws-ignore"
+                  value={lidarrWantedSearchForm.ignore_days}
+                  onChange={(v) =>
+                    setLidarrWantedSearchForm((prev) => ({ ...prev, ignore_days: v ?? 14 }))
+                  }
+                  min={1}
+                  max={365}
+                  defaultValue={14}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {commandUiCopy.lidarrMaintenance.ignoreDaysHelp}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-lidarr-ws-sort">
+                  {commandUiCopy.lidarrMaintenance.sortByLabel}
+                </Label>
+                <Select
+                  value={lidarrWantedSearchForm.sort_by}
+                  onValueChange={(v) =>
+                    setLidarrWantedSearchForm((prev) => ({
+                      ...prev,
+                      sort_by: v as typeof prev.sort_by,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="create-lidarr-ws-sort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="oldest_release_date">
+                      {commandUiCopy.lidarrMaintenance.sortOldest}
+                    </SelectItem>
+                    <SelectItem value="newest_release_date">
+                      {commandUiCopy.lidarrMaintenance.sortNewest}
+                    </SelectItem>
+                    <SelectItem value="artist_name_asc">
+                      {commandUiCopy.lidarrMaintenance.sortArtist}
+                    </SelectItem>
+                    <SelectItem value="album_title_asc">
+                      {commandUiCopy.lidarrMaintenance.sortTitle}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {commandUiCopy.lidarrMaintenance.sortByHelp}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>{commandUiCopy.lidarrMaintenance.releaseTypesHeading}</Label>
+                <div className="flex flex-wrap gap-4">
+                  {["album", "ep", "single", "other"].map((t) => (
+                    <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={lidarrWantedSearchForm.album_types.includes(t)}
+                        onChange={(e) => {
+                          setLidarrWantedSearchForm((prev) => {
+                            const next = e.target.checked
+                              ? [...prev.album_types, t]
+                              : prev.album_types.filter((x) => x !== t);
+                            return { ...prev, album_types: next.length ? next : ["album"] };
+                          });
+                        }}
+                        className="rounded border-input"
+                      />
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {commandUiCopy.lidarrMaintenance.releaseTypesHelp}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-lidarr-ws-settle">
+                  {commandUiCopy.lidarrMaintenance.settleSecondsLabel}
+                </Label>
+                <NumericInput
+                  id="create-lidarr-ws-settle"
+                  value={lidarrWantedSearchForm.settle_seconds}
+                  onChange={(v) =>
+                    setLidarrWantedSearchForm((prev) => ({ ...prev, settle_seconds: v ?? 30 }))
+                  }
+                  min={0}
+                  max={300}
+                  defaultValue={15}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {commandUiCopy.lidarrMaintenance.settleSecondsHelp}
+                </p>
+              </div>
+              <CreateCommandScheduleExpiryBlock
+                idPrefix="create-lidarr-ws"
+                scheduleOverride={lidarrWantedSearchForm.schedule_override}
+                onScheduleOverrideChange={(v) =>
+                  setLidarrWantedSearchForm((prev) => ({ ...prev, schedule_override: v }))
+                }
+                scheduleCron={lidarrWantedSearchForm.schedule_cron}
+                onScheduleCronChange={(v) =>
+                  setLidarrWantedSearchForm((prev) => ({ ...prev, schedule_cron: v }))
+                }
+                enabled={lidarrWantedSearchForm.enabled}
+                onEnabledChange={(v) =>
+                  setLidarrWantedSearchForm((prev) => ({ ...prev, enabled: v }))
+                }
+                expiresAtEnabled={false}
+                onExpiresAtEnabledChange={() => {}}
+                expiresAt=""
+                onExpiresAtChange={() => {}}
+                expiresAtDeletePlaylist={false}
+                onExpiresAtDeletePlaylistChange={() => {}}
+                showExpiration={false}
+              />
+            </>
           ) : (
             <>
               {/* Playlist URL */}
@@ -2593,6 +3019,10 @@ export function CreatePlaylistSyncDialog({
                 cw.submitXmplaylist
               ) : playlistType === "mood_playlist" ? (
                 cw.submitMoodPlaylist
+              ) : playlistType === "lidarr_update_all" ? (
+                cw.submitLidarrUpdateAll
+              ) : playlistType === "lidarr_wanted_search" ? (
+                cw.submitLidarrWantedSearch
               ) : (
                 cw.submitPlaylistSync
               )}
@@ -2630,6 +3060,10 @@ export function CreatePlaylistSyncDialog({
                 cw.submitXmplaylist
               ) : playlistType === "mood_playlist" ? (
                 cw.submitMoodPlaylist
+              ) : playlistType === "lidarr_update_all" ? (
+                cw.submitLidarrUpdateAll
+              ) : playlistType === "lidarr_wanted_search" ? (
+                cw.submitLidarrWantedSearch
               ) : (
                 cw.submitPlaylistSync
               )}

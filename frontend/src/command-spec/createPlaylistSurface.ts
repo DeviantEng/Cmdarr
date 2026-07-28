@@ -11,6 +11,8 @@ export const PLAYLIST_TYPES_SKIP_COMMON_CREATE_SETTINGS = [
   "local_discovery",
   "mood_playlist",
   "xmplaylist",
+  "lidarr_update_all",
+  "lidarr_wanted_search",
 ] as const;
 
 export type PlaylistTypeSkippingCommon =

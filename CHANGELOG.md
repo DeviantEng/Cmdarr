@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-28
+
+### Features
+- **Modern *arr UI**: The Sonarr-style shell is now the only frontend — sidebar navigation, Settings/System sections, and panel layouts. Classic UI and the header shell toggle are removed (`/config` and `/status` redirect to the new routes).
+- **Last.fm Discovery**: Unified interactive page at `/discovery/lastfm` (Lidarr or Plex seeds, bios, artwork, Lidarr profile pickers, direct API add) plus scheduled `discovery_lastfm` command that adds artists to Lidarr via API (required quality/metadata profiles; optional search-on-add). Discovery hub at `/discovery`; KPIs under **System → Discovery**. Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
+- **Lidarr Maintenance**: New command category with Update All (queues Lidarr library metadata refresh) and Wanted Search (top X Wanted albums with Album/EP/Single filters, sort options, and temporary cooldown for grabs and empty results); Add New groups commands by category; System → Lidarr Maintenance tracks stats and opens the ignore list in a dialog (same pattern as Hidden Events).
+- **Singleton commands**: Shared `singleton_group` on command configs — Add New greys out types that already exist (tooltip: only one instance allowed). Applies to Lidarr Update All, Lidarr Wanted Search, Daylist, and Local Discovery. Lidarr maintenance display names are fixed (`Lidarr Maintenance - Artist Refresh` / `Lidarr Maintenance - Missing Search`); schedule override defaults off; Wanted Search settle time defaults to 30s.
+
+### Fixes
+- **Playlist artist discovery**: Run discovery on 0-match Plex syncs by including `unmatched_tracks` in `skipped_empty` results; apply `artist_discovery_max_per_run` before MusicBrainz MBID lookups so deferred artists are not queried until later runs.
+- **Artist Essentials & playlist matching**: Disambiguate punctuation-sensitive artist names (e.g. `Gore.` vs `gore`) via Lidarr MBIDs and strict Plex identity checks; Last.fm lookup tries MBID → exact name → normalized fallback with Plex validation before accepting results; resolve Plex track keys once during fetch (parallel Last.fm requests, concurrency via `LASTFM_FETCH_CONCURRENCY`, default 3) instead of re-matching at sync; log when 0/N tracks match for a library artist; do not delete target playlists when saving command settings (only on run when the title changes, or when deleting the command).
+
+### Housekeeping
+- **Stale legacy cleanup**: Drop spotifyscraper 2.x shims, unused ListenBrainz discovery helpers, venue legacy fingerprint + diagnose tool, and singleton `command_name` prefix fallback (group column is authoritative after migration).
+- **make check cleanup**: Drop obsolete `pip-audit` ignore for MAL-2026-4750; prefer `httpx2` for Starlette TestClient; silence common `datetime.utcnow()` deprecations in status/commands/cleanup/playlist sync paths; close in-memory sqlite connections in unit tests to clear ResourceWarnings; fix `CommandExecutionsPanel` exhaustive-deps.
+- **Last.fm Discovery import list removed**: Scheduled Last.fm Discovery no longer writes a Lidarr custom-list feed; artists are added via Lidarr API. Removes `/import_lists/discovery_lastfm`, `OUTPUT_FILE`, and related UI/docs. Migration deletes `discovery_lastfm.json` and relocates cooldown state to `data/discovery/`. Playlist sync import list is unchanged.
+- **Docker / Trivy**: Bump Chainguard Python digests to **3.14.6-r4** (fixes CVE-2026-15308 on Wolfi runtime).
+- **Security (npm)**: Clear high `npm audit` findings — override transitive `brace-expansion` to **5.0.8** (CVE-2026-14257); bump `postcss` to **8.5.23** (GHSA-r28c-9q8g-f849); replace `react-router-dom` with patched `react-router` **8.3.0** (GHSA-qwww-vcr4-c8h2) and bump React peers to **19.2.7**.
+- **Docker**: Drop Debian-based runtime image; Wolfi/Chainguard (`Dockerfile`, digest-pinned Python 3.14) is now the sole published image. Develop publishes `:develop`; releases publish `latest`, `v0`, `v0.3`, and patch tags only (no `-wolfi` suffix or Debian fallback).
+
 ## [0.3.18] - 2026-07-08
 
 ### Features

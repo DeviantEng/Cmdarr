@@ -6,7 +6,7 @@ Status API endpoints
 import asyncio
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 import psutil
@@ -45,11 +45,11 @@ def parse_execution_since(since: str | None) -> datetime | None:
         return None
     token = since.strip().lower()
     if token in _SINCE_TOKENS:
-        return datetime.utcnow() - _SINCE_TOKENS[token]
+        return datetime.now(UTC).replace(tzinfo=None) - _SINCE_TOKENS[token]
     try:
         parsed = datetime.fromisoformat(token.replace("Z", "+00:00"))
         if parsed.tzinfo is not None:
-            parsed = parsed.replace(tzinfo=None)
+            parsed = parsed.astimezone(UTC).replace(tzinfo=None)
         return parsed
     except ValueError as exc:
         raise HTTPException(
@@ -147,7 +147,7 @@ async def get_system_status():
             "app_name": "Cmdarr",
             "version": __version__,
             "uptime_seconds": time.time() - psutil.Process().create_time(),
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
             "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
             "platform": os.name,
         }
@@ -187,7 +187,7 @@ async def get_health_status():
         health_status = {
             "overall_status": "healthy",
             "checks": {},
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
 
         # Database health check
@@ -346,7 +346,7 @@ async def get_commands_status(db: Annotated[Session, Depends(get_config_db)]):
             "total_commands": len(commands),
             "enabled_commands": len([c for c in commands if c.enabled]),
             "running_commands": len([c for c in command_statuses if c["is_running"]]),
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
     except Exception as e:
         get_status_logger().error(f"Failed to get commands status: {e}")
@@ -394,7 +394,7 @@ async def get_recent_executions(
                 if command_name and command_name.lower() != "all"
                 else None,
             },
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
     except HTTPException:
         raise
@@ -408,7 +408,7 @@ async def get_statistics(db: Annotated[Session, Depends(get_config_db)]):
     """Get application statistics"""
     try:
         # Get time range for statistics (last 30 days)
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        thirty_days_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
 
         # Command execution statistics
         total_executions = (
@@ -474,7 +474,7 @@ async def get_statistics(db: Annotated[Session, Depends(get_config_db)]):
             else 0,
             "average_duration_seconds": round(avg_duration, 2),
             "command_statistics": command_stats,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
     except Exception as e:
         get_status_logger().error(f"Failed to get statistics: {e}")
@@ -586,7 +586,7 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
         from clients.client_lidarr import LidarrClient
 
         cache_ttl_days = getattr(config, "NEW_RELEASES_CACHE_DAYS", 14)
-        cutoff = datetime.utcnow() - timedelta(days=cache_ttl_days)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=cache_ttl_days)
 
         async with LidarrClient(config) as lidarr_client:
             artists = await lidarr_client.get_all_artists()
@@ -612,7 +612,7 @@ async def get_nrd_metrics(db: Annotated[Session, Depends(get_config_db)]):
             "dismissed_count": dismissed_count,
             "ignored_count": ignored_count,
             "cache_ttl_days": cache_ttl_days,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
     except Exception as e:
         get_status_logger().error(f"Failed to get NRD metrics: {e}")
@@ -665,7 +665,7 @@ async def get_nrd_not_scanned_artists(
         return {
             "total": len(not_scanned),
             "items": not_scanned,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
         }
     except HTTPException:
         raise

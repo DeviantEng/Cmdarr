@@ -8,7 +8,7 @@ export function ArrEventsPage() {
         title="Artist Events"
         description="Upcoming shows and festivals for artists in your Lidarr library."
       />
-      <EventsPage showPageHeader={false} useArrPanel />
+      <EventsPage />
     </div>
   );
 }

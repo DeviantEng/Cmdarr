@@ -1,4 +1,4 @@
-# Stage 1: Build React frontend (always on build host — static assets, no per-arch compile)
+# Stage 1: Build React frontend (static assets only — not in final Trivy scan)
 FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:4f2b45e32dc7d2caf66b6dbd59fac50e32f8077769efe0ef4d4c3f114672537d AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
@@ -7,63 +7,56 @@ COPY assets/icon /app/assets/icon
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Python application
-FROM python:3.14-slim-trixie@sha256:1697e8e8d39bf168e177ac6b5fdab6df86d81cfc24dae17dfb96cfc3ef76b4dd
+# Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
+# Locked Python: 3.14.6-r4 (digest pinned 2026-07-27; fixes CVE-2026-15308)
+FROM cgr.dev/chainguard/python@sha256:7a568bcee42666f73f041645a41c913ce1d442f4c24cf6019bc543a90820e531 AS python-builder
+USER root
+WORKDIR /app
+RUN apk add --no-cache gosu
+COPY requirements.txt .
+RUN python -m venv /app/venv \
+    && /app/venv/bin/pip install --upgrade pip \
+    && /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
+FROM cgr.dev/chainguard/python@sha256:7a568bcee42666f73f041645a41c913ce1d442f4c24cf6019bc543a90820e531 AS runtime-assembler
+USER root
+WORKDIR /app
+
+COPY --from=python-builder /app/venv /app/venv
+COPY --from=python-builder /usr/bin/gosu /usr/bin/gosu
+COPY requirements.txt .
+COPY . .
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY docker/entrypoint.py /app/docker/entrypoint.py
+
+RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
+
+# Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
+# Locked Python: 3.14.6-r4 (digest pinned 2026-07-27; fixes CVE-2026-15308)
+FROM cgr.dev/chainguard/python@sha256:a0365f7b90bf7b78a5e35f2709efb7c9263acf9c7b1905e0ec4c3e943c88e64d
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
 
-# Set working directory
+USER root
 WORKDIR /app
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Default PUID/PGID (can be overridden at runtime)
-ENV PUID=1000 \
-    PGID=1000
-
-# Default application settings
-ENV WEB_HOST=0.0.0.0 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/venv/bin:$PATH" \
+    PUID=1000 \
+    PGID=1000 \
+    WEB_HOST=0.0.0.0 \
     WEB_PORT=8080 \
     LOG_LEVEL=INFO \
     LOG_RETENTION_DAYS=7
 
-# Install runtime helpers (curl removed — HEALTHCHECK uses docker/healthcheck.py)
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    gosu \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=runtime-assembler /app /app
+COPY --from=runtime-assembler /usr/bin/gosu /usr/bin/gosu
 
-# Copy requirements first for better layer caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Copy built frontend from builder stage
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
-
-# Create app user for security (will be modified at runtime if needed)
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
-
-# Create data directory and set ownership
-RUN mkdir -p /app/data/logs && \
-    chown -R appuser:appuser /app/data
-
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Health check (Python stdlib — no curl/apt libcurl in final image)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD gosu appuser python /app/docker/healthcheck.py
+    CMD ["python", "/app/docker/healthcheck.py"]
 
-# Use entrypoint script to handle UID/GID changes at runtime
-ENTRYPOINT ["/entrypoint.sh"]
-
-# Default command runs FastAPI server
+ENTRYPOINT ["python", "/app/docker/entrypoint.py"]
 CMD ["python", "run_fastapi.py"]

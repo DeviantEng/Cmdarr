@@ -9,7 +9,6 @@ from services.config_service import config_service
 
 _PUBLIC_IMPORT_LIST_PATHS = frozenset(
     {
-        "/import_lists/discovery_lastfm",
         "/import_lists/discovery_playlistsync",
     }
 )

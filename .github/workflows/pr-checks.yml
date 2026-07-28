@@ -177,7 +177,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit
-        run: pip-audit -r requirements.txt --ignore-vuln MAL-2026-4750
+        run: pip-audit -r requirements.txt
 
   zizmor:
     runs-on: ubuntu-latest
@@ -217,7 +217,7 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
         with:
           context: .
-          file: ./Dockerfile.wolfi
+          file: ./Dockerfile
           push: false
           load: true
           tags: ghcr.io/devianteng/cmdarr:scan

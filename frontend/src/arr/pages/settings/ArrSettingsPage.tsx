@@ -1,4 +1,4 @@
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router";
 import { Loader2 } from "lucide-react";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import {
@@ -36,9 +36,7 @@ export function ArrSettingsPage() {
         title={group.name}
         description={`Configure ${group.name.toLowerCase()} settings.`}
       />
-      {section === "application" ? (
-        <ConfigApiKeyCard controller={controller} variant="arr" />
-      ) : null}
+      {section === "application" ? <ConfigApiKeyCard controller={controller} /> : null}
       <div className="mb-4">
         <ConfigSettingsErrorBanner controller={controller} />
       </div>
@@ -46,7 +44,7 @@ export function ArrSettingsPage() {
         <div className="arr-settings-toolbar px-4 py-3">
           <ConfigSettingsToolbar controller={controller} />
         </div>
-        <ConfigSettingsList controller={controller} groupSettings={groupSettings} useArrPanel />
+        <ConfigSettingsList controller={controller} groupSettings={groupSettings} />
       </div>
       <ConfigConnectivityDialog controller={controller} />
     </div>

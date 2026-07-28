@@ -7,13 +7,9 @@ import {
 } from "@/arr/components/ArrPageToolbar";
 import { cn } from "@/lib/utils";
 import {
-  Activity,
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Clock,
-  Server,
-  RotateCcw,
   RefreshCw,
   RotateCw,
   Trash2,
@@ -27,7 +23,6 @@ import type {
   LibraryCacheStatus,
   NrdMetrics,
 } from "@/lib/types";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,51 +59,23 @@ const ALL_STATUS_SECTIONS: StatusSection[] = [
 ];
 
 function StatusSectionPanel({
-  useArrPanel,
   title,
   description,
   actions,
   children,
   bodyClassName,
 }: {
-  useArrPanel: boolean;
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
   bodyClassName?: string;
 }) {
-  if (useArrPanel) {
-    return (
-      <ArrContentPanel>
-        <ArrSectionHeader title={title} description={description} actions={actions} />
-        <ArrPanelBody className={bodyClassName}>{children}</ArrPanelBody>
-      </ArrContentPanel>
-    );
-  }
-
   return (
-    <Card>
-      <CardHeader className={actions ? "space-y-2 py-3" : undefined}>
-        {actions ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle className="text-base">{title}</CardTitle>
-              {description ? (
-                <CardDescription className="text-xs leading-snug">{description}</CardDescription>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
-          </div>
-        ) : (
-          <>
-            <CardTitle>{title}</CardTitle>
-            {description ? <CardDescription>{description}</CardDescription> : null}
-          </>
-        )}
-      </CardHeader>
-      <CardContent className={bodyClassName}>{children}</CardContent>
-    </Card>
+    <ArrContentPanel>
+      <ArrSectionHeader title={title} description={description} actions={actions} />
+      <ArrPanelBody className={bodyClassName}>{children}</ArrPanelBody>
+    </ArrContentPanel>
   );
 }
 
@@ -149,15 +116,9 @@ function ClickableKpiCell({
 
 type StatusPageProps = {
   sections?: StatusSection[];
-  showPageHeader?: boolean;
-  useArrPanel?: boolean;
 };
 
-export function StatusPage({
-  sections = ALL_STATUS_SECTIONS,
-  showPageHeader = true,
-  useArrPanel = false,
-}: StatusPageProps) {
+export function StatusPage({ sections = ALL_STATUS_SECTIONS }: StatusPageProps) {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [health, setHealth] = useState<{
     status: string;
@@ -293,13 +254,7 @@ export function StatusPage({
 
   if (loading) {
     return (
-      <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
-        {showPageHeader ? (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Status</h1>
-            <p className="mt-2 text-muted-foreground">System status and health information</p>
-          </div>
-        ) : null}
+      <div className="space-y-6 arr-page-panels">
         <div className="text-center text-muted-foreground">Loading status...</div>
       </div>
     );
@@ -320,22 +275,13 @@ export function StatusPage({
   );
 
   return (
-    <div className={cn("space-y-6", useArrPanel && "arr-page-panels")}>
-      {showPageHeader ? (
-        <div>
-          <h1 className="text-3xl font-bold">Status</h1>
-          <p className="mt-2 text-muted-foreground">System status and health information</p>
-        </div>
-      ) : null}
-
-      {useArrPanel ? (
-        <ArrPageToolbar>
-          <Button variant="outline" size="sm" onClick={() => void loadStatus()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </ArrPageToolbar>
-      ) : null}
+    <div className="space-y-6 arr-page-panels">
+      <ArrPageToolbar>
+        <Button variant="outline" size="sm" onClick={() => void loadStatus()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      </ArrPageToolbar>
 
       {error && (
         <div className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -354,7 +300,6 @@ export function StatusPage({
       {/* Overall Health */}
       {showSection("health") ? (
         <StatusSectionPanel
-          useArrPanel={useArrPanel}
           title="System Health"
           description="Overall system status"
           actions={healthBadge}
@@ -368,132 +313,54 @@ export function StatusPage({
 
       {/* System Information */}
       {showSection("system-info") && status ? (
-        useArrPanel ? (
-          <ArrContentPanel>
-            <ArrSectionHeader
-              title="System Information"
-              description="Application runtime, database, and execution summary"
-            />
-            <ArrPanelBody>
-              <div className="arr-stats-grid">
-                <div>
-                  <div className="text-lg font-semibold">{status.app_name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {status.version}
-                    {status.runtime_mode && (
-                      <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">{formatUptime(status.uptime_seconds)}</div>
-                  <div className="text-xs text-muted-foreground">Uptime</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold capitalize">{status.database_status}</div>
-                  <div className="text-xs text-muted-foreground">Database</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold capitalize">
-                    {status.configuration_status}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Configuration</div>
-                </div>
-                {status.execution_stats ? (
-                  <div>
-                    <div className="text-lg font-semibold">
-                      {status.execution_stats.total_execution_count.toLocaleString()}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Executions · {status.execution_stats.total_success_count.toLocaleString()} ok
-                      · {status.execution_stats.total_failure_count.toLocaleString()} failed
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </ArrPanelBody>
-          </ArrContentPanel>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Application</CardTitle>
-                <Server className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{status.app_name}</div>
-                <p className="text-xs text-muted-foreground">
+        <ArrContentPanel>
+          <ArrSectionHeader
+            title="System Information"
+            description="Application runtime, database, and execution summary"
+          />
+          <ArrPanelBody>
+            <div className="arr-stats-grid">
+              <div>
+                <div className="text-lg font-semibold">{status.app_name}</div>
+                <div className="text-xs text-muted-foreground">
                   {status.version}
                   {status.runtime_mode && (
                     <> · {status.runtime_mode === "docker" ? "Docker" : "Python"}</>
                   )}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Uptime</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatUptime(status.uptime_seconds)}</div>
-                <p className="text-xs text-muted-foreground">Running smoothly</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Database</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold capitalize">{status.database_status}</div>
-                <p className="text-xs text-muted-foreground">
-                  {status.database_status === "connected"
-                    ? "Operating normally"
-                    : "Check connection"}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Configuration</CardTitle>
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold capitalize">{status.configuration_status}</div>
-                <p className="text-xs text-muted-foreground">
-                  {status.configuration_status === "valid" ? "All set" : "Needs attention"}
-                </p>
-              </CardContent>
-            </Card>
-
-            {status.execution_stats && (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Execution Stats</CardTitle>
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {status.execution_stats.total_execution_count.toLocaleString()} total
+                </div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold">{formatUptime(status.uptime_seconds)}</div>
+                <div className="text-xs text-muted-foreground">Uptime</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold capitalize">{status.database_status}</div>
+                <div className="text-xs text-muted-foreground">Database</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold capitalize">
+                  {status.configuration_status}
+                </div>
+                <div className="text-xs text-muted-foreground">Configuration</div>
+              </div>
+              {status.execution_stats ? (
+                <div>
+                  <div className="text-lg font-semibold">
+                    {status.execution_stats.total_execution_count.toLocaleString()}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {status.execution_stats.total_success_count.toLocaleString()} success ·{" "}
+                  <div className="text-xs text-muted-foreground">
+                    Executions · {status.execution_stats.total_success_count.toLocaleString()} ok ·{" "}
                     {status.execution_stats.total_failure_count.toLocaleString()} failed
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </ArrPanelBody>
+        </ArrContentPanel>
       ) : null}
 
       {showSection("migrations") && migrationStatus?.dev_manual_available ? (
         <StatusSectionPanel
-          useArrPanel={useArrPanel}
           title="Database migrations"
           description={`Dev build only. Pending migrations run automatically on startup and are recorded in a per-migration ledger (${migrationStatus.current_version}${migrationStatus.last_run_version ? `, last recorded ${migrationStatus.last_run_version}` : ""}). Use this button to apply any still-pending migrations after pulling schema changes on the same -dev version.`}
           actions={
@@ -550,7 +417,6 @@ export function StatusPage({
 
       {showSection("artist-events") && artistEventsStats ? (
         <StatusSectionPanel
-          useArrPanel={useArrPanel}
           title="Artist Events"
           description="Cached shows from the event refresh command. Clearing deletes stored events and per-artist scan timestamps so every library artist is due on the next run. Artist hides (from the Events page) are kept; single-event hides tied to deleted rows are removed."
           actions={
@@ -565,12 +431,7 @@ export function StatusPage({
             </Button>
           }
         >
-          <div
-            className={cn(
-              "grid gap-3 text-sm",
-              useArrPanel ? "arr-stats-grid" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
-            )}
-          >
+          <div className={cn("grid gap-3 text-sm", "arr-stats-grid")}>
             <div>
               <div className="text-lg font-semibold tabular-nums">
                 {artistEventsStats.lidarr_artists.toLocaleString()}
@@ -599,14 +460,14 @@ export function StatusPage({
               value={artistEventsStats.hidden_artists.toLocaleString()}
               label="Hidden artists"
               valueClassName="text-lg font-semibold tabular-nums"
-              clickable={useArrPanel && artistEventsStats.hidden_artists > 0}
+              clickable={artistEventsStats.hidden_artists > 0}
               onClick={() => setHiddenEventArtistsOpen(true)}
             />
             <ClickableKpiCell
               value={artistEventsStats.hidden_events.toLocaleString()}
               label="Hidden events"
               valueClassName="text-lg font-semibold tabular-nums"
-              clickable={useArrPanel && artistEventsStats.hidden_events > 0}
+              clickable={artistEventsStats.hidden_events > 0}
               onClick={() => setHiddenConcertEventsOpen(true)}
             />
           </div>
@@ -616,7 +477,6 @@ export function StatusPage({
       {/* Library Cache */}
       {showSection("library-cache") && cacheStatus ? (
         <StatusSectionPanel
-          useArrPanel={useArrPanel}
           title="Library Cache"
           description="Plex and Jellyfin music library cache stats and controls"
           actions={
@@ -713,7 +573,6 @@ export function StatusPage({
 
       {showSection("new-releases") ? (
         <StatusSectionPanel
-          useArrPanel={useArrPanel}
           title="New Releases"
           description={
             nrdMetrics?.available
@@ -723,19 +582,14 @@ export function StatusPage({
           bodyClassName="space-y-4"
         >
           {nrdMetrics?.available ? (
-            <div
-              className={cn(
-                useArrPanel ? "arr-stats-grid" : "grid gap-4 sm:grid-cols-3",
-                useArrPanel && "sm:grid-cols-2 lg:grid-cols-5"
-              )}
-            >
-              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
+            <div className={cn("arr-stats-grid sm:grid-cols-2 lg:grid-cols-5")}>
+              <div>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.total_lidarr_artists?.toLocaleString() ?? "—"}
                 </div>
                 <p className="text-sm text-muted-foreground">Lidarr artists</p>
               </div>
-              <div className={cn(!useArrPanel && "rounded-lg border p-4")}>
+              <div>
                 <div className="text-2xl font-bold">
                   {nrdMetrics.artists_scanned_fresh?.toLocaleString() ?? "—"}
                 </div>
@@ -757,37 +611,25 @@ export function StatusPage({
                 label="Not yet scanned"
                 valueClassName="text-2xl font-bold tabular-nums"
                 clickable={
-                  useArrPanel &&
-                  nrdMetrics.artists_not_scanned != null &&
-                  nrdMetrics.artists_not_scanned > 0
+                  nrdMetrics.artists_not_scanned != null && nrdMetrics.artists_not_scanned > 0
                 }
                 onClick={() => setNotScannedOpen(true)}
               />
-              {useArrPanel ? (
-                <>
-                  <ClickableKpiCell
-                    value={(nrdMetrics.dismissed_count ?? 0).toLocaleString()}
-                    label="Hidden releases"
-                    valueClassName="text-2xl font-bold tabular-nums"
-                    clickable={useArrPanel && (nrdMetrics.dismissed_count ?? 0) > 0}
-                    onClick={openHiddenReleases}
-                  />
-                  <ClickableKpiCell
-                    value={(nrdMetrics.ignored_count ?? 0).toLocaleString()}
-                    label="Ignored artists"
-                    valueClassName="text-2xl font-bold tabular-nums"
-                    clickable={useArrPanel && (nrdMetrics.ignored_count ?? 0) > 0}
-                    onClick={openIgnoredArtists}
-                  />
-                </>
-              ) : null}
+              <ClickableKpiCell
+                value={(nrdMetrics.dismissed_count ?? 0).toLocaleString()}
+                label="Hidden releases"
+                valueClassName="text-2xl font-bold tabular-nums"
+                clickable={(nrdMetrics.dismissed_count ?? 0) > 0}
+                onClick={openHiddenReleases}
+              />
+              <ClickableKpiCell
+                value={(nrdMetrics.ignored_count ?? 0).toLocaleString()}
+                label="Ignored artists"
+                valueClassName="text-2xl font-bold tabular-nums"
+                clickable={(nrdMetrics.ignored_count ?? 0) > 0}
+                onClick={openIgnoredArtists}
+              />
             </div>
-          ) : null}
-          {!useArrPanel ? (
-            <Button variant="outline" onClick={openHiddenReleases}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              View / Restore Hidden Releases
-            </Button>
           ) : null}
         </StatusSectionPanel>
       ) : null}
@@ -824,16 +666,12 @@ export function StatusPage({
       ) : null}
 
       {showSection("api-endpoints") ? (
-        <StatusSectionPanel
-          useArrPanel={useArrPanel}
-          title="API Endpoints"
-          description="Available API endpoints"
-        >
-          <div className={cn("space-y-2", useArrPanel && "arr-list-rows -mx-4")}>
+        <StatusSectionPanel title="API Endpoints" description="Available API endpoints">
+          <div className="space-y-2 arr-list-rows -mx-4">
             <div
               className={cn(
                 "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
-                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+                "px-4 py-3"
               )}
             >
               <div className="min-w-0">
@@ -847,7 +685,7 @@ export function StatusPage({
             <div
               className={cn(
                 "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
-                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+                "px-4 py-3"
               )}
             >
               <div className="min-w-0">
@@ -861,7 +699,7 @@ export function StatusPage({
             <div
               className={cn(
                 "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
-                useArrPanel ? "px-4 py-3" : "rounded-lg border p-3"
+                "px-4 py-3"
               )}
             >
               <div className="min-w-0">

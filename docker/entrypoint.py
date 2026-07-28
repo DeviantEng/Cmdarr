@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Container entrypoint for Wolfi/distroless images (replaces entrypoint.sh)."""
+"""Container entrypoint for Wolfi/Chainguard distroless images."""
 
 from __future__ import annotations
 

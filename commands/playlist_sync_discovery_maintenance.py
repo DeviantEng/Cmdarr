@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
 Playlist Sync Discovery Maintenance Command
-Maintains the unified discovery import list by removing stale entries
+Maintains the unified discovery import list by removing stale entries,
+and refreshes the Lidarr artist membership cache daily.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from clients.client_lidarr import LidarrClient
+from database.database import get_database_manager
+from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
 
 from .command_base import BaseCommand
 
@@ -27,16 +30,25 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
         try:
             self.logger.info("Starting playlist sync discovery maintenance...")
 
+            # Always force-refresh Lidarr artists into the API cache + lidarr_artist table.
+            # Discovery / NRD filtering use the API cache; seed pickers use the DB table.
+            lidarr_synced = await self._sync_lidarr_artists()
+
             # Load current import list
             current_entries = await self._load_discovery_file()
             if not current_entries:
                 self.logger.info("No entries found in discovery file")
-                self.last_run_stats = {"removed_count": 0, "remaining_count": 0, "empty": True}
+                self.last_run_stats = {
+                    "removed_count": 0,
+                    "remaining_count": 0,
+                    "empty": True,
+                    "lidarr_artists_synced": lidarr_synced,
+                }
                 return True
 
             self.logger.info(f"Loaded {len(current_entries)} entries from discovery file")
 
-            # Get Lidarr context for filtering
+            # Get Lidarr context for filtering (uses cache filled by sync above)
             lidarr_client = LidarrClient(self.config)
             existing_mbids, existing_names, excluded_mbids = await self._get_lidarr_context(
                 lidarr_client
@@ -66,12 +78,45 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
                 "removed_count": cleanup_stats["removed_count"],
                 "remaining_count": cleanup_stats["remaining_count"],
                 "empty": False,
+                "lidarr_artists_synced": lidarr_synced,
             }
             return True
 
         except Exception as e:
             self.logger.error(f"Error during maintenance: {e}")
             return False
+
+    async def _sync_lidarr_artists(self) -> int:
+        """Force-refresh Lidarr artist list into API cache and lidarr_artist DB table."""
+        if not getattr(self.config, "LIDARR_API_KEY", None) or not getattr(
+            self.config, "LIDARR_URL", None
+        ):
+            self.logger.info("Lidarr not configured; skipping artist sync")
+            return 0
+
+        try:
+            async with LidarrClient(self.config) as lidarr_client:
+                artists = await lidarr_client.get_all_artists(force_refresh=True)
+
+            manager = get_database_manager()
+            session = manager.get_session_sync()
+            try:
+                inserted, updated = upsert_lidarr_artists_from_payload(
+                    session, artists, now=datetime.now(UTC)
+                )
+                session.commit()
+                self.logger.info(
+                    "Synced %s Lidarr artists into cache/DB (%s inserted, %s updated)",
+                    len(artists),
+                    inserted,
+                    updated,
+                )
+            finally:
+                session.close()
+            return len(artists)
+        except Exception as e:
+            self.logger.warning(f"Lidarr artist sync during maintenance failed: {e}")
+            return 0
 
     async def _load_discovery_file(self) -> list[dict[str, Any]]:
         """Load the discovery file"""
@@ -229,7 +274,7 @@ class PlaylistSyncDiscoveryMaintenanceCommand(BaseCommand):
 
     def get_description(self) -> str:
         """Return command description"""
-        return "Remove stale entries from the playlist sync discovery import list. Empty file is normal when playlists have no new artists to add."
+        return "Remove stale playlist-sync discovery import list entries and refresh the Lidarr artist cache. Empty file is normal when playlists have no new artists to add."
 
     def get_logger_name(self) -> str:
         """Return logger name"""

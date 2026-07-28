@@ -3,7 +3,7 @@
 Commands API endpoints
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +27,8 @@ def utc_datetime_serializer(dt: datetime | None) -> str | None:
     """Serialize UTC datetime with Z suffix for proper JavaScript parsing"""
     if dt is None:
         return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return dt.isoformat() + "Z"
 
 
@@ -179,16 +181,20 @@ async def get_plex_accounts(
         raise HTTPException(status_code=500, detail="Failed to get Plex accounts") from None
 
 
+@router.get("/create-availability")
+async def create_availability(db: Annotated[Session, Depends(get_config_db)]):
+    """Which Add New types are blocked because a singleton instance already exists."""
+    from utils.command_singleton import availability_for_create
+
+    return {"success": True, "singletons": availability_for_create(db)}
+
+
 @router.get("/daylist/exists")
 async def daylist_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a daylist command already exists (for New Command UI grey-out)."""
-    existing = (
-        db.query(CommandConfig)
-        .filter(CommandConfig.command_name.like("daylist_%"))
-        .filter(CommandConfig.deleted_at.is_(None))
-        .first()
-    )
-    return {"exists": existing is not None}
+    from utils.command_singleton import singleton_occupied
+
+    return {"exists": singleton_occupied(db, "daylist")}
 
 
 @router.get("/status/scheduler")
@@ -345,71 +351,27 @@ async def update_command(
         if request.timeout_minutes is not None:
             command.timeout_minutes = request.timeout_minutes
         if request.config_json is not None:
-            prev_config_snapshot = dict(command.config_json or {})
             command.config_json = request.config_json
-            # Playlist generators: keep display_name in sync with playlist title on save; delete prior
-            # playlist on Plex/Jellyfin when title or target changes so orphans are not left behind.
+            # Playlist generators: keep display_name in sync with playlist title on save.
             if command_name.startswith("lfm_similar_"):
                 from commands.playlist_generator_helpers import compute_lfm_similar_playlist_title
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_lfm_similar_playlist_title(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_lfm_similar_playlist_title(merged)
             elif command_name.startswith("top_tracks_"):
                 from commands.playlist_generator_helpers import (
                     compute_top_tracks_playlist_title_from_config,
                 )
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_top_tracks_playlist_title_from_config(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_top_tracks_playlist_title_from_config(merged)
             elif command_name.startswith("setlistfm_"):
                 from commands.playlist_generator_helpers import (
                     compute_setlistfm_playlist_title_from_config,
                 )
-                from services.command_cleanup import CommandCleanupService
 
                 merged = dict(command.config_json or {})
-                new_title = compute_setlistfm_playlist_title_from_config(merged)
-                old_last = prev_config_snapshot.get("last_playlist_title")
-                old_target = str(prev_config_snapshot.get("target", "plex")).lower()
-                new_target = str(merged.get("target", "plex")).lower()
-                if old_last and (old_last != new_title or old_target != new_target):
-                    CommandCleanupService()._delete_playlist_if_exists(
-                        old_target,
-                        old_last,
-                        playlist_id=prev_config_snapshot.get("last_playlist_id"),
-                    )
-                    merged.pop("last_playlist_title", None)
-                    merged.pop("last_playlist_id", None)
-                    command.config_json = merged
-                command.display_name = new_title
+                command.display_name = compute_setlistfm_playlist_title_from_config(merged)
             # display_name for daylist/local_discovery: sync when plex_history_account_id changes
             elif command_name.startswith("daylist_") or command_name.startswith("local_discovery_"):
                 plex_account_id = request.config_json.get("plex_history_account_id")
@@ -463,7 +425,24 @@ async def update_command(
                     dict(command.config_json or {})
                 )
 
-        command.updated_at = datetime.utcnow()
+        command.updated_at = datetime.now(UTC).replace(tzinfo=None)
+
+        if command_name == "discovery_lastfm" and command.enabled:
+            cfg = command.config_json or {}
+            try:
+                qid = int(cfg.get("quality_profile_id") or 0)
+                mid = int(cfg.get("metadata_profile_id") or 0)
+            except TypeError, ValueError:
+                qid, mid = 0, 0
+            if qid < 1 or mid < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Last.fm Discovery requires quality_profile_id and metadata_profile_id "
+                        "before it can be enabled"
+                    ),
+                )
+
         db.commit()
 
         # Refresh the command object to ensure we have the latest data
@@ -580,7 +559,7 @@ async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_c
 
         # Update the execution status to cancelled
         execution.status = "cancelled"
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC).replace(tzinfo=None)
         execution.success = False
         execution.error_message = "Execution cancelled by user"
 
@@ -593,7 +572,7 @@ async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_c
             .first()
         )
         if command_config:
-            command_config.last_run = datetime.utcnow()
+            command_config.last_run = datetime.now(UTC).replace(tzinfo=None)
             command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
             command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
 
@@ -715,7 +694,7 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
 
         # Update the execution status to cancelled
         execution.status = "cancelled"
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC).replace(tzinfo=None)
         execution.success = False
         execution.error_message = "Execution cancelled by user"
 
@@ -730,7 +709,7 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
             .first()
         )
         if command_config:
-            command_config.last_run = datetime.utcnow()
+            command_config.last_run = datetime.now(UTC).replace(tzinfo=None)
             command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
             command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
 
@@ -857,9 +836,12 @@ async def execute_cache_builder(request: Request):
 
 @router.post("/daylist/create")
 async def create_daylist(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new daylist command (supports multiple instances per user)."""
+    """Create a new daylist command (singleton — only one active instance)."""
     try:
         from database.config_models import CommandConfig
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "daylist")
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -923,6 +905,7 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
             schedule_cron=None,
             config_json=config_json,
             command_type="playlist_generator",
+            singleton_group=family.group if family else "daylist",
         )
         db.add(cmd)
         db.commit()
@@ -942,20 +925,19 @@ async def create_daylist(request: dict, db: Annotated[Session, Depends(get_confi
 @router.get("/local-discovery/exists")
 async def local_discovery_exists(db: Annotated[Session, Depends(get_config_db)]):
     """Check if a local discovery command already exists (for New Command UI grey-out)."""
-    existing = (
-        db.query(CommandConfig)
-        .filter(CommandConfig.command_name.like("local_discovery_%"))
-        .filter(CommandConfig.deleted_at.is_(None))
-        .first()
-    )
-    return {"exists": existing is not None}
+    from utils.command_singleton import singleton_occupied
+
+    return {"exists": singleton_occupied(db, "local_discovery")}
 
 
 @router.post("/local-discovery/create")
 async def create_local_discovery(request: dict, db: Annotated[Session, Depends(get_config_db)]):
-    """Create a new Local Discovery command (supports multiple instances per user)."""
+    """Create a new Local Discovery command (singleton — only one active instance)."""
     try:
         from database.config_models import CommandConfig
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "local_discovery")
 
         plex_account_id = request.get("plex_history_account_id")
         if not plex_account_id:
@@ -1029,6 +1011,7 @@ async def create_local_discovery(request: dict, db: Annotated[Session, Depends(g
             timeout_minutes=30,
             config_json=config_json,
             command_type="playlist_generator",
+            singleton_group=family.group if family else "local_discovery",
         )
         db.add(cmd)
         db.commit()
@@ -1749,6 +1732,151 @@ async def create_xmplaylist(request: dict, db: Annotated[Session, Depends(get_co
         raise HTTPException(status_code=500, detail="Failed to create xmplaylist command") from None
 
 
+def _next_command_suffix(db: Session, prefix: str) -> int:
+    """Allocate next NNNNN suffix for prefix_% command names."""
+    existing = db.query(CommandConfig).filter(CommandConfig.command_name.like(f"{prefix}_%")).all()
+    used_ids: set[int] = set()
+    for cmd in existing:
+        try:
+            used_ids.add(int(cmd.command_name.split("_")[-1]))
+        except ValueError, IndexError:
+            pass
+    next_id = 1
+    while next_id in used_ids:
+        next_id += 1
+    return next_id
+
+
+@router.post("/lidarr-update-all/create")
+async def create_lidarr_update_all(request: dict, db: Annotated[Session, Depends(get_config_db)]):
+    """Create a Lidarr Update All (RefreshArtist) maintenance command (singleton)."""
+    try:
+        from utils.command_singleton import require_singleton_available
+
+        family = require_singleton_available(db, "lidarr_update_all")
+        display_name = (
+            family.fixed_display_name if family else "Lidarr Maintenance - Artist Refresh"
+        )
+        description = (request.get("description") or "").strip() or (
+            "Trigger Lidarr Update All to refresh metadata for the entire library."
+        )
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        enabled = bool(request.get("enabled", True))
+
+        next_id = _next_command_suffix(db, "lidarr_update_all")
+        command_name = f"lidarr_update_all_{next_id:05d}"
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description=description,
+            enabled=enabled,
+            schedule_cron=schedule_cron,
+            timeout_minutes=15,
+            config_json={},
+            command_type="lidarr_maintenance",
+            singleton_group=family.group if family else "lidarr_update_all",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_lidarr_maintenance_commands()
+        return {"message": "Lidarr Update All command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create Lidarr Update All: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create Lidarr Update All") from None
+
+
+@router.post("/lidarr-wanted-search/create")
+async def create_lidarr_wanted_search(
+    request: dict, db: Annotated[Session, Depends(get_config_db)]
+):
+    """Create a Lidarr Wanted Search maintenance command (singleton)."""
+    try:
+        from utils.command_singleton import require_singleton_available
+        from utils.lidarr_maintenance import DEFAULT_SETTLE_SECONDS
+
+        family = require_singleton_available(db, "lidarr_wanted_search")
+        display_name = (
+            family.fixed_display_name if family else "Lidarr Maintenance - Missing Search"
+        )
+        description = (request.get("description") or "").strip() or (
+            "Search the top Wanted albums in Lidarr and temporarily ignore albums with no download."
+        )
+        schedule_cron = (request.get("schedule_cron") or "").strip() or None
+        enabled = bool(request.get("enabled", True))
+
+        top_x = max(1, min(50, int(request.get("top_x", 10))))
+        ignore_days = max(1, min(365, int(request.get("ignore_days", 14))))
+        settle_seconds = max(
+            0, min(300, int(request.get("settle_seconds", DEFAULT_SETTLE_SECONDS)))
+        )
+        sort_by = str(request.get("sort_by") or "oldest_release_date").strip().lower()
+        allowed_sorts = {
+            "oldest_release_date",
+            "newest_release_date",
+            "artist_name_asc",
+            "album_title_asc",
+        }
+        if sort_by not in allowed_sorts:
+            sort_by = "oldest_release_date"
+
+        album_types_raw = request.get("album_types", ["album"])
+        if isinstance(album_types_raw, str):
+            album_types_list = [t.strip().lower() for t in album_types_raw.split(",") if t.strip()]
+        else:
+            album_types_list = [
+                str(t).strip().lower() for t in (album_types_raw or []) if str(t).strip()
+            ]
+        album_types_list = [t for t in album_types_list if t in ("album", "ep", "single", "other")]
+        if not album_types_list:
+            album_types_list = ["album"]
+
+        next_id = _next_command_suffix(db, "lidarr_wanted_search")
+        command_name = f"lidarr_wanted_search_{next_id:05d}"
+
+        config_json = {
+            "top_x": top_x,
+            "ignore_days": ignore_days,
+            "settle_seconds": settle_seconds,
+            "sort_by": sort_by,
+            "album_types": ",".join(album_types_list),
+            "lifetime_searched": 0,
+            "lifetime_downloads_found": 0,
+            "lifetime_ignored": 0,
+        }
+
+        cmd = CommandConfig(
+            command_name=command_name,
+            display_name=display_name,
+            description=description,
+            enabled=enabled,
+            schedule_cron=schedule_cron,
+            timeout_minutes=60,
+            config_json=config_json,
+            command_type="lidarr_maintenance",
+            singleton_group=family.group if family else "lidarr_wanted_search",
+        )
+        db.add(cmd)
+        db.commit()
+        db.refresh(cmd)
+
+        command_executor._load_dynamic_lidarr_maintenance_commands()
+        return {"message": "Lidarr Wanted Search command created", "command_name": command_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        get_commands_logger().error(f"Failed to create Lidarr Wanted Search: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to create Lidarr Wanted Search"
+        ) from None
+
+
 @router.post("/playlist-sync/create")
 async def create_playlist_sync(request: dict, db: Annotated[Session, Depends(get_config_db)]):
     """Create a new playlist sync command"""
@@ -2215,7 +2343,7 @@ async def delete_command(
             CommandCleanupService().delete_playlist_for_command(command)
 
         # Soft delete: keep for 7 days so execution history retains display_name
-        command.deleted_at = datetime.utcnow()
+        command.deleted_at = datetime.now(UTC).replace(tzinfo=None)
         command.enabled = False
         db.commit()
 

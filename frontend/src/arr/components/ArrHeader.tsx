@@ -1,12 +1,11 @@
 import { Menu, Moon, Sun, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { UiShellToggle } from "@/components/UiShellToggle";
 import { useTheme } from "@/lib/use-theme";
 import { api } from "@/lib/api";
 import { arrPageTitle } from "@/arr/arr-nav";
 import { useHealthStatus } from "@/hooks/useHealthStatus";
 import { cn } from "@/lib/utils";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 
 type ArrHeaderProps = {
   onOpenSidebar: () => void;
@@ -53,7 +52,6 @@ export function ArrHeader({ onOpenSidebar }: ArrHeaderProps) {
           className={cn("mr-1 hidden h-2 w-2 rounded-full sm:inline-block", healthColor)}
           title={health.message}
         />
-        <UiShellToggle compact />
         <Button
           variant="ghost"
           size="icon"

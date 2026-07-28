@@ -32,6 +32,7 @@ from .playlist_generator_helpers import (
     delete_playlist_on_target,
     load_lidarr_artist_norm_mbid_index_sync,
     persist_playlist_identity,
+    resolve_validated_artists,
     validate_artists_against_cache,
 )
 
@@ -177,6 +178,8 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                 return False
 
             lidarr_mbids_by_norm = load_lidarr_artist_norm_mbid_index_sync()
+            resolved_artists, _ = resolve_validated_artists(ordered_lines, cached_data)
+            resolved_by_display = {r.display_name: r for r in resolved_artists}
             if lidarr_mbids_by_norm:
                 self.logger.debug(
                     "Loaded %s Lidarr artist name entries for Setlist.fm MBID resolution",
@@ -216,13 +219,15 @@ class PlaylistGeneratorSetlistfmCommand(BaseCommand):
                     for track_name in songs:
                         if not (track_name or "").strip():
                             continue
-                        tracks_for_playlist.append(
-                            {
-                                "artist": norm,
-                                "track": track_name.strip(),
-                                "album": "",
-                            }
-                        )
+                        resolved = resolved_by_display.get(display_name)
+                        track_row: dict[str, Any] = {
+                            "artist": resolved.library_artist if resolved else display_name,
+                            "track": track_name.strip(),
+                            "album": "",
+                        }
+                        if resolved and len(resolved.mbids) == 1:
+                            track_row["mbid"] = resolved.mbids[0]
+                        tracks_for_playlist.append(track_row)
                     artists_processed += 1
 
             if not tracks_for_playlist:

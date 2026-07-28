@@ -19,7 +19,9 @@ from services.config_service import config_service
 from utils.cache_client import create_cache_client
 from utils.library_selector import resolve_plex_library
 from utils.track_match import (
+    artist_identity_matches,
     collaboration_mismatch_penalty,
+    extract_mbid_from_guid,
     fuzzy_char_overlap_match,
     normalized_artist_for_source_vs_library,
 )
@@ -215,6 +217,7 @@ class PlexClient(BaseAPIClient):
                         .lower()
                         .strip()[:50],  # Truncate long album names
                         "duration": track.get("duration", 0),
+                        "artist_guid": track.get("grandparentGuid", "") or "",
                     }
 
                     # Skip tracks with missing essential data
@@ -243,6 +246,7 @@ class PlexClient(BaseAPIClient):
         tracks = cache_data["tracks"]
         artist_index = {}
         track_index = {}
+        mbid_index: dict[str, list[str]] = {}
 
         for track in tracks:
             rating_key = track["key"]
@@ -267,8 +271,15 @@ class PlexClient(BaseAPIClient):
                     track_index[normalized_title] = []
                 track_index[normalized_title].append(rating_key)
 
+            artist_mbid = extract_mbid_from_guid(track.get("artist_guid"))
+            if artist_mbid:
+                if artist_mbid not in mbid_index:
+                    mbid_index[artist_mbid] = []
+                mbid_index[artist_mbid].append(rating_key)
+
         cache_data["artist_index"] = artist_index
         cache_data["track_index"] = track_index
+        cache_data["mbid_index"] = mbid_index
 
         self.logger.debug(
             f"Built optimized indexes: {len(artist_index):,} artists, {len(track_index):,} track titles"
@@ -303,7 +314,12 @@ class PlexClient(BaseAPIClient):
         return cached_data
 
     def search_cached_library(
-        self, track_name: str, artist_name: str, cached_data: dict[str, Any], album_name: str = ""
+        self,
+        track_name: str,
+        artist_name: str,
+        cached_data: dict[str, Any],
+        album_name: str = "",
+        mbids: list[str] | None = None,
     ) -> str | None:
         """
         Ultra-fast search in optimized cached library data
@@ -353,10 +369,28 @@ class PlexClient(BaseAPIClient):
 
         # Strategy 1: Direct index lookups (fastest)
         candidate_keys = set()
+        mbid_index = cached_data.get("mbid_index", {})
 
         # Get candidates by artist (direct lookup)
         if artist_lower in artist_index:
             artist_candidates = set(artist_index[artist_lower])
+            if mbids and mbid_index:
+                mbid_candidates: set[str] = set()
+                for mbid in mbids:
+                    mbid_candidates.update(mbid_index.get(mbid.lower(), []))
+                if mbid_candidates:
+                    artist_candidates = artist_candidates.intersection(mbid_candidates)
+            if artist_candidates:
+                tracks_by_key = {t["key"]: t for t in tracks}
+                identity_candidates = {
+                    key
+                    for key in artist_candidates
+                    if artist_identity_matches(
+                        artist_name,
+                        str(tracks_by_key.get(key, {}).get("artist", "") or ""),
+                    )
+                }
+                artist_candidates = identity_candidates
             candidate_keys.update(artist_candidates)
             self.logger.debug(
                 f"🔍 CACHED SEARCH: Artist '{artist_lower}' found {len(artist_candidates)} candidates: {sorted(artist_candidates)[:10]}"
@@ -404,6 +438,7 @@ class PlexClient(BaseAPIClient):
                         album_lower,
                         original_track=track_name,
                         original_artist=artist_name,
+                        mbids=mbids,
                     )
                     collab_pen = collaboration_mismatch_penalty(
                         artist_name or "", str(track.get("artist", "") or "")
@@ -462,6 +497,7 @@ class PlexClient(BaseAPIClient):
                     album_lower,
                     original_track=track_name,
                     original_artist=artist_name,
+                    mbids=mbids,
                 )
                 collab_pen = collaboration_mismatch_penalty(
                     artist_name or "", str(track.get("artist", "") or "")
@@ -486,6 +522,7 @@ class PlexClient(BaseAPIClient):
         target_album: str = "",
         original_track: str = "",
         original_artist: str = "",
+        mbids: list[str] | None = None,
     ) -> tuple[int, int, int]:
         """
         Optimized track matching score using minimal track data.
@@ -556,6 +593,7 @@ class PlexClient(BaseAPIClient):
             score_breakdown.append("track_fuzzy:50")
 
         # Score artist name match (REQUIRED - no cross-artist matches)
+        source_raw = (original_artist or "").strip() or orig_artist
         if plex_artist == target_artist:
             if not target_artist and not plex_artist:
                 if orig_artist and plex_artist_orig == orig_artist:
@@ -563,10 +601,11 @@ class PlexClient(BaseAPIClient):
                     score += artist_score
                     score_breakdown.append("artist_exact:100")
                 # else: no match - different symbol-only artist names or missing original
-            else:
+            elif artist_identity_matches(source_raw, plex_artist_raw):
                 artist_score = 100  # Exact match
                 score += artist_score
                 score_breakdown.append("artist_exact:100")
+            # else: normalized collision (e.g. Gore. vs gore) — no artist match
         elif (
             len(target_artist) >= min_partial_len
             and len(plex_artist) >= min_partial_len
@@ -611,6 +650,14 @@ class PlexClient(BaseAPIClient):
                 self.logger.debug(f"Cached album missing from track: '{target_album}'")
             else:
                 self.logger.debug("No album info provided for cached matching")
+
+        if mbids:
+            artist_guid = str(track.get("artist_guid", "") or "").lower()
+            for mbid in mbids:
+                if mbid.lower() in artist_guid:
+                    score += 50
+                    score_breakdown.append("mbid:50")
+                    break
 
         collab_pen = collaboration_mismatch_penalty(target_raw, plex_artist_raw)
         if collab_pen:
@@ -658,7 +705,11 @@ class PlexClient(BaseAPIClient):
         # Try cached search first if available and library cache is enabled
         if cached_data and library_cache_enabled:
             cached_result = self.search_cached_library(
-                track_name, artist_name, cached_data, album_name or ""
+                track_name,
+                artist_name,
+                cached_data,
+                album_name or "",
+                mbids=mbids,
             )
             if cached_result:
                 self.logger.debug(f"Cache hit: {artist_name} - {track_name}")
@@ -675,6 +726,36 @@ class PlexClient(BaseAPIClient):
             self.logger.debug(f"Using live API search: {artist_name} - {track_name}")
 
         return self._search_for_track_live(track_name, artist_name, mbids, album_name)
+
+    def search_for_track_escalating(
+        self,
+        track_name: str,
+        match_context: dict[str, Any],
+        cached_data: dict[str, Any] | None = None,
+        album_name: str = "",
+    ) -> str | None:
+        """Try MBID + exact artist names, then normalized name, for Plex track lookup."""
+        from utils.track_match import plex_search_variants
+
+        display = match_context.get("display_name") or ""
+        for artist_name, mbids, strategy in plex_search_variants(match_context):
+            key = self.search_for_track(
+                track_name,
+                artist_name,
+                mbids=mbids,
+                cached_data=cached_data,
+                album_name=album_name,
+            )
+            if key:
+                if strategy == "normalized":
+                    self.logger.warning(
+                        "Plex matched '%s' via normalized artist '%s' (expected '%s')",
+                        track_name,
+                        artist_name,
+                        display,
+                    )
+                return key
+        return None
 
     def _search_for_track_live(self, track_name, artist_name, mbids=None, album_name=None):
         """
@@ -791,6 +872,25 @@ class PlexClient(BaseAPIClient):
             found_track_keys = []
             failed_matches = []
             processed = 0
+            artist_match_stats: dict[str, dict[str, Any]] = {}
+
+            def _artist_stat_key(track_row: dict[str, Any]) -> str:
+                ctx = track_row.get("match_context") or {}
+                return str(ctx.get("norm") or track_row.get("artist") or "").strip() or "unknown"
+
+            def _record_artist_match(track_row: dict[str, Any], matched: bool) -> None:
+                ctx = track_row.get("match_context") or {}
+                key = _artist_stat_key(track_row)
+                if key not in artist_match_stats:
+                    artist_match_stats[key] = {
+                        "display_name": ctx.get("display_name") or track_row.get("artist", key),
+                        "expected": 0,
+                        "matched": 0,
+                        "in_lidarr": bool(ctx.get("in_lidarr")),
+                    }
+                artist_match_stats[key]["expected"] += 1
+                if matched:
+                    artist_match_stats[key]["matched"] += 1
 
             for _i, track in enumerate(tracks):
                 # Support pre-resolved rating keys (e.g. from Plex popular tracks)
@@ -800,6 +900,7 @@ class PlexClient(BaseAPIClient):
                     processed += 1
                     artist = track.get("artist", "")
                     track_name = track.get("track", "")
+                    _record_artist_match(track, True)
                     progress = f"[{processed}/{len(tracks)}]"
                     if artist and track_name:
                         self.logger.info(f"{progress} ✅ {artist} - {track_name}")
@@ -818,19 +919,54 @@ class PlexClient(BaseAPIClient):
 
                 # Search using cache-optimized method
                 album = track.get("album", "")
+                mbids = track.get("mbid") or track.get("artist_mbid")
+                if isinstance(mbids, str):
+                    mbids = [mbids] if mbids.strip() else None
+                elif isinstance(mbids, list):
+                    mbids = [m for m in mbids if (m or "").strip()] or None
+                else:
+                    mbids = None
                 self.logger.debug(
                     f"Searching for track: '{artist}' - '{track_name}' - Album: '{album}' - Cache: {cached_data is not None}"
                 )
-                rating_key = self.search_for_track(
-                    track_name, artist, cached_data=cached_data, album_name=album
-                )
+                match_context = track.get("match_context")
+                if match_context:
+                    rating_key = self.search_for_track_escalating(
+                        track_name,
+                        match_context,
+                        cached_data=cached_data,
+                        album_name=album,
+                    )
+                else:
+                    rating_key = self.search_for_track(
+                        track_name,
+                        artist,
+                        mbids=mbids,
+                        cached_data=cached_data,
+                        album_name=album,
+                    )
 
                 if rating_key:
                     found_track_keys.append(rating_key)
+                    _record_artist_match(track, True)
                     self.logger.info(f"{progress} ✅ {artist} - {track_name}")
                 else:
                     failed_matches.append(f"{artist} - {track_name}")
+                    _record_artist_match(track, False)
                     self.logger.info(f"{progress} ❌ {artist} - {track_name}")
+
+            for stat in artist_match_stats.values():
+                if (
+                    stat.get("in_lidarr")
+                    and stat.get("expected", 0) > 0
+                    and stat.get("matched", 0) == 0
+                ):
+                    self.logger.warning(
+                        "Likely Plex matching failure for '%s': 0/%s tracks matched "
+                        "(artist is in Lidarr/library)",
+                        stat.get("display_name"),
+                        stat.get("expected"),
+                    )
 
             tracks_found = len(found_track_keys)
             tracks_total = len(tracks)
@@ -862,6 +998,7 @@ class PlexClient(BaseAPIClient):
                         "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
+                        "unmatched_tracks": failed_matches,
                         "message": f"Skipped creating empty playlist '{title}'",
                     }
                 else:
@@ -875,6 +1012,7 @@ class PlexClient(BaseAPIClient):
                         "playlist_title": title,
                         "total_tracks": tracks_total,
                         "found_tracks": 0,
+                        "unmatched_tracks": failed_matches,
                         "message": f"Skipped creating empty playlist '{title}'",
                     }
 
@@ -900,6 +1038,7 @@ class PlexClient(BaseAPIClient):
                     "total_tracks": tracks_total,
                     "found_tracks": tracks_found,
                     "unmatched_tracks": failed_matches,
+                    "artist_match_stats": artist_match_stats,
                     "message": f"Successfully synced playlist '{title}' with {tracks_found} tracks",
                 }
             else:
@@ -1763,9 +1902,10 @@ class PlexClient(BaseAPIClient):
                     artist_score = 100
                     score += artist_score
                 # else: no match - different symbol-only artist names
-            else:
+            elif artist_identity_matches(target_artist_name, plex_artist_raw):
                 artist_score = 100  # Exact match
                 score += artist_score
+            # else: normalized collision — no artist match
         elif (
             len(target_artist_lower) >= min_partial_len
             and len(plex_artist_name) >= min_partial_len

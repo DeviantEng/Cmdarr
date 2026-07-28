@@ -48,6 +48,9 @@ class ConfigAdapter:
         self.LASTFM_API_KEY = config_service.get("LASTFM_API_KEY", "")
         self.LASTFM_API_SECRET = config_service.get("LASTFM_API_SECRET", "")
         self.LASTFM_RATE_LIMIT = config_service.get("LASTFM_RATE_LIMIT", 5.0)
+        self.LASTFM_FETCH_CONCURRENCY = max(
+            1, min(int(config_service.get("LASTFM_FETCH_CONCURRENCY", 3)), 10)
+        )
         self.LASTFM_SIMILAR_COUNT = config_service.get("LASTFM_SIMILAR_COUNT", 1)
         self.LASTFM_MIN_MATCH_SCORE = config_service.get("LASTFM_MIN_MATCH_SCORE", 0.0)
 
@@ -117,9 +120,6 @@ class ConfigAdapter:
         self.WEB_HOST = config_service.get("WEB_HOST", "0.0.0.0")
 
         # Output Configuration
-        self.OUTPUT_FILE = config_service.get(
-            "OUTPUT_FILE", "data/import_lists/discovery_lastfm.json"
-        )
         self.LISTENBRAINZ_OUTPUT_FILE = config_service.get(
             "LISTENBRAINZ_OUTPUT_FILE", "data/import_lists/discovery_listenbrainz.json"
         )
@@ -150,6 +150,7 @@ class ConfigAdapter:
             "lidarr_timeout": self.LIDARR_TIMEOUT,
             "lidarr_ignore_tls": self.LIDARR_IGNORE_TLS,
             "lastfm_rate_limit": self.LASTFM_RATE_LIMIT,
+            "lastfm_fetch_concurrency": self.LASTFM_FETCH_CONCURRENCY,
             "lastfm_similar_count": self.LASTFM_SIMILAR_COUNT,
             "lastfm_min_match_score": self.LASTFM_MIN_MATCH_SCORE,
             "discovery_lastfm_enabled": self.DISCOVERY_LASTFM_ENABLED,
@@ -169,7 +170,6 @@ class ConfigAdapter:
             "generate_debug_calls": self.GENERATE_DEBUG_VALIDATION_CALLS,
             "web_port": self.WEB_PORT,
             "web_host": self.WEB_HOST,
-            "output_file": self.OUTPUT_FILE,
             "listenbrainz_output_file": self.LISTENBRAINZ_OUTPUT_FILE,
             "pretty_print_json": self.PRETTY_PRINT_JSON,
             "cache_enabled": self.CACHE_ENABLED,

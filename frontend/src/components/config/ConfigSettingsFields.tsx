@@ -84,18 +84,11 @@ export function ConfigSettingsToolbar({ controller }: { controller: ConfigSettin
   );
 }
 
-export function ConfigApiKeyCard({
-  controller,
-  variant = "legacy",
-}: {
-  controller: ConfigSettingsController;
-  variant?: "legacy" | "arr";
-}) {
+export function ConfigApiKeyCard({ controller }: { controller: ConfigSettingsController }) {
   const { apiKeyGenerated, generatingApiKey, handleGenerateApiKey } = controller;
-  const isArr = variant === "arr";
 
   return (
-    <Card className={cn(isArr ? "arr-panel arr-settings-api-key" : "p-4")}>
+    <Card className="arr-panel arr-settings-api-key">
       <div className="space-y-2">
         <Label className="text-sm font-medium">API Key</Label>
         <p className="text-sm text-muted-foreground">
@@ -215,14 +208,9 @@ export function ConfigConnectivityDialog({ controller }: { controller: ConfigSet
 type ConfigSettingsListProps = {
   controller: ConfigSettingsController;
   groupSettings: ConfigSetting[];
-  useArrPanel?: boolean;
 };
 
-export function ConfigSettingsList({
-  controller,
-  groupSettings,
-  useArrPanel = false,
-}: ConfigSettingsListProps) {
+export function ConfigSettingsList({ controller, groupSettings }: ConfigSettingsListProps) {
   const { handleSettingChange, handleRevealToggle, getSensitiveDisplayValue, revealedKeys } =
     controller;
 
@@ -316,79 +304,37 @@ export function ConfigSettingsList({
 
   if (groupSettings.length === 0) {
     return (
-      <div
-        className={cn(
-          "p-8 text-center text-sm text-muted-foreground",
-          useArrPanel && "arr-panel",
-          !useArrPanel && "rounded-lg border"
-        )}
-      >
+      <div className="arr-panel p-8 text-center text-sm text-muted-foreground">
         No settings found in this category
       </div>
     );
   }
 
-  if (useArrPanel) {
-    return (
-      <fieldset className="arr-settings-fieldset">
-        {groupSettings.map((setting) => (
-          <div key={setting.key} className="arr-settings-row">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Label htmlFor={setting.key} className="arr-settings-label">
-                  {setting.key}
-                </Label>
-                {setting.is_required ? (
-                  <Badge variant="destructive" className="text-xs">
-                    Required
-                  </Badge>
-                ) : null}
-                {setting.is_sensitive ? (
-                  <Badge variant="secondary" className="text-xs">
-                    Sensitive
-                  </Badge>
-                ) : null}
-              </div>
-              <p className="arr-settings-help">
-                {setting.description || "No description available"}
-              </p>
-            </div>
-            <div className="arr-settings-control">{renderSettingInput(setting)}</div>
-          </div>
-        ))}
-      </fieldset>
-    );
-  }
-
   return (
-    <div className="grid gap-3">
+    <fieldset className="arr-settings-fieldset">
       {groupSettings.map((setting) => (
-        <Card key={setting.key} className={cn("p-4", useArrPanel && "arr-panel")}>
-          <div className="grid min-w-0 gap-3 lg:grid-cols-[1fr,min(300px,100%)] lg:gap-4">
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Label htmlFor={setting.key} className="text-sm font-medium">
-                  {setting.key}
-                </Label>
-                {setting.is_required ? (
-                  <Badge variant="destructive" className="text-xs">
-                    Required
-                  </Badge>
-                ) : null}
-                {setting.is_sensitive ? (
-                  <Badge variant="secondary" className="text-xs">
-                    Sensitive
-                  </Badge>
-                ) : null}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {setting.description || "No description available"}
-              </p>
+        <div key={setting.key} className="arr-settings-row">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor={setting.key} className="arr-settings-label">
+                {setting.key}
+              </Label>
+              {setting.is_required ? (
+                <Badge variant="destructive" className="text-xs">
+                  Required
+                </Badge>
+              ) : null}
+              {setting.is_sensitive ? (
+                <Badge variant="secondary" className="text-xs">
+                  Sensitive
+                </Badge>
+              ) : null}
             </div>
-            <div className="flex min-w-0 items-start">{renderSettingInput(setting)}</div>
+            <p className="arr-settings-help">{setting.description || "No description available"}</p>
           </div>
-        </Card>
+          <div className="arr-settings-control">{renderSettingInput(setting)}</div>
+        </div>
       ))}
-    </div>
+    </fieldset>
   );
 }

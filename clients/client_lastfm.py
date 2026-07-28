@@ -6,6 +6,8 @@ Refactored to use BaseAPIClient for reduced code duplication
 
 from typing import Any
 
+from utils.discovery_images import pick_lastfm_image_url
+
 from .client_base import BaseAPIClient
 
 
@@ -76,6 +78,7 @@ class LastFMClient(BaseAPIClient):
                             "mbid": "",
                             "match": match_score,
                             "url": artist.get("url", ""),
+                            "image_url": pick_lastfm_image_url(artist.get("image")),
                         }
                     )
                 else:
@@ -98,6 +101,7 @@ class LastFMClient(BaseAPIClient):
                     "mbid": artist.get("mbid", ""),
                     "match": match_score,
                     "url": artist.get("url", ""),
+                    "image_url": pick_lastfm_image_url(artist.get("image")),
                 }
             )
 
@@ -210,109 +214,219 @@ class LastFMClient(BaseAPIClient):
 
             return [], []
 
-    async def get_top_tracks(self, artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
+    def _parse_top_tracks_response(
+        self, response: dict[str, Any] | None, default_artist: str
+    ) -> list[dict[str, Any]]:
+        if not response:
+            return []
+        if response.get("error"):
+            self.logger.debug(
+                "Last.fm top tracks error %s: %s",
+                response.get("error"),
+                response.get("message", ""),
+            )
+            return []
+        toptracks = response.get("toptracks", {})
+        track_list = toptracks.get("track", [])
+        if isinstance(track_list, dict):
+            track_list = [track_list]
+
+        tracks: list[dict[str, Any]] = []
+        for t in track_list:
+            name = t.get("name", "").strip()
+            art = t.get("artist", {})
+            artist = art.get("name", default_artist) if isinstance(art, dict) else default_artist
+            if name:
+                tracks.append(
+                    {
+                        "name": name,
+                        "artist": artist,
+                        "playcount": int(t.get("playcount", 0)),
+                    }
+                )
+        return tracks
+
+    async def get_top_tracks(
+        self,
+        artist_name: str,
+        limit: int = 10,
+        *,
+        mbid: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get top tracks for an artist via artist.getTopTracks.
         Returns list of {name, artist, playcount} for matching against library.
+        Tries MBID first when provided, then falls back to artist name (like get_similar_artists).
         """
-        if not artist_name or not str(artist_name).strip():
+        mbid = (mbid or "").strip() or None
+        name_clean = (artist_name or "").strip()
+        if not mbid and not name_clean:
             return []
 
-        cache_key = f"toptracks:{artist_name}:{limit}"
-        if self.cache_enabled and self.cache:
-            if self.cache.is_failed_lookup(cache_key, "lastfm"):
-                return []
-            cached = self.cache.get(cache_key, "lastfm")
-            if cached is not None:
-                self.logger.debug(f"Cache hit for top tracks: {artist_name}")
-                return cached.get("tracks", [])
+        limit_str = str(min(limit, 50))
+        default_artist = name_clean or artist_name or ""
 
-        params = {
-            "method": "artist.getTopTracks",
-            "artist": artist_name.strip(),
-            "limit": str(min(limit, 50)),
-        }
+        async def _request_top_tracks(params: dict[str, str], context: str) -> list[dict[str, Any]]:
+            response = await self._make_request(params, context_info=context)
+            return self._parse_top_tracks_response(response, default_artist)
+
+        tracks: list[dict[str, Any]] = []
+        mbid_cache_key = f"toptracks:mbid:{mbid}:{limit}" if mbid else None
+        name_cache_key = f"toptracks:name:{name_clean.lower()}:{limit}" if name_clean else None
+
         try:
-            response = await self._make_request(
-                params, context_info=f"top tracks for '{artist_name}'"
-            )
-            if not response:
+            if mbid:
                 if self.cache_enabled and self.cache:
-                    self.cache.mark_failed_lookup(
-                        cache_key,
+                    if self.cache.is_failed_lookup(mbid_cache_key, "lastfm"):
+                        pass
+                    else:
+                        cached = self.cache.get(mbid_cache_key, "lastfm")
+                        if cached is not None:
+                            self.logger.debug(f"Cache hit for top tracks MBID: {mbid}")
+                            tracks = cached.get("tracks", [])
+                            if tracks:
+                                return tracks
+
+                if not tracks:
+                    params = {
+                        "method": "artist.getTopTracks",
+                        "mbid": mbid,
+                        "limit": limit_str,
+                    }
+                    context = f"top tracks for '{name_clean}' (MBID: {mbid})"
+                    tracks = await _request_top_tracks(params, context)
+                    if tracks and self.cache_enabled and self.cache:
+                        self.cache.set(
+                            mbid_cache_key,
+                            "lastfm",
+                            {"tracks": tracks},
+                            self.config.CACHE_LASTFM_TTL_DAYS,
+                        )
+                    if tracks:
+                        return tracks
+
+            if name_clean:
+                if self.cache_enabled and self.cache:
+                    if self.cache.is_failed_lookup(name_cache_key, "lastfm"):
+                        return []
+                    cached = self.cache.get(name_cache_key, "lastfm")
+                    if cached is not None:
+                        self.logger.debug(f"Cache hit for top tracks name: {name_clean}")
+                        return cached.get("tracks", [])
+
+                if mbid:
+                    self.logger.debug(
+                        f"MBID top tracks empty for '{name_clean}' (MBID: {mbid}), "
+                        "trying name-based query"
+                    )
+                params = {
+                    "method": "artist.getTopTracks",
+                    "artist": name_clean,
+                    "limit": limit_str,
+                }
+                context = f"top tracks for '{name_clean}' (name)"
+                tracks = await _request_top_tracks(params, context)
+                if self.cache_enabled and self.cache and tracks:
+                    self.cache.set(
+                        name_cache_key,
                         "lastfm",
-                        "API request failed",
+                        {"tracks": tracks},
+                        self.config.CACHE_LASTFM_TTL_DAYS,
+                    )
+                return tracks
+
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting top tracks for {mbid or name_clean}: {e}")
+            if self.cache_enabled and self.cache:
+                fail_key = name_cache_key or mbid_cache_key
+                if fail_key:
+                    self.cache.mark_failed_lookup(
+                        fail_key,
+                        "lastfm",
+                        str(e),
                         self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
                     )
-                return []
-
-            toptracks = response.get("toptracks", {})
-            track_list = toptracks.get("track", [])
-            if isinstance(track_list, dict):
-                track_list = [track_list]
-
-            tracks = []
-            for t in track_list:
-                name = t.get("name", "").strip()
-                art = t.get("artist", {})
-                artist = art.get("name", artist_name) if isinstance(art, dict) else artist_name
-                if name:
-                    tracks.append(
-                        {
-                            "name": name,
-                            "artist": artist,
-                            "playcount": int(t.get("playcount", 0)),
-                        }
-                    )
-
-            if self.cache_enabled and self.cache:
-                self.cache.set(
-                    cache_key,
-                    "lastfm",
-                    {"tracks": tracks},
-                    self.config.CACHE_LASTFM_TTL_DAYS,
-                )
-            return tracks
-        except Exception as e:
-            self.logger.error(f"Error getting top tracks for {artist_name}: {e}")
-            if self.cache_enabled and self.cache:
-                self.cache.mark_failed_lookup(
-                    cache_key,
-                    "lastfm",
-                    str(e),
-                    self.config.CACHE_FAILED_LOOKUP_TTL_DAYS,
-                )
             return []
 
+    def _parse_artist_info_response(self, response: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not response:
+            return None
+        artist_data = response.get("artist", {})
+        if not artist_data:
+            return None
+        # JSON API uses ``bio``; older docs/examples sometimes say ``wiki``.
+        bio = artist_data.get("bio") or artist_data.get("wiki") or {}
+        return {
+            "name": artist_data.get("name", ""),
+            "mbid": artist_data.get("mbid", ""),
+            "url": artist_data.get("url", ""),
+            "playcount": artist_data.get("stats", {}).get("playcount", 0),
+            "listeners": artist_data.get("stats", {}).get("listeners", 0),
+            "bio_summary": bio.get("summary") or "",
+            "bio_content": bio.get("content") or "",
+        }
+
     async def get_artist_info(
-        self, mbid: str = None, artist_name: str = None
+        self,
+        mbid: str = None,
+        artist_name: str = None,
+        *,
+        prefer_bio: bool = False,
     ) -> dict[str, Any] | None:
-        """Get artist information by MBID or name (for validation)"""
-        if not mbid and not artist_name:
+        """Get artist information by MBID or name.
+
+        Last.fm often omits bio when queried by MBID alone. When prefer_bio is True,
+        name lookup (with autocorrect) is tried first, then MBID if bio is still empty.
+        """
+        mbid_clean = (mbid or "").strip() or None
+        name_clean = (artist_name or "").strip() or None
+        if not mbid_clean and not name_clean:
             self.logger.error("Either MBID or artist name must be provided")
             return None
 
-        params = {"method": "artist.getinfo"}
-
-        if mbid:
-            params["mbid"] = mbid
-        else:
-            params["artist"] = artist_name
-
         try:
-            response = await self._make_request(params)
+            if prefer_bio:
+                info = None
+                if name_clean:
+                    info = self._parse_artist_info_response(
+                        await self._make_request(
+                            {
+                                "method": "artist.getinfo",
+                                "artist": name_clean,
+                                "autocorrect": "1",
+                            }
+                        )
+                    )
+                has_bio = bool(info and (info.get("bio_summary") or info.get("bio_content")))
+                if not has_bio and mbid_clean:
+                    mbid_info = self._parse_artist_info_response(
+                        await self._make_request({"method": "artist.getinfo", "mbid": mbid_clean})
+                    )
+                    if mbid_info:
+                        if info:
+                            # Prefer name payload; fill gaps from MBID lookup.
+                            for key in (
+                                "mbid",
+                                "url",
+                                "playcount",
+                                "listeners",
+                                "bio_summary",
+                                "bio_content",
+                            ):
+                                if not info.get(key) and mbid_info.get(key):
+                                    info[key] = mbid_info[key]
+                        else:
+                            info = mbid_info
+                return info
 
-            if not response:
-                return None
-
-            artist_data = response.get("artist", {})
-            return {
-                "name": artist_data.get("name", ""),
-                "mbid": artist_data.get("mbid", ""),
-                "url": artist_data.get("url", ""),
-                "playcount": artist_data.get("stats", {}).get("playcount", 0),
-                "listeners": artist_data.get("stats", {}).get("listeners", 0),
-            }
+            params: dict[str, str] = {"method": "artist.getinfo"}
+            if mbid_clean:
+                params["mbid"] = mbid_clean
+            else:
+                params["artist"] = name_clean
+                params["autocorrect"] = "1"
+            return self._parse_artist_info_response(await self._make_request(params))
 
         except Exception as e:
             self.logger.error(f"Error getting artist info: {e}")

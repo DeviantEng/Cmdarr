@@ -66,10 +66,19 @@ export const commandUiCopy = {
     artistCooldownHelp: "Don't re-query an artist for this many days (1–365, default 30)",
     similarPerArtist: "Similar per artist",
     similarPerArtistHelp: "Similar artists to request per Lidarr artist (1–50)",
-    outputLimit: "Output limit",
-    outputLimitHelp: "Max artists in final output (1–50)",
+    outputLimit: "Max artists to add per run",
+    outputLimitHelp: "Max artists to add to Lidarr via API each run (1–50)",
     minMatchScore: "Min match score (0–1)",
     minMatchScoreHelp: "Minimum Last.fm match score (0–1, default 0.9)",
+    qualityProfile: "Lidarr quality profile",
+    qualityProfilePlaceholder: "Select quality profile",
+    qualityProfileHelp: "Required before enabling. Used for every auto-add.",
+    metadataProfile: "Lidarr metadata profile",
+    metadataProfilePlaceholder: "Select metadata profile",
+    metadataProfileHelp: "Required before enabling. Used for every auto-add.",
+    searchOnAdd: "Search for missing albums on add",
+    searchOnAddHelp:
+      "When checked, Lidarr starts a missing-album search after each add (default off).",
   },
   newReleases: {
     artistsPerRun: "Artists per run",
@@ -105,7 +114,7 @@ export const commandUiCopy = {
     selectPlexPlaceholder: "Select Plex account",
     accountSuffixInUse: " (already has Daylist)",
     plexAccountHelp:
-      "Plex Home users only. Daylist uses this account's play history. One Daylist per user.",
+      "Plex Home users only. Daylist uses this account's play history. Only one Daylist command is allowed.",
     runAtMinuteLabel: "Run at minute of hour (0–59)",
     runAtMinuteHelp:
       "Daylist runs hourly at this minute. Runs only when the day period changes (Dawn, Morning, etc.). Min: 0, max: 59.",
@@ -140,7 +149,7 @@ export const commandUiCopy = {
     selectPlaceholder: "Select account",
     accountSuffixInUse: " (already has Local Discovery)",
     plexAccountHelp:
-      "Plex Home users only. Local Discovery uses this account's play history. One Local Discovery per user.",
+      "Plex Home users only. Local Discovery uses this account's play history. Only one Local Discovery command is allowed.",
     lookbackDaysLabel: "Lookback days",
     lookbackDaysHelp:
       "How far back to count plays. Shorter = more day-to-day variety. Min: 7, max: 365.",
@@ -340,5 +349,41 @@ export const commandUiCopy = {
     submitXmplaylist: "Create XMPlaylist",
     submitPlaylistSync: "Create Playlist Sync",
     submitMoodPlaylist: "Create Mood Playlist",
+    submitLidarrUpdateAll: "Create Update All",
+    submitLidarrWantedSearch: "Create Wanted Search",
+    categoryPlaylistGenerator: "Playlist Generator",
+    categoryPlaylistSync: "Playlist Sync",
+    categoryLidarrMaintenance: "Lidarr Maintenance",
+    titleLidarrUpdateAll: "Configure Lidarr Update All",
+    titleLidarrWantedSearch: "Configure Lidarr Wanted Search",
+    descLidarrUpdateAll:
+      "Queue Lidarr’s Update All (RefreshArtist) on a schedule so new MusicBrainz releases appear without a manual click.",
+    descLidarrWantedSearch:
+      "Search the top Wanted albums in Lidarr. Albums with a grab or no release are cooled down so the backlog can progress (and stuck imports are not re-grabbed).",
+    cardLidarrUpdateAllTitle: "Update All",
+    cardLidarrUpdateAllBlurb:
+      "Trigger Lidarr Update All to refresh artist/album metadata across your library.",
+    cardLidarrWantedSearchTitle: "Wanted Search",
+    cardLidarrWantedSearchBlurb:
+      "Search top X Wanted albums (filter by Album/EP/Single). Grabs and empty results share a cooldown.",
+  },
+  lidarrMaintenance: {
+    topXLabel: "Albums to search per run",
+    topXHelp: "How many Wanted albums to search each run (1–50). Default 10.",
+    ignoreDaysLabel: "Cooldown after search (days)",
+    ignoreDaysHelp:
+      "After AlbumSearch, skip that album for this many days (1–365) whether a release was grabbed or nothing was found. Gives imports time to finish (or fail for review) without re-searching. Default 14.",
+    settleSecondsLabel: "Settle time after search (seconds)",
+    settleSecondsHelp:
+      "Wait this long after AlbumSearch completes before checking the queue/history for grabs (0–300). Default 30.",
+    sortByLabel: "Wanted sort order",
+    sortByHelp: "How to order Lidarr’s Wanted list before taking the top X.",
+    sortOldest: "Oldest Release Date",
+    sortNewest: "Newest Release Date",
+    sortArtist: "Artist Name (A–Z)",
+    sortTitle: "Album Title (A–Z)",
+    releaseTypesHeading: "Release types to include",
+    releaseTypesHelp: "Only search Wanted items matching these types (Album, EP, Single, Other).",
+    singletonOnlyOne: "Only one instance of this command is allowed.",
   },
 } as const;

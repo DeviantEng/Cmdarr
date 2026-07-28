@@ -8,7 +8,6 @@ Time-based exclusion: artists queried recently (configurable days) are skipped.
 """
 
 import json
-import os
 import random
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,7 +22,7 @@ from .command_base import BaseCommand
 
 
 class DiscoveryLastfmCommand(BaseCommand):
-    """Command to discover similar artists for Lidarr import using shared utilities"""
+    """Discover similar artists via Last.fm and add them directly to Lidarr."""
 
     def __init__(self, config=None):
         super().__init__(config)
@@ -41,16 +40,49 @@ class DiscoveryLastfmCommand(BaseCommand):
 
     def get_description(self) -> str:
         """Return command description for help text."""
-        return "Discover similar artists from Last.fm and MusicBrainz for Lidarr import with exclusion filtering"
+        return (
+            "Discover similar artists from Last.fm and MusicBrainz and add them to Lidarr "
+            "via API (quality/metadata profiles required)"
+        )
 
     def get_logger_name(self) -> str:
         """Return logger name for this command."""
         return "discovery_lastfm"
 
+    def _resolve_profiles(self) -> tuple[int, int] | None:
+        """Return (quality_profile_id, metadata_profile_id) or None if unset."""
+        cfg = getattr(self, "config_json", None) or {}
+        try:
+            quality_profile_id = int(cfg.get("quality_profile_id") or 0)
+            metadata_profile_id = int(cfg.get("metadata_profile_id") or 0)
+        except TypeError, ValueError:
+            return None
+        if quality_profile_id < 1 or metadata_profile_id < 1:
+            return None
+        return quality_profile_id, metadata_profile_id
+
     async def execute(self) -> bool:
         """Execute the similar artists discovery process"""
         try:
             self.logger.info("Starting similar artists discovery process")
+
+            profiles = self._resolve_profiles()
+            if not profiles:
+                self.logger.error(
+                    "Last.fm Discovery requires quality_profile_id and metadata_profile_id "
+                    "in command settings before it can run"
+                )
+                self.last_run_stats = {
+                    "error": "quality_profile_id and metadata_profile_id are required",
+                    "added_count": 0,
+                    "failed_count": 0,
+                    "final_count": 0,
+                }
+                return False
+
+            quality_profile_id, metadata_profile_id = profiles
+            cfg = getattr(self, "config_json", None) or {}
+            search_for_missing = bool(cfg.get("search_for_missing_albums", False))
 
             # Clean up expired cache entries
             await self.utils.cleanup_expired_cache()
@@ -58,14 +90,24 @@ class DiscoveryLastfmCommand(BaseCommand):
             # Discover similar artists with shared utilities
             similar_artists, sampled_mbids = await self._discover_similar_artists()
 
-            # Save results
-            self._save_results(similar_artists)
+            add_stats = await self._add_artists_to_lidarr(
+                similar_artists,
+                quality_profile_id=quality_profile_id,
+                metadata_profile_id=metadata_profile_id,
+                search_for_missing_albums=search_for_missing,
+            )
+            self.last_run_stats = {**(self.last_run_stats or {}), **add_stats}
+            self._write_last_run_stats(self.last_run_stats)
+            self._append_recent_adds(add_stats.get("added") or [])
 
             # Record sampled artists for time-based exclusion
             if sampled_mbids:
                 self._save_queried_artists(sampled_mbids)
 
-            self.logger.info("Similar artists discovery completed successfully")
+            self.logger.info(
+                "Similar artists discovery completed successfully "
+                f"(added={add_stats.get('added_count', 0)}, failed={add_stats.get('failed_count', 0)})"
+            )
             return True
 
         except Exception as e:
@@ -74,8 +116,110 @@ class DiscoveryLastfmCommand(BaseCommand):
 
     def _get_queried_file_path(self) -> Path:
         """Path to JSON file storing recently queried artist MBIDs."""
-        output_dir = Path(self.config.OUTPUT_FILE).parent
-        return output_dir / "discovery_lastfm_queried.json"
+        return Path("data/discovery/lastfm_queried.json")
+
+    def _get_recent_adds_path(self) -> Path:
+        return Path("data/discovery/lastfm_recent_adds.json")
+
+    def _write_last_run_stats(self, stats: dict[str, Any]) -> None:
+        path = Path("data/discovery/lastfm_last_run_stats.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {**stats, "written_at": datetime.now(UTC).isoformat()}
+        # Avoid persisting full added/failed lists in the KPI blob (kept in recent_adds).
+        payload.pop("added", None)
+        payload.pop("failed", None)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+        except OSError as e:
+            self.logger.warning(f"Could not save last run stats: {e}")
+
+    def _append_recent_adds(self, added: list[dict[str, Any]]) -> None:
+        """Keep a short ring buffer of successful auto-adds for System → Discovery."""
+        if not added:
+            return
+        path = self._get_recent_adds_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing: list[dict[str, Any]] = []
+        if path.exists():
+            try:
+                with open(path, encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, list):
+                    existing = raw
+            except json.JSONDecodeError, OSError:
+                existing = []
+        now_iso = datetime.now(UTC).isoformat()
+        for row in added:
+            existing.append(
+                {
+                    "mbid": row.get("mbid"),
+                    "name": row.get("name"),
+                    "added_at": now_iso,
+                    "similar_to": row.get("similar_to"),
+                }
+            )
+        existing = existing[-100:]
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=2, ensure_ascii=False)
+        except OSError as e:
+            self.logger.warning(f"Could not save recent adds file: {e}")
+
+    async def _add_artists_to_lidarr(
+        self,
+        artists: list[dict[str, Any]],
+        *,
+        quality_profile_id: int,
+        metadata_profile_id: int,
+        search_for_missing_albums: bool,
+    ) -> dict[str, Any]:
+        added: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        skipped_existing = 0
+
+        for artist in artists:
+            mbid = (artist.get("MusicBrainzId") or artist.get("mbid") or "").strip()
+            name = (artist.get("ArtistName") or artist.get("name") or "").strip()
+            if not mbid or not name:
+                failed.append({"mbid": mbid, "name": name, "error": "missing mbid or name"})
+                continue
+            result = await self.lidarr.add_artist(
+                mbid=mbid,
+                artist_name=name,
+                quality_profile_id=quality_profile_id,
+                metadata_profile_id=metadata_profile_id,
+                search_for_missing_albums=search_for_missing_albums,
+            )
+            if result.get("success"):
+                added.append(
+                    {
+                        "mbid": mbid,
+                        "name": name,
+                        "similar_to": artist.get("similarArtistTo"),
+                    }
+                )
+            elif result.get("error") == "Artist already exists":
+                skipped_existing += 1
+            else:
+                failed.append(
+                    {
+                        "mbid": mbid,
+                        "name": name,
+                        "error": result.get("error") or "unknown error",
+                    }
+                )
+                self.logger.error(
+                    f"Failed to add '{name}' ({mbid}): {result.get('error') or 'unknown'}"
+                )
+
+        return {
+            "added_count": len(added),
+            "failed_count": len(failed),
+            "skipped_existing_count": skipped_existing,
+            "added": added,
+            "failed": failed,
+        }
 
     def _load_queried_artists(self, cooldown_days: int) -> set[str]:
         """Load artist MBIDs queried within cooldown_days. Prunes expired entries."""
@@ -133,10 +277,12 @@ class DiscoveryLastfmCommand(BaseCommand):
     async def _discover_similar_artists(self) -> tuple[list[dict[str, Any]], list[str]]:
         """Main processing function using shared utilities. Returns (output_artists, sampled_mbids)."""
 
-        # Get Lidarr context (existing artists + exclusions)
-        existing_mbids, existing_names, excluded_mbids = await self.utils.get_lidarr_context()
+        # Get Lidarr context (existing artists + exclusions); refresh so recent adds are filtered.
+        existing_mbids, existing_names, excluded_mbids = await self.utils.get_lidarr_context(
+            force_refresh=True
+        )
 
-        # Get all Lidarr artists for Last.fm processing
+        # Get all Lidarr artists for Last.fm processing (already refreshed above)
         lidarr_artists = await self.lidarr.get_all_artists()
         artist_lookup = {
             a["musicBrainzId"]: a["artistName"] for a in lidarr_artists if a.get("musicBrainzId")
@@ -370,19 +516,3 @@ class DiscoveryLastfmCommand(BaseCommand):
             self.logger.debug(
                 f"    Check by name: http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={artist_name.replace(' ', '%20')}&api_key={{API_KEY}}&format=json"
             )
-
-    def _save_results(self, artists: list[dict[str, Any]], filename: str = None):
-        """Save results to JSON file"""
-        if filename is None:
-            filename = self.config.OUTPUT_FILE
-
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-
-        with open(filename, "w", encoding="utf-8") as f:
-            if self.config.PRETTY_PRINT_JSON:
-                json.dump(artists, f, indent=2, ensure_ascii=False)
-            else:
-                json.dump(artists, f, ensure_ascii=False)
-
-        self.logger.info(f"Results saved to {filename}")

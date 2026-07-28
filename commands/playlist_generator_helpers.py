@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Shared helpers for playlist generator commands (Artist Essentials, Last.fm Similar, etc.)."""
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
 from utils.text_normalizer import normalize_text
+from utils.track_match import (
+    artist_identity_matches,
+    lastfm_query_plan,
+    lastfm_tracks_match_artist,
+)
 
 SEP = " · "
 MAX_ARTIST_LEN = 40
@@ -77,6 +84,362 @@ def index_lidarr_artist_mbids_by_norm(
         if n and mb:
             by_norm[n].add(mb)
     return {k: sorted(v) for k, v in by_norm.items()}
+
+
+@dataclass(frozen=True)
+class ResolvedArtist:
+    """Library-validated artist with disambiguation metadata for playlist matching."""
+
+    display_name: str
+    norm: str
+    mbids: list[str]
+    library_artist: str
+
+
+def load_lidarr_artist_pairs_sync() -> list[tuple[str, str]]:
+    """Load ``(artist_name, artist_mbid)`` pairs from Lidarr. Returns [] if DB/query fails."""
+
+    try:
+        from database.config_models import LidarrArtist
+        from database.database import get_database_manager
+
+        db = get_database_manager()
+        session = db.get_config_session_sync()
+        try:
+            rows = session.query(LidarrArtist).all()
+            return [
+                (r.artist_name or "", r.artist_mbid or "")
+                for r in rows
+                if (r.artist_name or "").strip() and (r.artist_mbid or "").strip()
+            ]
+        finally:
+            session.close()
+    except Exception:
+        return []
+
+
+def _pick_lidarr_mbids(
+    display_name: str, norm: str, lidarr_pairs: list[tuple[str, str]]
+) -> list[str]:
+    candidates = [
+        (name, mbid.strip())
+        for name, mbid in lidarr_pairs
+        if normalize_text(name) == norm and mbid.strip()
+    ]
+    if not candidates:
+        return []
+    if len(candidates) == 1:
+        return [candidates[0][1]]
+    best_name, best_mbid = max(
+        candidates,
+        key=lambda pair: SequenceMatcher(None, display_name.lower(), pair[0].lower()).ratio(),
+    )
+    return [best_mbid]
+
+
+def _distinct_library_artists_for_norm(cached_data: dict[str, Any] | None, norm: str) -> list[str]:
+    if not cached_data or not norm:
+        return []
+    artist_index = cached_data.get("artist_index", {})
+    rating_keys = artist_index.get(norm, [])
+    if not rating_keys:
+        return []
+    tracks = cached_data.get("tracks", [])
+    track_by_key = {t["key"]: t for t in tracks}
+    seen: set[str] = set()
+    raw_artists: list[str] = []
+    for key in rating_keys:
+        track = track_by_key.get(key)
+        if not track:
+            continue
+        raw = str(track.get("artist", "") or "").strip()
+        if raw and raw not in seen:
+            seen.add(raw)
+            raw_artists.append(raw)
+    return raw_artists
+
+
+def _pick_library_artist(display_name: str, norm: str, cached_data: dict[str, Any] | None) -> str:
+    raw_artists = _distinct_library_artists_for_norm(cached_data, norm)
+    identity_matches = [r for r in raw_artists if artist_identity_matches(display_name, r)]
+    pool = identity_matches or raw_artists
+    if not pool:
+        return display_name
+    return max(
+        pool,
+        key=lambda r: SequenceMatcher(None, display_name.lower(), r.lower()).ratio(),
+    )
+
+
+def resolve_artist_track_keys(
+    cached_data: dict[str, Any] | None, resolved: ResolvedArtist
+) -> list[str]:
+    """Rating keys for a resolved artist, filtered by identity and optional MBID index."""
+    if not cached_data:
+        return []
+    artist_index = cached_data.get("artist_index", {})
+    norm_keys = artist_index.get(resolved.norm, [])
+    if not norm_keys:
+        return []
+
+    tracks = cached_data.get("tracks", [])
+    track_by_key = {t["key"]: t for t in tracks}
+    keys: list[str] = []
+    for key in norm_keys:
+        track = track_by_key.get(key)
+        if not track:
+            continue
+        raw = str(track.get("artist", "") or "")
+        if artist_identity_matches(resolved.display_name, raw):
+            keys.append(key)
+
+    mbid_index = cached_data.get("mbid_index", {})
+    if resolved.mbids and mbid_index:
+        mbid_keys: set[str] = set()
+        for mbid in resolved.mbids:
+            mbid_keys.update(mbid_index.get(mbid.lower(), []))
+        if mbid_keys:
+            filtered = [k for k in keys if k in mbid_keys]
+            if filtered:
+                keys = filtered
+
+    return keys
+
+
+def resolve_validated_artists(
+    artists_raw: list[str] | str,
+    cached_data: dict[str, Any] | None,
+    *,
+    lidarr_pairs: list[tuple[str, str]] | None = None,
+) -> tuple[list[ResolvedArtist], list[str]]:
+    """Validate artists and resolve display names, Lidarr MBIDs, and library raw artist strings."""
+    if isinstance(artists_raw, str):
+        artists_raw = [a.strip() for a in artists_raw.split("\n") if a.strip()]
+    names = [a.strip() for a in artists_raw if (a or "").strip()]
+    valid_norms, invalid = validate_artists_against_cache(names, cached_data)
+    valid_set = set(valid_norms)
+    pairs = lidarr_pairs if lidarr_pairs is not None else load_lidarr_artist_pairs_sync()
+
+    resolved: list[ResolvedArtist] = []
+    seen_norms: set[str] = set()
+    for name in names:
+        norm = normalize_text(name.lower())
+        if norm not in valid_set or norm in seen_norms:
+            continue
+        seen_norms.add(norm)
+        mbids = _pick_lidarr_mbids(name, norm, pairs)
+        library_artist = _pick_library_artist(name, norm, cached_data)
+        resolved.append(
+            ResolvedArtist(
+                display_name=name,
+                norm=norm,
+                mbids=mbids,
+                library_artist=library_artist,
+            )
+        )
+    return resolved, invalid
+
+
+def artist_match_context(resolved: ResolvedArtist) -> dict[str, Any]:
+    return {
+        "display_name": resolved.display_name,
+        "library_artist": resolved.library_artist,
+        "norm": resolved.norm,
+        "mbids": list(resolved.mbids),
+        "in_lidarr": bool(resolved.mbids),
+    }
+
+
+def attach_match_context(row: dict[str, Any], resolved: ResolvedArtist) -> dict[str, Any]:
+    enriched = dict(row)
+    enriched["match_context"] = artist_match_context(resolved)
+    return enriched
+
+
+def _lastfm_rows_for_resolved(
+    resolved: ResolvedArtist, lastfm_tracks: list[dict[str, Any]], limit: int
+) -> list[dict[str, Any]]:
+    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+    rows: list[dict[str, Any]] = []
+    for t in lastfm_tracks[:limit]:
+        track_name = (t.get("name") or "").strip()
+        if not track_name:
+            continue
+        row: dict[str, Any] = {
+            "artist": resolved.library_artist,
+            "track": track_name,
+            "album": t.get("album", ""),
+        }
+        if mbid:
+            row["mbid"] = mbid
+        rows.append(attach_match_context(row, resolved))
+    return rows
+
+
+def _plex_popular_rows_for_resolved(
+    resolved: ResolvedArtist,
+    plex_client: Any,
+    library_key: str,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    track_keys = resolve_artist_track_keys(cached_data, resolved)
+    if not track_keys:
+        return []
+    first_track_key = track_keys[0]
+    artist_rk = plex_client.get_artist_rating_key_from_track(first_track_key)
+    if not artist_rk:
+        return []
+    popular = plex_client.get_artist_popular_tracks(library_key, artist_rk, limit=limit)
+    mbid = resolved.mbids[0] if len(resolved.mbids) == 1 else None
+    rows: list[dict[str, Any]] = []
+    for t in popular[:limit]:
+        rows.append(
+            attach_match_context(
+                {
+                    "rating_key": t["key"],
+                    "artist": t.get("artist") or resolved.library_artist,
+                    "track": t["title"],
+                    "album": t.get("album", ""),
+                    **({"mbid": mbid} if mbid else {}),
+                },
+                resolved,
+            )
+        )
+    return rows
+
+
+def _resolve_tracks_in_library(
+    track_rows: list[dict[str, Any]],
+    resolved: ResolvedArtist,
+    plex_client: Any,
+    cached_data: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Resolve Plex rating keys once per track row (used by fetch and sync)."""
+    if not plex_client or not cached_data or not track_rows:
+        return track_rows
+    ctx = artist_match_context(resolved)
+    resolved_rows: list[dict[str, Any]] = []
+    for row in track_rows:
+        enriched = dict(row)
+        if not enriched.get("rating_key"):
+            track_name = (row.get("track") or "").strip()
+            if track_name:
+                rating_key = plex_client.search_for_track_escalating(
+                    track_name,
+                    ctx,
+                    cached_data=cached_data,
+                    album_name=row.get("album", ""),
+                )
+                if rating_key:
+                    enriched["rating_key"] = rating_key
+        resolved_rows.append(enriched)
+    return resolved_rows
+
+
+async def fetch_top_tracks_for_artist(
+    resolved: ResolvedArtist,
+    *,
+    lastfm_client: Any,
+    plex_client: Any | None,
+    library_key: str | None,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+    logger: Any,
+) -> tuple[list[dict[str, Any]], str]:
+    """Resolve top tracks: Last.fm (MBID → exact name → normalized), then Plex library."""
+    plan = lastfm_query_plan(
+        resolved.display_name,
+        resolved.library_artist,
+        resolved.norm,
+        resolved.mbids,
+    )
+
+    for name, mbid, label in plan:
+        lastfm_tracks = await lastfm_client.get_top_tracks(name, limit=limit, mbid=mbid)
+        if not lastfm_tracks:
+            continue
+        if label == "normalized" and not lastfm_tracks_match_artist(
+            lastfm_tracks, resolved.display_name, resolved.library_artist
+        ):
+            logger.warning(
+                "Last.fm normalized name '%s' returned unrelated artist for '%s'; skipping",
+                name,
+                resolved.display_name,
+            )
+            continue
+
+        rows = _lastfm_rows_for_resolved(resolved, lastfm_tracks, limit)
+        if resolved.mbids and plex_client and cached_data:
+            rows = _resolve_tracks_in_library(rows, resolved, plex_client, cached_data)
+            matched = sum(1 for row in rows if row.get("rating_key"))
+            if matched == 0:
+                logger.warning(
+                    "Last.fm returned %s tracks for '%s' (%s) but none matched Plex; trying next source",
+                    len(rows),
+                    resolved.display_name,
+                    label,
+                )
+                continue
+            if matched < len(rows):
+                logger.info(
+                    "Last.fm '%s': %s/%s tracks resolved in Plex library",
+                    resolved.display_name,
+                    matched,
+                    len(rows),
+                )
+
+        return rows, f"lastfm_{label}"
+
+    if plex_client and library_key:
+        plex_rows = _plex_popular_rows_for_resolved(
+            resolved, plex_client, library_key, cached_data, limit
+        )
+        if plex_rows:
+            logger.info(
+                "Using Plex library tracks for '%s' (Last.fm lookups exhausted)",
+                resolved.display_name,
+            )
+            return plex_rows, "plex"
+
+    tried = [f"{label}:{name}" + (f"(mbid={mbid})" if mbid else "") for name, mbid, label in plan]
+    logger.warning(
+        "No top tracks for '%s' (tried %s; Plex fallback empty)",
+        resolved.display_name,
+        ", ".join(tried) or "nothing",
+    )
+    return [], "none"
+
+
+async def fetch_top_tracks_for_artists_parallel(
+    resolved_artists: list[ResolvedArtist],
+    *,
+    lastfm_client: Any,
+    plex_client: Any | None,
+    library_key: str | None,
+    cached_data: dict[str, Any] | None,
+    limit: int,
+    logger: Any,
+    concurrency: int,
+) -> list[tuple[list[dict[str, Any]], str]]:
+    """Fetch top tracks for many artists concurrently (Last.fm rate limit still applies)."""
+    if not resolved_artists:
+        return []
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _fetch(resolved: ResolvedArtist) -> tuple[list[dict[str, Any]], str]:
+        async with sem:
+            return await fetch_top_tracks_for_artist(
+                resolved,
+                lastfm_client=lastfm_client,
+                plex_client=plex_client,
+                library_key=library_key,
+                cached_data=cached_data,
+                limit=limit,
+                logger=logger,
+            )
+
+    return list(await asyncio.gather(*[_fetch(resolved) for resolved in resolved_artists]))
 
 
 def load_lidarr_artist_norm_mbid_index_sync() -> dict[str, list[str]]:

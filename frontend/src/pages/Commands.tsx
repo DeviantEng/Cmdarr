@@ -1,8 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
 import {
-  LayoutGrid,
-  List,
   Play,
   Pencil,
   Trash2,
@@ -15,8 +12,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CommandConfig } from "@/lib/types";
+import { formatCommandTypeLabel } from "@/lib/commandTypeLabels";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -54,7 +52,6 @@ import {
 } from "@/components/command-edit/saveHelpers";
 import type { CommandEditFormState, XmplaylistStationRow } from "@/components/command-edit/types";
 
-type ViewMode = "card" | "list";
 type SortField = "name" | "status" | "type" | "schedule" | "last_run";
 type SortDirection = "asc" | "desc";
 
@@ -76,9 +73,6 @@ function CommandsSortIcon({
 }
 
 type CommandsToolbarControlsProps = {
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  useArrPanel: boolean;
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   activeFilterCount: number;
@@ -87,13 +81,9 @@ type CommandsToolbarControlsProps = {
   typeFilter: string;
   setTypeFilter: (value: string) => void;
   commandTypes: string[];
-  onNewCommand: () => void;
 };
 
 function CommandsToolbarControls({
-  viewMode,
-  setViewMode,
-  useArrPanel,
   searchQuery,
   setSearchQuery,
   activeFilterCount,
@@ -102,36 +92,10 @@ function CommandsToolbarControls({
   typeFilter,
   setTypeFilter,
   commandTypes,
-  onNewCommand,
 }: CommandsToolbarControlsProps) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-        {!useArrPanel ? (
-          <div className="flex items-center rounded-lg bg-muted p-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewMode("card")}
-              className={cn("h-9 w-9", viewMode === "card" && "bg-background shadow-sm")}
-              aria-label="Card view"
-              title="Card view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className={cn("h-9 w-9", viewMode === "list" && "bg-background shadow-sm")}
-              aria-label="List view"
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : null}
-
         <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -144,7 +108,7 @@ function CommandsToolbarControls({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant={useArrPanel ? "secondary" : "outline"} size="sm">
+            <Button variant="secondary" size="sm">
               <Filter className="mr-2 h-4 w-4" />
               Filter
               {activeFilterCount > 0 ? (
@@ -181,14 +145,14 @@ function CommandsToolbarControls({
                   <SelectContent>
                     {commandTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type === "all" ? "All" : type}
+                        {type === "all" ? "All" : formatCommandTypeLabel(type)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <Button
-                variant={useArrPanel ? "secondary" : "outline"}
+                variant="secondary"
                 size="sm"
                 className="w-full"
                 onClick={() => {
@@ -203,13 +167,6 @@ function CommandsToolbarControls({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-
-      {!useArrPanel ? (
-        <Button size="sm" onClick={onNewCommand}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Command
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -220,8 +177,6 @@ const BUILTIN_COMMANDS = [
   "new_releases_discovery",
   "playlist_sync_discovery_maintenance",
 ];
-
-const VIEW_MODE_KEY = "cmdarr_commands_view_mode";
 
 function formatCommandLastRun(value: string | null | undefined, compact: boolean): string {
   if (!value) return "Never";
@@ -293,7 +248,6 @@ type CommandsListBodyProps = {
   handleEdit: (command: CommandConfig) => void;
   handleToggleEnabled: (command: CommandConfig) => void;
   handleDelete: (commandName: string) => void;
-  useArrTable?: boolean;
 };
 
 function CommandsListBody({
@@ -305,7 +259,6 @@ function CommandsListBody({
   handleEdit,
   handleToggleEnabled,
   handleDelete,
-  useArrTable = false,
 }: CommandsListBodyProps) {
   return (
     <>
@@ -326,7 +279,7 @@ function CommandsListBody({
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                 {command.command_type ? (
-                  <span className="truncate">{command.command_type}</span>
+                  <span className="truncate">{formatCommandTypeLabel(command.command_type)}</span>
                 ) : null}
                 <span className="font-mono">
                   {command.schedule_override && command.schedule_cron
@@ -358,7 +311,7 @@ function CommandsListBody({
         ))}
       </div>
       <div className="hidden overflow-x-auto md:block">
-        <table className={cn("w-full", useArrTable && "arr-table")}>
+        <table className="arr-table w-full">
           <thead className="border-b">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-medium">
@@ -431,7 +384,7 @@ function CommandsListBody({
           </thead>
           <tbody className="divide-y">
             {filteredCommands.map((command) => (
-              <tr key={command.id} className={useArrTable ? undefined : "hover:bg-muted/50"}>
+              <tr key={command.id}>
                 <td className="px-4 py-3">
                   <div>
                     <div className="font-medium">{command.display_name}</div>
@@ -448,7 +401,7 @@ function CommandsListBody({
                 <td className="px-4 py-3">
                   {command.command_type ? (
                     <Badge variant="outline" className="text-xs">
-                      {command.command_type}
+                      {formatCommandTypeLabel(command.command_type)}
                     </Badge>
                   ) : null}
                 </td>
@@ -479,33 +432,14 @@ function CommandsListBody({
   );
 }
 
-function getStoredViewMode(): ViewMode {
-  try {
-    const stored = localStorage.getItem(VIEW_MODE_KEY);
-    if (stored === "card" || stored === "list") return stored;
-  } catch {
-    /* ignore */
-  }
-  return "card";
-}
-
 type CommandsPageProps = {
-  showPageHeader?: boolean;
   showExecutions?: boolean;
-  useArrPanel?: boolean;
 };
 
-export function CommandsPage({
-  showPageHeader = true,
-  showExecutions = true,
-  useArrPanel = false,
-}: CommandsPageProps) {
+export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
   const [commands, setCommands] = useState<CommandConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(() =>
-    useArrPanel ? "list" : getStoredViewMode()
-  );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "enabled" | "disabled">("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -596,15 +530,6 @@ export function CommandsPage({
     }
   }, [editingCommand?.command_name, nrdSources, editForm.new_releases_source]);
 
-  useEffect(() => {
-    if (useArrPanel) return;
-    try {
-      localStorage.setItem(VIEW_MODE_KEY, viewMode);
-    } catch {
-      /* ignore */
-    }
-  }, [useArrPanel, viewMode]);
-
   // Auto-refresh commands every 5s; pause when edit or create dialog is open
   useEffect(() => {
     if (editingCommand || showNewCommandDialog) return;
@@ -626,7 +551,19 @@ export function CommandsPage({
 
   const handleToggleEnabled = async (command: CommandConfig) => {
     try {
-      await api.updateCommand(command.command_name, { enabled: !command.enabled });
+      const enabling = !command.enabled;
+      if (enabling && command.command_name === "discovery_lastfm") {
+        const cfg = command.config_json || {};
+        const q = Number(cfg.quality_profile_id || 0);
+        const m = Number(cfg.metadata_profile_id || 0);
+        if (!Number.isFinite(q) || q < 1 || !Number.isFinite(m) || m < 1) {
+          toast.error(
+            "Set Lidarr quality and metadata profiles in command settings before enabling Last.fm Discovery"
+          );
+          return;
+        }
+      }
+      await api.updateCommand(command.command_name, { enabled: enabling });
       toast.success(`Command ${command.enabled ? "disabled" : "enabled"}`);
       await loadCommands();
       if (editingCommand?.command_name === command.command_name) {
@@ -636,7 +573,7 @@ export function CommandsPage({
         if (updated) setEditingCommand(updated);
       }
     } catch (error) {
-      toast.error("Failed to update command");
+      toast.error(error instanceof Error ? error.message : "Failed to update command");
       console.error(error);
     }
   };
@@ -715,6 +652,15 @@ export function CommandsPage({
         typeof cfg.artist_cooldown_days === "number" ? cfg.artist_cooldown_days : 30,
       limit: typeof cfg.limit === "number" ? cfg.limit : 5,
       min_match_score: typeof cfg.min_match_score === "number" ? cfg.min_match_score : 0.9,
+      quality_profile_id:
+        typeof cfg.quality_profile_id === "number" && cfg.quality_profile_id > 0
+          ? cfg.quality_profile_id
+          : null,
+      metadata_profile_id:
+        typeof cfg.metadata_profile_id === "number" && cfg.metadata_profile_id > 0
+          ? cfg.metadata_profile_id
+          : null,
+      search_for_missing_albums: !!cfg.search_for_missing_albums,
       enable_artist_discovery: !!cfg.enable_artist_discovery,
       artist_discovery_max_per_run:
         typeof cfg.artist_discovery_max_per_run === "number" ? cfg.artist_discovery_max_per_run : 2,
@@ -791,6 +737,9 @@ export function CommandsPage({
       xm_playlist_kind: (cfg.playlist_kind as string) === "most_heard" ? "most_heard" : "newest",
       xm_most_heard_days: typeof cfg.most_heard_days === "number" ? cfg.most_heard_days : 30,
       plex_playlist_account_id: "",
+      ignore_days: typeof cfg.ignore_days === "number" ? cfg.ignore_days : 14,
+      settle_seconds: typeof cfg.settle_seconds === "number" ? cfg.settle_seconds : 30,
+      sort_by: (cfg.sort_by as string) || "oldest_release_date",
     });
     if (isDaylist || command.command_name.startsWith("local_discovery_")) {
       const editingParam = `editing_command=${encodeURIComponent(command.command_name)}`;
@@ -959,13 +908,7 @@ export function CommandsPage({
 
   if (loading) {
     return (
-      <div className={cn(useArrPanel && "arr-page-panels")}>
-        {showPageHeader ? (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Commands</h1>
-            <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-          </div>
-        ) : null}
+      <div className="arr-page-panels">
         <div className="text-center text-muted-foreground">Loading commands...</div>
       </div>
     );
@@ -973,13 +916,7 @@ export function CommandsPage({
 
   if (error) {
     return (
-      <div className={cn(useArrPanel && "arr-page-panels")}>
-        {showPageHeader ? (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Commands</h1>
-            <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-          </div>
-        ) : null}
+      <div className="arr-page-panels">
         <Card className="border-destructive">
           <CardContent className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-8">
             <p className="text-lg font-medium text-destructive">Failed to Load Commands</p>
@@ -992,37 +929,10 @@ export function CommandsPage({
   }
 
   return (
-    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
-      {showPageHeader ? (
-        <div>
-          <h1 className="text-3xl font-bold">Commands</h1>
-          <p className="mt-2 text-muted-foreground">Manage and monitor your Cmdarr commands</p>
-        </div>
-      ) : null}
-
+    <div className="min-w-0 space-y-6 arr-page-panels">
       {/* Controls Row */}
-      {useArrPanel ? (
-        <ArrPageToolbar>
-          <CommandsToolbarControls
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            useArrPanel={useArrPanel}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            activeFilterCount={activeFilterCount}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            typeFilter={typeFilter}
-            setTypeFilter={setTypeFilter}
-            commandTypes={commandTypes}
-            onNewCommand={() => setShowNewCommandDialog(true)}
-          />
-        </ArrPageToolbar>
-      ) : (
+      <ArrPageToolbar>
         <CommandsToolbarControls
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          useArrPanel={useArrPanel}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           activeFilterCount={activeFilterCount}
@@ -1031,137 +941,32 @@ export function CommandsPage({
           typeFilter={typeFilter}
           setTypeFilter={setTypeFilter}
           commandTypes={commandTypes}
-          onNewCommand={() => setShowNewCommandDialog(true)}
         />
-      )}
+      </ArrPageToolbar>
 
       {/* Commands Display */}
       {filteredCommands.length === 0 ? (
-        useArrPanel ? (
-          <ArrContentPanel>
-            <div className="arr-panel-body flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
-              <div className="text-center">
-                <h3 className="text-xl font-semibold">
-                  {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
-                </h3>
-                <p className="mt-2 text-muted-foreground">
-                  {safeCommands.length === 0
-                    ? "Get started by creating your first command"
-                    : "Try adjusting your filters to see more commands"}
-                </p>
-              </div>
-              {safeCommands.length === 0 && (
-                <Button size="lg" asChild>
-                  <Link to="/commands/add">
-                    <Plus className="mr-2 h-5 w-5" />
-                    Add Your First Command
-                  </Link>
-                </Button>
-              )}
+        <ArrContentPanel>
+          <div className="arr-panel-body flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
+            <div className="text-center">
+              <h3 className="text-xl font-semibold">
+                {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
+              </h3>
+              <p className="mt-2 text-muted-foreground">
+                {safeCommands.length === 0
+                  ? "Get started by creating your first command"
+                  : "Try adjusting your filters to see more commands"}
+              </p>
             </div>
-          </ArrContentPanel>
-        ) : (
-          <Card>
-            <CardContent className="flex min-h-[400px] flex-col items-center justify-center gap-4 py-12">
-              <div className="text-center">
-                <h3 className="text-xl font-semibold">
-                  {safeCommands.length === 0 ? "No Commands Yet" : "No Commands Match Filters"}
-                </h3>
-                <p className="mt-2 text-muted-foreground">
-                  {safeCommands.length === 0
-                    ? "Get started by creating your first command"
-                    : "Try adjusting your filters to see more commands"}
-                </p>
-              </div>
-              {safeCommands.length === 0 && (
-                <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
-                  <Plus className="mr-2 h-5 w-5" />
-                  Create Your First Command
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        )
-      ) : viewMode === "card" && !useArrPanel ? (
-        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-          {filteredCommands.map((command) => (
-            <Card key={command.id} className="flex min-w-0 flex-col overflow-hidden">
-              <CardHeader className="space-y-1 p-3 pb-2 md:p-6 md:pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="truncate text-sm md:text-base">
-                      {command.display_name}
-                    </CardTitle>
-                    {command.description && (
-                      <CardDescription className="mt-1 line-clamp-1 text-xs md:line-clamp-none">
-                        {command.description}
-                      </CardDescription>
-                    )}
-                  </div>
-                  <CommandActionsMenu
-                    command={command}
-                    onExecute={handleExecute}
-                    onEdit={handleEdit}
-                    onToggleEnabled={handleToggleEnabled}
-                    onDelete={handleDelete}
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-1 px-3 pb-3 pt-0 md:space-y-2 md:px-6 md:pb-6">
-                <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
-                  <Badge
-                    variant={command.enabled ? "default" : "secondary"}
-                    className="text-[10px] md:text-xs"
-                  >
-                    {command.enabled ? "Enabled" : "Disabled"}
-                  </Badge>
-                  {command.command_type && (
-                    <Badge
-                      variant="outline"
-                      className="max-w-[10rem] truncate text-[10px] md:text-xs"
-                    >
-                      {command.command_type || "unknown"}
-                    </Badge>
-                  )}
-                  <span className="text-[10px] text-muted-foreground md:hidden">
-                    {command.schedule_override && command.schedule_cron
-                      ? command.schedule_cron
-                      : "Default"}
-                    {command.last_run ? ` · ${formatCommandLastRun(command.last_run, true)}` : ""}
-                  </span>
-                </div>
-                <div className="hidden text-xs text-muted-foreground md:block">
-                  Schedule:{" "}
-                  <span className="font-mono">
-                    {command.schedule_override && command.schedule_cron
-                      ? command.schedule_cron
-                      : "Default"}
-                  </span>
-                </div>
-                {command.last_run && (
-                  <div className="hidden text-xs text-muted-foreground md:block">
-                    Last run: {new Date(command.last_run).toLocaleString()}
-                  </div>
-                )}
-                {command.last_success !== null && (
-                  <div className="text-[10px] md:text-xs">
-                    Status:{" "}
-                    <span
-                      className={
-                        command.last_success
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400"
-                      }
-                    >
-                      {command.last_success ? "Success" : "Failed"}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : useArrPanel ? (
+            {safeCommands.length === 0 ? (
+              <Button size="lg" onClick={() => setShowNewCommandDialog(true)}>
+                <Plus className="mr-2 h-5 w-5" />
+                Create Your First Command
+              </Button>
+            ) : null}
+          </div>
+        </ArrContentPanel>
+      ) : (
         <ArrContentPanel>
           <CommandsListBody
             filteredCommands={filteredCommands}
@@ -1172,40 +977,19 @@ export function CommandsPage({
             handleEdit={handleEdit}
             handleToggleEnabled={handleToggleEnabled}
             handleDelete={handleDelete}
-            useArrTable
           />
         </ArrContentPanel>
-      ) : (
-        <Card>
-          <CommandsListBody
-            filteredCommands={filteredCommands}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            handleSort={handleSort}
-            handleExecute={handleExecute}
-            handleEdit={handleEdit}
-            handleToggleEnabled={handleToggleEnabled}
-            handleDelete={handleDelete}
-          />
-        </Card>
       )}
 
       {showExecutions ? (
-        <CommandExecutionsPanel
-          useArrPanel={useArrPanel}
-          collapsible={!useArrPanel}
-          commands={commands}
-          pausePolling={!!editingCommand}
-        />
+        <CommandExecutionsPanel commands={commands} pausePolling={!!editingCommand} />
       ) : null}
 
-      {!useArrPanel ? (
-        <CreatePlaylistSyncDialog
-          open={showNewCommandDialog}
-          onOpenChange={setShowNewCommandDialog}
-          onSuccess={loadCommands}
-        />
-      ) : null}
+      <CreatePlaylistSyncDialog
+        open={showNewCommandDialog}
+        onOpenChange={setShowNewCommandDialog}
+        onSuccess={loadCommands}
+      />
 
       <CommandEditDialog
         command={editingCommand}
@@ -1264,8 +1048,16 @@ export function CommandsPage({
               )}
               {editingCommand.command_name === "discovery_lastfm" && (
                 <Button
-                  onClick={() =>
-                    handleSaveCommand({
+                  onClick={() => {
+                    const q = Number(editForm.quality_profile_id || 0);
+                    const m = Number(editForm.metadata_profile_id || 0);
+                    if (!Number.isFinite(q) || q < 1 || !Number.isFinite(m) || m < 1) {
+                      toast.error(
+                        "Select Lidarr quality and metadata profiles before saving (required to enable)"
+                      );
+                      return;
+                    }
+                    void handleSaveCommand({
                       ...buildSchedulePayload(editForm),
                       config_json: {
                         ...(editingCommand.config_json || {}),
@@ -1274,9 +1066,12 @@ export function CommandsPage({
                         artist_cooldown_days: editForm.artist_cooldown_days ?? 30,
                         limit: editForm.limit ?? 5,
                         min_match_score: editForm.min_match_score ?? 0.9,
+                        quality_profile_id: q,
+                        metadata_profile_id: m,
+                        search_for_missing_albums: !!editForm.search_for_missing_albums,
                       },
-                    })
-                  }
+                    });
+                  }}
                 >
                   Save
                 </Button>
@@ -1293,6 +1088,30 @@ export function CommandsPage({
                           365,
                           Math.max(1, editForm.refresh_ttl_days ?? 14)
                         ),
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lidarr_update_all_") && (
+                <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
+                  Save
+                </Button>
+              )}
+              {editingCommand.command_name.startsWith("lidarr_wanted_search_") && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        top_x: Math.min(50, Math.max(1, editForm.top_x ?? 10)),
+                        ignore_days: Math.min(365, Math.max(1, editForm.ignore_days ?? 14)),
+                        settle_seconds: Math.min(300, Math.max(0, editForm.settle_seconds ?? 30)),
+                        sort_by: editForm.sort_by || "oldest_release_date",
+                        album_types: (editForm.album_types ?? ["album"]).join(","),
                       },
                     })
                   }
@@ -1538,7 +1357,9 @@ export function CommandsPage({
                 !editingCommand.command_name.startsWith("setlistfm_") &&
                 !editingCommand.command_name.startsWith("mood_playlist_") &&
                 !editingCommand.command_name.startsWith("xmplaylist_") &&
-                !editingCommand.command_name.startsWith("local_discovery_") && (
+                !editingCommand.command_name.startsWith("local_discovery_") &&
+                !editingCommand.command_name.startsWith("lidarr_update_all_") &&
+                !editingCommand.command_name.startsWith("lidarr_wanted_search_") && (
                   <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
                     Save
                   </Button>

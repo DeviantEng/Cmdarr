@@ -31,7 +31,13 @@ def test_security_headers_added(monkeypatch):
     assert "frame-src 'none'" in csp
     assert "script-src 'self'" in csp
     assert "unsafe-eval" not in csp
-    assert "https:" not in csp
+    # Allowlisted artwork hosts only — no scheme-wide https: wildcard.
+    # Use exact token equality (not `in`) so CodeQL does not treat this as
+    # incomplete URL substring sanitization.
+    csp_tokens = csp.replace(";", " ").split()
+    assert all(token != "https:" for token in csp_tokens)
+    assert any(token == "https://cdn-images.dzcdn.net" for token in csp_tokens)
+    assert any(token == "https://lastfm.freetls.fastly.net" for token in csp_tokens)
     assert "upgrade-insecure-requests" not in csp
     # TestClient uses http://testserver — COOP omitted (non-trustworthy origin)
     assert "cross-origin-opener-policy" not in response.headers

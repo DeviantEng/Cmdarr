@@ -13,6 +13,11 @@ import os
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+# Artist artwork for Last.fm Discovery cards (Deezer primary; Last.fm when non-placeholder).
+_IMG_SRC_EXTRA = (
+    "https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net https://lastfm.freetls.fastly.net"
+)
+
 
 def _trustworthy_origin_for_coop(request: Request) -> bool:
     """COOP is ignored on non-trustworthy origins (plain HTTP except localhost)."""
@@ -37,7 +42,7 @@ def _relaxed_csp() -> str:
         "object-src 'none'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; "
+        f"img-src 'self' data: blob: {_IMG_SRC_EXTRA}; "
         "font-src 'self' data:; "
         "connect-src 'self' ws: wss:; "
         "worker-src 'self'; "
@@ -57,7 +62,7 @@ def _strict_csp() -> str:
         "object-src 'none'; "
         "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; "
+        f"img-src 'self' data: blob: {_IMG_SRC_EXTRA}; "
         "font-src 'self' data:; "
         "connect-src 'self'; "
         "worker-src 'self'; "

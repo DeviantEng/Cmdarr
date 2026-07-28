@@ -1,4 +1,4 @@
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router";
 import { ArrPageHeader } from "@/arr/components/ArrPageHeader";
 import { Button } from "@/components/ui/button";
 import { CreatePlaylistSyncDialog } from "@/components/CreatePlaylistSyncDialog";

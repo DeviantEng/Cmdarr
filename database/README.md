@@ -1,27 +1,30 @@
 # Database Migrations
 
-This directory contains the database migration system for Cmdarr. The migration system ensures that database schema changes are applied consistently across all environments, including Docker containers with existing data.
+Cmdarr applies schema changes through the ledger-based migration system in
+`database/version_migrations.py`. Migrations run at application startup, including
+for Docker installations with existing data.
 
 ## How It Works
 
-1. **Migration Framework**: `migration_framework.py` provides a robust system for defining and running migrations
-2. **Migration Script**: `migrate.py` is the entry point that can be run standalone or integrated into the application
-3. **Migration Tracking**: The `migrations` table tracks which migrations have been applied
+`create_version_migration_runner()` registers `VersionMigration` instances in
+application order. The runner records each successful migration by name in the
+`schema_migration` ledger, so only migrations that have not already been recorded
+are applied. Version strings are release metadata; they do not determine whether a
+migration runs.
 
 ## Adding New Migrations
 
-To add a new migration, edit `database/migration_framework.py` and add a new migration to the `create_migration_runner()` function:
+Add a migration function and register it in
+`create_version_migration_runner()`:
 
 ```python
 def add_new_feature(cursor):
-    # Your migration logic here
+    # Make the operation safe for an existing database.
     cursor.execute("ALTER TABLE some_table ADD COLUMN new_column TEXT;")
-    logger.info("Added new_column to some_table")
 
-# For new migrations after app version change, use current app_version
-runner.add_migration(Migration(
+runner.add_migration(VersionMigration(
     name="add_new_feature",
-    version=get_migration_version(1),  # First migration for new app version
+    version="0.3.19",
     description="Add new feature to some_table",
     up_func=add_new_feature
 ))
@@ -29,45 +32,18 @@ runner.add_migration(Migration(
 
 ## Migration Guidelines
 
-1. **Always check if changes already exist** before applying them
-2. **Use descriptive names** for migrations
-3. **Use get_migration_version(sequence)** for version numbers (syncs with app version)
-4. **Handle existing data** gracefully
-5. **Test migrations** on a copy of production data
-
-## Versioning
-
-Migration versions are automatically generated based on the app version:
-- App version `0.1.0` with sequence `1` becomes migration version `0.1.0.1`
-- App version `0.1.0` with sequence `2` becomes migration version `0.1.0.2`
-- When app version changes to `0.2.0`, new migrations become `0.2.0.1`, `0.2.0.2`, etc.
-
-**Important**: All migrations created for the same app version should use the same base version for consistency. Existing migrations use pinned versions to maintain stability.
+1. Use a descriptive, stable `name`; it is the ledger key.
+2. Use a string release version such as `"0.3.19"`.
+3. Make the migration safe for databases that already contain the target schema.
+4. Provide `applied_check` when needed to backfill the ledger for previously applied
+   schema changes.
+5. Test migrations against a copy of production data.
 
 ## Running Migrations
 
-### In Development
-```bash
-python database/migrate.py
-```
-
-### In Docker
-Migrations run automatically when the application starts, but you can also run them manually:
-```bash
-docker exec -it cmdarr python database/migrate.py
-```
-
-### Testing Migrations
-```bash
-python test_migration.py
-```
-
-## Migration History
-
-- **v0.1.0.1**: Added `status` column to `command_executions` table
-- **v0.1.0.2**: Ensured all required indexes exist on `command_executions` table
-- **v0.1.0.3**: Added `timeout_minutes` column to `command_configs` table
-- **v0.1.0.4**: Removed playlist sync config options from global config (now command-specific)
+Migrations run automatically at startup. Development builds can invoke
+`run_version_migrations_manual()` from `database/version_migrations.py` to run the
+same pending ledger entries manually.
 
 ## Troubleshooting
 

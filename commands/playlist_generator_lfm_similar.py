@@ -16,7 +16,9 @@ from .playlist_generator_helpers import (
     build_lfm_similar_artist_pool,
     compute_lfm_similar_playlist_title,
     delete_playlist_on_target,
+    fetch_top_tracks_for_artists_parallel,
     persist_playlist_identity,
+    resolve_validated_artists,
     validate_artists_against_cache,
 )
 
@@ -124,17 +126,15 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
                 self.logger.error("No artists in pool matched the library")
                 return False
 
-            valid_norms = set(valid_artists)
-            ordered_display_names = [
-                n for n in pool_names if normalize_text(n.lower()) in valid_norms
-            ]
-            seen_o: set[str] = set()
+            resolved_pool, _ = resolve_validated_artists(pool_names, cached_data)
+            resolved_by_norm = {r.norm: r for r in resolved_pool}
             ordered_unique: list[str] = []
-            for n in ordered_display_names:
-                k = normalize_text(n.lower())
-                if k in seen_o:
+            seen_o: set[str] = set()
+            for n in pool_names:
+                norm = normalize_text(n.lower())
+                if norm not in valid_artists or norm in seen_o:
                     continue
-                seen_o.add(k)
+                seen_o.add(norm)
                 ordered_unique.append(n)
 
             playlist_title = compute_lfm_similar_playlist_title(config)
@@ -152,28 +152,36 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
             tracks_for_playlist: list[dict[str, Any]] = []
             artists_processed = 0
             artists_skipped = 0
+            skipped_artists: list[str] = []
+            resolved_to_fetch: list[Any] = []
+
+            for artist_name in ordered_unique:
+                norm = normalize_text(artist_name.lower())
+                resolved = resolved_by_norm.get(norm)
+                if not resolved:
+                    artists_skipped += 1
+                    skipped_artists.append(artist_name)
+                    continue
+                resolved_to_fetch.append(resolved)
 
             async with self.lastfm_client:
-                for artist_name in ordered_unique:
-                    norm = normalize_text(artist_name.lower())
-                    top_tracks = await self.lastfm_client.get_top_tracks(artist_name, limit=top_x)
-                    added = 0
-                    for t in top_tracks[:top_x]:
-                        track_name = t.get("name", "")
-                        if not track_name:
-                            continue
-                        tracks_for_playlist.append(
-                            {
-                                "artist": norm,
-                                "track": track_name,
-                                "album": t.get("album", ""),
-                            }
-                        )
-                        added += 1
-                    if added > 0:
+                results = await fetch_top_tracks_for_artists_parallel(
+                    resolved_to_fetch,
+                    lastfm_client=self.lastfm_client,
+                    plex_client=self.plex_client,
+                    library_key=library_key,
+                    cached_data=cached_data,
+                    limit=top_x,
+                    logger=self.logger,
+                    concurrency=self.config.LASTFM_FETCH_CONCURRENCY,
+                )
+                for resolved, (rows, _source) in zip(resolved_to_fetch, results, strict=True):
+                    if rows:
+                        tracks_for_playlist.extend(rows)
                         artists_processed += 1
                     else:
                         artists_skipped += 1
+                        skipped_artists.append(resolved.display_name)
 
             if not tracks_for_playlist:
                 self.logger.warning("No tracks found for playlist")
@@ -203,6 +211,7 @@ class PlaylistGeneratorLfmSimilarCommand(BaseCommand):
             self.last_run_stats = {
                 "artists_processed": artists_processed,
                 "artists_skipped": artists_skipped,
+                "skipped_artists": skipped_artists[:20],
                 "artists_invalid": len(invalid_artists),
                 "artists_in_pool": len(pool_names),
                 "artists_valid": len(valid_artists),

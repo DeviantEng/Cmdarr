@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronUp, Loader2, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
@@ -8,7 +8,6 @@ import type {
   ExecutionHistorySummary,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -115,7 +114,6 @@ function ExecutionDetails({ execution, displayName, duration, onDelete }: Execut
 }
 
 type CommandExecutionsPanelProps = {
-  useArrPanel?: boolean;
   /** When false, always show the execution list (history page). */
   collapsible?: boolean;
   commands?: CommandConfig[];
@@ -128,7 +126,6 @@ type CommandExecutionsPanelProps = {
 };
 
 export function CommandExecutionsPanel({
-  useArrPanel = false,
   collapsible = false,
   commands,
   pausePolling = false,
@@ -143,10 +140,10 @@ export function CommandExecutionsPanel({
   const [panelOpen, setPanelOpen] = useState(() => !collapsible || !isMobileViewport());
   const [expandedExecutionId, setExpandedExecutionId] = useState<number | null>(null);
   const [killingExecutionId, setKillingExecutionId] = useState<number | null>(null);
-  const compactArr = useArrPanel && !collapsible;
+  const compactArr = !collapsible;
   const historyMode = compactArr && historySince != null;
 
-  const loadExecutions = async () => {
+  const loadExecutions = useCallback(async () => {
     try {
       if (historyMode) {
         const data = await api.getExecutions({
@@ -165,19 +162,21 @@ export function CommandExecutionsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [historyMode, historySince, historyCommandName, onSummaryChange]);
 
   useEffect(() => {
     setLoading(true);
     void loadExecutions();
-  }, [historySince, historyCommandName, refreshKey, historyMode]);
+  }, [loadExecutions, refreshKey]);
 
   useEffect(() => {
     const hasRunning = recentExecutions.some((e) => e.status === "running");
     if (!hasRunning || pausePolling) return;
-    const id = setInterval(loadExecutions, 10000);
+    const id = setInterval(() => {
+      void loadExecutions();
+    }, 10000);
     return () => clearInterval(id);
-  }, [recentExecutions, pausePolling, historyMode]);
+  }, [recentExecutions, pausePolling, loadExecutions]);
 
   const handleKillExecution = async (executionId: number) => {
     try {
@@ -370,14 +369,14 @@ export function CommandExecutionsPanel({
   }
 
   const isOpen = collapsible ? panelOpen : true;
-  const Shell = useArrPanel ? ArrContentPanel : Card;
+  const Shell = ArrContentPanel;
 
   return (
     <Shell>
       <div
         className={cn(
           "flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-          useArrPanel ? "arr-section-header" : "sm:px-6 sm:py-4"
+          "arr-section-header"
         )}
       >
         {collapsible ? (
@@ -392,14 +391,7 @@ export function CommandExecutionsPanel({
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <h3
-              className={cn(
-                "font-medium",
-                useArrPanel ? "text-sm font-semibold" : "text-lg font-medium"
-              )}
-            >
-              Recent Executions
-            </h3>
+            <h3 className={cn("font-medium", "text-sm font-semibold")}>Recent Executions</h3>
             {recentExecutions.length > 0 ? (
               <Badge variant="secondary" className="shrink-0 tabular-nums">
                 {recentExecutions.length}
@@ -408,14 +400,7 @@ export function CommandExecutionsPanel({
           </button>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <h3
-              className={cn(
-                "font-medium",
-                useArrPanel ? "text-sm font-semibold" : "text-lg font-medium"
-              )}
-            >
-              Recent Executions
-            </h3>
+            <h3 className={cn("font-medium", "text-sm font-semibold")}>Recent Executions</h3>
             {recentExecutions.length > 0 ? (
               <Badge variant="secondary" className="shrink-0 tabular-nums">
                 {recentExecutions.length}
@@ -425,7 +410,7 @@ export function CommandExecutionsPanel({
         )}
       </div>
       {isOpen ? (
-        <div className={cn("p-4 md:p-6", useArrPanel && "arr-panel-body")}>
+        <div className="arr-panel-body">
           {recentExecutions.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               <p className="font-medium">No executions yet</p>

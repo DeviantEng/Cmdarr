@@ -43,6 +43,9 @@ def plex_client():
     """Bare instance — only scoring helpers are exercised (no __init__ / API)."""
     c = PlexClient.__new__(PlexClient)
     c.logger = logging.getLogger("test.plex_track_scoring")
+    c.cache_client = None
+    c._record_cache_hit = lambda: None
+    c._record_cache_miss = lambda: None
     return c
 
 
@@ -83,3 +86,105 @@ def test_score_track_match_bmth_crucify_me_prefers_solo_over_featured(plex_clien
         featured, "Crucify Me", "Bring Me the Horizon", None, None
     )
     assert s_solo > s_feat
+
+
+def test_score_track_match_rejects_gore_period_vs_gore(plex_client: PlexClient):
+    wrong = {
+        "title": "Mean Man's Dream",
+        "grandparentTitle": "gore",
+        "parentTitle": "Album",
+        "guid": "",
+    }
+    total, artist_s, track_s = plex_client._score_track_match(
+        wrong, "Mean Man's Dream", "Gore.", None, None
+    )
+    assert artist_s == 0
+    assert track_s >= 50
+
+
+def test_score_track_match_optimized_gore_period_matches_library(plex_client: PlexClient):
+    track = {
+        "title": "mean man's dream",
+        "artist": "gore.",
+        "album": "album",
+        "artist_guid": "",
+    }
+    total, artist_s, track_s = plex_client._score_track_match_optimized(
+        track,
+        "mean man's dream",
+        "gore",
+        "album",
+        original_track="Mean Man's Dream",
+        original_artist="Gore.",
+    )
+    assert artist_s == 100
+    assert track_s == 100
+    assert total >= 100
+
+
+def test_search_for_track_escalating_prefers_exact_over_normalized(plex_client: PlexClient):
+    from utils.text_normalizer import normalize_text
+
+    cached = {
+        "tracks": [
+            {
+                "key": "1",
+                "title": "pray",
+                "artist": "gore.",
+                "album": "a",
+                "artist_guid": "",
+            },
+            {
+                "key": "2",
+                "title": "mean man's dream",
+                "artist": "gore",
+                "album": "b",
+                "artist_guid": "",
+            },
+        ],
+        "artist_index": {normalize_text("gore."): ["1", "2"]},
+        "track_index": {normalize_text("pray"): ["1"], normalize_text("mean man's dream"): ["2"]},
+        "mbid_index": {},
+    }
+    plex_client.config = {"LIBRARY_CACHE_PLEX_ENABLED": True}
+    ctx = {
+        "display_name": "Gore.",
+        "library_artist": "gore.",
+        "norm": normalize_text("gore."),
+        "mbids": ["mbid-1"],
+        "in_lidarr": True,
+    }
+    result = plex_client.search_for_track_escalating("Pray", ctx, cached_data=cached)
+    assert result == "1"
+
+
+def test_search_cached_library_gore_period_not_wrong_gore(plex_client: PlexClient):
+    from utils.text_normalizer import normalize_text
+
+    cached = {
+        "tracks": [
+            {
+                "key": "1",
+                "title": "mean man's dream",
+                "artist": "gore.",
+                "album": "a",
+                "artist_guid": "",
+            },
+            {
+                "key": "2",
+                "title": "other song",
+                "artist": "gore",
+                "album": "b",
+                "artist_guid": "",
+            },
+        ],
+        "artist_index": {"gore": ["1", "2"]},
+        "track_index": {
+            normalize_text("mean man's dream"): ["1"],
+            normalize_text("other song"): ["2"],
+        },
+        "mbid_index": {},
+    }
+    plex_client.config = {"LIBRARY_CACHE_PLEX_ENABLED": True}
+    result = plex_client.search_cached_library("Mean Man's Dream", "Gore.", cached)
+    assert result == "1"

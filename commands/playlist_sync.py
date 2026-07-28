@@ -4,7 +4,7 @@ Playlist Sync Command
 Dynamic command for syncing playlists from external sources (Spotify, etc.)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from clients.client_deezer import DeezerClient
@@ -259,12 +259,14 @@ class PlaylistSyncCommand(BaseCommand):
         try:
             self.logger.info("Starting artist discovery for unmatched tracks...")
 
-            # Collect unique artists from tracks
-            unique_artists = set()
+            # Collect unique artists in first-seen playlist order
+            unique_artists: list[str] = []
+            seen_artists: set[str] = set()
             for track in tracks:
                 artist = track.get("artist", "").strip()
-                if artist:
-                    unique_artists.add(artist)
+                if artist and artist not in seen_artists:
+                    seen_artists.add(artist)
+                    unique_artists.append(artist)
 
             if not unique_artists:
                 self.logger.info("No artists found in tracks for discovery")
@@ -318,8 +320,6 @@ class PlaylistSyncCommand(BaseCommand):
                     excluded_mbids,
                 ) = await discovery_utils.get_lidarr_context()
 
-                # Process each artist
-                artists_added = 0
                 artists_skipped = 0
                 artists_failed = 0
                 added_artists = []
@@ -327,16 +327,29 @@ class PlaylistSyncCommand(BaseCommand):
                 failed_artists = []
                 new_discoveries = []
 
+                # Filter Lidarr-known names before any MusicBrainz lookups
+                candidates: list[str] = []
                 for artist_name in unique_artists:
-                    try:
-                        # Skip if already in Lidarr (by name)
-                        if artist_name.lower() in existing_names:
-                            artists_skipped += 1
-                            skipped_artists.append(
-                                {"name": artist_name, "reason": "Already in Lidarr"}
-                            )
-                            continue
+                    if artist_name.lower() in existing_names:
+                        artists_skipped += 1
+                        skipped_artists.append({"name": artist_name, "reason": "Already in Lidarr"})
+                    else:
+                        candidates.append(artist_name)
 
+                # Cap MB lookups before querying (0 = unlimited)
+                limit = self.config_json.get("artist_discovery_max_per_run", 2)
+                artists_deferred = 0
+                to_lookup = candidates
+                if limit > 0 and len(candidates) > limit:
+                    artists_deferred = len(candidates) - limit
+                    to_lookup = candidates[:limit]
+                    self.logger.info(
+                        f"Limiting MusicBrainz lookups to {limit} artists per run; "
+                        f"{artists_deferred} deferred to next run"
+                    )
+
+                for artist_name in to_lookup:
+                    try:
                         # Look up MBID in MusicBrainz
                         mbid_result = await musicbrainz_client.fuzzy_search_artist(artist_name)
 
@@ -371,11 +384,12 @@ class PlaylistSyncCommand(BaseCommand):
                             source=self.config_json.get(
                                 "playlist_name", "unknown"
                             ),  # Use playlist name, not command name
-                            dateAdded=datetime.utcnow().strftime("%Y-%m-%d, %H:%M:%S"),
+                            dateAdded=datetime.now(UTC)
+                            .replace(tzinfo=None)
+                            .strftime("%Y-%m-%d, %H:%M:%S"),
                         )
 
                         new_discoveries.append(artist_entry)
-                        artists_added += 1
                         added_artists.append(
                             {"name": artist_name, "resolved_name": resolved_name, "mbid": mbid}
                         )
@@ -389,21 +403,12 @@ class PlaylistSyncCommand(BaseCommand):
 
                 artists_discovered = len(new_discoveries)
                 to_save = []
-                artists_deferred = 0
                 is_first_run = self.config_json.get("is_first_run", False)
                 enable_artist_discovery = self.config_json.get("enable_artist_discovery", False)
 
                 if new_discoveries and not is_first_run and enable_artist_discovery:
-                    limit = self.config_json.get("artist_discovery_max_per_run", 2)
-                    if limit == 0:
-                        to_save = new_discoveries
-                    else:
-                        to_save = new_discoveries[:limit]
-                        artists_deferred = len(new_discoveries) - len(to_save)
-                        if artists_deferred > 0:
-                            self.logger.info(
-                                f"Limiting to {limit} new artists per run; {artists_deferred} deferred to next run"
-                            )
+                    # Lookups were already capped; save all successful discoveries
+                    to_save = new_discoveries
 
                 if to_save:
                     await self._save_discovered_artists(to_save)
@@ -428,7 +433,7 @@ class PlaylistSyncCommand(BaseCommand):
                     "artists_failed": artists_failed,
                     "artists_deferred": artists_deferred,
                     "first_run_preview": is_first_run and artists_discovered > 0,
-                    "added_artists": added_artists[: len(to_save)] if to_save else [],
+                    "added_artists": added_artists if to_save else [],
                     "skipped_artists": skipped_artists,
                     "failed_artists": failed_artists,
                 }
@@ -513,8 +518,19 @@ class PlaylistSyncCommand(BaseCommand):
             if not artist or not track_name:
                 continue
             album = track.get("album", "")
+            mbids = track.get("mbid") or track.get("artist_mbid")
+            if isinstance(mbids, str):
+                mbids = [mbids] if mbids.strip() else None
+            elif isinstance(mbids, list):
+                mbids = [m for m in mbids if (m or "").strip()] or None
+            else:
+                mbids = None
             key = self.target_client.search_for_track(
-                track_name, artist, cached_data=cached_data, album_name=album
+                track_name,
+                artist,
+                mbids=mbids,
+                cached_data=cached_data,
+                album_name=album,
             )
             if key:
                 resolved.append({**track, "rating_key": key})
@@ -691,8 +707,19 @@ class PlaylistSyncCommand(BaseCommand):
 
                 # Search for track in target library
                 album = track.get("album", "")
+                mbids = track.get("mbid") or track.get("artist_mbid")
+                if isinstance(mbids, str):
+                    mbids = [mbids] if mbids.strip() else None
+                elif isinstance(mbids, list):
+                    mbids = [m for m in mbids if (m or "").strip()] or None
+                else:
+                    mbids = None
                 rating_key = self.target_client.search_for_track(
-                    track_name, artist, cached_data=cached_data, album_name=album
+                    track_name,
+                    artist,
+                    mbids=mbids,
+                    cached_data=cached_data,
+                    album_name=album,
                 )
 
                 if rating_key and rating_key not in existing_track_keys:

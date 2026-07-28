@@ -80,10 +80,20 @@ class LidarrClient(BaseAPIClient):
                 self.logger.debug(f"Making {method} request to: {url}")
 
                 async with session.request(method, url, **kwargs) as response:
-                    if response.status == 200:
-                        data = await response.json()
+                    # Lidarr returns 201 Created for POSTs (e.g. add artist, queue command).
+                    if 200 <= response.status < 300:
+                        if response.status == 204:
+                            self.logger.debug(f"Successful empty response from {endpoint}")
+                            return {}
+                        try:
+                            data = await response.json(content_type=None)
+                        except Exception:
+                            text = await response.text()
+                            if not text:
+                                return {"status": response.status}
+                            return {"status": response.status, "raw": text}
                         self.logger.debug(f"Successful response from {endpoint}")
-                        return data
+                        return data if data is not None else {"status": response.status}
                     else:
                         self.logger.error(
                             f"Lidarr API error {response.status}: {await response.text()}"
@@ -177,11 +187,22 @@ class LidarrClient(BaseAPIClient):
         """Generate cache key for Lidarr artists (v3 includes spotifyArtistId and deezerArtistId from links)"""
         return "lidarr_artists_v3"
 
-    async def get_all_artists(self) -> list[dict[str, Any]]:
-        """Get all artists from Lidarr with their MBIDs (cached 7 days)"""
+    def invalidate_artists_cache(self) -> None:
+        """Drop the cached Lidarr artist list so the next fetch hits the API."""
+        if self.cache_enabled and self.cache:
+            self.cache.delete(self._get_artists_cache_key(), "lidarr")
+
+    async def get_all_artists(self, *, force_refresh: bool = False) -> list[dict[str, Any]]:
+        """Get all artists from Lidarr with their MBIDs.
+
+        Cached under ``NEW_RELEASES_CACHE_DAYS`` (default 14). Pass ``force_refresh=True``
+        after library membership changes (sync / discovery) so newly added artists are visible.
+        """
         try:
             cache_key = self._get_artists_cache_key()
-            if self.cache_enabled and self.cache:
+            if force_refresh:
+                self.invalidate_artists_cache()
+            elif self.cache_enabled and self.cache:
                 cached = self.cache.get(cache_key, "lidarr")
                 if cached is not None:
                     self.logger.debug(f"Cache hit for Lidarr artists: {len(cached)} artists")
@@ -271,6 +292,17 @@ class LidarrClient(BaseAPIClient):
             self.logger.error(f"Error getting quality profiles: {e}")
             return []
 
+    async def get_metadata_profiles(self) -> list[dict[str, Any]]:
+        """Get all metadata profiles from Lidarr"""
+        try:
+            response = await self._make_request("metadataprofile")
+            if response:
+                return response
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting metadata profiles: {e}")
+            return []
+
     async def get_root_folders(self) -> list[dict[str, Any]]:
         """Get all root folders from Lidarr"""
         try:
@@ -289,6 +321,7 @@ class LidarrClient(BaseAPIClient):
         quality_profile_id: int = None,
         metadata_profile_id: int = None,
         monitored: bool = True,
+        search_for_missing_albums: bool = False,
     ) -> dict[str, Any]:
         """Add a new artist to Lidarr by MusicBrainz ID"""
         try:
@@ -303,20 +336,36 @@ class LidarrClient(BaseAPIClient):
 
             # Get actual configuration from Lidarr
             quality_profiles = await self.get_quality_profiles()
+            metadata_profiles = await self.get_metadata_profiles()
             root_folders = await self.get_root_folders()
 
             if not quality_profiles:
                 return {"success": False, "error": "No quality profiles found in Lidarr"}
 
+            if not metadata_profiles:
+                return {"success": False, "error": "No metadata profiles found in Lidarr"}
+
             if not root_folders:
                 return {"success": False, "error": "No root folders found in Lidarr"}
 
-            # Use provided IDs or default to first available
+            quality_ids = {p["id"] for p in quality_profiles if "id" in p}
+            metadata_ids = {p["id"] for p in metadata_profiles if "id" in p}
+
             if quality_profile_id is None:
                 quality_profile_id = quality_profiles[0]["id"]
+            elif quality_profile_id not in quality_ids:
+                return {
+                    "success": False,
+                    "error": f"Quality profile id {quality_profile_id} not found in Lidarr",
+                }
 
             if metadata_profile_id is None:
-                metadata_profile_id = 1  # Default metadata profile ID
+                metadata_profile_id = metadata_profiles[0]["id"]
+            elif metadata_profile_id not in metadata_ids:
+                return {
+                    "success": False,
+                    "error": f"Metadata profile id {metadata_profile_id} not found in Lidarr",
+                }
 
             # Use first root folder
             root_folder_path = root_folders[0]["path"]
@@ -332,13 +381,15 @@ class LidarrClient(BaseAPIClient):
                 "rootFolderPath": root_folder_path,
                 "addOptions": {
                     "monitor": "all",
-                    "searchForMissingAlbums": False,  # Don't auto-search on add
+                    "searchForMissingAlbums": bool(search_for_missing_albums),
                 },
             }
 
             self.logger.info(f"Adding artist '{artist_name}' (MBID: {mbid}) to Lidarr")
             self.logger.debug(
-                f"Using quality profile ID: {quality_profile_id}, root folder: {root_folder_path}"
+                f"Using quality profile ID: {quality_profile_id}, "
+                f"metadata profile ID: {metadata_profile_id}, "
+                f"root folder: {root_folder_path}"
             )
 
             # Make POST request to add artist
@@ -346,6 +397,8 @@ class LidarrClient(BaseAPIClient):
 
             if response:
                 self.logger.info(f"Successfully added artist '{artist_name}' to Lidarr")
+                # Membership changed — drop stale list so discovery/filtering sees the new artist.
+                self.invalidate_artists_cache()
                 return {
                     "success": True,
                     "artist": response,
@@ -454,6 +507,131 @@ class LidarrClient(BaseAPIClient):
         except Exception as e:
             self.logger.error(f"Failed to get albums from Lidarr: {e}")
             return []
+
+    async def post_command(self, name: str, **params: Any) -> dict[str, Any] | None:
+        """
+        Queue a Lidarr command (POST /api/v1/command).
+
+        Examples:
+          await post_command("RefreshArtist")  # Update All (empty artistIds)
+          await post_command("AlbumSearch", albumIds=[1, 2, 3])
+        """
+        body: dict[str, Any] = {"name": name, **params}
+        self.logger.info("Queuing Lidarr command: %s", name)
+        return await self._make_request("command", method="POST", json=body)
+
+    async def get_command(self, command_id: int) -> dict[str, Any] | None:
+        """Get a Lidarr command by id (poll for status)."""
+        return await self._make_request(f"command/{command_id}")
+
+    async def wait_for_command(
+        self,
+        command_id: int,
+        *,
+        poll_interval: float = 2.0,
+        timeout_seconds: float = 600.0,
+    ) -> dict[str, Any] | None:
+        """Poll Lidarr until a command completes, fails, or times out."""
+        import asyncio
+        import time
+
+        deadline = time.monotonic() + timeout_seconds
+        terminal = {"completed", "failed", "aborted", "cancelled"}
+        last: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            last = await self.get_command(command_id)
+            if not last:
+                return None
+            status = str(last.get("status") or "").lower()
+            if status in terminal:
+                return last
+            await asyncio.sleep(poll_interval)
+        self.logger.warning(
+            "Timed out waiting for Lidarr command %s after %.0fs", command_id, timeout_seconds
+        )
+        return last
+
+    async def get_wanted_missing(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        sort_key: str = "releaseDate",
+        sort_direction: str = "ascending",
+        monitored: bool = True,
+        include_artist: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Fetch a page of Wanted / Missing albums.
+
+        Returns Lidarr paging resource: { page, pageSize, totalRecords, records, ... }
+        """
+        params = {
+            "page": page,
+            "pageSize": page_size,
+            "sortKey": sort_key,
+            "sortDirection": sort_direction,
+            "monitored": str(monitored).lower(),
+            "includeArtist": str(include_artist).lower(),
+        }
+        result = await self._make_request("wanted/missing", params=params)
+        if isinstance(result, dict):
+            return result
+        if isinstance(result, list):
+            return {
+                "page": page,
+                "pageSize": page_size,
+                "totalRecords": len(result),
+                "records": result,
+            }
+        return {"page": page, "pageSize": page_size, "totalRecords": 0, "records": []}
+
+    async def get_queue(self) -> list[dict[str, Any]]:
+        """Get download queue records (handles paginated and list responses)."""
+        result = await self._make_request("queue", params={"pageSize": 1000})
+        if isinstance(result, dict):
+            records = result.get("records") or result.get("items") or []
+            return records if isinstance(records, list) else []
+        if isinstance(result, list):
+            return result
+        return []
+
+    async def get_history_for_albums(
+        self,
+        album_ids: list[int],
+        *,
+        event_type: int | None = None,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch recent history entries for the given album IDs.
+
+        event_type: Lidarr history event type (1=grabbed) when supported.
+        """
+        if not album_ids:
+            return []
+        params: dict[str, Any] = {
+            "page": 1,
+            "pageSize": page_size,
+            "sortKey": "date",
+            "sortDirection": "descending",
+        }
+        # Lidarr accepts repeated albumIds query params
+        # aiohttp encodes list values as multiple keys when using MultiDict-style;
+        # pass as sequence via params list of tuples for compatibility.
+        param_list: list[tuple[str, str]] = [(k, str(v)) for k, v in params.items()]
+        for aid in album_ids:
+            param_list.append(("albumIds", str(aid)))
+        if event_type is not None:
+            param_list.append(("eventType", str(event_type)))
+
+        result = await self._make_request("history", params=param_list)
+        if isinstance(result, dict):
+            records = result.get("records") or result.get("items") or []
+            return records if isinstance(records, list) else []
+        if isinstance(result, list):
+            return result
+        return []
 
     async def get_api_stats(self) -> dict[str, Any]:
         """Get basic API usage statistics"""

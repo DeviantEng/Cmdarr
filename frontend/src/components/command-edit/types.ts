@@ -18,6 +18,9 @@ export type CommandEditFormState = {
   artist_cooldown_days?: number;
   limit?: number;
   min_match_score?: number;
+  quality_profile_id?: number | null;
+  metadata_profile_id?: number | null;
+  search_for_missing_albums?: boolean;
   enable_artist_discovery?: boolean;
   artist_discovery_max_per_run?: number;
   schedule_minute?: number;
@@ -67,6 +70,9 @@ export type CommandEditFormState = {
   xm_playlist_kind?: "newest" | "most_heard";
   xm_most_heard_days?: number;
   plex_playlist_account_id?: string;
+  ignore_days?: number;
+  settle_seconds?: number;
+  sort_by?: string;
 };
 
 export type XmplaylistStationRow = {
