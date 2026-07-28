@@ -52,7 +52,6 @@ import {
 } from "@/command-spec";
 import { PlaylistSyncArtistDiscoveryControl } from "@/components/command-edit/PlaylistSyncArtistDiscoveryControl";
 import { ArrContentPanel, ArrSectionHeader } from "@/arr/components/ArrPageToolbar";
-import { cn } from "@/lib/utils";
 
 type PlaylistType =
   | "listenbrainz"
