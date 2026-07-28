@@ -8,7 +8,7 @@ export function ArrNewReleasesPage() {
         title="New Releases"
         description="Find releases from your Lidarr artists that are missing from MusicBrainz."
       />
-      <NewReleasesPage showPageHeader={false} useArrPanel />
+      <NewReleasesPage />
     </div>
   );
 }

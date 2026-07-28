@@ -1,6 +1,5 @@
 import { Menu, Moon, Sun, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { UiShellToggle } from "@/components/UiShellToggle";
 import { useTheme } from "@/lib/use-theme";
 import { api } from "@/lib/api";
 import { arrPageTitle } from "@/arr/arr-nav";
@@ -53,7 +52,6 @@ export function ArrHeader({ onOpenSidebar }: ArrHeaderProps) {
           className={cn("mr-1 hidden h-2 w-2 rounded-full sm:inline-block", healthColor)}
           title={health.message}
         />
-        <UiShellToggle compact />
         <Button
           variant="ghost"
           size="icon"

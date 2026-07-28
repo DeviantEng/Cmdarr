@@ -391,11 +391,6 @@ class ApiClient {
     return this.request(`/api/new-releases/recheck/${itemId}`, { method: "POST" });
   }
 
-  /** @deprecated Use clearRelease or ignoreRelease */
-  async dismissRelease(itemId: number): Promise<{ success: boolean }> {
-    return this.request(`/api/new-releases/dismiss/${itemId}`, { method: "POST" });
-  }
-
   async getDismissedReleases(params?: { limit?: number; offset?: number }): Promise<{
     success: boolean;
     total: number;

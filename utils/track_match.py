@@ -15,7 +15,7 @@ from typing import Any
 # Large enough that album bonuses (+50) cannot flip the winner vs the primary-artist line.
 COLLABORATION_MISMATCH_PENALTY_POINTS = 60
 
-# Words stripped before character-set fuzzy compare (same list as legacy Plex client).
+# Words stripped before character-set fuzzy compare (same list as the Plex client).
 _FUZZY_COMMON_WORDS = frozenset(
     {
         "the",

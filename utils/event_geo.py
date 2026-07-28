@@ -112,28 +112,6 @@ def normalize_venue_name(name: str | None, city: str | None = None) -> str:
     return s
 
 
-def venue_fingerprint_legacy(
-    venue_name: str | None,
-    city: str | None,
-    region: str | None,
-    lat: float | None,
-    lon: float | None,
-) -> str:
-    """Pre-0.3.16 fingerprint: region included when a venue name is present."""
-    c_norm = normalize_city_name(coerce_location_str(city))
-    r_norm = (coerce_location_str(region) or "").strip().lower()
-    vn = normalize_venue_name(coerce_location_str(venue_name), c_norm)
-    if vn:
-        raw = f"v|{vn}|{c_norm}|{r_norm}"
-    else:
-        if lat is not None and lon is not None:
-            geo = f"{round(lat, 1)},{round(lon, 1)}"
-        else:
-            geo = ""
-        raw = f"g|{c_norm}|{r_norm}|{geo}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
-
-
 def venue_fingerprint(
     venue_name: str | None,
     city: str | None,
@@ -184,17 +162,12 @@ def compute_event_dedupe_key(
     venue_region: Any,
     venue_lat: float | None,
     venue_lon: float | None,
-    *,
-    legacy_fingerprint: bool = False,
 ) -> str:
     """Canonical dedupe key for a concert row from venue/place fields."""
     v_name = coerce_location_str(venue_name)
     v_city = coerce_location_str(venue_city)
     v_region = coerce_location_str(venue_region)
-    if legacy_fingerprint:
-        fp = venue_fingerprint_legacy(v_name, v_city, v_region, venue_lat, venue_lon)
-    else:
-        fp = venue_fingerprint(v_name, v_city, v_region, venue_lat, venue_lon)
+    fp = venue_fingerprint(v_name, v_city, v_region, venue_lat, venue_lon)
     return make_dedupe_key(artist_mbid, local_date, fp)
 
 

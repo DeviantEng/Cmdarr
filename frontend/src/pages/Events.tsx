@@ -13,7 +13,6 @@ import {
 import { Link } from "react-router";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -42,7 +41,6 @@ import { toast } from "sonner";
 import type { ConfigUpdateRequest } from "@/lib/types";
 import { collapseSourceLinksForDisplay } from "@/lib/eventSourceLinks";
 import { eventSourcesSettingsPath } from "@/lib/settings-paths";
-import { useUiShell } from "@/lib/use-ui-shell";
 import {
   ArrContentPanel,
   ArrPageToolbar,
@@ -62,14 +60,8 @@ function formatEventDate(ev: ArtistEventRow): string {
   return ev.local_date;
 }
 
-type EventsPageProps = {
-  showPageHeader?: boolean;
-  useArrPanel?: boolean;
-};
-
-export function EventsPage({ showPageHeader = true, useArrPanel = false }: EventsPageProps) {
-  const { shell } = useUiShell();
-  const eventSourcesPath = eventSourcesSettingsPath(shell);
+export function EventsPage() {
+  const eventSourcesPath = eventSourcesSettingsPath();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<ArtistEventRow[]>([]);
   const [providerStatus, setProviderStatus] = useState<Awaited<
@@ -626,7 +618,7 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
       ) : filteredEvents.length === 0 ? (
         <p className="text-sm text-muted-foreground">No events match your filters.</p>
       ) : (
-        <ul className={cn(useArrPanel ? "arr-list-rows -mx-4" : "divide-y rounded-md border")}>
+        <ul className="arr-list-rows -mx-4">
           {filteredEvents.map((ev) => {
             const venueLine = [ev.venue_name || "Venue TBD", ev.venue_city, ev.venue_region]
               .filter(Boolean)
@@ -806,94 +798,33 @@ export function EventsPage({ showPageHeader = true, useArrPanel = false }: Event
   }
 
   return (
-    <div className={cn("min-w-0 space-y-6", useArrPanel && "arr-page-panels")}>
-      {showPageHeader ? (
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Artist Events</h1>
-          <p className="text-muted-foreground mt-1">
-            Upcoming shows, festivals, and other events for artists in your Lidarr library,
-            aggregated from enabled providers. Refresh syncs your Lidarr library automatically
-            before querying event sources.
-          </p>
+    <div className="min-w-0 space-y-6 arr-page-panels">
+      <ArrContentPanel>
+        <ArrSectionHeader title="Providers" description={providersDescription} />
+        <ArrPanelBody className="space-y-3">{providersPanelBody}</ArrPanelBody>
+      </ArrContentPanel>
+
+      <ArrContentPanel>
+        <ArrSectionHeader
+          title="Location and radius"
+          description="ZIP or city/state is saved as coordinates. With a saved location, shows without venue coordinates or outside your radius are omitted from the list below."
+        />
+        <ArrPanelBody>{locationPanelBody}</ArrPanelBody>
+      </ArrContentPanel>
+
+      <ArrPageToolbar>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">{eventsHeaderActions}</div>
+          {eventsFilterControls}
         </div>
-      ) : null}
-
-      {useArrPanel ? (
-        <ArrContentPanel>
-          <ArrSectionHeader title="Providers" description={providersDescription} />
-          <ArrPanelBody className="space-y-3">{providersPanelBody}</ArrPanelBody>
-        </ArrContentPanel>
-      ) : (
-        <Card>
-          <CardHeader className="space-y-1 px-4 py-3">
-            <CardTitle className="text-base">Providers</CardTitle>
-            <CardDescription className="text-xs leading-snug">
-              Enable Ticketmaster, SeatGeek, and/or Deezer; add credentials in{" "}
-              <Link to={eventSourcesPath} className="font-medium text-foreground underline">
-                Configuration &gt; Event Sources
-              </Link>
-              . At least one provider must be ready before refresh runs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 px-4 pb-3 pt-0">{providersPanelBody}</CardContent>
-        </Card>
-      )}
-
-      {useArrPanel ? (
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Location and radius"
-            description="ZIP or city/state is saved as coordinates. With a saved location, shows without venue coordinates or outside your radius are omitted from the list below."
-          />
-          <ArrPanelBody>{locationPanelBody}</ArrPanelBody>
-        </ArrContentPanel>
-      ) : (
-        <Card>
-          <CardHeader className="space-y-1 px-4 py-3">
-            <CardTitle className="text-base">Location and radius</CardTitle>
-            <CardDescription className="text-xs leading-snug">
-              ZIP or city/state is saved as coordinates. With a saved location, shows without venue
-              coordinates or outside your radius are omitted from the list below.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-3 pt-0">{locationPanelBody}</CardContent>
-        </Card>
-      )}
-
-      {useArrPanel ? (
-        <>
-          <ArrPageToolbar>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-2">{eventsHeaderActions}</div>
-              {eventsFilterControls}
-            </div>
-          </ArrPageToolbar>
-          <ArrContentPanel>
-            <ArrSectionHeader
-              title="Upcoming events"
-              description="Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync here."
-            />
-            <ArrPanelBody className="space-y-4">{renderUpcomingEventsBody()}</ArrPanelBody>
-          </ArrContentPanel>
-        </>
-      ) : (
-        <Card>
-          <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between md:gap-4">
-            <div>
-              <CardTitle>Upcoming events</CardTitle>
-              <CardDescription>
-                Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync
-                here.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">{eventsHeaderActions}</div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {eventsFilterControls}
-            {renderUpcomingEventsBody()}
-          </CardContent>
-        </Card>
-      )}
+      </ArrPageToolbar>
+      <ArrContentPanel>
+        <ArrSectionHeader
+          title="Upcoming events"
+          description="Filter the list, hide one show, or hide an entire artist. Hidden items stay in sync here."
+        />
+        <ArrPanelBody className="space-y-4">{renderUpcomingEventsBody()}</ArrPanelBody>
+      </ArrContentPanel>
 
       <Dialog open={festivalDialogOpen} onOpenChange={setFestivalDialogOpen}>
         <DialogContent className="flex max-h-[80vh] max-w-lg flex-col overflow-hidden">

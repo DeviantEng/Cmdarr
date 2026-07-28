@@ -377,9 +377,9 @@ curl http://localhost:8080/api/config/
 ### Performance Monitoring
 Monitor command execution and web server performance:
 - **Health endpoint**: `http://localhost:8080/health`
-- **Status dashboard**: `http://localhost:8080/status`
+- **System status**: `http://localhost:8080/system/status` (`/status` redirects here)
 - **Container stats**: `docker stats cmdarr`
-- **Library cache stats**: Check status dashboard for cache hit rates and memory usage
+- **Library cache stats**: Check System status for cache hit rates and memory usage
 - **Execution tracking**: See whether commands were triggered manually or by scheduler
 - **Rate limit monitoring**: Check logs for API rate limit handling and retry attempts
 
@@ -402,11 +402,12 @@ cmdarr/
 │       ├── new_releases.py # New Releases Discovery API
 │       ├── status.py      # Status and health API
 │       └── import_lists.py # Import list serving API
-├── frontend/               # React/Vite web UI (primary)
+├── frontend/               # React/Vite *arr web UI
 │   ├── src/
-│   │   ├── pages/         # Commands, Config, Status, New Releases, Import Lists
-│   │   ├── components/    # UI components (shadcn-style)
-│   │   └── lib/           # API client, types, theme
+│   │   ├── arr/           # Shell layout, sidebar, route wrappers
+│   │   ├── pages/         # Shared pages (Commands, Events, Settings content, etc.)
+│   │   ├── components/    # Shared UI (dialogs, command edit, shadcn)
+│   │   └── lib/           # API client, theme, helpers
 │   └── dist/              # Built assets (served by FastAPI)
 ├── database/              # Database layer
 │   ├── models.py          # SQLAlchemy models
@@ -445,7 +446,7 @@ cmdarr/
 ### Modern Architecture Features
 - **FastAPI**: High-performance async web framework
 - **SQLAlchemy ORM**: Database abstraction with SQLite backend
-- **React + Vite + TypeScript**: Primary web UI; built to `frontend/dist`, served by FastAPI
+- **React + Vite + TypeScript**: *arr web UI (sidebar shell); built to `frontend/dist`, served by FastAPI. `/config` and `/status` SPA paths redirect to Settings / System.
 - **Tailwind CSS**: Utility-first CSS framework; Radix UI primitives for components
 - **Thread-Pool Execution**: Commands run in isolation without blocking the web server
 - **Database-Driven Config**: All configuration stored in SQLite with environment variable override
