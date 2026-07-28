@@ -82,15 +82,36 @@ function pickProfileId(profiles: LidarrProfile[], preferred: number | null): str
   return String(profiles[0].id);
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    })
+    .replace(/&#(\d+);/g, (_, dec: string) => {
+      const code = Number(dec);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    })
+    .replace(/&amp;/gi, "&");
+}
+
 function stripHtml(html: string): string {
   if (!html) return "";
-  const withBreaks = html
+  // Strip tags (including incomplete `<script` without `>`) then decode entities
+  // without assigning markup to the DOM (avoids HTML injection sinks).
+  const stripped = html
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "");
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = withBreaks;
-  return textarea.value.replace(/\n{3,}/g, "\n\n").trim();
+    .replace(/<[^>]*>?/gi, "")
+    .replace(/</g, "");
+  return decodeHtmlEntities(stripped)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function formatMatch(score: number): string {

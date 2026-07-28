@@ -32,10 +32,11 @@ def test_security_headers_added(monkeypatch):
     assert "script-src 'self'" in csp
     assert "unsafe-eval" not in csp
     # Allowlisted artwork hosts only — no scheme-wide https: wildcard
+    # Assert discrete CSP tokens (not substring-of-URL checks).
     csp_tokens = csp.replace(";", " ").split()
     assert "https:" not in csp_tokens
-    assert "https://cdn-images.dzcdn.net" in csp
-    assert "https://lastfm.freetls.fastly.net" in csp
+    assert "https://cdn-images.dzcdn.net" in csp_tokens
+    assert "https://lastfm.freetls.fastly.net" in csp_tokens
     assert "upgrade-insecure-requests" not in csp
     # TestClient uses http://testserver — COOP omitted (non-trustworthy origin)
     assert "cross-origin-opener-policy" not in response.headers
