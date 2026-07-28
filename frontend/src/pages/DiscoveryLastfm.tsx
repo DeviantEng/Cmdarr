@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import {
   ExternalLink,
   Loader2,
@@ -10,7 +11,7 @@ import {
   BookOpen,
   Disc3,
 } from "lucide-react";
-import { api, type SimilarrResult } from "@/lib/api";
+import { api, type LastfmDiscoveryResult } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,7 +50,39 @@ type SeedArtist = {
 
 type SeedSource = "lidarr" | "plex";
 
-type SimilarrPageProps = {
+type LidarrProfile = { id: number; name: string };
+
+const LS_QUALITY_PROFILE = "discovery.lastfm.qualityProfileId";
+const LS_METADATA_PROFILE = "discovery.lastfm.metadataProfileId";
+
+function readStoredProfileId(key: string): number | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredProfileId(key: string, id: number) {
+  try {
+    localStorage.setItem(key, String(id));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function pickProfileId(profiles: LidarrProfile[], preferred: number | null): string {
+  if (!profiles.length) return "";
+  if (preferred != null && profiles.some((p) => p.id === preferred)) {
+    return String(preferred);
+  }
+  return String(profiles[0].id);
+}
+
+type DiscoveryLastfmPageProps = {
   showPageHeader?: boolean;
   useArrPanel?: boolean;
 };
@@ -70,7 +103,10 @@ function formatMatch(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
-export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: SimilarrPageProps) {
+export function DiscoveryLastfmPage({
+  showPageHeader = true,
+  useArrPanel = false,
+}: DiscoveryLastfmPageProps) {
   const [seedSource, setSeedSource] = useState<SeedSource>("lidarr");
   const [artists, setArtists] = useState<SeedArtist[]>([]);
   const [loadingArtists, setLoadingArtists] = useState(true);
@@ -87,10 +123,16 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     []
   );
 
+  const [qualityProfiles, setQualityProfiles] = useState<LidarrProfile[]>([]);
+  const [metadataProfiles, setMetadataProfiles] = useState<LidarrProfile[]>([]);
+  const [qualityProfileId, setQualityProfileId] = useState("");
+  const [metadataProfileId, setMetadataProfileId] = useState("");
+  const [loadingProfiles, setLoadingProfiles] = useState(true);
+
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [results, setResults] = useState<SimilarrResult[]>([]);
+  const [results, setResults] = useState<LastfmDiscoveryResult[]>([]);
   const [running, setRunning] = useState(false);
   const [starting, setStarting] = useState(false);
   const [addingMbid, setAddingMbid] = useState<string | null>(null);
@@ -106,10 +148,31 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   const pollRef = useRef<number | null>(null);
   const terminalNotified = useRef<string | null>(null);
 
+  const loadLidarrProfiles = useCallback(async () => {
+    setLoadingProfiles(true);
+    try {
+      const res = await api.getLastfmDiscoveryLidarrProfiles();
+      const quality = res.quality_profiles ?? [];
+      const metadata = res.metadata_profiles ?? [];
+      setQualityProfiles(quality);
+      setMetadataProfiles(metadata);
+      setQualityProfileId(pickProfileId(quality, readStoredProfileId(LS_QUALITY_PROFILE)));
+      setMetadataProfileId(pickProfileId(metadata, readStoredProfileId(LS_METADATA_PROFILE)));
+    } catch (e) {
+      setQualityProfiles([]);
+      setMetadataProfiles([]);
+      setQualityProfileId("");
+      setMetadataProfileId("");
+      toast.error(e instanceof Error ? e.message : "Failed to load Lidarr profiles");
+    } finally {
+      setLoadingProfiles(false);
+    }
+  }, []);
+
   const loadLidarrArtists = useCallback(async () => {
     setLoadingArtists(true);
     try {
-      const res = await api.getSimilarrArtists("", 10000);
+      const res = await api.getLastfmDiscoveryArtists("", 10000);
       setArtists(res.artists ?? []);
       setUnmatchedPlex([]);
     } catch (e) {
@@ -134,7 +197,8 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   useEffect(() => {
     void loadLidarrArtists();
     void loadPlexAccounts();
-  }, [loadLidarrArtists, loadPlexAccounts]);
+    void loadLidarrProfiles();
+  }, [loadLidarrArtists, loadPlexAccounts, loadLidarrProfiles]);
 
   useEffect(() => {
     setSelected({});
@@ -174,7 +238,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
       session_id: string;
       status: string;
       elapsed_seconds: number;
-      results: SimilarrResult[];
+      results: LastfmDiscoveryResult[];
       error?: string | null;
     }) => {
       setSessionId(data.session_id);
@@ -206,7 +270,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
       pollRef.current = window.setInterval(() => {
         void (async () => {
           try {
-            const data = await api.getSimilarrSession(id);
+            const data = await api.getLastfmDiscoverySession(id);
             applySession(data);
           } catch {
             /* ignore transient poll errors */
@@ -220,7 +284,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await api.syncSimilarrArtists();
+      const res = await api.syncLastfmDiscoveryArtists();
       toast.success(`Synced ${res.synced ?? 0} Lidarr artists`);
       if (seedSource === "lidarr") await loadLidarrArtists();
     } catch (e) {
@@ -237,7 +301,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     }
     setLoadingPlex(true);
     try {
-      const res = await api.getSimilarrPlexTopArtists({
+      const res = await api.getLastfmDiscoveryPlexTopArtists({
         account_id: plexAccountId,
         lookback_days: lookbackDays,
         limit: plexLimit,
@@ -286,7 +350,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     terminalNotified.current = null;
     setAddedMbids({});
     try {
-      const data = await api.startSimilarrSession(
+      const data = await api.startLastfmDiscoverySession(
         selectedSeeds.map((a) => ({ mbid: a.artist_mbid, name: a.artist_name }))
       );
       applySession(data);
@@ -302,14 +366,14 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
   const handleStop = async () => {
     if (!sessionId) return;
     try {
-      const data = await api.stopSimilarrSession(sessionId);
+      const data = await api.stopLastfmDiscoverySession(sessionId);
       applySession(data);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to stop search");
     }
   };
 
-  const handleBio = async (artist: SimilarrResult) => {
+  const handleBio = async (artist: LastfmDiscoveryResult) => {
     setBioOpen(true);
     setBioTitle(artist.name);
     setBioText("");
@@ -317,7 +381,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     setBioStats({});
     setBioLoading(true);
     try {
-      const res = await api.getSimilarrBio(artist.mbid, artist.name);
+      const res = await api.getLastfmDiscoveryBio(artist.mbid, artist.name);
       const a = res.artist;
       setBioTitle(a.name || artist.name);
       setBioUrl(a.url || artist.url || "");
@@ -333,13 +397,21 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     }
   };
 
-  const handleAdd = async (artist: SimilarrResult) => {
+  const handleAdd = async (artist: LastfmDiscoveryResult) => {
+    const qid = Number(qualityProfileId);
+    const mid = Number(metadataProfileId);
+    if (!Number.isFinite(qid) || qid < 1 || !Number.isFinite(mid) || mid < 1) {
+      toast.error("Select Lidarr quality and metadata profiles before adding");
+      return;
+    }
     setAddingMbid(artist.mbid);
     try {
-      await api.addSimilarrArtist({
+      await api.addLastfmDiscoveryArtist({
         mbid: artist.mbid,
         artist_name: artist.name,
         search_for_missing_albums: true,
+        quality_profile_id: qid,
+        metadata_profile_id: mid,
       });
       setAddedMbids((prev) => ({ ...prev, [artist.mbid]: true }));
       toast.success(`Added ${artist.name} to Lidarr (search started)`);
@@ -425,6 +497,88 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="space-y-3 rounded-md border p-3">
+          <p className="text-xs text-muted-foreground">
+            Lidarr profiles used when adding recommended artists.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Quality profile</Label>
+              <Select
+                value={qualityProfileId}
+                onValueChange={(v) => {
+                  setQualityProfileId(v);
+                  const n = Number(v);
+                  if (Number.isFinite(n) && n > 0) writeStoredProfileId(LS_QUALITY_PROFILE, n);
+                }}
+                disabled={loadingProfiles || qualityProfiles.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={loadingProfiles ? "Loading…" : "Select quality profile"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {qualityProfiles.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      No quality profiles
+                    </SelectItem>
+                  ) : (
+                    qualityProfiles.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Metadata profile</Label>
+              <Select
+                value={metadataProfileId}
+                onValueChange={(v) => {
+                  setMetadataProfileId(v);
+                  const n = Number(v);
+                  if (Number.isFinite(n) && n > 0) writeStoredProfileId(LS_METADATA_PROFILE, n);
+                }}
+                disabled={loadingProfiles || metadataProfiles.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={loadingProfiles ? "Loading…" : "Select metadata profile"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {metadataProfiles.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      No metadata profiles
+                    </SelectItem>
+                  ) : (
+                    metadataProfiles.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-md border p-3 text-sm text-muted-foreground">
+          Scheduled auto-add is the <strong>Last.fm Discovery</strong> command under{" "}
+          <Link className="underline underline-offset-2" to="/commands">
+            Commands
+          </Link>
+          . It is independent of this interactive page. KPIs:{" "}
+          <Link className="underline underline-offset-2" to="/system/discovery">
+            System → Discovery
+          </Link>
+          .
+        </div>
+
         {seedSource === "plex" && (
           <div className="space-y-3 rounded-md border p-3">
             <div className="space-y-2">
@@ -669,7 +823,9 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
                       <Button
                         type="button"
                         size="sm"
-                        disabled={added || addingMbid === r.mbid}
+                        disabled={
+                          added || addingMbid === r.mbid || !qualityProfileId || !metadataProfileId
+                        }
                         onClick={() => void handleAdd(r)}
                       >
                         {addingMbid === r.mbid ? (
@@ -739,7 +895,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
         {toolbar}
         <ArrContentPanel>
           <ArrSectionHeader
-            title="Similarr"
+            title="Last.fm Discovery"
             description="Discover similar artists via Last.fm and add them to Lidarr."
           />
           <ArrPanelBody>{body}</ArrPanelBody>
@@ -753,7 +909,7 @@ export function SimilarrPage({ showPageHeader = true, useArrPanel = false }: Sim
     <div className="space-y-4 p-4 sm:p-6">
       {showPageHeader && (
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Similarr</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Last.fm Discovery</h1>
           <p className="text-muted-foreground">
             Discover similar artists via Last.fm and add them to Lidarr.
           </p>

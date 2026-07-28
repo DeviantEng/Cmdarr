@@ -1,8 +1,10 @@
-"""Similarr: interactive Last.fm similar-artist discovery API."""
+"""Last.fm Discovery: interactive Last.fm similar-artist discovery API."""
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,9 +17,9 @@ from clients.client_plex import PlexClient
 from commands.config_adapter import ConfigAdapter
 from database.config_models import LidarrArtist
 from database.database import get_config_db
-from services.similarr_service import similarr_service
+from services.lastfm_discovery_service import lastfm_discovery_service
+from utils.discovery_plex import rank_plex_top_artists
 from utils.lidarr_artist_sync import upsert_lidarr_artists_from_payload
-from utils.similarr_plex import rank_plex_top_artists
 from utils.timezone import get_scheduler_timezone
 
 router = APIRouter()
@@ -35,6 +37,8 @@ class AddArtistRequest(BaseModel):
     mbid: str = Field(..., min_length=1, max_length=100)
     artist_name: str = Field(..., min_length=1, max_length=500)
     search_for_missing_albums: bool = True
+    quality_profile_id: int | None = Field(default=None, ge=1)
+    metadata_profile_id: int | None = Field(default=None, ge=1)
 
 
 @router.get("/artists")
@@ -43,7 +47,7 @@ async def list_cached_artists(
     limit: Annotated[int, Query(ge=1, le=10000)] = 5000,
     db: Session = Depends(get_config_db),
 ):
-    """List cached Lidarr artists for Similarr seed selection (search optional)."""
+    """List cached Lidarr artists for Last.fm Discovery seed selection (search optional)."""
     query = db.query(LidarrArtist)
     q_clean = (q or "").strip()
     if q_clean:
@@ -169,7 +173,7 @@ async def start_session(body: StartSessionRequest):
             seeds.append({"mbid": mbid, "name": name})
 
     try:
-        session = await similarr_service.start_session(seeds)
+        session = await lastfm_discovery_service.start_session(seeds)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:
@@ -180,7 +184,7 @@ async def start_session(body: StartSessionRequest):
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
-    session = similarr_service.get_session(session_id)
+    session = lastfm_discovery_service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"success": True, **session.to_dict()}
@@ -189,7 +193,7 @@ async def get_session(session_id: str):
 @router.get("/sessions")
 async def get_active_session():
     """Return the current process session if any."""
-    session = similarr_service.get_session()
+    session = lastfm_discovery_service.get_session()
     if session is None:
         return {"success": True, "session": None}
     return {"success": True, "session": session.to_dict()}
@@ -198,7 +202,7 @@ async def get_active_session():
 @router.post("/sessions/{session_id}/stop")
 async def stop_session(session_id: str):
     try:
-        session = await similarr_service.stop_session(session_id)
+        session = await lastfm_discovery_service.stop_session(session_id)
     except KeyError as e:
         raise HTTPException(status_code=404, detail="Session not found") from e
     return {"success": True, **session.to_dict()}
@@ -232,6 +236,101 @@ async def get_artist_bio(
     return {"success": True, "artist": info}
 
 
+@router.get("/system-stats")
+async def get_system_stats(db: Annotated[Session, Depends(get_config_db)]):
+    """KPIs for System → Discovery (scheduled Last.fm Discovery)."""
+    from database.config_models import CommandConfig
+
+    command = (
+        db.query(CommandConfig)
+        .filter(
+            CommandConfig.command_name == "discovery_lastfm",
+            CommandConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+
+    cooldown_count = 0
+    queried_path = Path("data/discovery/lastfm_queried.json")
+    if queried_path.exists():
+        try:
+            with open(queried_path, encoding="utf-8") as f:
+                data = json.load(f) or {}
+            if isinstance(data, dict):
+                cooldown_count = len(data)
+        except json.JSONDecodeError, OSError:
+            cooldown_count = 0
+
+    recent_adds: list[dict[str, Any]] = []
+    recent_path = Path("data/discovery/lastfm_recent_adds.json")
+    if recent_path.exists():
+        try:
+            with open(recent_path, encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, list):
+                recent_adds = raw[-50:]
+        except json.JSONDecodeError, OSError:
+            recent_adds = []
+
+    last_run_stats = None
+    stats_path = Path("data/discovery/lastfm_last_run_stats.json")
+    if stats_path.exists():
+        try:
+            with open(stats_path, encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                last_run_stats = raw
+        except json.JSONDecodeError, OSError:
+            last_run_stats = None
+
+    return {
+        "success": True,
+        "command": {
+            "enabled": bool(command.enabled) if command else False,
+            "last_run": command.last_run.isoformat() if command and command.last_run else None,
+            "last_success": command.last_success if command else None,
+            "last_duration": command.last_duration if command else None,
+            "last_error": command.last_error if command else None,
+            "config": {
+                k: v for k, v in (command.config_json or {}).items() if not str(k).startswith("_")
+            }
+            if command
+            else {},
+        },
+        "last_run_stats": last_run_stats,
+        "cooldown_count": cooldown_count,
+        "recent_adds": recent_adds,
+    }
+
+
+@router.get("/lidarr-profiles")
+async def get_lidarr_profiles():
+    """Return Lidarr quality and metadata profiles for Last.fm Discovery add options."""
+    config = ConfigAdapter()
+    if not config.LIDARR_API_KEY or not config.LIDARR_URL:
+        raise HTTPException(status_code=503, detail="Lidarr not configured")
+
+    async with LidarrClient(config) as lidarr:
+        quality = await lidarr.get_quality_profiles()
+        metadata = await lidarr.get_metadata_profiles()
+
+    def _compact(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for row in rows or []:
+            pid = row.get("id")
+            name = (row.get("name") or "").strip()
+            if pid is None or not name:
+                continue
+            out.append({"id": int(pid), "name": name})
+        return out
+
+    return {
+        "success": True,
+        "quality_profiles": _compact(quality),
+        "metadata_profiles": _compact(metadata),
+    }
+
+
 @router.post("/add")
 async def add_artist_to_lidarr(body: AddArtistRequest):
     """Add an artist to Lidarr (optionally start missing-album search)."""
@@ -243,6 +342,8 @@ async def add_artist_to_lidarr(body: AddArtistRequest):
         result: dict[str, Any] = await lidarr.add_artist(
             mbid=body.mbid.strip(),
             artist_name=body.artist_name.strip(),
+            quality_profile_id=body.quality_profile_id,
+            metadata_profile_id=body.metadata_profile_id,
             search_for_missing_albums=body.search_for_missing_albums,
         )
 

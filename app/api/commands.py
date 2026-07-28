@@ -3,7 +3,7 @@
 Commands API endpoints
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +27,8 @@ def utc_datetime_serializer(dt: datetime | None) -> str | None:
     """Serialize UTC datetime with Z suffix for proper JavaScript parsing"""
     if dt is None:
         return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return dt.isoformat() + "Z"
 
 
@@ -419,7 +421,24 @@ async def update_command(
                     dict(command.config_json or {})
                 )
 
-        command.updated_at = datetime.utcnow()
+        command.updated_at = datetime.now(UTC).replace(tzinfo=None)
+
+        if command_name == "discovery_lastfm" and command.enabled:
+            cfg = command.config_json or {}
+            try:
+                qid = int(cfg.get("quality_profile_id") or 0)
+                mid = int(cfg.get("metadata_profile_id") or 0)
+            except TypeError, ValueError:
+                qid, mid = 0, 0
+            if qid < 1 or mid < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Last.fm Discovery requires quality_profile_id and metadata_profile_id "
+                        "before it can be enabled"
+                    ),
+                )
+
         db.commit()
 
         # Refresh the command object to ensure we have the latest data
@@ -536,7 +555,7 @@ async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_c
 
         # Update the execution status to cancelled
         execution.status = "cancelled"
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC).replace(tzinfo=None)
         execution.success = False
         execution.error_message = "Execution cancelled by user"
 
@@ -549,7 +568,7 @@ async def cancel_command(command_name: str, db: Annotated[Session, Depends(get_c
             .first()
         )
         if command_config:
-            command_config.last_run = datetime.utcnow()
+            command_config.last_run = datetime.now(UTC).replace(tzinfo=None)
             command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
             command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
 
@@ -671,7 +690,7 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
 
         # Update the execution status to cancelled
         execution.status = "cancelled"
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC).replace(tzinfo=None)
         execution.success = False
         execution.error_message = "Execution cancelled by user"
 
@@ -686,7 +705,7 @@ async def kill_execution(execution_id: int, db: Annotated[Session, Depends(get_c
             .first()
         )
         if command_config:
-            command_config.last_run = datetime.utcnow()
+            command_config.last_run = datetime.now(UTC).replace(tzinfo=None)
             command_config.total_execution_count = (command_config.total_execution_count or 0) + 1
             command_config.total_failure_count = (command_config.total_failure_count or 0) + 1
 
@@ -2171,7 +2190,7 @@ async def delete_command(
             CommandCleanupService().delete_playlist_for_command(command)
 
         # Soft delete: keep for 7 days so execution history retains display_name
-        command.deleted_at = datetime.utcnow()
+        command.deleted_at = datetime.now(UTC).replace(tzinfo=None)
         command.enabled = False
         db.commit()
 

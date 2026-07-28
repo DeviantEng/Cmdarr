@@ -11,7 +11,7 @@ const navItems = [
   { path: "/", label: "Commands" },
   { path: "/new-releases", label: "New Releases" },
   { path: "/events", label: "Artist Events" },
-  { path: "/similarr", label: "Similarr" },
+  { path: "/discovery/lastfm", label: "Last.fm Discovery" },
   { path: "/import-lists", label: "Import Lists" },
   { path: "/config", label: "Configuration" },
   { path: "/status", label: "Status" },

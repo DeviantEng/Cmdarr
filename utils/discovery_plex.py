@@ -1,4 +1,4 @@
-"""Plex top-listened artist ranking for Similarr Phase 2 seeds."""
+"""Plex top-listened artist ranking for Last.fm Discovery Phase 2 seeds."""
 
 from __future__ import annotations
 

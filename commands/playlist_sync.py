@@ -4,7 +4,7 @@ Playlist Sync Command
 Dynamic command for syncing playlists from external sources (Spotify, etc.)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from clients.client_deezer import DeezerClient
@@ -384,7 +384,9 @@ class PlaylistSyncCommand(BaseCommand):
                             source=self.config_json.get(
                                 "playlist_name", "unknown"
                             ),  # Use playlist name, not command name
-                            dateAdded=datetime.utcnow().strftime("%Y-%m-%d, %H:%M:%S"),
+                            dateAdded=datetime.now(UTC)
+                            .replace(tzinfo=None)
+                            .strftime("%Y-%m-%d, %H:%M:%S"),
                         )
 
                         new_discoveries.append(artist_entry)

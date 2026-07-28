@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +19,13 @@ from database.config_models import CommandConfig, CommandExecution, ConfigBase
 
 @pytest.fixture()
 def session():
-    engine = create_engine("sqlite://")
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     ConfigBase.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine)
     db = TestSession()
@@ -31,7 +37,7 @@ def session():
                 enabled=True,
             )
         )
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         rows = [
             CommandExecution(
                 command_name="test_cmd",
@@ -79,7 +85,7 @@ def session():
 
 
 def test_execution_summary_respects_since_and_command(session):
-    since = datetime.utcnow() - timedelta(days=10)
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=10)
     summary = _execution_summary(session, since, "test_cmd")
     assert summary["total_count"] == 2
     assert summary["success_count"] == 1
@@ -89,7 +95,7 @@ def test_execution_summary_respects_since_and_command(session):
 
 
 def test_filtered_executions_query_command_filter(session):
-    since = datetime.utcnow() - timedelta(days=10)
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=10)
     query = _filtered_executions_query(session, since, "other_cmd")
     assert query.count() == 1
 
@@ -108,7 +114,7 @@ async def test_cleanup_old_executions_skips_when_retention_zero(session):
 def test_parse_execution_since_tokens():
     cutoff = parse_execution_since("7d")
     assert cutoff is not None
-    assert (datetime.utcnow() - cutoff).days == pytest.approx(7, abs=1)
+    assert (datetime.now(UTC).replace(tzinfo=None) - cutoff).days == pytest.approx(7, abs=1)
 
 
 def test_parse_execution_since_all_returns_none():
@@ -128,4 +134,6 @@ async def test_cleanup_old_executions_deletes_by_age(session):
             await service.cleanup_old_executions()
     remaining = session.query(CommandExecution).all()
     assert len(remaining) == 3
-    assert all((datetime.utcnow() - r.started_at).days <= 30 for r in remaining)
+    assert all(
+        (datetime.now(UTC).replace(tzinfo=None) - r.started_at).days <= 30 for r in remaining
+    )

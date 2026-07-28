@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.api.commands import CommandUpdateRequest, update_command
 from database.config_models import CommandConfig, ConfigBase
@@ -14,7 +15,11 @@ from database.config_models import CommandConfig, ConfigBase
 
 @pytest.fixture()
 def db_session():
-    engine = create_engine("sqlite://")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     ConfigBase.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine)
     db = TestSession()

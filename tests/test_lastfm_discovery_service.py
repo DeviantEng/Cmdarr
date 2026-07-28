@@ -1,29 +1,29 @@
-"""Unit tests for Similarr session service."""
+"""Unit tests for Last.fm Discovery session service."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.similarr_service import SimilarrService
+from services.lastfm_discovery_service import LastfmDiscoveryService
 
 
 @pytest.mark.asyncio
 async def test_start_session_requires_mbid():
-    svc = SimilarrService()
+    svc = LastfmDiscoveryService()
     with pytest.raises(ValueError, match="At least one seed"):
         await svc.start_session([{"mbid": "", "name": "Nobody"}])
 
 
 @pytest.mark.asyncio
 async def test_start_session_rejects_overlapping():
-    svc = SimilarrService()
+    svc = LastfmDiscoveryService()
 
     async def slow_run(_self, session):
         session.status = "running"
         await asyncio.sleep(10)
 
-    with patch.object(SimilarrService, "_run_session", new=slow_run):
+    with patch.object(LastfmDiscoveryService, "_run_session", new=slow_run):
         s1 = await svc.start_session([{"mbid": "mbid-1", "name": "A"}])
         assert s1.status == "running"
         with pytest.raises(RuntimeError, match="already running"):
@@ -36,7 +36,7 @@ async def test_start_session_rejects_overlapping():
 
 @pytest.mark.asyncio
 async def test_session_discovers_and_filters():
-    svc = SimilarrService()
+    svc = LastfmDiscoveryService()
 
     lidarr = AsyncMock()
     lidarr.__aenter__.return_value = lidarr
@@ -79,9 +79,9 @@ async def test_session_discovers_and_filters():
     )
 
     with (
-        patch("services.similarr_service.ConfigAdapter") as cfg_cls,
-        patch("services.similarr_service.LidarrClient", return_value=lidarr),
-        patch("services.similarr_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
+        patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
+        patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
     ):
         cfg_cls.return_value = MagicMock()
         session = await svc.start_session([{"mbid": "seed-mbid", "name": "Seed Artist"}])
@@ -98,7 +98,7 @@ async def test_session_discovers_and_filters():
 
 @pytest.mark.asyncio
 async def test_affinity_bumps_seed_count():
-    svc = SimilarrService()
+    svc = LastfmDiscoveryService()
 
     lidarr = AsyncMock()
     lidarr.__aenter__.return_value = lidarr
@@ -126,9 +126,9 @@ async def test_affinity_bumps_seed_count():
     lastfm.get_similar_artists = AsyncMock(side_effect=similar_side_effect)
 
     with (
-        patch("services.similarr_service.ConfigAdapter") as cfg_cls,
-        patch("services.similarr_service.LidarrClient", return_value=lidarr),
-        patch("services.similarr_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
+        patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
+        patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
     ):
         cfg_cls.return_value = MagicMock()
         session = await svc.start_session(
@@ -148,7 +148,7 @@ async def test_affinity_bumps_seed_count():
 
 @pytest.mark.asyncio
 async def test_stop_during_one_shot():
-    svc = SimilarrService()
+    svc = LastfmDiscoveryService()
 
     lidarr = AsyncMock()
     lidarr.__aenter__.return_value = lidarr
@@ -170,9 +170,9 @@ async def test_stop_during_one_shot():
     lastfm.get_similar_artists = AsyncMock(side_effect=slow_similar)
 
     with (
-        patch("services.similarr_service.ConfigAdapter") as cfg_cls,
-        patch("services.similarr_service.LidarrClient", return_value=lidarr),
-        patch("services.similarr_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
+        patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
+        patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
     ):
         cfg_cls.return_value = MagicMock()
         session = await svc.start_session(

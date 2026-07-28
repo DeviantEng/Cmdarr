@@ -76,7 +76,7 @@ class CommandCleanupService:
             db = manager.get_session_sync()
 
             # Find commands running for more than 2 hours without a timeout
-            cutoff_time = datetime.utcnow() - timedelta(hours=2)
+            cutoff_time = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2)
             stuck_commands = (
                 db.query(CommandExecution)
                 .filter(
@@ -127,7 +127,10 @@ class CommandCleanupService:
 
                 if command_config and command_config.timeout_minutes:
                     timeout_delta = timedelta(minutes=command_config.timeout_minutes)
-                    if execution.started_at < datetime.utcnow() - timeout_delta:
+                    if (
+                        execution.started_at
+                        < datetime.now(UTC).replace(tzinfo=None) - timeout_delta
+                    ):
                         await self._mark_command_failed(
                             execution,
                             f"Command timed out after {command_config.timeout_minutes} minutes",
@@ -160,7 +163,7 @@ class CommandCleanupService:
             db = manager.get_config_session_sync()
 
             try:
-                now = datetime.utcnow()
+                now = datetime.now(UTC).replace(tzinfo=None)
                 all_commands = db.query(CommandConfig).all()
                 expired = []
                 for cmd in all_commands:
@@ -457,7 +460,7 @@ class CommandCleanupService:
     async def _mark_command_failed(self, execution: CommandExecution, reason: str, db: Session):
         """Mark a command execution as failed"""
         execution.status = "failed"
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC).replace(tzinfo=None)
         execution.success = False
         execution.error_message = reason
 
@@ -515,7 +518,7 @@ class CommandCleanupService:
             db = manager.get_session_sync()
 
             try:
-                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=retention_days)
                 to_delete = (
                     db.query(CommandExecution).filter(CommandExecution.started_at < cutoff).all()
                 )
@@ -545,7 +548,7 @@ class CommandCleanupService:
             db = manager.get_config_session_sync()
 
             try:
-                cutoff = datetime.utcnow() - timedelta(days=7)
+                cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=7)
                 to_delete = (
                     db.query(CommandConfig)
                     .filter(

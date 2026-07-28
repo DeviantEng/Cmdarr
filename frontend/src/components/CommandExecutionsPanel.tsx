@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronUp, Loader2, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
@@ -146,7 +146,7 @@ export function CommandExecutionsPanel({
   const compactArr = useArrPanel && !collapsible;
   const historyMode = compactArr && historySince != null;
 
-  const loadExecutions = async () => {
+  const loadExecutions = useCallback(async () => {
     try {
       if (historyMode) {
         const data = await api.getExecutions({
@@ -165,19 +165,21 @@ export function CommandExecutionsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [historyMode, historySince, historyCommandName, onSummaryChange]);
 
   useEffect(() => {
     setLoading(true);
     void loadExecutions();
-  }, [historySince, historyCommandName, refreshKey, historyMode]);
+  }, [loadExecutions, refreshKey]);
 
   useEffect(() => {
     const hasRunning = recentExecutions.some((e) => e.status === "running");
     if (!hasRunning || pausePolling) return;
-    const id = setInterval(loadExecutions, 10000);
+    const id = setInterval(() => {
+      void loadExecutions();
+    }, 10000);
     return () => clearInterval(id);
-  }, [recentExecutions, pausePolling, historyMode]);
+  }, [recentExecutions, pausePolling, loadExecutions]);
 
   const handleKillExecution = async (executionId: number) => {
     try {

@@ -309,7 +309,7 @@ class ApiClient {
     return await this.request<ImportListMetrics>("/import_lists/metrics");
   }
 
-  async resetImportList(listId: "lastfm" | "playlistsync"): Promise<{ success: boolean }> {
+  async resetImportList(listId: "playlistsync"): Promise<{ success: boolean }> {
     return this.request(`/import_lists/discovery_${listId}/reset`, { method: "POST" });
   }
 
@@ -663,8 +663,8 @@ class ApiClient {
     });
   }
 
-  // Similarr (interactive Last.fm similar-artist discovery)
-  async getSimilarrArtists(
+  // Last.fm Discovery (interactive Last.fm similar-artist discovery)
+  async getLastfmDiscoveryArtists(
     q = "",
     limit = 5000
   ): Promise<{
@@ -674,63 +674,63 @@ class ApiClient {
   }> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (q.trim()) params.set("q", q.trim());
-    return this.request(`/api/similarr/artists?${params}`);
+    return this.request(`/api/discovery/lastfm/artists?${params}`);
   }
 
-  async syncSimilarrArtists(): Promise<{
+  async syncLastfmDiscoveryArtists(): Promise<{
     success: boolean;
     synced?: number;
     inserted?: number;
     updated?: number;
   }> {
-    return this.request(`/api/similarr/sync-artists`, { method: "POST", timeout: 120_000 });
+    return this.request(`/api/discovery/lastfm/sync-artists`, { method: "POST", timeout: 120_000 });
   }
 
-  async startSimilarrSession(seeds: { mbid: string; name: string }[]): Promise<{
+  async startLastfmDiscoverySession(seeds: { mbid: string; name: string }[]): Promise<{
     success: boolean;
     session_id: string;
     status: string;
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
-    results: SimilarrResult[];
+    results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
-    return this.request(`/api/similarr/sessions`, {
+    return this.request(`/api/discovery/lastfm/sessions`, {
       method: "POST",
       body: JSON.stringify({ seeds }),
     });
   }
 
-  async getSimilarrSession(sessionId: string): Promise<{
+  async getLastfmDiscoverySession(sessionId: string): Promise<{
     success: boolean;
     session_id: string;
     status: string;
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
-    results: SimilarrResult[];
+    results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
-    return this.request(`/api/similarr/sessions/${encodeURIComponent(sessionId)}`);
+    return this.request(`/api/discovery/lastfm/sessions/${encodeURIComponent(sessionId)}`);
   }
 
-  async stopSimilarrSession(sessionId: string): Promise<{
+  async stopLastfmDiscoverySession(sessionId: string): Promise<{
     success: boolean;
     session_id: string;
     status: string;
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
-    results: SimilarrResult[];
+    results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
-    return this.request(`/api/similarr/sessions/${encodeURIComponent(sessionId)}/stop`, {
+    return this.request(`/api/discovery/lastfm/sessions/${encodeURIComponent(sessionId)}/stop`, {
       method: "POST",
     });
   }
 
-  async getSimilarrBio(
+  async getLastfmDiscoveryBio(
     mbid?: string,
     name?: string
   ): Promise<{
@@ -748,15 +748,47 @@ class ApiClient {
     const params = new URLSearchParams();
     if (mbid) params.set("mbid", mbid);
     if (name) params.set("name", name);
-    return this.request(`/api/similarr/bio?${params}`);
+    return this.request(`/api/discovery/lastfm/bio?${params}`);
   }
 
-  async addSimilarrArtist(params: {
+  async getLastfmDiscoverySystemStats(): Promise<{
+    success: boolean;
+    command: {
+      enabled: boolean;
+      last_run?: string | null;
+      last_success?: boolean | null;
+      last_duration?: number | null;
+      last_error?: string | null;
+      config?: Record<string, unknown>;
+    };
+    last_run_stats?: Record<string, unknown> | null;
+    cooldown_count?: number;
+    recent_adds?: {
+      mbid?: string;
+      name?: string;
+      added_at?: string;
+      similar_to?: string;
+    }[];
+  }> {
+    return this.request(`/api/discovery/lastfm/system-stats`);
+  }
+
+  async getLastfmDiscoveryLidarrProfiles(): Promise<{
+    success: boolean;
+    quality_profiles: { id: number; name: string }[];
+    metadata_profiles: { id: number; name: string }[];
+  }> {
+    return this.request(`/api/discovery/lastfm/lidarr-profiles`);
+  }
+
+  async addLastfmDiscoveryArtist(params: {
     mbid: string;
     artist_name: string;
     search_for_missing_albums?: boolean;
+    quality_profile_id?: number;
+    metadata_profile_id?: number;
   }): Promise<{ success: boolean; message?: string }> {
-    return this.request(`/api/similarr/add`, {
+    return this.request(`/api/discovery/lastfm/add`, {
       method: "POST",
       body: JSON.stringify(params),
       timeout: 60_000,
@@ -771,7 +803,7 @@ class ApiClient {
     return this.request(`/api/commands/plex-accounts`);
   }
 
-  async getSimilarrPlexTopArtists(params: {
+  async getLastfmDiscoveryPlexTopArtists(params: {
     account_id: string;
     lookback_days?: number;
     limit?: number;
@@ -793,7 +825,7 @@ class ApiClient {
       lookback_days: String(params.lookback_days ?? 90),
       limit: String(params.limit ?? 20),
     });
-    return this.request(`/api/similarr/plex-top-artists?${qs}`, { timeout: 120_000 });
+    return this.request(`/api/discovery/lastfm/plex-top-artists?${qs}`, { timeout: 120_000 });
   }
 }
 
@@ -803,7 +835,7 @@ export const api = new ApiClient();
 // Export class for testing
 export { ApiClient, ApiError };
 
-export type SimilarrResult = {
+export type LastfmDiscoveryResult = {
   mbid: string;
   name: string;
   match_score: number;
