@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - **Last.fm Discovery**: Unified interactive page at `/discovery/lastfm` (Lidarr or Plex seeds, bios, artwork, Lidarr profile pickers, direct API add) plus scheduled `discovery_lastfm` command that adds artists to Lidarr via API (required quality/metadata profiles; optional search-on-add). Discovery hub at `/discovery`; KPIs under **System → Discovery**. Inspired by [Lidify](https://github.com/TheWicklowWolf/Lidify) by TheWicklowWolf.
-- **Lidarr Maintenance**: New command category with Update All (queues Lidarr library metadata refresh) and Wanted Search (top X Wanted albums with Album/EP/Single filters, sort options, and temporary ignore for empty results); Add New groups commands by category; System → Lidarr Maintenance tracks stats and opens the ignore list in a dialog (same pattern as Hidden Events).
+- **Lidarr Maintenance**: New command category with Update All (queues Lidarr library metadata refresh) and Wanted Search (top X Wanted albums with Album/EP/Single filters, sort options, and temporary cooldown for grabs and empty results); Add New groups commands by category; System → Lidarr Maintenance tracks stats and opens the ignore list in a dialog (same pattern as Hidden Events).
 - **Singleton commands**: Shared `singleton_group` on command configs — Add New greys out types that already exist (tooltip: only one instance allowed). Applies to Lidarr Update All, Lidarr Wanted Search, Daylist, and Local Discovery. Lidarr maintenance display names are fixed (`Lidarr Maintenance - Artist Refresh` / `Lidarr Maintenance - Missing Search`); schedule override defaults off; Wanted Search settle time defaults to 30s.
 
 ### Fixes

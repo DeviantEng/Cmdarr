@@ -340,11 +340,12 @@ async def test_wanted_search_ignores_empty_and_keeps_queued(session):
     assert ok is True
     assert cmd.last_run_stats["albums_searched"] == 2
     assert cmd.last_run_stats["downloads_found"] == 1
+    assert cmd.last_run_stats["grabbed_cooled"] == 1
     assert cmd.last_run_stats["ignored_added"] == 1
-    ignored = session.query(LidarrWantedSearchIgnore).all()
-    assert len(ignored) == 1
-    assert ignored[0].lidarr_album_id == 11
-    assert ignored[0].reason == "no_release_found"
+    ignored = {row.lidarr_album_id: row for row in session.query(LidarrWantedSearchIgnore).all()}
+    assert set(ignored) == {10, 11}
+    assert ignored[10].reason == "grabbed"
+    assert ignored[11].reason == "no_release_found"
 
     row = (
         session.query(CommandConfig)
@@ -354,6 +355,95 @@ async def test_wanted_search_ignores_empty_and_keeps_queued(session):
     assert row.config_json["lifetime_searched"] == 2
     assert row.config_json["lifetime_downloads_found"] == 1
     assert row.config_json["lifetime_ignored"] == 1
+
+
+@pytest.mark.asyncio
+async def test_wanted_search_skips_grabbed_cooldown_on_next_run(session):
+    """Albums cooled after a grab must not be re-searched while ignore is active."""
+    now = datetime.now(UTC)
+    session.add(
+        LidarrWantedSearchIgnore(
+            lidarr_album_id=10,
+            artist_name="Artist",
+            album_title="Found",
+            album_type="album",
+            ignored_at=now,
+            ignored_until=now + timedelta(days=14),
+            reason="grabbed",
+            command_name="lidarr_wanted_search_00001",
+            search_count=1,
+        )
+    )
+    session.add(
+        CommandConfig(
+            command_name="lidarr_wanted_search_00001",
+            display_name="Wanted Search",
+            description="test",
+            enabled=True,
+            config_json={
+                "lifetime_searched": 2,
+                "lifetime_downloads_found": 1,
+                "lifetime_ignored": 1,
+            },
+            command_type="lidarr_maintenance",
+        )
+    )
+    session.commit()
+
+    cmd = LidarrWantedSearchCommand(config=MagicMock())
+    cmd.config_adapter = MagicMock(LIDARR_API_KEY="key", LIDARR_URL="http://lidarr")
+    cmd.config_json = {
+        "command_name": "lidarr_wanted_search_00001",
+        "top_x": 5,
+        "ignore_days": 14,
+        "settle_seconds": 0,
+        "album_types": "album",
+        "sort_by": "oldest_release_date",
+    }
+
+    client = MagicMock()
+    client.post_command = AsyncMock(return_value={"id": 51, "status": "completed"})
+    client.wait_for_command = AsyncMock(return_value={"id": 51, "status": "completed"})
+    client.get_queue = AsyncMock(return_value=[])
+    client.get_history_for_albums = AsyncMock(return_value=[])
+    client.session = None
+    client.get_wanted_missing = AsyncMock(
+        return_value={
+            "totalRecords": 2,
+            "records": [
+                _wanted_record(10, title="Found"),
+                _wanted_record(12, title="Next"),
+            ],
+        }
+    )
+
+    db_manager = MagicMock()
+    db_manager.get_config_session_sync.return_value = session
+
+    with (
+        patch("commands.lidarr_wanted_search.LidarrClient", return_value=client),
+        patch("commands.lidarr_wanted_search.get_database_manager", return_value=db_manager),
+        patch("commands.lidarr_wanted_search.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        session.close = MagicMock()
+        ok = await cmd.execute()
+
+    assert ok is True
+    client.post_command.assert_awaited_once_with("AlbumSearch", albumIds=[12])
+    assert cmd.last_run_stats["albums_searched"] == 1
+    assert (
+        session.query(LidarrWantedSearchIgnore)
+        .filter(LidarrWantedSearchIgnore.lidarr_album_id == 10)
+        .one()
+        .reason
+        == "grabbed"
+    )
+    cooled_next = (
+        session.query(LidarrWantedSearchIgnore)
+        .filter(LidarrWantedSearchIgnore.lidarr_album_id == 12)
+        .one()
+    )
+    assert cooled_next.reason == "no_release_found"
 
 
 @pytest.mark.asyncio
@@ -425,6 +515,8 @@ def test_wanted_search_summary_with_samples():
     assert "ignored 2" in summary
     assert "A – One" in summary
     assert "B – Two" in summary
+    assert "Downloads (cooled)" in summary
+    assert "Ignored (no release)" in summary
 
 
 def test_serialize_ignore_and_rollups(session):

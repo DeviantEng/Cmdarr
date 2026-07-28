@@ -359,20 +359,20 @@ export const commandUiCopy = {
     descLidarrUpdateAll:
       "Queue Lidarr’s Update All (RefreshArtist) on a schedule so new MusicBrainz releases appear without a manual click.",
     descLidarrWantedSearch:
-      "Search the top Wanted albums in Lidarr. Albums with no release found are ignored for a cooldown so the backlog can progress.",
+      "Search the top Wanted albums in Lidarr. Albums with a grab or no release are cooled down so the backlog can progress (and stuck imports are not re-grabbed).",
     cardLidarrUpdateAllTitle: "Update All",
     cardLidarrUpdateAllBlurb:
       "Trigger Lidarr Update All to refresh artist/album metadata across your library.",
     cardLidarrWantedSearchTitle: "Wanted Search",
     cardLidarrWantedSearchBlurb:
-      "Search top X Wanted albums (filter by Album/EP/Single). Albums with no grab are ignored for a while.",
+      "Search top X Wanted albums (filter by Album/EP/Single). Grabs and empty results share a cooldown.",
   },
   lidarrMaintenance: {
     topXLabel: "Albums to search per run",
     topXHelp: "How many Wanted albums to search each run (1–50). Default 10.",
-    ignoreDaysLabel: "Ignore empty results (days)",
+    ignoreDaysLabel: "Cooldown after search (days)",
     ignoreDaysHelp:
-      "After AlbumSearch, if the album is not queued and nothing is grabbed/downloaded, skip that album for this many days (1–365). Default 14. Does not mean “Wanted list was empty.”",
+      "After AlbumSearch, skip that album for this many days (1–365) whether a release was grabbed or nothing was found. Gives imports time to finish (or fail for review) without re-searching. Default 14.",
     settleSecondsLabel: "Settle time after search (seconds)",
     settleSecondsHelp:
       "Wait this long after AlbumSearch completes before checking the queue/history for grabs (0–300). Default 30.",

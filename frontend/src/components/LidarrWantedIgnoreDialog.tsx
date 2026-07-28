@@ -18,8 +18,15 @@ type IgnoreApiItem = {
   release_date: string | null;
   ignored_at?: string | null;
   ignored_until: string | null;
+  reason?: string | null;
   search_count: number;
 };
+
+function reasonLabel(reason: string | null | undefined): string | null {
+  if (reason === "grabbed") return "grabbed";
+  if (reason === "no_release_found") return "no release";
+  return reason || null;
+}
 
 export function LidarrWantedIgnoreDialog({
   open,
@@ -31,7 +38,7 @@ export function LidarrWantedIgnoreDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Wanted Search ignore list"
-      description="Albums temporarily skipped after a search found no download. They return automatically when the cooldown ends, or restore them here."
+      description="Albums temporarily skipped after a grab or when no release was found. They return when the cooldown ends, or restore them here (e.g. after fixing a failed import)."
       emptyMessage="No albums currently ignored."
       loadItems={async (): Promise<NrdExclusionListItem[]> => {
         const res = await api.request<{ total: number; items: IgnoreApiItem[] }>(
@@ -42,6 +49,7 @@ export function LidarrWantedIgnoreDialog({
             ? new Date(item.ignored_until).toLocaleDateString()
             : null;
           const bits = [
+            reasonLabel(item.reason),
             item.album_type || null,
             item.release_date || null,
             until ? `until ${until}` : null,

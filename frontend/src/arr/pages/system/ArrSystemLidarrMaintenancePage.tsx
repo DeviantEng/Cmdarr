@@ -178,7 +178,7 @@ export function ArrSystemLidarrMaintenancePage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Wanted Search"
-            description="Top-X Wanted album searches. Albums with no grab are ignored for a cooldown."
+            description="Top-X Wanted album searches. Grabs and empty results share a cooldown."
           />
           <ArrPanelBody>
             {stats ? (
