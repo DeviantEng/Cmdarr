@@ -3,20 +3,101 @@
 [![Version](https://img.shields.io/github/v/tag/DeviantEng/Cmdarr?sort=semver&logo=github&label=version)](https://github.com/DeviantEng/Cmdarr/tags)
 [![Discord](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FSfD8GVhMzN%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/SfD8GVhMzN)
 
+<p align="center">
+  <img src="assets/icon/icon-192.png" alt="Cmdarr logo" width="96" height="96" />
+</p>
+
 # Cmdarr
 
-> *Running commands, hoping for exit code 0*
+Lidarr grows your music library. Cmdarr is the automation layer around it: discover artists, sync and generate playlists, catch releases missing from MusicBrainz, and surface upcoming shows—wired into Last.fm, ListenBrainz, Spotify, Deezer, Plex, and Jellyfin through a familiar *arr-style UI.
 
-A modular music automation platform that bridges services for your self-hosted media setup. Cmdarr connects Lidarr to Last.fm, MusicBrainz, ListenBrainz, Plex, and Jellyfin to discover, organize, and enhance your music library with intelligent automation.
+## Quick links
 
-## What Cmdarr Does
+- [Docker image (GHCR)](https://ghcr.io/devianteng/cmdarr)
+- [Extended docs](readme-extended.md) (commands, env/settings, troubleshooting)
+- [Changelog](CHANGELOG.md)
+- [Discord](https://discord.gg/SfD8GVhMzN)
 
-- **Automatic Music Discovery** – Similar artists (Last.fm), playlist-based discovery, new releases from Deezer/Spotify missing in MusicBrainz, scan artist by URL
-- **Playlist Management** – Sync playlists from Spotify and ListenBrainz to Plex and Jellyfin; add discovered artists to Lidarr
-- **Playlist Generators** – Daylist (time-of-day), Local Discovery (top artists + sonic similar), Artist Essentials (top tracks per artist), Mood Playlist (Plex Sonic moods), **XMPlaylist** (SiriusXM station newest / most-played via [xmplaylist.com](https://xmplaylist.com) → Plex or Jellyfin)
-- **Artist events** – Ticketmaster Discovery, SeatGeek, and optional Deezer (unofficial GraphQL) feeds for upcoming shows (`/events`), with search, distance filter, per-artist or per-event hides, and multi-provider links when several sources list the same show. See [Artist events](readme-extended.md#event-sources-artist-events) in the extended docs.
+## Who it's for
 
-For detailed command descriptions, configuration, architecture, and troubleshooting, see **[readme-extended.md](readme-extended.md)**.
+- You already run **Lidarr** (and ideally **Plex** and/or **Jellyfin**)
+- You want discovery, playlists, and events without a pile of one-off scripts
+- You prefer Docker / self-hosted ops with a web UI for config and scheduled commands
+
+## Features
+
+- **Music discovery** – Last.fm similar artists (interactive UI + scheduled add to Lidarr), playlist-sync discovery via a Lidarr custom list, new releases from Deezer/Spotify that are missing in MusicBrainz (including scan-by-URL)
+- **Playlist sync** – Spotify, Deezer, ListenBrainz curated, and other public sources → Plex and/or Jellyfin, with library caching
+- **Playlist generators** – Daylist (time-of-day), Local Discovery, Artist Essentials, Mood (Plex Sonic), **XMPlaylist** (SiriusXM via [xmplaylist.com](https://xmplaylist.com)), **Setlist.fm** (likely setlists for upcoming shows), and more
+- **Artist events** – Ticketmaster, SeatGeek, and Deezer feeds for Lidarr artists (`/events`), with distance filter, interested, hides, and multi-provider ticket links
+- **Lidarr maintenance** – Trigger Lidarr actions such as Update All (metadata refresh) and Wanted Search (top-X wanted albums) on your schedule
+- **Ops** – Commands dashboard + history, web config, system status / library cache, optional auth
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/commands.webp">
+        <img src="docs/screenshots/commands.webp" alt="Commands dashboard" width="420" />
+      </a><br />
+      <em>Commands</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/discovery-lastfm.webp">
+        <img src="docs/screenshots/discovery-lastfm.webp" alt="Last.fm Discovery" width="420" />
+      </a><br />
+      <em>Last.fm Discovery</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/new-releases.webp">
+        <img src="docs/screenshots/new-releases.webp" alt="New Releases" width="420" />
+      </a><br />
+      <em>New Releases</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/events.webp">
+        <img src="docs/screenshots/events.webp" alt="Artist Events" width="420" />
+      </a><br />
+      <em>Artist Events</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/commands-history.webp">
+        <img src="docs/screenshots/commands-history.webp" alt="Command history" width="420" />
+      </a><br />
+      <em>Command history</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/system-status.webp">
+        <img src="docs/screenshots/system-status.webp" alt="System status" width="420" />
+      </a><br />
+      <em>System status</em>
+    </td>
+  </tr>
+</table>
+
+## Prerequisites
+
+**Required**
+
+- **Docker** (recommended), or **Python 3.14** + **Node 24** for local development
+- **Lidarr** URL + API key
+- **Last.fm** API key ([register](https://www.last.fm/api/account/create))
+
+**Optional (by feature)**
+
+| Feature | Needs |
+|---------|--------|
+| Playlist sync / generators | Plex and/or Jellyfin |
+| ListenBrainz curated sync | ListenBrainz token (+ username) |
+| Spotify playlists / New Releases | No account required by default (scraper). Optional Client ID/Secret for the official Spotify API |
+| New Releases batch scans | MusicBrainz enabled |
+| Artist events | Ticketmaster and/or SeatGeek credentials; Deezer optional (ARL) |
+| Setlist generator | setlist.fm API key ([register](https://api.setlist.fm/)) |
 
 ## Quick Start
 
@@ -70,9 +151,11 @@ docker run -d \
   ghcr.io/devianteng/cmdarr:latest
 ```
 
+Open `http://localhost:8080`. On first run, create the admin account if prompted. Confirm **Settings → Music Management** (Lidarr) and **Music Sources** (Last.fm); enable Plex/Jellyfin under **Media Servers** when you want playlists.
+
 ### Environment Options
 
-All configuration can be set via environment variables. For the full list—including access control (`CMDARR_AUTH_USERNAME`, `CMDARR_AUTH_PASSWORD`, `CMDARR_API_KEY`), optional services, library cache, and scheduler—see [Environment Variables](readme-extended.md#environment-variables) in the extended documentation.
+All configuration can be set via environment variables or the web UI. For the full list—including access control (`CMDARR_AUTH_USERNAME`, `CMDARR_AUTH_PASSWORD`, `CMDARR_API_KEY`), optional services, library cache, and scheduler—see [Environment Variables](readme-extended.md#environment-variables) in the extended documentation.
 
 ### Local Python Environment
 
@@ -105,11 +188,11 @@ Visit `http://localhost:8080`. For frontend dev with hot reload: `npm run dev` i
 
 Access `http://localhost:8080` for:
 
-- **Commands** – Dashboard, enable/disable, manual run, edit; create Daylist, Local Discovery, Artist Essentials, Mood Playlist, or playlist sync via New
-- **Discovery** – Interactive Last.fm similar-artist discovery (`/discovery/lastfm`); scheduled command under Commands
-- **Config** – Web-based configuration with validation
-- **Status** – Health, cache status, system info
+- **Commands** – Dashboard, enable/disable, manual run, history; create generators and playlist sync via Add New
+- **Discovery** – Interactive Last.fm similar-artist discovery (`/discovery/lastfm`)
 - **New Releases** – Deezer/Spotify releases missing from MusicBrainz; scan artist by URL
+- **Artist Events** – Upcoming shows for Lidarr artists
+- **Settings / System** – Web config, health, library cache, Lidarr maintenance KPIs
 
 ## Lidarr Integration
 
@@ -118,6 +201,12 @@ Add Cmdarr as a Custom List in Lidarr (Settings → Import Lists) for playlist s
 - `http://cmdarr:8080/import_lists/discovery_playlistsync` – playlist sync artists
 
 Last.fm Discovery adds artists directly to Lidarr via API (interactive page or scheduled command); do not configure a Last.fm import list.
+
+## Documentation
+
+- **[readme-extended.md](readme-extended.md)** – command details, env reference, architecture, troubleshooting
+- **[CHANGELOG.md](CHANGELOG.md)** – release history
+- **[Discord](https://discord.gg/SfD8GVhMzN)** – community
 
 ## Contributing
 

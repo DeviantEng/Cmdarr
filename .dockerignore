@@ -14,9 +14,10 @@ uv.lock
 .python-version
 .nvmrc
 
-# Documentation
+# Documentation (markdown + screenshot binaries — keep out of runtime image)
 README.md
 *.md
+docs/
 
 # Python
 __pycache__/
