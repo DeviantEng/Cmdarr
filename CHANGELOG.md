@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Housekeeping
-- **Docs / README**: Self-hoster-focused README with logo, quick links, screenshot gallery (`docs/screenshots/`, excluded from the Docker image via `.dockerignore`), clearer optional prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
+- **Docs / README**: General README updates with logo, quick links, screenshot gallery, clearer prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
 
 ## [0.4.0] - 2026-07-28
 
