@@ -31,6 +31,12 @@ class StartSessionRequest(BaseModel):
         min_length=1,
         description="Seed artists as {mbid, name}",
     )
+    min_match_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Minimum Last.fm match score (0–1). Default 0 shows all Lidarr-filtered hits.",
+    )
 
 
 class AddArtistRequest(BaseModel):
@@ -173,7 +179,10 @@ async def start_session(body: StartSessionRequest):
             seeds.append({"mbid": mbid, "name": name})
 
     try:
-        session = await lastfm_discovery_service.start_session(seeds)
+        session = await lastfm_discovery_service.start_session(
+            seeds,
+            min_match_score=body.min_match_score,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:
@@ -205,6 +214,18 @@ async def stop_session(session_id: str):
         session = await lastfm_discovery_service.stop_session(session_id)
     except KeyError as e:
         raise HTTPException(status_code=404, detail="Session not found") from e
+    return {"success": True, **session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/more")
+async def load_more_session(session_id: str):
+    """Enrich and reveal the next batch of ranked similar artists."""
+    try:
+        session = await lastfm_discovery_service.load_more(session_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Session not found") from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"success": True, **session.to_dict()}
 
 

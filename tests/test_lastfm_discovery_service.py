@@ -8,6 +8,15 @@ import pytest
 from services.lastfm_discovery_service import LastfmDiscoveryService
 
 
+def _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls):
+    cfg_cls.return_value = MagicMock(LASTFM_FETCH_CONCURRENCY=2)
+    deezer = AsyncMock()
+    deezer.__aenter__.return_value = deezer
+    deezer.__aexit__.return_value = None
+    deezer.search_artists = AsyncMock(return_value={"artists": []})
+    deezer_cls.return_value = deezer
+
+
 @pytest.mark.asyncio
 async def test_start_session_requires_mbid():
     svc = LastfmDiscoveryService()
@@ -93,14 +102,7 @@ async def test_session_discovers_and_filters():
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
         patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg = MagicMock()
-        cfg.LASTFM_FETCH_CONCURRENCY = 2
-        cfg_cls.return_value = cfg
-        deezer = AsyncMock()
-        deezer.__aenter__.return_value = deezer
-        deezer.__aexit__.return_value = None
-        deezer.search_artists = AsyncMock(return_value={"artists": []})
-        deezer_cls.return_value = deezer
+        _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls)
         session = await svc.start_session([{"mbid": "seed-mbid", "name": "Seed Artist"}])
         assert session.task is not None
         await session.task
@@ -116,11 +118,17 @@ async def test_session_discovers_and_filters():
     assert session.results["new-mbid"].listeners == 12500
     assert session.results["new-mbid"].playcount == 890000
     assert session.results["new-mbid-2"].listeners == 42
+    # Higher match ranks first
+    assert session.candidate_order[0] == "new-mbid"
+    assert session.visible_count == 2
+    assert session.has_more is False
+    payload = session.to_dict()
+    assert [r["mbid"] for r in payload["results"]] == ["new-mbid", "new-mbid-2"]
     lastfm.get_artist_info.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_affinity_bumps_seed_count():
+async def test_affinity_bumps_seed_count_and_ranks_shared_first():
     svc = LastfmDiscoveryService()
 
     lidarr = AsyncMock()
@@ -134,12 +142,30 @@ async def test_affinity_bumps_seed_count():
     lastfm.__aexit__.return_value = None
 
     async def similar_side_effect(mbid=None, artist_name=None, limit=None, **_kwargs):
+        if mbid == "seed-a":
+            return (
+                [
+                    {
+                        "mbid": "shared-mbid",
+                        "name": "Shared Artist",
+                        "match": "0.5",
+                        "url": "",
+                    },
+                    {
+                        "mbid": "solo-mbid",
+                        "name": "Solo High",
+                        "match": "0.99",
+                        "url": "",
+                    },
+                ],
+                [],
+            )
         return (
             [
                 {
                     "mbid": "shared-mbid",
                     "name": "Shared Artist",
-                    "match": "0.5" if mbid == "seed-a" else "0.9",
+                    "match": "0.9",
                     "url": "",
                 }
             ],
@@ -155,12 +181,7 @@ async def test_affinity_bumps_seed_count():
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
         patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg_cls.return_value = MagicMock(LASTFM_FETCH_CONCURRENCY=2)
-        deezer = AsyncMock()
-        deezer.__aenter__.return_value = deezer
-        deezer.__aexit__.return_value = None
-        deezer.search_artists = AsyncMock(return_value={"artists": []})
-        deezer_cls.return_value = deezer
+        _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls)
         session = await svc.start_session(
             [
                 {"mbid": "seed-a", "name": "Artist A"},
@@ -176,6 +197,111 @@ async def test_affinity_bumps_seed_count():
     assert shared.match_score == 0.9
     assert shared.listeners == 1000
     assert shared.playcount == 5000
+    # Multi-seed consensus outranks a single-seed higher match
+    assert session.candidate_order[0] == "shared-mbid"
+    assert session.candidate_order[1] == "solo-mbid"
+
+
+@pytest.mark.asyncio
+async def test_min_match_score_filters_weak_hits():
+    svc = LastfmDiscoveryService()
+
+    lidarr = AsyncMock()
+    lidarr.__aenter__.return_value = lidarr
+    lidarr.__aexit__.return_value = None
+    lidarr.get_all_artists = AsyncMock(return_value=[])
+    lidarr.get_import_list_exclusions = AsyncMock(return_value=set())
+
+    lastfm = AsyncMock()
+    lastfm.__aenter__.return_value = lastfm
+    lastfm.__aexit__.return_value = None
+    lastfm.get_similar_artists = AsyncMock(
+        return_value=(
+            [
+                {"mbid": "strong", "name": "Strong", "match": "0.9", "url": ""},
+                {"mbid": "weak", "name": "Weak", "match": "0.2", "url": ""},
+            ],
+            [],
+        )
+    )
+    lastfm.get_artist_info = AsyncMock(return_value={"listeners": "1", "playcount": "1"})
+
+    with (
+        patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
+        patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
+        patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
+    ):
+        _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls)
+        session = await svc.start_session(
+            [{"mbid": "seed", "name": "Seed"}],
+            min_match_score=0.5,
+        )
+        await session.task
+
+    assert session.status == "completed"
+    assert set(session.results) == {"strong"}
+    assert session.candidate_order == ["strong"]
+    assert session.min_match_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_progressive_batch_enrichment_and_load_more():
+    svc = LastfmDiscoveryService()
+
+    lidarr = AsyncMock()
+    lidarr.__aenter__.return_value = lidarr
+    lidarr.__aexit__.return_value = None
+    lidarr.get_all_artists = AsyncMock(return_value=[])
+    lidarr.get_import_list_exclusions = AsyncMock(return_value=set())
+
+    similar = [
+        {"mbid": f"mbid-{i}", "name": f"Artist {i}", "match": str(0.9 - i * 0.01), "url": ""}
+        for i in range(5)
+    ]
+
+    lastfm = AsyncMock()
+    lastfm.__aenter__.return_value = lastfm
+    lastfm.__aexit__.return_value = None
+    lastfm.get_similar_artists = AsyncMock(return_value=(similar, []))
+    lastfm.get_artist_info = AsyncMock(return_value={"listeners": "10", "playcount": "20"})
+
+    with (
+        patch("services.lastfm_discovery_service.ConfigAdapter") as cfg_cls,
+        patch("services.lastfm_discovery_service.LidarrClient", return_value=lidarr),
+        patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
+        patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
+    ):
+        _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls)
+        session = await svc.start_session(
+            [{"mbid": "seed", "name": "Seed"}],
+            batch_size=2,
+        )
+        await session.task
+
+        assert session.status == "completed"
+        assert len(session.candidate_order) == 5
+        assert session.visible_count == 2
+        assert session.has_more is True
+        payload = session.to_dict()
+        assert len(payload["results"]) == 2
+        assert payload["result_count"] == 5
+        assert payload["has_more"] is True
+        # Only first batch enriched initially
+        assert lastfm.get_artist_info.await_count == 2
+
+        session2 = await svc.load_more(session.session_id)
+        assert session2.visible_count == 4
+        assert session2.has_more is True
+        assert lastfm.get_artist_info.await_count == 4
+
+        session3 = await svc.load_more(session.session_id)
+        assert session3.visible_count == 5
+        assert session3.has_more is False
+        assert lastfm.get_artist_info.await_count == 5
+
+        with pytest.raises(RuntimeError, match="No more"):
+            await svc.load_more(session.session_id)
 
 
 @pytest.mark.asyncio
@@ -208,12 +334,7 @@ async def test_stop_during_one_shot():
         patch("services.lastfm_discovery_service.LastFMClient", return_value=lastfm),
         patch("services.lastfm_discovery_service.DeezerClient") as deezer_cls,
     ):
-        cfg_cls.return_value = MagicMock(LASTFM_FETCH_CONCURRENCY=2)
-        deezer = AsyncMock()
-        deezer.__aenter__.return_value = deezer
-        deezer.__aexit__.return_value = None
-        deezer.search_artists = AsyncMock(return_value={"artists": []})
-        deezer_cls.return_value = deezer
+        _patch_clients(lidarr, lastfm, deezer_cls, cfg_cls)
         session = await svc.start_session(
             [
                 {"mbid": "seed-a", "name": "Artist A"},

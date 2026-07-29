@@ -138,8 +138,13 @@ export function DiscoveryLastfmPage() {
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [results, setResults] = useState<LastfmDiscoveryResult[]>([]);
+  const [resultCount, setResultCount] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [minMatchPercent, setMinMatchPercent] = useState(0);
   const [running, setRunning] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [addingMbid, setAddingMbid] = useState<string | null>(null);
   const [addedMbids, setAddedMbids] = useState<Record<string, boolean>>({});
 
@@ -244,12 +249,18 @@ export function DiscoveryLastfmPage() {
       status: string;
       elapsed_seconds: number;
       results: LastfmDiscoveryResult[];
+      result_count?: number;
+      visible_count?: number;
+      has_more?: boolean;
       error?: string | null;
     }) => {
       setSessionId(data.session_id);
       setSessionStatus(data.status);
       setElapsed(data.elapsed_seconds);
       setResults(data.results ?? []);
+      setResultCount(data.result_count ?? data.results?.length ?? 0);
+      setVisibleCount(data.visible_count ?? data.results?.length ?? 0);
+      setHasMore(!!data.has_more);
       const isRunning = data.status === "running";
       setRunning(isRunning);
       if (!isRunning) {
@@ -257,12 +268,20 @@ export function DiscoveryLastfmPage() {
         const key = `${data.session_id}:${data.status}`;
         if (terminalNotified.current !== key) {
           terminalNotified.current = key;
+          const total = data.result_count ?? data.results?.length ?? 0;
+          const shown = data.visible_count ?? data.results?.length ?? 0;
           if (data.status === "stopped") toast.message("Search stopped");
           else if (data.status === "timed_out")
             toast.error(data.error || "Search hit internal failsafe timeout");
-          else if (data.status === "completed")
-            toast.success(`Search finished — ${data.results?.length ?? 0} artists found`);
-          else if (data.status === "error") toast.error(data.error || "Search failed");
+          else if (data.status === "completed") {
+            if (data.has_more && total > shown) {
+              toast.success(
+                `Search finished — showing ${shown} of ${total} artists. Load More for the rest.`
+              );
+            } else {
+              toast.success(`Search finished — ${total} artists found`);
+            }
+          } else if (data.status === "error") toast.error(data.error || "Search failed");
         }
       }
     },
@@ -354,9 +373,14 @@ export function DiscoveryLastfmPage() {
     setStarting(true);
     terminalNotified.current = null;
     setAddedMbids({});
+    setHasMore(false);
+    setResultCount(0);
+    setVisibleCount(0);
     try {
+      const minMatch = Math.max(0, Math.min(100, minMatchPercent)) / 100;
       const data = await api.startLastfmDiscoverySession(
-        selectedSeeds.map((a) => ({ mbid: a.artist_mbid, name: a.artist_name }))
+        selectedSeeds.map((a) => ({ mbid: a.artist_mbid, name: a.artist_name })),
+        { min_match_score: minMatch }
       );
       applySession(data);
       if (data.status === "running") startPolling(data.session_id);
@@ -375,6 +399,19 @@ export function DiscoveryLastfmPage() {
       applySession(data);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to stop search");
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!sessionId || !hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await api.loadMoreLastfmDiscoverySession(sessionId);
+      applySession(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load more artists");
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -482,7 +519,9 @@ export function DiscoveryLastfmPage() {
           <span className="text-xs text-muted-foreground">
             {sessionStatus}
             {elapsed > 0 ? ` · ${Math.round(elapsed)}s` : ""}
-            {results.length > 0 ? ` · ${results.length} found` : ""}
+            {resultCount > 0
+              ? ` · ${visibleCount || results.length}${resultCount > (visibleCount || results.length) ? ` of ${resultCount}` : ""} found`
+              : ""}
           </span>
         )}
       </div>
@@ -567,6 +606,21 @@ export function DiscoveryLastfmPage() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Minimum match %</Label>
+            <NumericInput
+              value={minMatchPercent}
+              onChange={(v) => setMinMatchPercent(v ?? 0)}
+              min={0}
+              max={100}
+              step={1}
+              disabled={running}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional Last.fm similarity floor (0 = show all). Results are ranked by shared-seed
+              count, then match score.
+            </p>
           </div>
         </div>
 
@@ -760,10 +814,11 @@ export function DiscoveryLastfmPage() {
         <CardTitle className="text-base">Similar artists</CardTitle>
         <CardDescription>
           One-shot Last.fm lookup for your selected seeds. Results exclude artists already in
-          Lidarr. Affinity rises when multiple seeds recommend the same artist.
+          Lidarr, and are ordered by shared-seed count then match score. Use the minimum match
+          filter to hide weak recommendations; Load More enriches the next page when available.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         {results.length === 0 ? (
           <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
             {running
@@ -771,91 +826,115 @@ export function DiscoveryLastfmPage() {
               : "Select seed artists and click Run to discover similar artists."}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {results.map((r) => {
-              const added = !!addedMbids[r.mbid];
-              const listenersLabel = formatCount(r.listeners);
-              const scrobblesLabel = formatCount(r.playcount);
-              const statsLine = [
-                listenersLabel ? `${listenersLabel} listeners` : null,
-                scrobblesLabel ? `${scrobblesLabel} scrobbles` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <div
-                  key={r.mbid}
-                  className="flex flex-col overflow-hidden rounded-md border bg-card"
-                >
-                  <div className="relative aspect-square bg-muted">
-                    {r.image_url ? (
-                      <img
-                        src={r.image_url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                        <Disc3 className="h-12 w-12 opacity-40" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2 p-3">
-                    <div className="min-w-0 space-y-1">
-                      <div className="font-medium leading-snug line-clamp-2">{r.name}</div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="secondary">{formatMatch(r.match_score)}</Badge>
-                        {r.seed_count > 1 && <Badge variant="outline">{r.seed_count} seeds</Badge>}
-                      </div>
-                      {statsLine ? (
-                        <p className="text-xs text-muted-foreground">{statsLine}</p>
-                      ) : null}
-                      {r.seed_names.length > 0 && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          Similar to: {r.seed_names.join(", ")}
-                        </p>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {results.map((r) => {
+                const added = !!addedMbids[r.mbid];
+                const listenersLabel = formatCount(r.listeners);
+                const scrobblesLabel = formatCount(r.playcount);
+                const statsLine = [
+                  listenersLabel ? `${listenersLabel} listeners` : null,
+                  scrobblesLabel ? `${scrobblesLabel} scrobbles` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <div
+                    key={r.mbid}
+                    className="flex flex-col overflow-hidden rounded-md border bg-card"
+                  >
+                    <div className="relative aspect-square bg-muted">
+                      {r.image_url ? (
+                        <img
+                          src={r.image_url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                          <Disc3 className="h-12 w-12 opacity-40" />
+                        </div>
                       )}
                     </div>
-                    <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleBio(r)}
-                      >
-                        <BookOpen className="h-4 w-4" />
-                        Bio
-                      </Button>
-                      {r.url ? (
-                        <Button type="button" variant="ghost" size="sm" asChild>
-                          <a href={r.url} target="_blank" rel="noreferrer">
-                            <ExternalLink className="h-4 w-4" />
-                            Last.fm
-                          </a>
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={
-                          added || addingMbid === r.mbid || !qualityProfileId || !metadataProfileId
-                        }
-                        onClick={() => void handleAdd(r)}
-                      >
-                        {addingMbid === r.mbid ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Plus className="h-4 w-4" />
+                    <div className="flex flex-1 flex-col gap-2 p-3">
+                      <div className="min-w-0 space-y-1">
+                        <div className="font-medium leading-snug line-clamp-2">{r.name}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary">{formatMatch(r.match_score)}</Badge>
+                          {r.seed_count > 1 && (
+                            <Badge variant="outline">{r.seed_count} seeds</Badge>
+                          )}
+                        </div>
+                        {statsLine ? (
+                          <p className="text-xs text-muted-foreground">{statsLine}</p>
+                        ) : null}
+                        {r.seed_names.length > 0 && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            Similar to: {r.seed_names.join(", ")}
+                          </p>
                         )}
-                        {added ? "Added" : "Add"}
-                      </Button>
+                      </div>
+                      <div className="mt-auto flex flex-wrap gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleBio(r)}
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          Bio
+                        </Button>
+                        {r.url ? (
+                          <Button type="button" variant="ghost" size="sm" asChild>
+                            <a href={r.url} target="_blank" rel="noreferrer">
+                              <ExternalLink className="h-4 w-4" />
+                              Last.fm
+                            </a>
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={
+                            added ||
+                            addingMbid === r.mbid ||
+                            !qualityProfileId ||
+                            !metadataProfileId
+                          }
+                          onClick={() => void handleAdd(r)}
+                        >
+                          {addingMbid === r.mbid ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                          {added ? "Added" : "Add"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {hasMore ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleLoadMore()}
+                  disabled={loadingMore || running}
+                >
+                  {loadingMore ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Load More ({visibleCount} of {resultCount})
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
       </CardContent>
     </Card>

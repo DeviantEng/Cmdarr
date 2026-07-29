@@ -681,19 +681,28 @@ class ApiClient {
     return this.request(`/api/discovery/lastfm/sync-artists`, { method: "POST", timeout: 120_000 });
   }
 
-  async startLastfmDiscoverySession(seeds: { mbid: string; name: string }[]): Promise<{
+  async startLastfmDiscoverySession(
+    seeds: { mbid: string; name: string }[],
+    options?: { min_match_score?: number }
+  ): Promise<{
     success: boolean;
     session_id: string;
     status: string;
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
+    visible_count: number;
+    has_more: boolean;
+    min_match_score: number;
     results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
     return this.request(`/api/discovery/lastfm/sessions`, {
       method: "POST",
-      body: JSON.stringify({ seeds }),
+      body: JSON.stringify({
+        seeds,
+        min_match_score: options?.min_match_score ?? 0,
+      }),
     });
   }
 
@@ -704,6 +713,9 @@ class ApiClient {
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
+    visible_count: number;
+    has_more: boolean;
+    min_match_score: number;
     results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
@@ -717,11 +729,33 @@ class ApiClient {
     elapsed_seconds: number;
     seed_count: number;
     result_count: number;
+    visible_count: number;
+    has_more: boolean;
+    min_match_score: number;
     results: LastfmDiscoveryResult[];
     error?: string | null;
   }> {
     return this.request(`/api/discovery/lastfm/sessions/${encodeURIComponent(sessionId)}/stop`, {
       method: "POST",
+    });
+  }
+
+  async loadMoreLastfmDiscoverySession(sessionId: string): Promise<{
+    success: boolean;
+    session_id: string;
+    status: string;
+    elapsed_seconds: number;
+    seed_count: number;
+    result_count: number;
+    visible_count: number;
+    has_more: boolean;
+    min_match_score: number;
+    results: LastfmDiscoveryResult[];
+    error?: string | null;
+  }> {
+    return this.request(`/api/discovery/lastfm/sessions/${encodeURIComponent(sessionId)}/more`, {
+      method: "POST",
+      timeout: 120_000,
     });
   }
 
