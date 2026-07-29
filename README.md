@@ -35,18 +35,16 @@ Lidarr grows your music library. Cmdarr is the automation layer around it: disco
 
 ## Screenshots
 
-Click a thumbnail to open the full-size image. For a new tab, use **⌘/Ctrl+click** or **middle-click** (GitHub READMEs cannot force `target="_blank"`).
-
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/commands.webp?raw=true">
+      <a href="docs/screenshots/commands.webp">
         <img src="docs/screenshots/commands.webp" alt="Commands dashboard" width="420" />
       </a><br />
       <em>Commands</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/discovery-lastfm.webp?raw=true">
+      <a href="docs/screenshots/discovery-lastfm.webp">
         <img src="docs/screenshots/discovery-lastfm.webp" alt="Last.fm Discovery" width="420" />
       </a><br />
       <em>Last.fm Discovery</em>
@@ -54,13 +52,13 @@ Click a thumbnail to open the full-size image. For a new tab, use **⌘/Ctrl+cli
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/new-releases.webp?raw=true">
+      <a href="docs/screenshots/new-releases.webp">
         <img src="docs/screenshots/new-releases.webp" alt="New Releases" width="420" />
       </a><br />
       <em>New Releases</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/events.webp?raw=true">
+      <a href="docs/screenshots/events.webp">
         <img src="docs/screenshots/events.webp" alt="Artist Events" width="420" />
       </a><br />
       <em>Artist Events</em>
@@ -68,13 +66,13 @@ Click a thumbnail to open the full-size image. For a new tab, use **⌘/Ctrl+cli
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/commands-history.webp?raw=true">
+      <a href="docs/screenshots/commands-history.webp">
         <img src="docs/screenshots/commands-history.webp" alt="Command history" width="420" />
       </a><br />
       <em>Command history</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/system-status.webp?raw=true">
+      <a href="docs/screenshots/system-status.webp">
         <img src="docs/screenshots/system-status.webp" alt="System status" width="420" />
       </a><br />
       <em>System status</em>
