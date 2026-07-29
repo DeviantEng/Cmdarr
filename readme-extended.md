@@ -151,6 +151,15 @@ Create via Commands → New. All use `[Cmdarr]` prefix; display name syncs with 
 - **Local Discovery** – Top artists from play history + sonically similar tracks; single instance; 90-day lookback default
 - **Artist Essentials** – Top X tracks per artist from a list; auto-naming or custom name
 - **Mood Playlist** – Selected Plex Sonic moods; multi-mood scoring; optional year filter
+- **XMPlaylist** – Newest or most-played tracks from a SiriusXM station via [xmplaylist.com](https://xmplaylist.com) → Plex or Jellyfin
+- **Setlist.fm** – Build a playlist of likely live tracks for selected artists (requires `SETLIST_FM_API_KEY` in Config → Music Sources)
+
+### Lidarr Maintenance
+
+Create via Commands → Add New (singleton types). Tracked under **System → Lidarr Maintenance**.
+
+- **Update All** – Queue a Lidarr library metadata refresh (`Lidarr Maintenance - Artist Refresh`)
+- **Wanted Search** – Search top-X Wanted albums with Album/EP/Single filters, sort options, and temporary cooldown for grabs / empty results (`Lidarr Maintenance - Missing Search`)
 
 ### Playlist Sync Commands
 
@@ -208,6 +217,7 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 - **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
 - **Jellyfin User ID**: Found in Jellyfin Dashboard → Users → Select User → User ID
 - **Spotify Client ID & Secret** (optional): Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Enables official API for playlist sync and NRD when valid; spotifyscraper is used otherwise.
+- **setlist.fm API Key** (optional): Required for the Setlist playlist generator. Register at [api.setlist.fm](https://api.setlist.fm/); configure as `SETLIST_FM_API_KEY` (Config → Music Sources).
 
 ### Event Sources (artist events)
 
@@ -289,6 +299,7 @@ LISTENBRAINZ_TOKEN=your_listenbrainz_token
 LISTENBRAINZ_USERNAME=your_username
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+SETLIST_FM_API_KEY=your_setlistfm_api_key
 
 # MusicBrainz (New Releases Discovery)
 MUSICBRAINZ_ENABLED=true
