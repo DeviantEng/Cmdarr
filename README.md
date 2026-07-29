@@ -3,9 +3,20 @@
 [![Version](https://img.shields.io/github/v/tag/DeviantEng/Cmdarr?sort=semver&logo=github&label=version)](https://github.com/DeviantEng/Cmdarr/tags)
 [![Discord](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FSfD8GVhMzN%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/SfD8GVhMzN)
 
+<p align="center">
+  <img src="assets/icon/icon-192.png" alt="Cmdarr logo" width="96" height="96" />
+</p>
+
 # Cmdarr
 
 Lidarr grows your music library. Cmdarr is the automation layer around it: discover artists, sync and generate playlists, catch releases missing from MusicBrainz, and surface upcoming shows—wired into Last.fm, ListenBrainz, Spotify, Deezer, Plex, and Jellyfin through a familiar *arr-style UI.
+
+## Quick links
+
+- [Docker image (GHCR)](https://ghcr.io/devianteng/cmdarr)
+- [Extended docs](readme-extended.md) (commands, env/settings, troubleshooting)
+- [Changelog](CHANGELOG.md)
+- [Discord](https://discord.gg/SfD8GVhMzN)
 
 ## Who it's for
 
@@ -24,18 +35,18 @@ Lidarr grows your music library. Cmdarr is the automation layer around it: disco
 
 ## Screenshots
 
-Click any thumbnail to open the full-size image.
+Click a thumbnail to open the full-size image. For a new tab, use **⌘/Ctrl+click** or **middle-click** (GitHub READMEs cannot force `target="_blank"`).
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/commands.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/commands.webp?raw=true">
         <img src="docs/screenshots/commands.webp" alt="Commands dashboard" width="420" />
       </a><br />
       <em>Commands</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/discovery-lastfm.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/discovery-lastfm.webp?raw=true">
         <img src="docs/screenshots/discovery-lastfm.webp" alt="Last.fm Discovery" width="420" />
       </a><br />
       <em>Last.fm Discovery</em>
@@ -43,13 +54,13 @@ Click any thumbnail to open the full-size image.
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/new-releases.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/new-releases.webp?raw=true">
         <img src="docs/screenshots/new-releases.webp" alt="New Releases" width="420" />
       </a><br />
       <em>New Releases</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/events.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/events.webp?raw=true">
         <img src="docs/screenshots/events.webp" alt="Artist Events" width="420" />
       </a><br />
       <em>Artist Events</em>
@@ -57,13 +68,13 @@ Click any thumbnail to open the full-size image.
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/commands-history.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/commands-history.webp?raw=true">
         <img src="docs/screenshots/commands-history.webp" alt="Command history" width="420" />
       </a><br />
       <em>Command history</em>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/system-status.webp" target="_blank" rel="noopener noreferrer">
+      <a href="docs/screenshots/system-status.webp?raw=true">
         <img src="docs/screenshots/system-status.webp" alt="System status" width="420" />
       </a><br />
       <em>System status</em>
@@ -141,6 +152,8 @@ docker run -d \
   --restart unless-stopped \
   ghcr.io/devianteng/cmdarr:latest
 ```
+
+Open `http://localhost:8080`. On first run, create the admin account if prompted. Confirm **Settings → Music Management** (Lidarr) and **Music Sources** (Last.fm); enable Plex/Jellyfin under **Media Servers** when you want playlists.
 
 ### Environment Options
 
