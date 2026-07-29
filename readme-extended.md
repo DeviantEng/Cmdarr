@@ -208,16 +208,26 @@ With Library Cache:    1 library fetch + instant memory searches = ~30 seconds
 
 ## Configuration Reference
 
-### Required API Keys
+Priority for most settings: **environment variables > database (Settings UI) > defaults**.  
+Exception: `CMDARR_USER_AGENT` is **Settings UI / DB only** (not overridable via env).
 
-- **Lidarr API Key**: Found in Lidarr Settings → General → Security
-- **Last.fm API Key**: Register at [Last.fm API](https://www.last.fm/api/account/create)
-- **ListenBrainz Token**: Get from [ListenBrainz Profile](https://listenbrainz.org/profile/) (for playlist features)
-- **Plex Token**: Get from [Plex Support Guide](https://support.plex.tv/articles/204059436/) (for playlist sync)
-- **Jellyfin Token**: Get from [Jellyfin API Documentation](https://jellyfin.org/docs/general/administration/access-tokens/) (for playlist sync)
-- **Jellyfin User ID**: Found in Jellyfin Dashboard → Users → Select User → User ID
-- **Spotify Client ID & Secret** (optional): Get from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Enables official API for playlist sync and NRD when valid; spotifyscraper is used otherwise.
-- **setlist.fm API Key** (optional): Required for the Setlist playlist generator. Register at [api.setlist.fm](https://api.setlist.fm/); configure as `SETLIST_FM_API_KEY` (Config → Music Sources).
+`WEB_HOST` / `WEB_PORT` are also read from the environment at process start for the uvicorn bind address.
+
+### Credentials and where to get them
+
+**Required for core use**
+
+- **Lidarr** URL + API key — Lidarr → Settings → General → Security
+- **Last.fm** API key — [Last.fm API account](https://www.last.fm/api/account/create)
+
+**Optional by feature**
+
+- **Plex** token — [Plex support guide](https://support.plex.tv/articles/204059436/); enable the Plex client in Settings → Media Servers
+- **Jellyfin** token + user ID — [Jellyfin access tokens](https://jellyfin.org/docs/general/administration/access-tokens/); Dashboard → Users → User ID
+- **ListenBrainz** token (+ username) — [ListenBrainz profile](https://listenbrainz.org/profile/)
+- **Spotify** Client ID/Secret — optional; [Developer Dashboard](https://developer.spotify.com/dashboard). Public playlist sync and New Releases work without credentials via spotifyscraper; credentials enable the official API when usable
+- **setlist.fm** API key — [api.setlist.fm](https://api.setlist.fm/); required for the Setlist playlist generator (Settings → Music Sources)
+- **Ticketmaster / SeatGeek / Deezer** — see [Event Sources](#event-sources-artist-events) below
 
 ### Event Sources (artist events)
 
@@ -227,10 +237,10 @@ Upcoming shows are aggregated on **Artist events** (`/events`) from **Ticketmast
 
 | What | Where |
 |------|--------|
-| **Enable Ticketmaster / SeatGeek / Deezer** (on/off) | **Artist events** page only — not duplicated under Config. |
-| **Credentials** (Ticketmaster Consumer Key, SeatGeek client_id, Deezer ARL cookie) | **Config → Event Sources** (`artist_events`), or environment variables. |
-| **Batch size & per-artist TTL** | **Commands → Artist Events Refresh** → Edit: `artists_per_run` (default **20**, range 1–50), `refresh_ttl_days` (default **14** days). These live in the command’s `config_json`, not global Config. |
-| **Location & radius** (distance filter on `/events`) | **Artist events** page (stored as `ARTIST_EVENTS_USER_*` / radius; those keys are hidden on the Config page). |
+| **Enable Ticketmaster / SeatGeek / Deezer** (on/off) | **Artist events** page only — not duplicated under Settings |
+| **Credentials** (Ticketmaster Consumer Key, SeatGeek client_id, Deezer ARL cookie) | **Settings → Event Sources**, or environment variables |
+| **Batch size & per-artist TTL** | **Commands → Artist Events Refresh** → Edit: `artists_per_run` (default **20**, range 1–50), `refresh_ttl_days` (default **14** days). These live in the command’s `config_json`, not global Settings |
+| **Location & radius** (distance filter on `/events`) | **Artist events** page (stored as `ARTIST_EVENTS_USER_*` / radius; hidden on the Settings form) |
 
 Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run scheduled batch** or **Refresh all due artists** on the Artist events page, or Commands → Run). Providers run in parallel per artist. An ad-hoc run can pass **`refresh_all_due: true`** (via the “Refresh all due artists” button) to process every due artist in one execution instead of the usual batch cap.
 
@@ -242,8 +252,9 @@ Data is refreshed by the **`artist_events_refresh`** command (scheduler, **Run s
 | `ARTIST_EVENTS_SEATGEEK_CLIENT_ID` | **Yes if SeatGeek enabled** | Free [SeatGeek API](https://seatgeek.com/account/develop) `client_id`. Starter tier is ~**500 requests/day**. |
 | `ARTIST_EVENTS_DEEZER_ENABLED` | No | Default off. Tertiary source via unofficial Pipe GraphQL. |
 | `ARTIST_EVENTS_DEEZER_ARL` | **Yes if Deezer enabled** | Deezer **ARL** cookie for JWT auth against `pipe.deezer.com`. Concert data is Songkick-sourced and may break without notice. |
-| `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | **No** | Distance filter only; set from **Artist events**. Hidden on Config. |
-| `ARTIST_EVENTS_RADIUS_MILES` | — | Default `100`. Set from **Artist events**; hidden on Config. |
+| `ARTIST_EVENTS_USER_LAT` / `LON` / `USER_LABEL` | No | Distance filter only; set from **Artist events**. Hidden on Settings. |
+| `ARTIST_EVENTS_RADIUS_MILES` | No | Default `100`. Set from **Artist events**; hidden on Settings. |
+| `ARTIST_EVENTS_HIDDEN_FESTIVAL_KEYS` | No | JSON array of festival keys hidden from the list; managed on **Artist events**. |
 
 REST API: `GET /api/events/...` (see OpenAPI docs in the running app).
 
@@ -259,21 +270,123 @@ REST API: `GET /api/events/...` (see OpenAPI docs in the running app).
 
 ### Environment Variables
 
-All configuration can be set via environment variables. See Config in the web UI for the full list.
+Almost every Settings key can also be set as an environment variable (same name). See **Settings** in the web UI for the live list. Tables below mirror Settings groups and defaults from `services/config_service.py`.
 
-#### Access Control (Single-User Auth)
+**Omitted from user docs (auto-managed / internal):** `PLEX_LIBRARY_KEY`, `JELLYFIN_LIBRARY_KEY`, `SPOTIFY_API_CACHE`, `LIBRARY_CACHE_PLEX_ENABLED`, `LIBRARY_CACHE_JELLYFIN_ENABLED`, `CMDARR_AUTH_PASSWORD_HASH`, `CMDARR_API_KEY_HASH`.
+
+#### Access control (single-user auth)
 
 First run prompts for username and password. These env vars **overwrite** the database (useful for Docker secrets or password reset):
 
 | Variable | Description |
 |----------|-------------|
 | `CMDARR_AUTH_USERNAME` | Admin username |
-| `CMDARR_AUTH_PASSWORD` | Admin password (plain text; hashed on write) |
-| `CMDARR_API_KEY` | API key for external calls (e.g. `X-API-Key` header, `Authorization: Bearer`) |
+| `CMDARR_AUTH_PASSWORD` | Admin password (plain text; hashed into `CMDARR_AUTH_PASSWORD_HASH`) |
+| `CMDARR_API_KEY` | API key for external calls (e.g. `X-API-Key`, `Authorization: Bearer`); hashed into `CMDARR_API_KEY_HASH` |
 
-**API key:** Generate and rotate from Config → Access Control in the UI. Use `CMDARR_API_KEY` only when you need to set it via env (e.g. Docker secrets); the UI is simpler for normal use.
+**API key:** Generate and rotate from **Settings → Application** in the UI. Use `CMDARR_API_KEY` via env only when you need Docker secrets / automation.
 
-#### Full Reference
+#### Docker / process (not Settings keys)
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `TZ` | — | Preferred timezone for cron; wins over `SCHEDULER_TIMEZONE` when set |
+| `PUID` / `PGID` | `1000` | Container file ownership (entrypoint) |
+| `CMDARR_RELAXED_CSP` | — | Dev only (Vite HMR) |
+
+#### Music Management (Lidarr)
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `LIDARR_URL` | `http://localhost:8686` | Required |
+| `LIDARR_API_KEY` | `""` | Required (sensitive) |
+| `LIDARR_TIMEOUT` | `30` | Seconds |
+| `LIDARR_IGNORE_TLS` | `false` | Skip TLS verify |
+
+#### Music Sources
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `LASTFM_API_KEY` | `""` | Required (sensitive) |
+| `LASTFM_API_SECRET` | `""` | Present in Settings; not used by the current Last.fm client |
+| `LASTFM_RATE_LIMIT` | `8.0` | Requests/sec |
+| `LASTFM_FETCH_CONCURRENCY` | `3` | Concurrent top-track fetches for playlist builders |
+| `SETLIST_FM_API_KEY` | `""` | Required for Setlist generator (sensitive) |
+| `SETLIST_FM_RATE_LIMIT` | `0.8` | Requests/sec |
+| `LISTENBRAINZ_TOKEN` | `""` | For curated playlist sync (sensitive) |
+| `LISTENBRAINZ_USERNAME` | `""` | |
+| `LISTENBRAINZ_RATE_LIMIT` | `5.0` | Requests/sec |
+| `MUSICBRAINZ_ENABLED` | `true` | Fuzzy matching + New Releases batch |
+| `MUSICBRAINZ_RATE_LIMIT` | `0.8` | Requests/sec (~1.25s spacing) |
+| `MUSICBRAINZ_MAX_RETRIES` | `3` | |
+| `MUSICBRAINZ_RETRY_DELAY` | `2.0` | Initial backoff seconds |
+| `MUSICBRAINZ_MIN_SIMILARITY` | `0.85` | Fuzzy match threshold |
+| `SPOTIFY_CLIENT_ID` | `""` | Optional official API (sensitive) |
+| `SPOTIFY_CLIENT_SECRET` | `""` | Optional; scraper used otherwise (sensitive) |
+| `NEW_RELEASES_CACHE_DAYS` | `14` | NRD cache TTL |
+
+#### Media Servers (Plex / Jellyfin)
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `PLEX_CLIENT_ENABLED` | `false` | Set `true` to use Plex |
+| `PLEX_URL` | `http://localhost:32400` | |
+| `PLEX_TOKEN` | `""` | Sensitive |
+| `PLEX_TIMEOUT` | `30` | Seconds |
+| `PLEX_IGNORE_TLS` | `false` | |
+| `PLEX_LIBRARY_NAME` | `""` | Empty = auto-select (prefers Music) |
+| `LIBRARY_CACHE_PLEX_TTL_DAYS` | `30` | Library cache TTL |
+| `LIBRARY_CACHE_PLEX_USER_DISABLED` | `false` | `true` disables library caching (slower sync) |
+| `JELLYFIN_CLIENT_ENABLED` | `false` | Set `true` to use Jellyfin |
+| `JELLYFIN_URL` | `http://localhost:8096` | |
+| `JELLYFIN_TOKEN` | `""` | Sensitive |
+| `JELLYFIN_USER_ID` | `""` | |
+| `JELLYFIN_TIMEOUT` | `30` | |
+| `JELLYFIN_IGNORE_TLS` | `false` | |
+| `JELLYFIN_LIBRARY_NAME` | `""` | Empty = default library |
+| `LIBRARY_CACHE_JELLYFIN_TTL_DAYS` | `30` | |
+| `LIBRARY_CACHE_JELLYFIN_USER_DISABLED` | `false` | `true` disables library caching |
+
+#### Application / logging / output
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
+| `LOG_FILE` | `data/logs/cmdarr.log` | |
+| `LOG_RETENTION_DAYS` | `7` | Daily log files kept |
+| `CMDARR_USER_AGENT` | `""` | **UI only** (not env). Empty = `Cmdarr/<version> (…)` |
+| `PRETTY_PRINT_JSON` | `true` | JSON output formatting |
+| `LISTENBRAINZ_OUTPUT_FILE` | `data/import_lists/discovery_listenbrainz.json` | Legacy path setting in Settings |
+| `WEB_HOST` | `0.0.0.0` | Bind host (env at process start) |
+| `WEB_PORT` | `8080` | Bind port (env at process start) |
+
+#### Performance (API cache, library cache, commands)
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `CACHE_FILE` | `data/cmdarr.db` | Response-cache DB path |
+| `CACHE_LASTFM_TTL_DAYS` | `7` | |
+| `CACHE_MUSICBRAINZ_TTL_DAYS` | `7` | |
+| `CACHE_LISTENBRAINZ_TTL_DAYS` | `3` | |
+| `CACHE_PLEX_TTL_DAYS` | `1` | |
+| `CACHE_JELLYFIN_TTL_DAYS` | `1` | |
+| `CACHE_FAILED_LOOKUP_TTL_DAYS` | `1` | |
+| `LIBRARY_CACHE_MEMORY_LIMIT_MB` | `512` | Cap during playlist ops |
+| `LIBRARY_CACHE_SCHEDULE_HOURS` | `24` | Rebuild cadence |
+| `COMMAND_HISTORY_RETENTION_DAYS` | `365` | `0` = keep forever |
+| `MAX_PARALLEL_COMMANDS` | `1` | Range 1–10 |
+| `SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS` | `300` | Wait for running commands on stop |
+| `RESTART_RETRY_ENABLED` | `true` | Retry commands interrupted by restart |
+| `PLAYLIST_SYNC_DISCOVERY_AGE_THRESHOLD_DAYS` | `30` | Stale discovery cleanup age |
+
+#### Scheduler
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `DEFAULT_SCHEDULE_CRON` | `0 3 * * *` | Default for commands (3 AM daily) |
+| `SCHEDULER_TIMEZONE` | `""` | e.g. `America/New_York`; if empty, use `TZ` or UTC |
+
+#### Example Docker env (common subset)
 
 ```bash
 # Access control (overwrites DB; first run or password reset)
@@ -281,72 +394,49 @@ CMDARR_AUTH_USERNAME=admin
 CMDARR_AUTH_PASSWORD=your_password
 CMDARR_API_KEY=your_api_key_for_external_calls
 
-# Required API Configuration
+# Required
 LIDARR_URL=http://lidarr:8686
 LIDARR_API_KEY=your_lidarr_api_key
 LASTFM_API_KEY=your_lastfm_api_key
 
-# Optional Services
+# Optional media servers (enable the client you use)
 PLEX_CLIENT_ENABLED=true
 PLEX_URL=http://plex:32400
 PLEX_TOKEN=your_plex_token
-PLEX_LIBRARY_NAME=Music
+# PLEX_LIBRARY_NAME=   # empty = auto-select
+
 JELLYFIN_CLIENT_ENABLED=false
 JELLYFIN_URL=http://jellyfin:8096
 JELLYFIN_TOKEN=your_jellyfin_token
 JELLYFIN_USER_ID=your_jellyfin_user_id
+
+# Optional music sources
 LISTENBRAINZ_TOKEN=your_listenbrainz_token
 LISTENBRAINZ_USERNAME=your_username
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+# SPOTIFY_CLIENT_ID=     # optional official API
+# SPOTIFY_CLIENT_SECRET=
 SETLIST_FM_API_KEY=your_setlistfm_api_key
 
-# MusicBrainz (New Releases Discovery)
 MUSICBRAINZ_ENABLED=true
 NEW_RELEASES_CACHE_DAYS=14
 
-# Artist events (Event Sources in UI)
-ARTIST_EVENTS_TICKETMASTER_ENABLED=false
+# Artist events (toggles usually set on /events; credentials via Settings or env)
 ARTIST_EVENTS_TICKETMASTER_API_KEY=
-ARTIST_EVENTS_SEATGEEK_ENABLED=false
 ARTIST_EVENTS_SEATGEEK_CLIENT_ID=
-ARTIST_EVENTS_DEEZER_ENABLED=false
 ARTIST_EVENTS_DEEZER_ARL=
-# Optional: distance filter on /events (not required for artist_events_refresh)
-ARTIST_EVENTS_USER_LAT=
-ARTIST_EVENTS_USER_LON=
-ARTIST_EVENTS_USER_LABEL=
-ARTIST_EVENTS_RADIUS_MILES=100
 
-# Library cache optimization
+# Library cache / scheduler
 LIBRARY_CACHE_PLEX_TTL_DAYS=30
+LIBRARY_CACHE_JELLYFIN_TTL_DAYS=30
 LIBRARY_CACHE_MEMORY_LIMIT_MB=512
-LIBRARY_CACHE_PLEX_ENABLED=true
-LIBRARY_CACHE_JELLYFIN_ENABLED=true
-
-# Scheduler (cron-based; TZ also used for schedule interpretation)
+TZ=America/New_York
 DEFAULT_SCHEDULE_CRON="0 3 * * *"
-SCHEDULER_TIMEZONE=America/New_York
 MAX_PARALLEL_COMMANDS=1
-
-# Restart retry: auto-retry commands interrupted by restart (default: true)
 RESTART_RETRY_ENABLED=true
-
-# Graceful shutdown (wait for running commands before exit)
 SHUTDOWN_GRACEFUL_TIMEOUT_SECONDS=300
 
-# Rate limiting
-LASTFM_RATE_LIMIT=8.0
-LASTFM_FETCH_CONCURRENCY=3
-MUSICBRAINZ_RATE_LIMIT=1.5
-MUSICBRAINZ_MAX_RETRIES=3
-MUSICBRAINZ_RETRY_DELAY=2.0
-
-# Web Server
 WEB_HOST=0.0.0.0
 WEB_PORT=8080
-
-# Logging
 LOG_LEVEL=INFO
 LOG_RETENTION_DAYS=7
 ```

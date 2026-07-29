@@ -5,8 +5,6 @@
 
 # Cmdarr
 
-> *Running commands, hoping for exit code 0*
-
 Lidarr grows your music library. Cmdarr is the automation layer around it: discover artists, sync and generate playlists, catch releases missing from MusicBrainz, and surface upcoming shows—wired into Last.fm, ListenBrainz, Spotify, Deezer, Plex, and Jellyfin through a familiar *arr-style UI.
 
 ## Who it's for
@@ -18,37 +16,60 @@ Lidarr grows your music library. Cmdarr is the automation layer around it: disco
 ## Features
 
 - **Music discovery** – Last.fm similar artists (interactive UI + scheduled add to Lidarr), playlist-sync discovery via a Lidarr custom list, new releases from Deezer/Spotify that are missing in MusicBrainz (including scan-by-URL)
-- **Playlist sync** – Spotify, ListenBrainz curated, Deezer, and other public sources → Plex and/or Jellyfin, with library cache that typically cuts sync from **3+ minutes to ~30 seconds**
-- **Playlist generators** – Daylist (time-of-day), Local Discovery, Artist Essentials, Mood (Plex Sonic), **XMPlaylist** (SiriusXM via [xmplaylist.com](https://xmplaylist.com)), **Setlist.fm** (likely setlists for upcoming shows)
-- **Artist events** – Ticketmaster, SeatGeek, and optional Deezer feeds for Lidarr artists (`/events`), with distance filter, hides, and multi-provider ticket links
-- **Lidarr maintenance** – Update All (metadata refresh) and Wanted Search (top-X wanted albums) from the UI
+- **Playlist sync** – Spotify, Deezer, ListenBrainz curated, and other public sources → Plex and/or Jellyfin, with library caching
+- **Playlist generators** – Daylist (time-of-day), Local Discovery, Artist Essentials, Mood (Plex Sonic), **XMPlaylist** (SiriusXM via [xmplaylist.com](https://xmplaylist.com)), **Setlist.fm** (likely setlists for upcoming shows), and more
+- **Artist events** – Ticketmaster, SeatGeek, and Deezer feeds for Lidarr artists (`/events`), with distance filter, interested, hides, and multi-provider ticket links
+- **Lidarr maintenance** – Trigger Lidarr actions such as Update All (metadata refresh) and Wanted Search (top-X wanted albums) on your schedule
 - **Ops** – Commands dashboard + history, web config, system status / library cache, optional auth
 
 ## Screenshots
 
-![Commands dashboard](docs/screenshots/commands.webp)
+Click any thumbnail to open the full-size image.
 
-*Commands — enable, schedule, and run discovery, sync, and playlist generators.*
-
-![Last.fm Discovery](docs/screenshots/discovery-lastfm.webp)
-
-*Last.fm Discovery — seed from your library, review affinity matches, add to Lidarr.*
-
-![New Releases](docs/screenshots/new-releases.webp)
-
-*New Releases — Deezer/Spotify releases missing from MusicBrainz.*
-
-![Artist Events](docs/screenshots/events.webp)
-
-*Artist Events — upcoming shows for artists in your Lidarr library.*
-
-![Command history](docs/screenshots/commands-history.webp)
-
-*History — scheduled runs with status, timing, and kill for in-progress jobs.*
-
-![System status](docs/screenshots/system-status.webp)
-
-*System status — health, uptime, and execution stats.*
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/commands.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/commands.webp" alt="Commands dashboard" width="420" />
+      </a><br />
+      <em>Commands</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/discovery-lastfm.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/discovery-lastfm.webp" alt="Last.fm Discovery" width="420" />
+      </a><br />
+      <em>Last.fm Discovery</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/new-releases.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/new-releases.webp" alt="New Releases" width="420" />
+      </a><br />
+      <em>New Releases</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/events.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/events.webp" alt="Artist Events" width="420" />
+      </a><br />
+      <em>Artist Events</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/commands-history.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/commands-history.webp" alt="Command history" width="420" />
+      </a><br />
+      <em>Command history</em>
+    </td>
+    <td align="center" width="50%">
+      <a href="docs/screenshots/system-status.webp" target="_blank" rel="noopener noreferrer">
+        <img src="docs/screenshots/system-status.webp" alt="System status" width="420" />
+      </a><br />
+      <em>System status</em>
+    </td>
+  </tr>
+</table>
 
 ## Prerequisites
 
@@ -63,11 +84,11 @@ Lidarr grows your music library. Cmdarr is the automation layer around it: disco
 | Feature | Needs |
 |---------|--------|
 | Playlist sync / generators | Plex and/or Jellyfin |
-| ListenBrainz curated sync | ListenBrainz token |
-| Spotify playlist / NRD API path | Spotify Client ID/Secret (else spotifyscraper) |
+| ListenBrainz curated sync | ListenBrainz token (+ username) |
+| Spotify playlists / New Releases | No account required by default (scraper). Optional Client ID/Secret for the official Spotify API |
 | New Releases batch scans | MusicBrainz enabled |
-| Artist events | Ticketmaster and/or SeatGeek (optional Deezer ARL) |
-| Setlist generator | `SETLIST_FM_API_KEY` ([setlist.fm API](https://api.setlist.fm/)) |
+| Artist events | Ticketmaster and/or SeatGeek credentials; Deezer optional (ARL) |
+| Setlist generator | setlist.fm API key ([register](https://api.setlist.fm/)) |
 
 ## Quick Start
 
