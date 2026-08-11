@@ -10,4 +10,5 @@
 # Verify after digest bumps:
 #   trivy image --severity HIGH,CRITICAL ghcr.io/devianteng/cmdarr:develop
 #
-# No CVE ignores currently (Wolfi python 3.14.6-r4 clean as of 2026-07-27).
+# No CVE ignores currently (Wolfi python 3.14.7-r0 digest bump 2026-08-11;
+# verify after publish: trivy image --severity HIGH,CRITICAL …:develop).
