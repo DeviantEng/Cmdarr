@@ -13,10 +13,17 @@ pyproject.toml
 uv.lock
 .python-version
 .nvmrc
+.pre-commit-config.yaml
+renovate.json
 
-# Documentation
+# Documentation (markdown + screenshot binaries — keep out of runtime image)
 README.md
 *.md
+docs/
+
+# Dev-only / probe scripts (also gitignored; keep out of local docker builds)
+scripts/
+tools/
 
 # Python
 __pycache__/
@@ -94,7 +101,8 @@ tmp/
 *.backup
 *.tmp
 
-# Frontend (built in Docker; exclude node_modules to keep layer small)
+# Frontend build artifacts (source stays in context for frontend-builder;
+# runtime-assembler copies only app paths + builder dist — not frontend/)
 frontend/node_modules/
 frontend/dist/
 

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-11
+
+### Features
+- **Last.fm Discovery**: Rank similar artists by multi-seed consensus and Last.fm match score; optional minimum match filter; progressive Load More enrichment so the first page is ready sooner.
+
+### Fixes
+- N/A
+
+### Housekeeping
+- **Security (npm)**: Override transitive `brace-expansion` to **5.0.9** (GHSA-rgw5-rvv9-x895; incomplete CVE-2026-14257 mitigation in 5.0.8).
+- **Docker / Trivy**: Bump Chainguard Python digests to **3.14.7-r0**; strip `pip`/`setuptools`/`wheel` from the runtime venv after install; copy only app paths into the runtime tree (no frontend source / icons / tooling); tighten `.dockerignore` (`scripts/`, `tools/`, renovate/pre-commit).
+- **Docs / README**: README updated with logo, quick links, screenshot gallery (`docs/screenshots/`), clearer optional prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
+
 ## [0.4.0] - 2026-07-28
 
 ### Features
