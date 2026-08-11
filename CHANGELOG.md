@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Housekeeping
-- **Docs / README**: Self-hoster-focused README with logo, quick links, screenshot gallery (`docs/screenshots/`, excluded from the Docker image via `.dockerignore`), clearer optional prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
+- **Docker / Trivy**: Bump Chainguard Python digests to **3.14.7-r0**; strip `pip`/`setuptools`/`wheel` from the runtime venv after install; copy only app paths into the runtime tree (no frontend source / icons / tooling); tighten `.dockerignore` (`scripts/`, `tools/`, renovate/pre-commit).
+- **Docs / README**: README updated with logo, quick links, screenshot gallery (`docs/screenshots/`), clearer optional prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
 
 ## [0.4.0] - 2026-07-28
 
