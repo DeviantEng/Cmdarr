@@ -74,3 +74,10 @@ filelock>=3.29.5
 
 # For future scheduling functionality
 # apscheduler>=3.10.0
+
+# Library Audit — FLAC authenticity analysis (in-process)
+flac-detective>=1.7.0
+numpy>=2.5.0
+scipy>=1.18.0
+soundfile>=0.13.0
+mutagen>=1.47.0

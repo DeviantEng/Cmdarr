@@ -28,7 +28,7 @@ export const configCategoryGroups: ConfigCategoryGroup[] = [
   {
     slug: "music-management",
     name: "Music Management",
-    categories: ["lidarr"],
+    categories: ["lidarr", "library_audit"],
   },
   {
     slug: "performance",

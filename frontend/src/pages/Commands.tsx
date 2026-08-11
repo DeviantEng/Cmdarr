@@ -176,6 +176,8 @@ const BUILTIN_COMMANDS = [
   "library_cache_builder",
   "new_releases_discovery",
   "playlist_sync_discovery_maintenance",
+  "artist_events_refresh",
+  "library_audit",
 ];
 
 function formatCommandLastRun(value: string | null | undefined, compact: boolean): string {
@@ -632,6 +634,18 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
       schedule_cron: command.schedule_cron || "0 6 * * *",
       artists_per_run: artistsPerRunVal,
       refresh_ttl_days: typeof cfg.refresh_ttl_days === "number" ? cfg.refresh_ttl_days : 14,
+      analysis_batch_size:
+        typeof cfg.analysis_batch_size === "number"
+          ? Math.min(500, Math.max(1, cfg.analysis_batch_size))
+          : 25,
+      inventory_interval_hours:
+        typeof cfg.inventory_interval_hours === "number"
+          ? Math.min(168, Math.max(1, cfg.inventory_interval_hours))
+          : 24,
+      missing_retention_days:
+        typeof cfg.missing_retention_days === "number"
+          ? Math.min(3650, Math.max(1, cfg.missing_retention_days))
+          : 90,
       continual_validation_enabled: !!cfg.continual_validation_enabled,
       continual_validation_batch_size:
         typeof cfg.continual_validation_batch_size === "number"
@@ -1095,6 +1109,32 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                   Save
                 </Button>
               )}
+              {editingCommand.command_name === "library_audit" && (
+                <Button
+                  onClick={() =>
+                    handleSaveCommand({
+                      ...buildSchedulePayload(editForm),
+                      config_json: {
+                        ...(editingCommand.config_json || {}),
+                        analysis_batch_size: Math.min(
+                          500,
+                          Math.max(1, editForm.analysis_batch_size ?? 25)
+                        ),
+                        inventory_interval_hours: Math.min(
+                          168,
+                          Math.max(1, editForm.inventory_interval_hours ?? 24)
+                        ),
+                        missing_retention_days: Math.min(
+                          3650,
+                          Math.max(1, editForm.missing_retention_days ?? 90)
+                        ),
+                      },
+                    })
+                  }
+                >
+                  Save
+                </Button>
+              )}
               {editingCommand.command_name.startsWith("lidarr_update_all_") && (
                 <Button onClick={() => handleSaveCommand(buildSchedulePayload(editForm))}>
                   Save
@@ -1350,6 +1390,7 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
               {editingCommand.command_name !== "new_releases_discovery" &&
                 editingCommand.command_name !== "discovery_lastfm" &&
                 editingCommand.command_name !== "artist_events_refresh" &&
+                editingCommand.command_name !== "library_audit" &&
                 !editingCommand.command_name.startsWith("playlist_sync_") &&
                 !editingCommand.command_name.startsWith("daylist_") &&
                 !editingCommand.command_name.startsWith("top_tracks_") &&

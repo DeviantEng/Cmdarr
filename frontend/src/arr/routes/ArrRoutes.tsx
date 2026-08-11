@@ -14,6 +14,9 @@ import { ArrSystemLibraryCachePage } from "@/arr/pages/system/ArrSystemLibraryCa
 import { ArrSystemNewReleasesPage } from "@/arr/pages/system/ArrSystemNewReleasesPage";
 import { ArrSystemDiscoveryPage } from "@/arr/pages/system/ArrSystemDiscoveryPage";
 import { ArrSystemLidarrMaintenancePage } from "@/arr/pages/system/ArrSystemLidarrMaintenancePage";
+import { ArrLibraryAuditOverviewPage } from "@/arr/pages/library-audit/ArrLibraryAuditOverviewPage";
+import { ArrLibraryAuditReviewPage } from "@/arr/pages/library-audit/ArrLibraryAuditReviewPage";
+import { ArrLibraryAuditLibraryPage } from "@/arr/pages/library-audit/ArrLibraryAuditLibraryPage";
 
 export function ArrRoutes() {
   return (
@@ -27,6 +30,9 @@ export function ArrRoutes() {
       <Route path="/discovery" element={<ArrDiscoveryPage />} />
       <Route path="/discovery/lastfm" element={<ArrDiscoveryLastfmPage />} />
       <Route path="/import-lists" element={<ArrImportListsPage />} />
+      <Route path="/library-audit" element={<ArrLibraryAuditOverviewPage />} />
+      <Route path="/library-audit/review" element={<ArrLibraryAuditReviewPage />} />
+      <Route path="/library-audit/library" element={<ArrLibraryAuditLibraryPage />} />
       <Route path="/settings" element={<Navigate to="/settings/application" replace />} />
       <Route path="/settings/:section" element={<ArrSettingsPage />} />
       <Route path="/system/status" element={<ArrSystemStatusPage />} />

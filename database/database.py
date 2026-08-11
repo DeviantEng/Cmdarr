@@ -14,6 +14,7 @@ from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from .cache_models import CacheBase
 from .config_models import ConfigBase
+from .library_audit_models import LibraryAuditBase
 
 
 @event.listens_for(Engine, "connect")
@@ -48,10 +49,20 @@ def _get_data_dir() -> str:
 class DatabaseManager:
     """Database connection and session management for split databases"""
 
-    def __init__(self, config_url: str = None, cache_url: str = None):
+    def __init__(
+        self,
+        config_url: str = None,
+        cache_url: str = None,
+        library_audit_url: str = None,
+        *,
+        init_library_audit: bool = False,
+    ):
         # Set up data directory (project root, not cwd - prevents lost config when run from subdirs)
         data_dir = _get_data_dir()
         os.makedirs(data_dir, exist_ok=True)
+        self._data_dir = data_dir
+        self._library_audit_url = library_audit_url
+        self._engine_kwargs_template = None
 
         # Default database URLs
         if config_url is None:
@@ -75,6 +86,9 @@ class DatabaseManager:
         if is_sqlite:
             engine_kwargs["connect_args"]["isolation_level"] = None
 
+        self._engine_kwargs_template = dict(engine_kwargs)
+        self._engine_kwargs_template["connect_args"] = dict(engine_kwargs["connect_args"])
+
         # Create engines for both databases
         self.config_engine = create_engine(config_url, **engine_kwargs)
         self.cache_engine = create_engine(cache_url, **engine_kwargs)
@@ -87,13 +101,46 @@ class DatabaseManager:
             autocommit=False, autoflush=False, bind=self.cache_engine
         )
 
+        # Library audit DB is lazy — created on first feature use
+        self.library_audit_engine = None
+        self.LibraryAuditSessionLocal = None
+        if init_library_audit:
+            self.ensure_library_audit_db()
+
         # Create all tables
         self.create_tables()
+
+    def _default_library_audit_url(self) -> str:
+        if self._library_audit_url:
+            return self._library_audit_url
+        return f"sqlite:///{os.path.join(self._data_dir, 'cmdarr_library_audit.db')}"
+
+    def ensure_library_audit_db(self) -> None:
+        """Lazily create the library audit engine, sessions, and tables."""
+        if self.library_audit_engine is not None:
+            return
+        url = self._default_library_audit_url()
+        engine_kwargs = dict(self._engine_kwargs_template or {})
+        engine_kwargs["connect_args"] = dict(
+            (self._engine_kwargs_template or {}).get("connect_args") or {}
+        )
+        if url.startswith("sqlite:///") and "isolation_level" not in engine_kwargs.get(
+            "connect_args", {}
+        ):
+            engine_kwargs.setdefault("connect_args", {})["isolation_level"] = None
+            engine_kwargs.setdefault("poolclass", SingletonThreadPool)
+        self.library_audit_engine = create_engine(url, **engine_kwargs)
+        self.LibraryAuditSessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=self.library_audit_engine
+        )
+        LibraryAuditBase.metadata.create_all(bind=self.library_audit_engine)
 
     def create_tables(self):
         """Create all database tables in their respective databases"""
         ConfigBase.metadata.create_all(bind=self.config_engine)
         CacheBase.metadata.create_all(bind=self.cache_engine)
+        if self.library_audit_engine is not None:
+            LibraryAuditBase.metadata.create_all(bind=self.library_audit_engine)
 
     def get_config_session(self) -> Generator[Session]:
         """Get config database session with proper cleanup"""
@@ -126,6 +173,25 @@ class DatabaseManager:
     def get_cache_session_sync(self) -> Session:
         """Get cache database session for synchronous operations"""
         return self.CacheSessionLocal()
+
+    def get_library_audit_session(self) -> Generator[Session]:
+        """Get library audit database session with proper cleanup"""
+        self.ensure_library_audit_db()
+        session = self.LibraryAuditSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    def get_library_audit_session_context(self):
+        """Get library audit database session context manager"""
+        self.ensure_library_audit_db()
+        return self.LibraryAuditSessionLocal()
+
+    def get_library_audit_session_sync(self) -> Session:
+        """Get library audit database session for synchronous operations"""
+        self.ensure_library_audit_db()
+        return self.LibraryAuditSessionLocal()
 
     # Backward compatibility methods (default to config database)
     def get_session(self) -> Generator[Session]:
@@ -169,3 +235,13 @@ def get_cache_db() -> Generator[Session]:
     """Dependency for FastAPI to get cache database session"""
     manager = get_database_manager()
     yield from manager.get_cache_session()
+
+
+def get_library_audit_db() -> Generator[Session]:
+    """Dependency for FastAPI to get library audit database session.
+
+    Creates the audit DB lazily. Callers that require the feature to be enabled
+    should check LIBRARY_AUDIT_ENABLED before using this dependency.
+    """
+    manager = get_database_manager()
+    yield from manager.get_library_audit_session()
