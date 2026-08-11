@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Housekeeping
+- **Security (npm)**: Override transitive `brace-expansion` to **5.0.9** (GHSA-rgw5-rvv9-x895; incomplete CVE-2026-14257 mitigation in 5.0.8).
 - **Docker / Trivy**: Bump Chainguard Python digests to **3.14.7-r0**; strip `pip`/`setuptools`/`wheel` from the runtime venv after install; copy only app paths into the runtime tree (no frontend source / icons / tooling); tighten `.dockerignore` (`scripts/`, `tools/`, renovate/pre-commit).
 - **Docs / README**: README updated with logo, quick links, screenshot gallery (`docs/screenshots/`), clearer optional prerequisites, and an updated `readme-extended` settings/env reference aligned with current config defaults.
 
