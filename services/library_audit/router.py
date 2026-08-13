@@ -59,11 +59,12 @@ class CompositeAnalyzerProvider:
         )
 
     def capabilities(self) -> ProviderCapabilities:
+        flac_caps = self.flac.capabilities()
         return ProviderCapabilities(
             provider="composite",
-            modes=["standard"],
+            modes=["standard", "deep"],
             extensions=[".flac", ".mp3"],
-            supports_spectrum=False,
+            supports_spectrum=bool(flac_caps.supports_spectrum),
             supports_spectrogram=False,
         )
 

@@ -286,7 +286,7 @@ export function ArrLibraryAuditOverviewPage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Scan Verdicts"
-            description="Latest analyzer outcomes for present files that have been scanned (FLAC authenticity / MP3 quality)."
+            description="Latest outcomes for scanned files. False-positive dispositions count as authentic."
           />
           <ArrPanelBody>
             {stats ? (
@@ -345,8 +345,8 @@ export function ArrLibraryAuditOverviewPage() {
                     color: "oklch(72% 0.13 85)",
                   },
                   {
-                    label: "Accepted",
-                    value: stats.review.accepted,
+                    label: "False positive",
+                    value: stats.review.false_positive,
                     color: "oklch(62% 0.12 145)",
                   },
                   {

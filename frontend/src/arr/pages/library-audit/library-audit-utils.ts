@@ -1,9 +1,23 @@
-import type { LibraryAuditDisposition, LibraryAuditVerdict } from "@/lib/library-audit-api";
+import type {
+  LibraryAuditDisposition,
+  LibraryAuditSpectrumCurve,
+  LibraryAuditVerdict,
+} from "@/lib/library-audit-api";
 
 export const PAGE_SIZE = 50;
 
+export function extractSpectrumCurve(evidence: unknown): LibraryAuditSpectrumCurve | null {
+  if (!evidence || typeof evidence !== "object") return null;
+  const curve = (evidence as { spectrum_curve?: unknown }).spectrum_curve;
+  if (!curve || typeof curve !== "object") return null;
+  const c = curve as LibraryAuditSpectrumCurve;
+  if (!Array.isArray(c.freqs_hz) || !Array.isArray(c.norm)) return null;
+  if (c.freqs_hz.length < 2 || c.freqs_hz.length !== c.norm.length) return null;
+  return c;
+}
+
 export const DISPOSITION_ACTIONS: { label: string; value: LibraryAuditDisposition }[] = [
-  { label: "Accept", value: "ACCEPTED" },
+  { label: "False Positive", value: "FALSE_POSITIVE" },
   { label: "Best Available", value: "BEST_AVAILABLE" },
   { label: "Confirmed Transcode", value: "CONFIRMED_TRANSCODE" },
   { label: "Replace", value: "REPLACE" },
@@ -13,7 +27,8 @@ export const DISPOSITION_ACTIONS: { label: string; value: LibraryAuditDispositio
 
 export function formatDisposition(value: string | null | undefined): string {
   if (!value) return "—";
-  const match = DISPOSITION_ACTIONS.find((d) => d.value === value.toUpperCase());
+  const normalized = value.toUpperCase() === "ACCEPTED" ? "FALSE_POSITIVE" : value.toUpperCase();
+  const match = DISPOSITION_ACTIONS.find((d) => d.value === normalized);
   if (match) return match.label;
   return value
     .toLowerCase()

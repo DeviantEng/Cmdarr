@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 
 export type LibraryAuditDisposition =
-  | "ACCEPTED"
+  | "FALSE_POSITIVE"
   | "BEST_AVAILABLE"
   | "CONFIRMED_TRANSCODE"
   | "REPLACE"
@@ -26,13 +26,31 @@ export type LibraryAuditAnalysisState =
   | "UNSUPPORTED"
   | string;
 
+export type LibraryAuditSpectrumCurve = {
+  freqs_hz: number[];
+  norm: number[];
+  nyquist_hz: number;
+  cutoff_hz?: number | null;
+  segment_seconds?: number;
+};
+
+export type LibraryAuditSpectrumResponse = {
+  file_id: number;
+  spectrum_curve: LibraryAuditSpectrumCurve;
+  cutoff_hz?: number | null;
+};
+
 export type LibraryAuditAnalysis = {
   id: number;
   file_id: number;
   provider: string | null;
   provider_version: string | null;
   provider_mode: string | null;
+  /** Display verdict (False Positive disposition overrides scan to AUTHENTIC). */
   verdict: LibraryAuditVerdict;
+  /** Original analyzer verdict before disposition override. */
+  scan_verdict?: LibraryAuditVerdict | null;
+  verdict_overridden?: boolean;
   score: number | null;
   confidence: number | null;
   cutoff_hz: number | null;
@@ -165,7 +183,7 @@ export type LibraryAuditStats = LibraryAuditStatus & {
   };
   review: {
     needs_review: number;
-    accepted: number;
+    false_positive: number;
     best_available: number;
     confirmed_transcode: number;
     replace: number;
@@ -278,6 +296,10 @@ export const libraryAuditApi = {
     return api.request<LibraryAuditFile>(`/api/library-audit/files/${id}/reanalyze`, {
       method: "POST",
     });
+  },
+
+  getSpectrum(id: number) {
+    return api.request<LibraryAuditSpectrumResponse>(`/api/library-audit/files/${id}/spectrum`);
   },
 
   test() {

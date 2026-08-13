@@ -18,17 +18,21 @@ from database.library_audit_models import (
     LibraryAuditReview,
 )
 from services.config_service import config_service
+from services.library_audit.paths import UnsafePathError, resolve_under_root
 from services.library_audit.router import get_composite_provider
 from services.library_audit.service import (
     build_stats,
     clear_current_review,
     create_review,
+    effective_verdict,
     get_music_root,
     is_feature_enabled,
+    normalize_disposition,
     queue_reanalyze,
     reanalyze_file_now,
     validate_root,
 )
+from services.library_audit.spectrum import compute_spectrum_curve
 
 router = APIRouter()
 
@@ -63,6 +67,15 @@ def _serialize_file(
     analysis: LibraryAuditAnalysis | None = None,
     review: LibraryAuditReview | None = None,
 ) -> dict[str, Any]:
+    disposition = review.disposition if review else None
+    # Stale review (content changed) must not override the scan verdict
+    if (
+        review
+        and review.content_hash
+        and row.content_hash
+        and review.content_hash != row.content_hash
+    ):
+        disposition = None
     return {
         "id": row.id,
         "relative_path": row.relative_path,
@@ -93,19 +106,27 @@ def _serialize_file(
         "duration_seconds": row.duration_seconds,
         "first_seen_at": row.first_seen_at.isoformat() if row.first_seen_at else None,
         "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
-        "analysis": _serialize_analysis(analysis) if analysis else None,
+        "analysis": _serialize_analysis(analysis, disposition) if analysis else None,
         "review": _serialize_review(review) if review else None,
     }
 
 
-def _serialize_analysis(a: LibraryAuditAnalysis) -> dict[str, Any]:
+def _serialize_analysis(a: LibraryAuditAnalysis, disposition: str | None = None) -> dict[str, Any]:
+    scan_verdict = a.verdict
+    display_verdict = effective_verdict(scan_verdict, disposition)
     return {
         "id": a.id,
         "file_id": a.file_id,
         "provider": a.provider,
         "provider_version": a.provider_version,
         "provider_mode": a.provider_mode,
-        "verdict": a.verdict,
+        "verdict": display_verdict,
+        "scan_verdict": scan_verdict,
+        "verdict_overridden": bool(
+            display_verdict
+            and scan_verdict
+            and display_verdict.upper() != str(scan_verdict).upper()
+        ),
         "score": a.score,
         "confidence": a.confidence,
         "cutoff_hz": a.cutoff_hz,
@@ -123,12 +144,13 @@ def _serialize_analysis(a: LibraryAuditAnalysis) -> dict[str, Any]:
 
 
 def _serialize_review(r: LibraryAuditReview) -> dict[str, Any]:
+    disposition = normalize_disposition(r.disposition) or r.disposition
     return {
         "id": r.id,
         "file_id": r.file_id,
         "analysis_id": r.analysis_id,
         "content_hash": r.content_hash,
-        "disposition": r.disposition,
+        "disposition": disposition,
         "note": r.note,
         "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
         "reviewed_by": r.reviewed_by,
@@ -239,14 +261,15 @@ async def list_files(
         ):
             applicable_review = None
 
+        disposition_value = applicable_review.disposition if applicable_review else None
         if verdict:
-            if not analysis or analysis.verdict.upper() != verdict.upper():
+            display = effective_verdict(analysis.verdict if analysis else None, disposition_value)
+            if not display or display.upper() != verdict.upper():
                 continue
         if disposition:
-            if (
-                not applicable_review
-                or applicable_review.disposition.upper() != disposition.upper()
-            ):
+            wanted = normalize_disposition(disposition) or disposition.upper()
+            have = normalize_disposition(disposition_value) if disposition_value else None
+            if have != wanted:
                 continue
         if needs_review is True:
             if applicable_review is not None:
@@ -300,6 +323,43 @@ async def get_file(file_id: int, db: Annotated[Session, Depends(get_library_audi
     )
     review = db.get(LibraryAuditReview, row.current_review_id) if row.current_review_id else None
     return _serialize_file(row, analysis, review)
+
+
+@router.get("/files/{file_id}/spectrum")
+async def get_file_spectrum(file_id: int, db: Annotated[Session, Depends(get_library_audit_db)]):
+    """Compute a magnitude spectrum curve on demand (not persisted)."""
+    _require_enabled()
+    row = db.get(LibraryAuditFile, file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not row.is_present:
+        raise HTTPException(status_code=400, detail="File is marked missing")
+    root = get_music_root(config_service.get)
+    ok, msg = validate_root(root)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    try:
+        abs_path = resolve_under_root(root, row.relative_path)
+    except UnsafePathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    cutoff_hz = None
+    if row.current_analysis_id:
+        analysis = db.get(LibraryAuditAnalysis, row.current_analysis_id)
+        if analysis and analysis.cutoff_hz is not None:
+            cutoff_hz = float(analysis.cutoff_hz)
+        elif analysis and isinstance(analysis.evidence_json, dict):
+            try:
+                cutoff_hz = float(analysis.evidence_json.get("cutoff_freq"))
+            except TypeError, ValueError:
+                cutoff_hz = None
+
+    curve = compute_spectrum_curve(abs_path, cutoff_hz=cutoff_hz)
+    if curve is None:
+        raise HTTPException(status_code=422, detail="Spectrum unavailable for this file")
+    return {"file_id": file_id, "spectrum_curve": curve, "cutoff_hz": curve.get("cutoff_hz")}
 
 
 @router.get("/files/{file_id}/analyses")

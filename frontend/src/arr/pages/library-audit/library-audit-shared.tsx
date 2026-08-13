@@ -25,11 +25,18 @@ import {
   formatVerdict,
   verdictBadgeVariant,
 } from "./library-audit-utils";
+import { LibraryAuditSpectrumPanel } from "./library-audit-spectrum";
 
 function formatEvidence(evidence: unknown): string {
   if (evidence == null) return "No evidence recorded.";
   if (typeof evidence === "string") return evidence;
   try {
+    // Omit bulky spectrum curve from the raw evidence dump (shown in Spectrum panel).
+    if (evidence && typeof evidence === "object" && "spectrum_curve" in evidence) {
+      const rest = { ...(evidence as Record<string, unknown>) };
+      delete rest.spectrum_curve;
+      return JSON.stringify(rest, null, 2);
+    }
     return JSON.stringify(evidence, null, 2);
   } catch {
     return String(evidence);
@@ -170,11 +177,26 @@ export function LibraryAuditFileDetailDialog({
               <Badge variant="outline">{file.analysis_state}</Badge>
             </div>
 
+            {analysis?.verdict_overridden && analysis.scan_verdict ? (
+              <p className="text-xs text-muted-foreground">
+                Scanner reported {formatVerdict(analysis.scan_verdict)}; marked false positive so
+                this file is treated as authentic.
+              </p>
+            ) : null}
+
             {analysis?.summary ? (
               <p className="text-sm leading-relaxed text-foreground">{analysis.summary}</p>
             ) : (
               <p className="text-sm text-muted-foreground">No analysis summary available.</p>
             )}
+
+            <LibraryAuditSpectrumPanel
+              fileId={fileId}
+              open={open}
+              extension={file.extension}
+              isPresent={file.is_present}
+              evidence={analysis?.evidence}
+            />
 
             <div>
               <div className="mb-1 text-xs font-medium text-muted-foreground">Evidence</div>
