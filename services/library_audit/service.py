@@ -583,13 +583,8 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         disposition = None
         if row.current_review_id:
             rev = session.get(LibraryAuditReview, row.current_review_id)
-            if (
-                rev
-                and not (
-                    rev.content_hash
-                    and row.content_hash
-                    and rev.content_hash != row.content_hash
-                )
+            if rev and not (
+                rev.content_hash and row.content_hash and rev.content_hash != row.content_hash
             ):
                 disposition = rev.disposition
         key = (effective_verdict(analysis.verdict, disposition) or "").lower()

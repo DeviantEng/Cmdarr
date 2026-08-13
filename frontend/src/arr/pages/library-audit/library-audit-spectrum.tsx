@@ -71,12 +71,7 @@ export function SpectrumCurveSvg({ curve, className }: SpectrumSvgProps) {
           </text>
         </g>
       ))}
-      <polyline
-        fill="none"
-        points={points}
-        stroke="oklch(58% 0.14 195)"
-        strokeWidth={1.5}
-      />
+      <polyline fill="none" points={points} stroke="oklch(58% 0.14 195)" strokeWidth={1.5} />
       {cutoffX != null ? (
         <>
           <line
