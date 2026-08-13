@@ -18,7 +18,6 @@ from database.library_audit_models import (
     LibraryAuditInventoryRun,
     LibraryAuditReview,
 )
-from services.library_audit.flac_detective import get_default_provider
 from services.library_audit.formats import (
     DEFAULT_ANALYSIS_EXTENSIONS,
     DEFAULT_INVENTORY_EXTENSIONS,
@@ -36,6 +35,7 @@ from services.library_audit.provider import (
     ProviderAnalysisResult,
 )
 from services.library_audit.retention import cleanup_missing_records
+from services.library_audit.router import get_composite_provider
 from utils.logger import get_logger
 
 
@@ -225,6 +225,7 @@ def analyze_file(
         if not abs_path.is_file():
             raise FileNotFoundError(f"File not found: {row.relative_path}")
 
+        previous_hash = row.content_hash
         content_hash = sha256_file(abs_path)
         st = abs_path.stat()
         size = int(st.st_size)
@@ -264,8 +265,9 @@ def analyze_file(
         row.current_analysis_id = analysis.id
         row.analysis_state = "ANALYZED"
         row.last_analysis_error = None
-        # Previous disposition does not apply to new bytes
-        row.current_review_id = None
+        # Previous disposition only applies while content hash is unchanged
+        if previous_hash and previous_hash != content_hash:
+            row.current_review_id = None
         _apply_metadata(row, result)
         session.commit()
         return analysis
@@ -301,7 +303,7 @@ def run_analysis_batch(
     mode: str = "standard",
     analysis_extensions: list[str] | None = None,
 ) -> AnalysisBatchResult:
-    provider = provider or get_default_provider()
+    provider = provider or get_composite_provider()
     recover_stale_analyzing(session)
     files = select_pending_files(session, limit, analysis_extensions=analysis_extensions)
     started = datetime.now(UTC)
@@ -310,7 +312,7 @@ def run_analysis_batch(
         provider_name = health.provider
         provider_version = health.provider_version
     except Exception:
-        provider_name = "flac_detective"
+        provider_name = "composite"
         provider_version = None
     run = LibraryAuditAnalysisRun(
         started_at=started,
@@ -432,6 +434,7 @@ def create_review(
 
 
 def queue_reanalyze(session: Session, file_id: int) -> LibraryAuditFile:
+    """Mark file PENDING for the next command batch (bulk/queue path)."""
     row = session.get(LibraryAuditFile, file_id)
     if not row:
         raise KeyError(f"File {file_id} not found")
@@ -444,8 +447,39 @@ def queue_reanalyze(session: Session, file_id: int) -> LibraryAuditFile:
     return row
 
 
+def reanalyze_file_now(
+    session: Session,
+    file_id: int,
+    root: Path,
+    provider: AnalyzerProvider | None = None,
+    mode: str = "standard",
+) -> tuple[LibraryAuditFile, LibraryAuditAnalysis | None]:
+    """Run analysis immediately for one file (UI Reanalyze button)."""
+    row = session.get(LibraryAuditFile, file_id)
+    if not row:
+        raise KeyError(f"File {file_id} not found")
+    if not is_analyzable_extension(row.extension, DEFAULT_ANALYSIS_EXTENSIONS):
+        raise ValueError(f"No analyzer available for extension {row.extension or '(none)'} yet")
+    if not row.is_present:
+        raise ValueError("File is marked missing; run inventory first")
+    provider = provider or get_composite_provider()
+    analysis = analyze_file(session, row, Path(root), provider, mode=mode)
+    session.refresh(row)
+    return row, analysis
+
+
+def clear_current_review(session: Session, file_id: int) -> LibraryAuditFile:
+    """Clear the active disposition so the file returns to Needs review."""
+    row = session.get(LibraryAuditFile, file_id)
+    if not row:
+        raise KeyError(f"File {file_id} not found")
+    row.current_review_id = None
+    session.commit()
+    return row
+
+
 def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> dict[str, Any]:
-    provider = provider or get_default_provider()
+    provider = provider or get_composite_provider()
     health = provider.health()
     present = (
         session.query(func.count(LibraryAuditFile.id))
@@ -637,7 +671,7 @@ def run_audit_cycle(
     provider: AnalyzerProvider | None = None,
 ) -> AuditRunSummary:
     summary = AuditRunSummary()
-    provider = provider or get_default_provider()
+    provider = provider or get_composite_provider()
 
     inv_exts = inventory_extensions if inventory_extensions is not None else extensions
     inv_exts = normalize_extensions(inv_exts, DEFAULT_INVENTORY_EXTENSIONS)

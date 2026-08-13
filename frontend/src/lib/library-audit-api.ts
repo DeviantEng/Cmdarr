@@ -268,11 +268,16 @@ export const libraryAuditApi = {
     });
   },
 
+  clearReview(id: number) {
+    return api.request<LibraryAuditFile>(`/api/library-audit/files/${id}/review/clear`, {
+      method: "POST",
+    });
+  },
+
   reanalyze(id: number) {
-    return api.request<{ success: boolean; file_id: number; analysis_state: string }>(
-      `/api/library-audit/files/${id}/reanalyze`,
-      { method: "POST" }
-    );
+    return api.request<LibraryAuditFile>(`/api/library-audit/files/${id}/reanalyze`, {
+      method: "POST",
+    });
   },
 
   test() {

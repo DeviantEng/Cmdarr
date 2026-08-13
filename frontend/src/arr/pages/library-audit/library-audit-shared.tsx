@@ -61,7 +61,9 @@ export function LibraryAuditFileDetailDialog({
   const [file, setFile] = useState<LibraryAuditFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState<LibraryAuditDisposition | "reanalyze" | null>(null);
+  const [submitting, setSubmitting] = useState<
+    LibraryAuditDisposition | "reanalyze" | "reset" | null
+  >(null);
 
   const load = useCallback(async (id: number) => {
     setLoading(true);
@@ -108,12 +110,32 @@ export function LibraryAuditFileDetailDialog({
     if (fileId == null) return;
     setSubmitting("reanalyze");
     try {
-      await libraryAuditApi.reanalyze(fileId);
-      toast.success("Queued for reanalysis");
+      const next = await libraryAuditApi.reanalyze(fileId);
+      setFile(next);
+      setNote(next.review?.note ?? "");
+      const verdict = next.analysis?.verdict;
+      toast.success(
+        verdict ? `Reanalysis complete: ${formatVerdict(verdict)}` : "Reanalysis complete"
+      );
       onChanged?.();
-      await load(fileId);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to queue reanalysis");
+      toast.error(e instanceof Error ? e.message : "Reanalysis failed");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const handleResetDisposition = async () => {
+    if (fileId == null) return;
+    setSubmitting("reset");
+    try {
+      const next = await libraryAuditApi.clearReview(fileId);
+      setFile(next);
+      setNote("");
+      toast.success("Disposition cleared");
+      onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reset disposition");
     } finally {
       setSubmitting(null);
     }
@@ -213,6 +235,19 @@ export function LibraryAuditFileDetailDialog({
                   {action.label}
                 </Button>
               ))}
+              {file.review?.disposition ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={submitting != null}
+                  onClick={() => void handleResetDisposition()}
+                >
+                  {submitting === "reset" ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Reset disposition
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : (

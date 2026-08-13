@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Library Audit command — inventory audio files + batched FLAC analysis."""
+"""Library Audit command — inventory audio files + batched FLAC/MP3 analysis."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from commands.command_base import BaseCommand
 from commands.config_adapter import Config as ConfigAdapter
 from database.database import get_database_manager
 from services.config_service import config_service
-from services.library_audit.flac_detective import get_default_provider
 from services.library_audit.formats import (
     DEFAULT_ANALYSIS_EXTENSIONS,
     DEFAULT_INVENTORY_EXTENSIONS,
     normalize_extensions,
 )
+from services.library_audit.router import get_composite_provider
 from services.library_audit.service import (
     get_music_root,
     is_feature_enabled,
@@ -36,7 +36,7 @@ def _parse_ext_list(value: Any, fallback: list[str]) -> list[str]:
 
 
 class LibraryAuditCommand(BaseCommand):
-    """Scheduled/manual Library Audit: inventory due files and analyze a FLAC batch."""
+    """Scheduled/manual Library Audit: inventory due files and analyze a FLAC/MP3 batch."""
 
     def __init__(self, config=None):
         super().__init__(config if config else ConfigAdapter())
@@ -44,8 +44,8 @@ class LibraryAuditCommand(BaseCommand):
 
     def get_description(self) -> str:
         return (
-            "Inventory audio files and analyze pending FLACs for authenticity issues "
-            "(other formats are inventoried only until analyzers exist)"
+            "Inventory audio files; analyze FLACs (authenticity) and MP3s (bitrate/CBR-VBR); "
+            "other formats are inventoried only until analyzers exist"
         )
 
     def get_logger_name(self) -> str:
@@ -66,7 +66,7 @@ class LibraryAuditCommand(BaseCommand):
             logger.error(self.last_run_stats["error"])
             return False
 
-        provider = get_default_provider()
+        provider = get_composite_provider()
         health = provider.health()
         if not health.healthy:
             self.last_run_stats = {
@@ -99,10 +99,15 @@ class LibraryAuditCommand(BaseCommand):
                 inventory_extensions = list(DEFAULT_INVENTORY_EXTENSIONS)
             else:
                 inventory_extensions = legacy_norm
-        analysis_extensions = _parse_ext_list(
-            cj.get("analysis_extensions"),
-            DEFAULT_ANALYSIS_EXTENSIONS,
-        )
+        if "analysis_extensions" in cj:
+            analysis_extensions = _parse_ext_list(
+                cj.get("analysis_extensions"), DEFAULT_ANALYSIS_EXTENSIONS
+            )
+            # Seeded MVP was FLAC-only; expand to FLAC+MP3 unless customized.
+            if analysis_extensions == [".flac"]:
+                analysis_extensions = list(DEFAULT_ANALYSIS_EXTENSIONS)
+        else:
+            analysis_extensions = list(DEFAULT_ANALYSIS_EXTENSIONS)
         retention = max(1, min(3650, int(cj.get("missing_retention_days", 90))))
         mode = str(cj.get("provider_mode") or "standard")
 

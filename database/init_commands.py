@@ -118,7 +118,7 @@ def init_default_commands():
                     ".wma",
                     ".m4b",
                 ],
-                "analysis_extensions": [".flac"],
+                "analysis_extensions": [".flac", ".mp3"],
                 "review_threshold": "WARNING",
                 "missing_retention_days": 90,
                 "analysis_provider": "flac_detective",

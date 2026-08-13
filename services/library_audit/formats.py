@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-# Inventory covers common audio containers. Analysis is separate and currently FLAC-only.
+# Inventory covers common audio containers. Analysis is separate per extension.
 DEFAULT_INVENTORY_EXTENSIONS = [
     ".flac",
     ".wav",
@@ -23,7 +23,8 @@ DEFAULT_INVENTORY_EXTENSIONS = [
     ".m4b",
 ]
 
-DEFAULT_ANALYSIS_EXTENSIONS = [".flac"]
+# MVP analyzers: FLAC Detective (authenticity) + mutagen MP3 probe (bitrate/CBR-VBR)
+DEFAULT_ANALYSIS_EXTENSIONS = [".flac", ".mp3"]
 
 LOSSLESS_EXTENSIONS = frozenset(
     {
