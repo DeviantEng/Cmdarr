@@ -35,7 +35,10 @@ router = APIRouter()
 
 def _require_enabled() -> None:
     if not is_feature_enabled(config_service.get):
-        raise HTTPException(status_code=400, detail="Library Audit is disabled")
+        raise HTTPException(
+            status_code=400,
+            detail="Library Audit is disabled — enable the Library Audit command under Commands",
+        )
 
 
 class ReviewRequest(BaseModel):
@@ -134,18 +137,18 @@ def _serialize_review(r: LibraryAuditReview) -> dict[str, Any]:
 
 @router.get("/status")
 async def library_audit_status():
-    """Feature + root + provider status (safe when disabled)."""
+    """Command enablement + root + provider status (safe when command disabled)."""
     enabled = is_feature_enabled(config_service.get)
     root = get_music_root(config_service.get)
-    root_ok, root_msg = validate_root(root) if enabled else (False, "Feature disabled")
+    root_ok, root_msg = validate_root(root)
     provider = get_composite_provider()
     health = provider.health()
     caps = provider.capabilities()
     return {
         "enabled": enabled,
         "root": str(root),
-        "root_ok": bool(enabled and root_ok),
-        "root_message": root_msg if enabled else "Feature disabled",
+        "root_ok": root_ok,
+        "root_message": root_msg,
         "provider": {
             "name": health.provider,
             "version": health.provider_version,
@@ -425,15 +428,19 @@ async def bulk_reanalyze(
 
 @router.post("/test")
 async def test_library_audit():
-    """Validate feature enablement, root, and analyzer health."""
+    """Validate command enablement, root, and analyzer health."""
     enabled = is_feature_enabled(config_service.get)
     root = get_music_root(config_service.get)
     checks = []
     checks.append(
         {
-            "name": "feature_enabled",
+            "name": "command_enabled",
             "success": enabled,
-            "message": "Enabled" if enabled else "LIBRARY_AUDIT_ENABLED is false",
+            "message": (
+                "Library Audit command enabled"
+                if enabled
+                else "Enable the Library Audit command under Commands"
+            ),
         }
     )
     root_ok, root_msg = validate_root(root)

@@ -85,8 +85,24 @@ class AuditRunSummary:
     needs_review: int = 0
 
 
-def is_feature_enabled(config_get) -> bool:
-    return bool(config_get("LIBRARY_AUDIT_ENABLED", False))
+def is_feature_enabled(_config_get=None) -> bool:
+    """Library Audit UI/API are available when the library_audit command is enabled."""
+    from database.config_models import CommandConfig
+    from database.database import get_database_manager
+
+    session = get_database_manager().get_config_session_sync()
+    try:
+        row = (
+            session.query(CommandConfig.enabled)
+            .filter(
+                CommandConfig.command_name == "library_audit",
+                CommandConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
+        return bool(row and row[0])
+    finally:
+        session.close()
 
 
 def get_music_root(config_get) -> Path:

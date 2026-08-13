@@ -93,7 +93,7 @@ def init_default_commands():
         {
             "command_name": "library_audit",
             "display_name": "Library Audit",
-            "description": "Inventory music files and analyze pending FLACs for authenticity issues (requires LIBRARY_AUDIT_ENABLED and /music mount)",
+            "description": "Inventory music files; analyze FLAC authenticity and MP3 bitrate (set LIBRARY_AUDIT_ROOT / music mount)",
             "enabled": False,
             "timeout_minutes": 120,
             "command_type": None,

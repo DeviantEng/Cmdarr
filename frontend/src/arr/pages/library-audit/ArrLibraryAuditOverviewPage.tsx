@@ -11,7 +11,7 @@ import {
   type LibraryAuditStats,
   type LibraryAuditStatus,
 } from "@/lib/library-audit-api";
-import { StatBox } from "@/arr/pages/library-audit/library-audit-shared";
+import { StatPieChart } from "@/arr/pages/library-audit/library-audit-charts";
 
 export function ArrLibraryAuditOverviewPage() {
   const [status, setStatus] = useState<LibraryAuditStatus | null>(null);
@@ -66,7 +66,7 @@ export function ArrLibraryAuditOverviewPage() {
     }
   };
 
-  const misconfigured = status && (!status.enabled || !status.root_ok || !status.provider.healthy);
+  const misconfigured = status && (!status.enabled || !status.root_ok);
   const needsReview = stats?.review.needs_review ?? 0;
 
   return (
@@ -101,17 +101,17 @@ export function ArrLibraryAuditOverviewPage() {
           <ArrContentPanel>
             <ArrSectionHeader
               title="Setup required"
-              description="Enable Library Audit and confirm the music root and analyzer before reviewing files."
+              description="Enable the Library Audit command and confirm the music library path."
             />
             <ArrPanelBody className="space-y-2 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Feature</span>
+                <span className="text-muted-foreground">Command</span>
                 <Badge variant={status.enabled ? "default" : "secondary"}>
                   {status.enabled ? "Enabled" : "Disabled"}
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Root</span>
+                <span className="text-muted-foreground">Music path</span>
                 <Badge variant={status.root_ok ? "default" : "destructive"}>
                   {status.root_ok ? "OK" : "Issue"}
                 </Badge>
@@ -119,24 +119,15 @@ export function ArrLibraryAuditOverviewPage() {
                   {status.root}
                 </span>
               </div>
-              {status.root_message ? (
+              {status.root_message && !status.root_ok ? (
                 <p className="text-muted-foreground">{status.root_message}</p>
               ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Provider</span>
-                <Badge variant={status.provider.healthy ? "default" : "destructive"}>
-                  {status.provider.healthy ? "Healthy" : "Unhealthy"}
-                </Badge>
-                <span>
-                  {status.provider.name || "unknown"}
-                  {status.provider.version ? ` ${status.provider.version}` : ""}
-                </span>
-              </div>
-              {status.provider.message ? (
-                <p className="text-muted-foreground">{status.provider.message}</p>
-              ) : null}
               <p className="pt-1 text-muted-foreground">
-                Configure under{" "}
+                Enable under{" "}
+                <Link className="underline underline-offset-2" to="/commands">
+                  Commands → Library Audit
+                </Link>
+                . Set the library path under{" "}
                 <Link className="underline underline-offset-2" to="/settings/music-management">
                   Settings → Music Management
                 </Link>
@@ -149,7 +140,7 @@ export function ArrLibraryAuditOverviewPage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Library"
-            description="Present files and analysis progress."
+            description="Presence and analysis progress for inventoried files."
             actions={
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="secondary" size="sm">
@@ -165,17 +156,81 @@ export function ArrLibraryAuditOverviewPage() {
           />
           <ArrPanelBody>
             {stats ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                <StatBox label="Present" value={stats.library.present} />
-                <StatBox label="Analyzed" value={stats.library.analyzed} />
-                <StatBox label="Pending analysis" value={stats.library.pending} />
-                <StatBox label="Unsupported" value={stats.library.unsupported ?? 0} />
-                <StatBox label="Errors" value={stats.library.errors} />
-                <StatBox label="Missing" value={stats.library.missing} />
+              <div className="space-y-6">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <div className="mb-2 text-xs font-medium text-muted-foreground">Presence</div>
+                    <StatPieChart
+                      slices={[
+                        {
+                          label: "Present",
+                          value: stats.library.present,
+                          color: "oklch(58% 0.14 195)",
+                        },
+                        {
+                          label: "Missing",
+                          value: stats.library.missing,
+                          color: "oklch(55% 0.04 260)",
+                        },
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-2 text-xs font-medium text-muted-foreground">
+                      Analysis state (present)
+                    </div>
+                    <StatPieChart
+                      slices={[
+                        {
+                          label: "Analyzed",
+                          value: stats.library.analyzed,
+                          color: "oklch(62% 0.12 145)",
+                        },
+                        {
+                          label: "Pending",
+                          value: stats.library.pending,
+                          color: "oklch(72% 0.13 85)",
+                        },
+                        {
+                          label: "Unsupported",
+                          value: stats.library.unsupported ?? 0,
+                          color: "oklch(52% 0.08 280)",
+                        },
+                        {
+                          label: "Errors",
+                          value: stats.library.errors,
+                          color: "oklch(58% 0.17 25)",
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+                {(stats.last_inventory_run || stats.last_analysis_run) && (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {stats.last_inventory_run ? (
+                      <p>
+                        Last inventory: {stats.last_inventory_run.status}
+                        {stats.last_inventory_run.completed_at
+                          ? ` · ${new Date(stats.last_inventory_run.completed_at).toLocaleString()}`
+                          : ""}
+                      </p>
+                    ) : null}
+                    {stats.last_analysis_run ? (
+                      <p>
+                        Last analysis batch: {stats.last_analysis_run.status}
+                        {stats.last_analysis_run.completed_at
+                          ? ` · ${new Date(stats.last_analysis_run.completed_at).toLocaleString()}`
+                          : ""}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {loading ? "Loading…" : "Stats unavailable until Library Audit is enabled."}
+                {loading
+                  ? "Loading…"
+                  : "Stats unavailable until the Library Audit command is enabled."}
               </p>
             )}
           </ArrPanelBody>
@@ -184,29 +239,42 @@ export function ArrLibraryAuditOverviewPage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Formats"
-            description="Inventoried files by kind and extension. Analysis currently runs on FLAC and MP3."
+            description="Inventoried files by lossless/lossy kind and by extension. Analysis currently runs on FLAC and MP3."
           />
           <ArrPanelBody>
             {stats?.formats ? (
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <StatBox label="Lossless" value={stats.formats.by_kind.lossless} />
-                  <StatBox label="Lossy" value={stats.formats.by_kind.lossy} />
-                  <StatBox label="Unknown" value={stats.formats.by_kind.unknown} />
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div>
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">By kind</div>
+                  <StatPieChart
+                    slices={[
+                      {
+                        label: "Lossless",
+                        value: stats.formats.by_kind.lossless,
+                        color: "oklch(58% 0.14 195)",
+                      },
+                      {
+                        label: "Lossy",
+                        value: stats.formats.by_kind.lossy,
+                        color: "oklch(72% 0.13 85)",
+                      },
+                      {
+                        label: "Unknown",
+                        value: stats.formats.by_kind.unknown,
+                        color: "oklch(48% 0.03 260)",
+                      },
+                    ]}
+                  />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(stats.formats.by_extension).map(([ext, count]) => (
-                    <div
-                      key={ext}
-                      className="rounded-md border border-border bg-background/50 px-2.5 py-1 text-sm"
-                    >
-                      <span className="font-medium">{ext || "unknown"}</span>
-                      <span className="ml-2 tabular-nums text-muted-foreground">{count}</span>
-                    </div>
-                  ))}
-                  {Object.keys(stats.formats.by_extension).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No inventoried files yet.</p>
-                  ) : null}
+                <div>
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">By extension</div>
+                  <StatPieChart
+                    maxSlices={8}
+                    slices={Object.entries(stats.formats.by_extension).map(([ext, count]) => ({
+                      label: ext || "unknown",
+                      value: count,
+                    }))}
+                  />
                 </div>
               </div>
             ) : (
@@ -217,19 +285,45 @@ export function ArrLibraryAuditOverviewPage() {
 
         <ArrContentPanel>
           <ArrSectionHeader
-            title="Verdicts"
-            description="Latest analysis results for present FLAC/MP3 files."
+            title="Scan Verdicts"
+            description="Latest analyzer outcomes for present files that have been scanned (FLAC authenticity / MP3 quality)."
           />
           <ArrPanelBody>
             {stats ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <StatBox label="Authentic" value={stats.verdicts.authentic} />
-                <StatBox label="Warning" value={stats.verdicts.warning} />
-                <StatBox label="Suspicious" value={stats.verdicts.suspicious} />
-                <StatBox label="Fake certain" value={stats.verdicts.fake_certain} />
-                <StatBox label="Inconclusive" value={stats.verdicts.inconclusive} />
-                <StatBox label="Error" value={stats.verdicts.error} />
-              </div>
+              <StatPieChart
+                slices={[
+                  {
+                    label: "Authentic",
+                    value: stats.verdicts.authentic,
+                    color: "oklch(62% 0.12 145)",
+                  },
+                  {
+                    label: "Warning",
+                    value: stats.verdicts.warning,
+                    color: "oklch(72% 0.13 85)",
+                  },
+                  {
+                    label: "Suspicious",
+                    value: stats.verdicts.suspicious,
+                    color: "oklch(64% 0.15 45)",
+                  },
+                  {
+                    label: "Fake certain",
+                    value: stats.verdicts.fake_certain,
+                    color: "oklch(58% 0.17 25)",
+                  },
+                  {
+                    label: "Inconclusive",
+                    value: stats.verdicts.inconclusive,
+                    color: "oklch(52% 0.08 280)",
+                  },
+                  {
+                    label: "Error",
+                    value: stats.verdicts.error,
+                    color: "oklch(48% 0.03 260)",
+                  },
+                ]}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "—"}</p>
             )}
@@ -238,68 +332,50 @@ export function ArrLibraryAuditOverviewPage() {
 
         <ArrContentPanel>
           <ArrSectionHeader
-            title="Reviews"
-            description="Human dispositions applied to analyzed files."
+            title="Review Status"
+            description="Your dispositions on scanned files (needs review vs decisions already made)."
           />
           <ArrPanelBody>
             {stats ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <StatBox label="Needs review" value={stats.review.needs_review} />
-                <StatBox label="Accepted" value={stats.review.accepted} />
-                <StatBox label="Best available" value={stats.review.best_available} />
-                <StatBox label="Confirmed transcode" value={stats.review.confirmed_transcode} />
-                <StatBox label="Replace" value={stats.review.replace} />
-                <StatBox label="Unsure" value={stats.review.unsure} />
-                <StatBox label="Ignored" value={stats.review.ignored} />
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "—"}</p>
-            )}
-          </ArrPanelBody>
-        </ArrContentPanel>
-
-        <ArrContentPanel>
-          <ArrSectionHeader
-            title="Provider health"
-            description="Composite analyzer: FLAC Detective + MP3 probe."
-          />
-          <ArrPanelBody>
-            {status ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{status.provider.name || "unknown"}</span>
-                  {status.provider.version ? (
-                    <span className="text-muted-foreground">v{status.provider.version}</span>
-                  ) : null}
-                  <Badge variant={status.provider.healthy ? "default" : "destructive"}>
-                    {status.provider.healthy ? "Healthy" : "Unhealthy"}
-                  </Badge>
-                </div>
-                {status.provider.message ? (
-                  <p className="text-muted-foreground">{status.provider.message}</p>
-                ) : null}
-                {status.provider.modes?.length ? (
-                  <p className="text-xs text-muted-foreground">
-                    Modes: {status.provider.modes.join(", ")}
-                  </p>
-                ) : null}
-                {stats?.last_inventory_run ? (
-                  <p className="text-xs text-muted-foreground">
-                    Last inventory: {stats.last_inventory_run.status}
-                    {stats.last_inventory_run.completed_at
-                      ? ` · ${new Date(stats.last_inventory_run.completed_at).toLocaleString()}`
-                      : ""}
-                  </p>
-                ) : null}
-                {stats?.last_analysis_run ? (
-                  <p className="text-xs text-muted-foreground">
-                    Last analysis: {stats.last_analysis_run.status}
-                    {stats.last_analysis_run.completed_at
-                      ? ` · ${new Date(stats.last_analysis_run.completed_at).toLocaleString()}`
-                      : ""}
-                  </p>
-                ) : null}
-              </div>
+              <StatPieChart
+                slices={[
+                  {
+                    label: "Needs review",
+                    value: stats.review.needs_review,
+                    color: "oklch(72% 0.13 85)",
+                  },
+                  {
+                    label: "Accepted",
+                    value: stats.review.accepted,
+                    color: "oklch(62% 0.12 145)",
+                  },
+                  {
+                    label: "Best available",
+                    value: stats.review.best_available,
+                    color: "oklch(58% 0.14 195)",
+                  },
+                  {
+                    label: "Confirmed transcode",
+                    value: stats.review.confirmed_transcode,
+                    color: "oklch(64% 0.15 45)",
+                  },
+                  {
+                    label: "Replace",
+                    value: stats.review.replace,
+                    color: "oklch(58% 0.17 25)",
+                  },
+                  {
+                    label: "Unsure",
+                    value: stats.review.unsure,
+                    color: "oklch(52% 0.08 280)",
+                  },
+                  {
+                    label: "Ignored",
+                    value: stats.review.ignored,
+                    color: "oklch(48% 0.03 260)",
+                  },
+                ]}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "—"}</p>
             )}
