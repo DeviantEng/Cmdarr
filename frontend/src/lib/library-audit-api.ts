@@ -227,7 +227,14 @@ export type LibraryAuditFilesQuery = {
   verdict?: string | null;
   disposition?: string | null;
   needs_review?: boolean | null;
+  parent_path?: string | null;
   q?: string | null;
+};
+
+export type LibraryAuditBulkResult = {
+  success: boolean;
+  updated: number;
+  errors: { file_id: number; error: string }[];
 };
 
 function buildQuery(params: Record<string, string | number | boolean | null | undefined>): string {
@@ -258,6 +265,7 @@ export const libraryAuditApi = {
       verdict: query.verdict ?? undefined,
       disposition: query.disposition ?? undefined,
       needs_review: query.needs_review ?? undefined,
+      parent_path: query.parent_path ?? undefined,
       q: query.q ?? undefined,
     });
     return api.request<LibraryAuditFilesResponse>(`/api/library-audit/files${qs}`);
@@ -300,6 +308,20 @@ export const libraryAuditApi = {
 
   getSpectrum(id: number) {
     return api.request<LibraryAuditSpectrumResponse>(`/api/library-audit/files/${id}/spectrum`);
+  },
+
+  bulkReview(body: { file_ids: number[]; disposition: LibraryAuditDisposition; note?: string }) {
+    return api.request<LibraryAuditBulkResult>("/api/library-audit/bulk/review", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  bulkReanalyze(file_ids: number[]) {
+    return api.request<LibraryAuditBulkResult>("/api/library-audit/bulk/reanalyze", {
+      method: "POST",
+      body: JSON.stringify({ file_ids }),
+    });
   },
 
   test() {
