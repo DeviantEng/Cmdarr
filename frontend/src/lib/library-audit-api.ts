@@ -23,6 +23,7 @@ export type LibraryAuditAnalysisState =
   | "ANALYZED"
   | "ERROR"
   | "STALE"
+  | "UNSUPPORTED"
   | string;
 
 export type LibraryAuditAnalysis = {
@@ -143,7 +144,16 @@ export type LibraryAuditStats = LibraryAuditStatus & {
     missing: number;
     analyzed: number;
     pending: number;
+    unsupported?: number;
     errors: number;
+  };
+  formats?: {
+    by_kind: {
+      lossless: number;
+      lossy: number;
+      unknown: number;
+    };
+    by_extension: Record<string, number>;
   };
   verdicts: {
     authentic: number;

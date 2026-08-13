@@ -10,6 +10,12 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from database.library_audit_models import LibraryAuditFile, LibraryAuditInventoryRun
+from services.library_audit.formats import (
+    DEFAULT_ANALYSIS_EXTENSIONS,
+    DEFAULT_INVENTORY_EXTENSIONS,
+    is_analyzable_extension,
+    normalize_extensions,
+)
 from services.library_audit.paths import to_relative_posix
 from utils.logger import get_logger
 
@@ -32,31 +38,23 @@ class InventoryResult:
     error_message: str | None = None
 
 
-def _normalize_extensions(extensions: list[str] | None) -> set[str]:
-    if not extensions:
-        return {".flac"}
-    out = set()
-    for ext in extensions:
-        e = ext.lower().strip()
-        if not e:
-            continue
-        if not e.startswith("."):
-            e = f".{e}"
-        out.add(e)
-    return out or {".flac"}
-
-
 def run_inventory(
     session: Session,
     root: str | Path,
     extensions: list[str] | None = None,
+    analysis_extensions: list[str] | None = None,
 ) -> InventoryResult:
-    """Walk root and upsert inventory rows. Mark missing only on successful completion."""
+    """Walk root and upsert inventory rows. Mark missing only on successful completion.
+
+    Inventory can include many audio types. Only analysis_extensions enter PENDING;
+    other eligible files are marked UNSUPPORTED (tracked, not analyzed).
+    """
     root_path = Path(root).resolve()
     if not root_path.exists() or not root_path.is_dir():
         raise FileNotFoundError(f"Library audit root not found or not a directory: {root_path}")
 
-    exts = _normalize_extensions(extensions)
+    exts = set(normalize_extensions(extensions, DEFAULT_INVENTORY_EXTENSIONS))
+    analyzable = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
     started = datetime.now(UTC)
     run = LibraryAuditInventoryRun(
         started_at=started,
@@ -99,12 +97,14 @@ def run_inventory(
                     .filter(LibraryAuditFile.relative_path == rel)
                     .first()
                 )
+                ext = resolved.suffix.lower()
+                can_analyze = is_analyzable_extension(ext, analyzable)
                 if row is None:
                     row = LibraryAuditFile(
                         relative_path=rel,
                         file_name=resolved.name,
                         parent_path=str(Path(rel).parent.as_posix()),
-                        extension=resolved.suffix.lower(),
+                        extension=ext,
                         size_bytes=size,
                         mtime_ns=mtime_ns,
                         first_seen_at=now,
@@ -112,8 +112,8 @@ def run_inventory(
                         last_seen_inventory_id=run.id,
                         is_present=True,
                         missing_since=None,
-                        analysis_state="PENDING",
-                        analysis_queued_at=now,
+                        analysis_state="PENDING" if can_analyze else "UNSUPPORTED",
+                        analysis_queued_at=now if can_analyze else None,
                     )
                     session.add(row)
                     session.flush()
@@ -125,17 +125,33 @@ def run_inventory(
                     row.missing_since = None
                     row.file_name = resolved.name
                     row.parent_path = str(Path(rel).parent.as_posix())
-                    row.extension = resolved.suffix.lower()
+                    row.extension = ext
                     if row.size_bytes != size or row.mtime_ns != mtime_ns:
                         row.size_bytes = size
                         row.mtime_ns = mtime_ns
                         row.content_hash = None
-                        row.analysis_state = "PENDING"
-                        row.analysis_queued_at = now
                         row.current_analysis_id = None
                         row.current_review_id = None
                         row.last_analysis_error = None
+                        if can_analyze:
+                            row.analysis_state = "PENDING"
+                            row.analysis_queued_at = now
+                        else:
+                            row.analysis_state = "UNSUPPORTED"
+                            row.analysis_queued_at = None
                         changed_files += 1
+                    elif not can_analyze and row.analysis_state in (
+                        "PENDING",
+                        "ERROR",
+                        "STALE",
+                        "ANALYZING",
+                    ):
+                        # Extension no longer analyzable (or never was) — don't clog queue
+                        row.analysis_state = "UNSUPPORTED"
+                        row.analysis_queued_at = None
+                    elif can_analyze and row.analysis_state == "UNSUPPORTED":
+                        row.analysis_state = "PENDING"
+                        row.analysis_queued_at = now
                 seen_ids.add(row.id)
             except Exception as exc:
                 errors += 1

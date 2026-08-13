@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from services.library_audit.jsonutil import to_jsonable
 from services.library_audit.provider import (
     ProviderAnalysisResult,
     ProviderCapabilities,
@@ -13,17 +14,15 @@ from services.library_audit.provider import (
 )
 from utils.logger import get_logger
 
-logger = None
+_logger = None
+_PROVIDER_NAME = "flac_detective"
 
 
 def _log():
-    global logger
-    if logger is None:
-        logger = get_logger("cmdarr.library_audit.flac_detective")
-    return logger
-
-
-_PROVIDER_NAME = "flac_detective"
+    global _logger
+    if _logger is None:
+        _logger = get_logger("cmdarr.library_audit.flac_detective")
+    return _logger
 
 
 def _provider_version() -> str | None:
@@ -77,9 +76,10 @@ class FlacDetectiveProvider:
         analyzer = FLACAnalyzer()
         # Mode reserved for future deep/ML; MVP uses standard defaults.
         _ = mode
-        raw: dict[str, Any] = analyzer.analyze_file(path)
-        if not isinstance(raw, dict):
-            raw = {"result": raw}
+        raw_in: Any = analyzer.analyze_file(path)
+        raw: dict[str, Any] = raw_in if isinstance(raw_in, dict) else {"result": raw_in}
+        # FLAC Detective returns numpy scalars (e.g. bool_) that SQLite JSON cannot store.
+        raw = to_jsonable(raw)
 
         verdict = str(raw.get("verdict") or "INCONCLUSIVE").upper()
         hires = raw.get("hires_verdict")
@@ -91,34 +91,38 @@ class FlacDetectiveProvider:
                 "UPSAMPLED_AND_PADDED",
             }
 
-        evidence = {
-            "cutoff_freq": raw.get("cutoff_freq"),
-            "estimated_mp3_bitrate": raw.get("estimated_mp3_bitrate"),
-            "has_clipping": raw.get("has_clipping"),
-            "has_dc_offset": raw.get("has_dc_offset"),
-            "is_corrupted": raw.get("is_corrupted"),
-            "is_fake_high_res": raw.get("is_fake_high_res"),
-            "is_upsampled": raw.get("is_upsampled"),
-            "hires_verdict": hires,
-            "hires_reason": raw.get("hires_reason"),
-            "encoder": raw.get("encoder"),
-            "partial_analysis": raw.get("partial_analysis") or raw.get("is_partial_analysis"),
-        }
+        evidence = to_jsonable(
+            {
+                "cutoff_freq": raw.get("cutoff_freq"),
+                "estimated_mp3_bitrate": raw.get("estimated_mp3_bitrate"),
+                "has_clipping": raw.get("has_clipping"),
+                "has_dc_offset": raw.get("has_dc_offset"),
+                "is_corrupted": raw.get("is_corrupted"),
+                "is_fake_high_res": raw.get("is_fake_high_res"),
+                "is_upsampled": raw.get("is_upsampled"),
+                "hires_verdict": hires,
+                "hires_reason": raw.get("hires_reason"),
+                "encoder": raw.get("encoder"),
+                "partial_analysis": raw.get("partial_analysis") or raw.get("is_partial_analysis"),
+            }
+        )
 
-        metadata = {
-            "sample_rate": raw.get("sample_rate"),
-            "bits_per_sample": raw.get("bit_depth") or raw.get("bits_per_sample"),
-            "channels": raw.get("channels"),
-            "duration_seconds": raw.get("duration_real")
-            or raw.get("duration_metadata")
-            or raw.get("duration"),
-            "filename": raw.get("filename") or path.name,
-            "title": raw.get("title"),
-            "artist": raw.get("artist"),
-            "album": raw.get("album"),
-            "track_number": raw.get("track_number") or raw.get("tracknumber"),
-            "disc_number": raw.get("disc_number") or raw.get("discnumber"),
-        }
+        metadata = to_jsonable(
+            {
+                "sample_rate": raw.get("sample_rate"),
+                "bits_per_sample": raw.get("bit_depth") or raw.get("bits_per_sample"),
+                "channels": raw.get("channels"),
+                "duration_seconds": raw.get("duration_real")
+                or raw.get("duration_metadata")
+                or raw.get("duration"),
+                "filename": raw.get("filename") or path.name,
+                "title": raw.get("title"),
+                "artist": raw.get("artist"),
+                "album": raw.get("album"),
+                "track_number": raw.get("track_number") or raw.get("tracknumber"),
+                "disc_number": raw.get("disc_number") or raw.get("discnumber"),
+            }
+        )
 
         score = raw.get("score")
         try:
@@ -150,9 +154,9 @@ class FlacDetectiveProvider:
             summary=summary,
             cutoff_hz=cutoff_f,
             is_hires_suspect=is_hires_suspect,
-            evidence=evidence,
-            raw_result=raw,
-            metadata=metadata,
+            evidence=evidence if isinstance(evidence, dict) else {},
+            raw_result=raw if isinstance(raw, dict) else {},
+            metadata=metadata if isinstance(metadata, dict) else {},
         )
 
 

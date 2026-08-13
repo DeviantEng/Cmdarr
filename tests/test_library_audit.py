@@ -256,3 +256,49 @@ def test_sha256_file(tmp_path: Path):
     p = tmp_path / "a.bin"
     p.write_bytes(b"abc")
     assert sha256_file(p) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_to_jsonable_numpy_bool():
+    import numpy as np
+
+    from services.library_audit.jsonutil import to_jsonable
+
+    payload = {"has_dc_offset": np.bool_(True), "score": np.int64(12), "nested": [np.float64(1.5)]}
+    out = to_jsonable(payload)
+    assert out == {"has_dc_offset": True, "score": 12, "nested": [1.5]}
+    import json
+
+    json.dumps(out)  # must not raise
+
+
+def test_inventory_marks_non_flac_unsupported(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    mp3 = music / "Artist" / "Album" / "03 - Track.mp3"
+    mp3.write_bytes(b"ID3fake")
+
+    from services.library_audit.formats import (
+        DEFAULT_ANALYSIS_EXTENSIONS,
+        DEFAULT_INVENTORY_EXTENSIONS,
+    )
+
+    result = run_inventory(
+        session,
+        music,
+        extensions=DEFAULT_INVENTORY_EXTENSIONS,
+        analysis_extensions=DEFAULT_ANALYSIS_EXTENSIONS,
+    )
+    assert result.status == "COMPLETED"
+    assert result.eligible_files_seen == 3
+
+    flacs = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".flac").all()
+    assert all(r.analysis_state == "PENDING" for r in flacs)
+
+    mp3_row = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".mp3").one()
+    assert mp3_row.analysis_state == "UNSUPPORTED"
+
+    from services.library_audit.service import select_pending_files
+
+    pending = select_pending_files(session, limit=50)
+    assert all(p.extension == ".flac" for p in pending)
+    assert len(pending) == 2

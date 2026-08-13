@@ -19,8 +19,16 @@ from database.library_audit_models import (
     LibraryAuditReview,
 )
 from services.library_audit.flac_detective import get_default_provider
+from services.library_audit.formats import (
+    DEFAULT_ANALYSIS_EXTENSIONS,
+    DEFAULT_INVENTORY_EXTENSIONS,
+    format_kind_for_extension,
+    is_analyzable_extension,
+    normalize_extensions,
+)
 from services.library_audit.hashing import sha256_file
 from services.library_audit.inventory import InventoryResult, run_inventory
+from services.library_audit.jsonutil import to_jsonable
 from services.library_audit.paths import resolve_under_root
 from services.library_audit.provider import (
     REVIEW_THRESHOLD_ORDER,
@@ -144,12 +152,18 @@ def recover_stale_analyzing(session: Session, stale_minutes: int = ANALYZING_STA
     return recovered
 
 
-def select_pending_files(session: Session, limit: int) -> list[LibraryAuditFile]:
+def select_pending_files(
+    session: Session,
+    limit: int,
+    analysis_extensions: list[str] | None = None,
+) -> list[LibraryAuditFile]:
     limit = max(1, int(limit))
+    analyzable = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
     return (
         session.query(LibraryAuditFile)
         .filter(LibraryAuditFile.is_present.is_(True))
         .filter(LibraryAuditFile.analysis_state.in_(["PENDING", "ERROR", "STALE"]))
+        .filter(LibraryAuditFile.extension.in_(analyzable))
         .order_by(
             LibraryAuditFile.analysis_queued_at.asc().nullsfirst(),
             LibraryAuditFile.parent_path.asc(),
@@ -238,8 +252,8 @@ def analyze_file(
             cutoff_hz=result.cutoff_hz,
             is_hires_suspect=result.is_hires_suspect,
             summary=result.summary,
-            evidence_json=result.evidence,
-            raw_result_json=result.raw_result,
+            evidence_json=to_jsonable(result.evidence),
+            raw_result_json=to_jsonable(result.raw_result),
             file_size_bytes=size,
             file_mtime_ns=mtime_ns,
             content_hash=content_hash,
@@ -256,10 +270,26 @@ def analyze_file(
         session.commit()
         return analysis
     except Exception as exc:
-        _log().warning(f"Analysis failed for {row.relative_path}: {exc}")
-        row.analysis_state = "ERROR"
-        row.last_analysis_error = str(exc)[:2000]
-        session.commit()
+        rel = getattr(row, "relative_path", None) or f"id={getattr(row, 'id', '?')}"
+        file_id = getattr(row, "id", None)
+        _log().warning(f"Analysis failed for {rel}: {exc}")
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        if file_id is not None:
+            try:
+                fresh = session.get(LibraryAuditFile, file_id)
+                if fresh is not None:
+                    fresh.analysis_state = "ERROR"
+                    fresh.last_analysis_error = str(exc)[:2000]
+                    session.commit()
+            except Exception as commit_exc:
+                _log().warning(f"Failed to persist ERROR state for {rel}: {commit_exc}")
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
         return None
 
 
@@ -269,10 +299,11 @@ def run_analysis_batch(
     limit: int,
     provider: AnalyzerProvider | None = None,
     mode: str = "standard",
+    analysis_extensions: list[str] | None = None,
 ) -> AnalysisBatchResult:
     provider = provider or get_default_provider()
     recover_stale_analyzing(session)
-    files = select_pending_files(session, limit)
+    files = select_pending_files(session, limit, analysis_extensions=analysis_extensions)
     started = datetime.now(UTC)
     try:
         health = provider.health()
@@ -404,6 +435,8 @@ def queue_reanalyze(session: Session, file_id: int) -> LibraryAuditFile:
     row = session.get(LibraryAuditFile, file_id)
     if not row:
         raise KeyError(f"File {file_id} not found")
+    if not is_analyzable_extension(row.extension, DEFAULT_ANALYSIS_EXTENSIONS):
+        raise ValueError(f"No analyzer available for extension {row.extension or '(none)'} yet")
     row.analysis_state = "PENDING"
     row.analysis_queued_at = datetime.now(UTC)
     row.last_analysis_error = None
@@ -434,6 +467,13 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         or 0
     )
     pending = count_pending(session)
+    unsupported = (
+        session.query(func.count(LibraryAuditFile.id))
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditFile.analysis_state == "UNSUPPORTED")
+        .scalar()
+        or 0
+    )
     errors = (
         session.query(func.count(LibraryAuditFile.id))
         .filter(LibraryAuditFile.is_present.is_(True))
@@ -441,6 +481,19 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         .scalar()
         or 0
     )
+
+    by_extension: dict[str, int] = {}
+    by_format_kind = {"lossless": 0, "lossy": 0, "unknown": 0}
+    present_rows = (
+        session.query(LibraryAuditFile.extension)
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .all()
+    )
+    for (ext,) in present_rows:
+        key = (ext or "unknown").lower()
+        by_extension[key] = by_extension.get(key, 0) + 1
+        kind = format_kind_for_extension(ext)
+        by_format_kind[kind] = by_format_kind.get(kind, 0) + 1
 
     verdict_counts = {
         "authentic": 0,
@@ -516,7 +569,12 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
             "missing": missing,
             "analyzed": analyzed,
             "pending": pending,
+            "unsupported": unsupported,
             "errors": errors,
+        },
+        "formats": {
+            "by_kind": by_format_kind,
+            "by_extension": dict(sorted(by_extension.items(), key=lambda kv: (-kv[1], kv[0]))),
         },
         "verdicts": verdict_counts,
         "review": review_counts,
@@ -570,7 +628,9 @@ def run_audit_cycle(
     *,
     analysis_batch_size: int = 25,
     inventory_interval_hours: int = 24,
-    extensions: list[str] | None = None,
+    inventory_extensions: list[str] | None = None,
+    analysis_extensions: list[str] | None = None,
+    extensions: list[str] | None = None,  # legacy alias for inventory_extensions
     missing_retention_days: int = 90,
     provider_mode: str = "standard",
     force_inventory: bool = False,
@@ -579,9 +639,18 @@ def run_audit_cycle(
     summary = AuditRunSummary()
     provider = provider or get_default_provider()
 
+    inv_exts = inventory_extensions if inventory_extensions is not None else extensions
+    inv_exts = normalize_extensions(inv_exts, DEFAULT_INVENTORY_EXTENSIONS)
+    an_exts = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
+
     do_inventory = force_inventory or inventory_due(session, inventory_interval_hours)
     if do_inventory:
-        summary.inventory = run_inventory(session, root, extensions=extensions)
+        summary.inventory = run_inventory(
+            session,
+            root,
+            extensions=inv_exts,
+            analysis_extensions=an_exts,
+        )
     else:
         summary.inventory_skipped = True
 
@@ -591,6 +660,7 @@ def run_audit_cycle(
         limit=analysis_batch_size,
         provider=provider,
         mode=provider_mode,
+        analysis_extensions=an_exts,
     )
     summary.retention_deleted = cleanup_missing_records(session, missing_retention_days)
     summary.pending_queue = count_pending(session)

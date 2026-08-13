@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Library Audit command — inventory + batched FLAC authenticity analysis."""
+"""Library Audit command — inventory audio files + batched FLAC analysis."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ from commands.config_adapter import Config as ConfigAdapter
 from database.database import get_database_manager
 from services.config_service import config_service
 from services.library_audit.flac_detective import get_default_provider
+from services.library_audit.formats import (
+    DEFAULT_ANALYSIS_EXTENSIONS,
+    DEFAULT_INVENTORY_EXTENSIONS,
+    normalize_extensions,
+)
 from services.library_audit.service import (
     get_music_root,
     is_feature_enabled,
@@ -19,15 +24,29 @@ from services.library_audit.service import (
 from utils.logger import get_logger
 
 
+def _parse_ext_list(value: Any, fallback: list[str]) -> list[str]:
+    if value is None:
+        return list(fallback)
+    if isinstance(value, str):
+        items = [e.strip() for e in value.split(",") if e.strip()]
+        return normalize_extensions(items, fallback)
+    if isinstance(value, list):
+        return normalize_extensions([str(e) for e in value], fallback)
+    return list(fallback)
+
+
 class LibraryAuditCommand(BaseCommand):
-    """Scheduled/manual Library Audit: inventory due files and analyze a batch."""
+    """Scheduled/manual Library Audit: inventory due files and analyze a FLAC batch."""
 
     def __init__(self, config=None):
         super().__init__(config if config else ConfigAdapter())
         self.last_run_stats: dict[str, Any] = {}
 
     def get_description(self) -> str:
-        return "Inventory music files and analyze pending FLACs for authenticity issues"
+        return (
+            "Inventory audio files and analyze pending FLACs for authenticity issues "
+            "(other formats are inventoried only until analyzers exist)"
+        )
 
     def get_logger_name(self) -> str:
         return "cmdarr.commands.library_audit"
@@ -67,9 +86,23 @@ class LibraryAuditCommand(BaseCommand):
         cj = self._get_config_json()
         batch_size = max(1, min(500, int(cj.get("analysis_batch_size", 25))))
         inventory_hours = max(1, min(168, int(cj.get("inventory_interval_hours", 24))))
-        extensions = cj.get("extensions") or [".flac"]
-        if isinstance(extensions, str):
-            extensions = [e.strip() for e in extensions.split(",") if e.strip()]
+        # Prefer inventory_extensions. Legacy "extensions": [".flac"] was the old
+        # default — expand to all inventory formats. Custom legacy lists are kept.
+        if "inventory_extensions" in cj:
+            inventory_extensions = _parse_ext_list(
+                cj.get("inventory_extensions"), DEFAULT_INVENTORY_EXTENSIONS
+            )
+        else:
+            legacy = cj.get("extensions")
+            legacy_norm = _parse_ext_list(legacy, DEFAULT_ANALYSIS_EXTENSIONS) if legacy else None
+            if legacy_norm is None or legacy_norm == [".flac"]:
+                inventory_extensions = list(DEFAULT_INVENTORY_EXTENSIONS)
+            else:
+                inventory_extensions = legacy_norm
+        analysis_extensions = _parse_ext_list(
+            cj.get("analysis_extensions"),
+            DEFAULT_ANALYSIS_EXTENSIONS,
+        )
         retention = max(1, min(3650, int(cj.get("missing_retention_days", 90))))
         mode = str(cj.get("provider_mode") or "standard")
 
@@ -81,7 +114,8 @@ class LibraryAuditCommand(BaseCommand):
                 root,
                 analysis_batch_size=batch_size,
                 inventory_interval_hours=inventory_hours,
-                extensions=list(extensions),
+                inventory_extensions=inventory_extensions,
+                analysis_extensions=analysis_extensions,
                 missing_retention_days=retention,
                 provider_mode=mode,
                 provider=provider,

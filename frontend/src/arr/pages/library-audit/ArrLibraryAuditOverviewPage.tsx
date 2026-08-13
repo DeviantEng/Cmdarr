@@ -165,10 +165,11 @@ export function ArrLibraryAuditOverviewPage() {
           />
           <ArrPanelBody>
             {stats ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <StatBox label="Present" value={stats.library.present} />
                 <StatBox label="Analyzed" value={stats.library.analyzed} />
-                <StatBox label="Pending" value={stats.library.pending} />
+                <StatBox label="Pending analysis" value={stats.library.pending} />
+                <StatBox label="Unsupported" value={stats.library.unsupported ?? 0} />
                 <StatBox label="Errors" value={stats.library.errors} />
                 <StatBox label="Missing" value={stats.library.missing} />
               </div>
@@ -182,8 +183,42 @@ export function ArrLibraryAuditOverviewPage() {
 
         <ArrContentPanel>
           <ArrSectionHeader
+            title="Formats"
+            description="Inventoried files by kind and extension. Analysis currently runs on FLAC only."
+          />
+          <ArrPanelBody>
+            {stats?.formats ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StatBox label="Lossless" value={stats.formats.by_kind.lossless} />
+                  <StatBox label="Lossy" value={stats.formats.by_kind.lossy} />
+                  <StatBox label="Unknown" value={stats.formats.by_kind.unknown} />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(stats.formats.by_extension).map(([ext, count]) => (
+                    <div
+                      key={ext}
+                      className="rounded-md border border-border bg-background/50 px-2.5 py-1 text-sm"
+                    >
+                      <span className="font-medium">{ext || "unknown"}</span>
+                      <span className="ml-2 tabular-nums text-muted-foreground">{count}</span>
+                    </div>
+                  ))}
+                  {Object.keys(stats.formats.by_extension).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No inventoried files yet.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "—"}</p>
+            )}
+          </ArrPanelBody>
+        </ArrContentPanel>
+
+        <ArrContentPanel>
+          <ArrSectionHeader
             title="Verdicts"
-            description="Latest analysis results for present files."
+            description="Latest FLAC authenticity results for present files."
           />
           <ArrPanelBody>
             {stats ? (
