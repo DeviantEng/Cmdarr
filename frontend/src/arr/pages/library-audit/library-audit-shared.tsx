@@ -340,9 +340,28 @@ type FileTableProps = {
   loading: boolean;
   onSelect: (file: LibraryAuditFile) => void;
   emptyMessage: string;
+  selectedIds?: Set<number>;
+  onSelectedIdsChange?: (next: Set<number>) => void;
+  onSelectFolder?: (file: LibraryAuditFile) => void;
+  selectingFolderId?: number | null;
 };
 
-export function LibraryAuditFileTable({ files, loading, onSelect, emptyMessage }: FileTableProps) {
+export function LibraryAuditFileTable({
+  files,
+  loading,
+  onSelect,
+  emptyMessage,
+  selectedIds,
+  onSelectedIdsChange,
+  onSelectFolder,
+  selectingFolderId,
+}: FileTableProps) {
+  const selectable = Boolean(selectedIds && onSelectedIdsChange);
+  const pageIds = files.map((f) => f.id);
+  const allSelected = selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds!.has(id));
+  const someSelected =
+    selectable && !allSelected && pageIds.some((id) => selectedIds!.has(id));
+
   if (loading && files.length === 0) {
     return (
       <div className="flex min-h-[120px] items-center justify-center">
@@ -355,53 +374,168 @@ export function LibraryAuditFileTable({ files, loading, onSelect, emptyMessage }
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
+  const toggleOne = (id: number, checked: boolean) => {
+    if (!onSelectedIdsChange || !selectedIds) return;
+    const next = new Set(selectedIds);
+    if (checked) next.add(id);
+    else next.delete(id);
+    onSelectedIdsChange(next);
+  };
+
+  const togglePage = (checked: boolean) => {
+    if (!onSelectedIdsChange || !selectedIds) return;
+    const next = new Set(selectedIds);
+    for (const id of pageIds) {
+      if (checked) next.add(id);
+      else next.delete(id);
+    }
+    onSelectedIdsChange(next);
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="arr-table w-full">
         <thead className="border-b">
           <tr>
+            {selectable ? (
+              <th className="w-10 px-3 py-2 text-left">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  onChange={(e) => togglePage(e.target.checked)}
+                  aria-label="Select all on page"
+                />
+              </th>
+            ) : null}
             <th className="px-3 py-2 text-left text-sm font-medium">Path</th>
             <th className="px-3 py-2 text-left text-sm font-medium">Verdict</th>
             <th className="px-3 py-2 text-left text-sm font-medium">Score</th>
             <th className="px-3 py-2 text-left text-sm font-medium">State</th>
             <th className="px-3 py-2 text-left text-sm font-medium">Disposition</th>
+            {onSelectFolder ? (
+              <th className="px-3 py-2 text-left text-sm font-medium">Folder</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
-          {files.map((file) => (
-            <tr
-              key={file.id}
-              className={cn(
-                "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
-                loading && "opacity-70"
-              )}
-              onClick={() => onSelect(file)}
-            >
-              <td
-                className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
-                title={file.relative_path}
+          {files.map((file) => {
+            const checked = selectable ? selectedIds!.has(file.id) : false;
+            return (
+              <tr
+                key={file.id}
+                className={cn(
+                  "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
+                  loading && "opacity-70",
+                  checked && "bg-muted/40"
+                )}
+                onClick={() => onSelect(file)}
               >
-                {file.relative_path}
-              </td>
-              <td className="px-3 py-2">
-                <Badge
-                  variant={verdictBadgeVariant(file.analysis?.verdict)}
-                  className="text-[10px]"
+                {selectable ? (
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={checked}
+                      onChange={(e) => toggleOne(file.id, e.target.checked)}
+                      aria-label={`Select ${file.file_name}`}
+                    />
+                  </td>
+                ) : null}
+                <td
+                  className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
+                  title={file.relative_path}
                 >
-                  {formatVerdict(file.analysis?.verdict)}
-                </Badge>
-              </td>
-              <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                {file.analysis?.score ?? "—"}
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {formatDisposition(file.review?.disposition)}
-              </td>
-            </tr>
-          ))}
+                  {file.relative_path}
+                </td>
+                <td className="px-3 py-2">
+                  <Badge
+                    variant={verdictBadgeVariant(file.analysis?.verdict)}
+                    className="text-[10px]"
+                  >
+                    {formatVerdict(file.analysis?.verdict)}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                  {file.analysis?.score ?? "—"}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {formatDisposition(file.review?.disposition)}
+                </td>
+                {onSelectFolder ? (
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!file.parent_path || selectingFolderId === file.id}
+                      onClick={() => onSelectFolder(file)}
+                      title={file.parent_path || "No folder path"}
+                    >
+                      {selectingFolderId === file.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Select folder"
+                      )}
+                    </Button>
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+type BulkBarProps = {
+  selectedCount: number;
+  busy?: boolean;
+  onClear: () => void;
+  onDisposition: (disposition: LibraryAuditDisposition) => void;
+  onReanalyze: () => void;
+  dispositions?: { label: string; value: LibraryAuditDisposition }[];
+};
+
+export function LibraryAuditBulkBar({
+  selectedCount,
+  busy,
+  onClear,
+  onDisposition,
+  onReanalyze,
+  dispositions = DISPOSITION_ACTIONS,
+}: BulkBarProps) {
+  if (selectedCount <= 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background/70 p-3">
+      <span className="text-sm font-medium tabular-nums">
+        {selectedCount.toLocaleString()} selected
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {dispositions.map((action) => (
+          <Button
+            key={action.value}
+            size="sm"
+            variant={action.value === "REPLACE" ? "destructive" : "secondary"}
+            disabled={busy}
+            onClick={() => onDisposition(action.value)}
+          >
+            {action.label}
+          </Button>
+        ))}
+        <Button size="sm" variant="outline" disabled={busy} onClick={onReanalyze}>
+          {busy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+          Queue reanalyze
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onClear}>
+          Clear selection
+        </Button>
+      </div>
     </div>
   );
 }

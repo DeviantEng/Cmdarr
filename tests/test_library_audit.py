@@ -275,6 +275,15 @@ def test_false_positive_overrides_effective_verdict():
     assert effective_verdict("WARNING", None) == "WARNING"
 
 
+def test_inventory_sets_parent_path_for_folder_select(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    run_inventory(session, music, extensions=[".flac"])
+    rows = session.query(LibraryAuditFile).all()
+    assert rows
+    assert all(r.parent_path == "Artist/Album" for r in rows)
+
+
 def test_retention_deletes_old_missing(audit_env):
     session = audit_env["session"]
     music = audit_env["music"]

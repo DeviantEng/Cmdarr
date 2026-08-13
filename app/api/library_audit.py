@@ -227,6 +227,7 @@ async def list_files(
     verdict: str | None = Query(None),
     disposition: str | None = Query(None),
     needs_review: bool | None = Query(None),
+    parent_path: str | None = Query(None, description="Exact album/folder relative path"),
     q: str | None = Query(None, description="Path search"),
 ):
     _require_enabled()
@@ -235,6 +236,8 @@ async def list_files(
         query = query.filter(LibraryAuditFile.is_present.is_(present))
     if analysis_state:
         query = query.filter(LibraryAuditFile.analysis_state == analysis_state.upper())
+    if parent_path is not None and parent_path != "":
+        query = query.filter(LibraryAuditFile.parent_path == parent_path)
     if q:
         like = f"%{q}%"
         query = query.filter(LibraryAuditFile.relative_path.ilike(like))
