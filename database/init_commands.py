@@ -90,6 +90,23 @@ def init_default_commands():
                 "refresh_ttl_days": 14,
             },
         },
+        {
+            "command_name": "library_audit",
+            "display_name": "Library Audit",
+            "description": "Inventory music files and analyze pending FLACs for authenticity issues (requires LIBRARY_AUDIT_ENABLED and /music mount)",
+            "enabled": False,
+            "timeout_minutes": 120,
+            "command_type": None,
+            "config_json": {
+                "analysis_batch_size": 25,
+                "inventory_interval_hours": 24,
+                "extensions": [".flac"],
+                "review_threshold": "WARNING",
+                "missing_retention_days": 90,
+                "analysis_provider": "flac_detective",
+                "provider_mode": "standard",
+            },
+        },
     ]
 
     try:

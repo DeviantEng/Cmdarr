@@ -654,6 +654,7 @@ from app.api import (
     discovery_lastfm_api,
     events,
     import_lists,
+    library_audit,
     lidarr_maintenance,
     new_releases,
     status,
@@ -675,6 +676,7 @@ app.include_router(
 app.include_router(
     lidarr_maintenance.router, prefix="/api/lidarr-maintenance", tags=["lidarr_maintenance"]
 )
+app.include_router(library_audit.router, prefix="/api/library-audit", tags=["library_audit"])
 
 
 _SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "import_lists/", "assets/")

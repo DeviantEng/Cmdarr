@@ -45,6 +45,7 @@ class CommandExecutor:
         # Import command classes
         from commands.artist_events_refresh import ArtistEventsRefreshCommand
         from commands.discovery_lastfm import DiscoveryLastfmCommand
+        from commands.library_audit import LibraryAuditCommand
         from commands.library_cache_builder import LibraryCacheBuilderCommand
         from commands.new_releases_discovery import NewReleasesDiscoveryCommand
         from commands.playlist_sync_discovery_maintenance import (
@@ -58,6 +59,7 @@ class CommandExecutor:
                 "playlist_sync_discovery_maintenance": PlaylistSyncDiscoveryMaintenanceCommand,
                 "new_releases_discovery": NewReleasesDiscoveryCommand,
                 "artist_events_refresh": ArtistEventsRefreshCommand,
+                "library_audit": LibraryAuditCommand,
             }
 
             # Load dynamic playlist sync commands from database
@@ -456,6 +458,8 @@ class CommandExecutor:
             return self._build_new_releases_summary(stats, duration)
         elif command_name == "artist_events_refresh" and stats:
             return self._build_artist_events_summary(stats, duration)
+        elif command_name == "library_audit" and stats:
+            return self._build_library_audit_summary(stats, duration)
         elif command_name.startswith("lidarr_update_all_") and stats:
             return self._build_lidarr_update_all_summary(stats, duration)
         elif command_name.startswith("lidarr_wanted_search_") and stats:
@@ -663,6 +667,31 @@ class CommandExecutor:
         sa = stats.get("sources_added", 0)
         parts = [f"Artist events refresh completed in {duration:.1f}s"]
         parts.append(f"{ap} artists processed, {ne} new event(s), {sa} new source link(s)")
+        return " • ".join(parts)
+
+    def _build_library_audit_summary(self, stats: dict[str, Any], duration: float) -> str:
+        """Build Library Audit summary from command result"""
+        if stats.get("error"):
+            return f"Library Audit: {stats['error']} ({duration:.1f}s)"
+        parts = [f"Library Audit completed in {duration:.1f}s"]
+        inv = stats.get("inventory")
+        if stats.get("inventory_skipped"):
+            parts.append("inventory skipped")
+        elif inv:
+            parts.append(
+                f"inventory new={inv.get('new_files', 0)}, "
+                f"changed={inv.get('changed_files', 0)}, "
+                f"missing={inv.get('missing_files', 0)}"
+            )
+        an = stats.get("analysis") or {}
+        parts.append(
+            f"analyzed {an.get('completed', 0)}/{an.get('attempted', 0)} "
+            f"(auth={an.get('authentic', 0)}, warn={an.get('warning', 0)}, "
+            f"sus={an.get('suspicious', 0)}, fake={an.get('fake_certain', 0)}, "
+            f"err={an.get('errors', 0)})"
+        )
+        parts.append(f"pending={stats.get('pending_queue', 0)}")
+        parts.append(f"needs_review={stats.get('needs_review', 0)}")
         return " • ".join(parts)
 
     def _build_library_cache_summary(self, stats: dict[str, Any], duration: float) -> str:

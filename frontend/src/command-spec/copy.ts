@@ -109,6 +109,17 @@ export const commandUiCopy = {
     refreshTtlHelp:
       "After a successful fetch for an artist, wait this many days before they are due again (1–365).",
   },
+  libraryAudit: {
+    batchSize: "Analysis batch size",
+    batchSizeHelp:
+      "Max files to analyze per command run (1–500). Inventory is separate and may skip if recently completed.",
+    inventoryInterval: "Inventory interval (hours)",
+    inventoryIntervalHelp:
+      "Minimum hours between full filesystem inventory walks (1–168). Default 24.",
+    missingRetention: "Missing file retention (days)",
+    missingRetentionHelp:
+      "Delete inventory rows for files missing longer than this many days (1–3650). Default 90.",
+  },
   daylist: {
     plexAccountLabel: "Plex Account (play history source)",
     selectPlexPlaceholder: "Select Plex account",

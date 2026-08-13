@@ -73,6 +73,9 @@ export type CommandEditFormState = {
   ignore_days?: number;
   settle_seconds?: number;
   sort_by?: string;
+  analysis_batch_size?: number;
+  inventory_interval_hours?: number;
+  missing_retention_days?: number;
 };
 
 export type XmplaylistStationRow = {
