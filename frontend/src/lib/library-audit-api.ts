@@ -310,11 +310,7 @@ export const libraryAuditApi = {
     return api.request<LibraryAuditSpectrumResponse>(`/api/library-audit/files/${id}/spectrum`);
   },
 
-  bulkReview(body: {
-    file_ids: number[];
-    disposition: LibraryAuditDisposition;
-    note?: string;
-  }) {
+  bulkReview(body: { file_ids: number[]; disposition: LibraryAuditDisposition; note?: string }) {
     return api.request<LibraryAuditBulkResult>("/api/library-audit/bulk/review", {
       method: "POST",
       body: JSON.stringify(body),

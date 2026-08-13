@@ -358,9 +358,9 @@ export function LibraryAuditFileTable({
 }: FileTableProps) {
   const selectable = Boolean(selectedIds && onSelectedIdsChange);
   const pageIds = files.map((f) => f.id);
-  const allSelected = selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds!.has(id));
-  const someSelected =
-    selectable && !allSelected && pageIds.some((id) => selectedIds!.has(id));
+  const allSelected =
+    selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds!.has(id));
+  const someSelected = selectable && !allSelected && pageIds.some((id) => selectedIds!.has(id));
 
   if (loading && files.length === 0) {
     return (
