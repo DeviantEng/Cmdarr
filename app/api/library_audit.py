@@ -18,13 +18,15 @@ from database.library_audit_models import (
     LibraryAuditReview,
 )
 from services.config_service import config_service
-from services.library_audit.flac_detective import get_default_provider
+from services.library_audit.router import get_composite_provider
 from services.library_audit.service import (
     build_stats,
+    clear_current_review,
     create_review,
     get_music_root,
     is_feature_enabled,
     queue_reanalyze,
+    reanalyze_file_now,
     validate_root,
 )
 
@@ -136,7 +138,7 @@ async def library_audit_status():
     enabled = is_feature_enabled(config_service.get)
     root = get_music_root(config_service.get)
     root_ok, root_msg = validate_root(root) if enabled else (False, "Feature disabled")
-    provider = get_default_provider()
+    provider = get_composite_provider()
     health = provider.health()
     caps = provider.capabilities()
     return {
@@ -151,6 +153,7 @@ async def library_audit_status():
             "message": health.message,
             "modes": caps.modes,
             "extensions": caps.extensions,
+            "details": health.details,
         },
     }
 
@@ -348,14 +351,38 @@ async def post_review(
     return _serialize_review(review)
 
 
-@router.post("/files/{file_id}/reanalyze")
-async def post_reanalyze(file_id: int, db: Annotated[Session, Depends(get_library_audit_db)]):
+@router.post("/files/{file_id}/review/clear")
+async def clear_review(file_id: int, db: Annotated[Session, Depends(get_library_audit_db)]):
+    """Clear the current disposition (file returns to Needs review)."""
     _require_enabled()
     try:
-        row = queue_reanalyze(db, file_id)
+        row = clear_current_review(db, file_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="File not found") from None
-    return {"success": True, "file_id": row.id, "analysis_state": row.analysis_state}
+    analysis = (
+        db.get(LibraryAuditAnalysis, row.current_analysis_id) if row.current_analysis_id else None
+    )
+    return _serialize_file(row, analysis, None)
+
+
+@router.post("/files/{file_id}/reanalyze")
+async def post_reanalyze(file_id: int, db: Annotated[Session, Depends(get_library_audit_db)]):
+    """Analyze one file immediately (does not wait for the next command run)."""
+    _require_enabled()
+    root = get_music_root(config_service.get)
+    ok, msg = validate_root(root)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    try:
+        row, analysis = reanalyze_file_now(db, file_id, root, provider=get_composite_provider())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="File not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if analysis is None and row.current_analysis_id:
+        analysis = db.get(LibraryAuditAnalysis, row.current_analysis_id)
+    review = db.get(LibraryAuditReview, row.current_review_id) if row.current_review_id else None
+    return _serialize_file(row, analysis, review)
 
 
 @router.post("/bulk/review")
@@ -411,7 +438,7 @@ async def test_library_audit():
     )
     root_ok, root_msg = validate_root(root)
     checks.append({"name": "root", "success": root_ok, "message": root_msg, "root": str(root)})
-    health = get_default_provider().health()
+    health = get_composite_provider().health()
     checks.append(
         {
             "name": "provider",
@@ -419,6 +446,7 @@ async def test_library_audit():
             "message": health.message,
             "provider": health.provider,
             "version": health.provider_version,
+            "details": health.details,
         }
     )
     overall = all(c["success"] for c in checks)

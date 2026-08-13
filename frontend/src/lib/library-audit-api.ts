@@ -23,6 +23,7 @@ export type LibraryAuditAnalysisState =
   | "ANALYZED"
   | "ERROR"
   | "STALE"
+  | "UNSUPPORTED"
   | string;
 
 export type LibraryAuditAnalysis = {
@@ -143,7 +144,16 @@ export type LibraryAuditStats = LibraryAuditStatus & {
     missing: number;
     analyzed: number;
     pending: number;
+    unsupported?: number;
     errors: number;
+  };
+  formats?: {
+    by_kind: {
+      lossless: number;
+      lossy: number;
+      unknown: number;
+    };
+    by_extension: Record<string, number>;
   };
   verdicts: {
     authentic: number;
@@ -258,11 +268,16 @@ export const libraryAuditApi = {
     });
   },
 
+  clearReview(id: number) {
+    return api.request<LibraryAuditFile>(`/api/library-audit/files/${id}/review/clear`, {
+      method: "POST",
+    });
+  },
+
   reanalyze(id: number) {
-    return api.request<{ success: boolean; file_id: number; analysis_state: string }>(
-      `/api/library-audit/files/${id}/reanalyze`,
-      { method: "POST" }
-    );
+    return api.request<LibraryAuditFile>(`/api/library-audit/files/${id}/reanalyze`, {
+      method: "POST",
+    });
   },
 
   test() {

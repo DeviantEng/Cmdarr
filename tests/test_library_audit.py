@@ -24,8 +24,10 @@ from services.library_audit.provider import (
 from services.library_audit.retention import cleanup_missing_records
 from services.library_audit.service import (
     analyze_file,
+    clear_current_review,
     create_review,
     queue_reanalyze,
+    reanalyze_file_now,
     recover_stale_analyzing,
     run_analysis_batch,
 )
@@ -209,7 +211,7 @@ def test_analysis_and_review_bind_to_content_hash(audit_env):
     session.refresh(row)
     assert row.current_review_id == review.id
 
-    # Reanalyze queues and clears current review applicability on new analysis
+    # Same-bytes reanalyze keeps disposition; queue path still marks PENDING.
     queue_reanalyze(session, row.id)
     session.refresh(row)
     assert row.analysis_state == "PENDING"
@@ -218,7 +220,41 @@ def test_analysis_and_review_bind_to_content_hash(audit_env):
     analyze_file(session, row, music, provider2)
     session.refresh(row)
     assert row.analysis_state == "ANALYZED"
-    assert row.current_review_id is None  # new bytes/analysis clears current review pointer
+    assert row.current_review_id == review.id
+
+    # Content change clears current disposition
+    path = music / row.relative_path
+    path.write_bytes(path.read_bytes() + b"\x00")
+    analyze_file(session, row, music, provider2)
+    session.refresh(row)
+    assert row.current_review_id is None
+
+
+def test_reanalyze_file_now_runs_immediately(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    run_inventory(session, music, extensions=[".flac"])
+    row = session.query(LibraryAuditFile).first()
+    provider = FakeProvider(verdict="WARNING", score=40)
+    updated, analysis = reanalyze_file_now(session, row.id, music, provider=provider)
+    assert analysis is not None
+    assert analysis.verdict == "WARNING"
+    assert updated.analysis_state == "ANALYZED"
+    assert len(provider.calls) == 1
+
+
+def test_clear_current_review(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    run_inventory(session, music, extensions=[".flac"])
+    row = session.query(LibraryAuditFile).first()
+    analyze_file(session, row, music, FakeProvider())
+    create_review(session, row.id, "UNSURE", note="oops")
+    session.refresh(row)
+    assert row.current_review_id is not None
+    clear_current_review(session, row.id)
+    session.refresh(row)
+    assert row.current_review_id is None
 
 
 def test_retention_deletes_old_missing(audit_env):
@@ -256,3 +292,147 @@ def test_sha256_file(tmp_path: Path):
     p = tmp_path / "a.bin"
     p.write_bytes(b"abc")
     assert sha256_file(p) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_to_jsonable_numpy_bool():
+    import numpy as np
+
+    from services.library_audit.jsonutil import to_jsonable
+
+    payload = {"has_dc_offset": np.bool_(True), "score": np.int64(12), "nested": [np.float64(1.5)]}
+    out = to_jsonable(payload)
+    assert out == {"has_dc_offset": True, "score": 12, "nested": [1.5]}
+    import json
+
+    json.dumps(out)  # must not raise
+
+
+def test_inventory_marks_non_analyzable_unsupported(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    mp3 = music / "Artist" / "Album" / "03 - Track.mp3"
+    wav = music / "Artist" / "Album" / "04 - Track.wav"
+    mp3.write_bytes(b"ID3fake")
+    wav.write_bytes(b"RIFFfake")
+
+    from services.library_audit.formats import (
+        DEFAULT_ANALYSIS_EXTENSIONS,
+        DEFAULT_INVENTORY_EXTENSIONS,
+    )
+
+    result = run_inventory(
+        session,
+        music,
+        extensions=DEFAULT_INVENTORY_EXTENSIONS,
+        analysis_extensions=DEFAULT_ANALYSIS_EXTENSIONS,
+    )
+    assert result.status == "COMPLETED"
+    assert result.eligible_files_seen == 4
+
+    flacs = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".flac").all()
+    assert all(r.analysis_state == "PENDING" for r in flacs)
+
+    mp3_row = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".mp3").one()
+    assert mp3_row.analysis_state == "PENDING"
+
+    wav_row = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".wav").one()
+    assert wav_row.analysis_state == "UNSUPPORTED"
+
+    from services.library_audit.service import select_pending_files
+
+    pending = select_pending_files(session, limit=50)
+    assert {p.extension for p in pending} == {".flac", ".mp3"}
+    assert len(pending) == 3
+
+
+def test_inventory_requeues_unsupported_when_now_analyzable(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    mp3 = music / "Artist" / "Album" / "03 - Track.mp3"
+    mp3.write_bytes(b"ID3fake")
+
+    from services.library_audit.formats import DEFAULT_INVENTORY_EXTENSIONS
+
+    run_inventory(
+        session,
+        music,
+        extensions=DEFAULT_INVENTORY_EXTENSIONS,
+        analysis_extensions=[".flac"],
+    )
+    mp3_row = session.query(LibraryAuditFile).filter(LibraryAuditFile.extension == ".mp3").one()
+    assert mp3_row.analysis_state == "UNSUPPORTED"
+
+    run_inventory(
+        session,
+        music,
+        extensions=DEFAULT_INVENTORY_EXTENSIONS,
+        analysis_extensions=[".flac", ".mp3"],
+    )
+    session.refresh(mp3_row)
+    assert mp3_row.analysis_state == "PENDING"
+
+
+def test_composite_routes_mp3_and_flac(tmp_path: Path):
+    class _P:
+        def __init__(self, name: str):
+            self.name = name
+            self.calls: list[str] = []
+
+        def health(self):
+            return ProviderHealth(healthy=True, provider=self.name)
+
+        def capabilities(self):
+            return ProviderCapabilities(provider=self.name, extensions=[f".{self.name}"])
+
+        def analyze(self, absolute_path: str, mode: str = "standard"):
+            self.calls.append(absolute_path)
+            return ProviderAnalysisResult(provider=self.name, verdict="AUTHENTIC", score=1)
+
+    from services.library_audit.router import CompositeAnalyzerProvider
+
+    flac_p = _P("flac")
+    mp3_p = _P("mp3")
+    comp = CompositeAnalyzerProvider(flac=flac_p, mp3=mp3_p)
+    comp.analyze(str(tmp_path / "a.flac"))
+    comp.analyze(str(tmp_path / "b.mp3"))
+    assert flac_p.calls and flac_p.calls[0].endswith(".flac")
+    assert mp3_p.calls and mp3_p.calls[0].endswith(".mp3")
+
+
+def test_mp3_probe_on_synthetic_file(tmp_path: Path):
+    """Encode a tiny MP3 with ffmpeg when available."""
+    pytest.importorskip("mutagen")
+    import shutil
+    import subprocess
+
+    from mutagen.mp3 import MP3
+
+    out = tmp_path / "tone.mp3"
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not available to synthesize MP3")
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=0.25",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    from services.library_audit.mp3_probe import Mp3ProbeProvider
+
+    result = Mp3ProbeProvider().analyze(str(out))
+    assert result.provider == "mp3_probe"
+    assert result.verdict in {"AUTHENTIC", "WARNING", "SUSPICIOUS", "INCONCLUSIVE"}
+    assert result.evidence.get("bitrate_kbps") is not None
+    assert MP3(out).info.bitrate > 0

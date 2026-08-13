@@ -31,6 +31,7 @@ const ANALYSIS_STATE_OPTIONS = [
   { value: "PENDING", label: "Pending" },
   { value: "ANALYZING", label: "Analyzing" },
   { value: "ANALYZED", label: "Analyzed" },
+  { value: "UNSUPPORTED", label: "Unsupported" },
   { value: "ERROR", label: "Error" },
   { value: "STALE", label: "Stale" },
 ] as const;

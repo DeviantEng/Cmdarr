@@ -73,7 +73,7 @@ export function ArrLibraryAuditOverviewPage() {
     <div>
       <ArrPageHeader
         title="Library Audit"
-        description="FLAC authenticity inventory, analysis queue, and review status."
+        description="Inventory audio files; analyze FLAC authenticity and MP3 bitrate quality."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={() => void runTest()} disabled={testing}>
@@ -165,10 +165,11 @@ export function ArrLibraryAuditOverviewPage() {
           />
           <ArrPanelBody>
             {stats ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <StatBox label="Present" value={stats.library.present} />
                 <StatBox label="Analyzed" value={stats.library.analyzed} />
-                <StatBox label="Pending" value={stats.library.pending} />
+                <StatBox label="Pending analysis" value={stats.library.pending} />
+                <StatBox label="Unsupported" value={stats.library.unsupported ?? 0} />
                 <StatBox label="Errors" value={stats.library.errors} />
                 <StatBox label="Missing" value={stats.library.missing} />
               </div>
@@ -182,8 +183,42 @@ export function ArrLibraryAuditOverviewPage() {
 
         <ArrContentPanel>
           <ArrSectionHeader
+            title="Formats"
+            description="Inventoried files by kind and extension. Analysis currently runs on FLAC and MP3."
+          />
+          <ArrPanelBody>
+            {stats?.formats ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StatBox label="Lossless" value={stats.formats.by_kind.lossless} />
+                  <StatBox label="Lossy" value={stats.formats.by_kind.lossy} />
+                  <StatBox label="Unknown" value={stats.formats.by_kind.unknown} />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(stats.formats.by_extension).map(([ext, count]) => (
+                    <div
+                      key={ext}
+                      className="rounded-md border border-border bg-background/50 px-2.5 py-1 text-sm"
+                    >
+                      <span className="font-medium">{ext || "unknown"}</span>
+                      <span className="ml-2 tabular-nums text-muted-foreground">{count}</span>
+                    </div>
+                  ))}
+                  {Object.keys(stats.formats.by_extension).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No inventoried files yet.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "—"}</p>
+            )}
+          </ArrPanelBody>
+        </ArrContentPanel>
+
+        <ArrContentPanel>
+          <ArrSectionHeader
             title="Verdicts"
-            description="Latest analysis results for present files."
+            description="Latest analysis results for present FLAC/MP3 files."
           />
           <ArrPanelBody>
             {stats ? (
@@ -226,7 +261,7 @@ export function ArrLibraryAuditOverviewPage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Provider health"
-            description="Analyzer used for FLAC authenticity checks."
+            description="Composite analyzer: FLAC Detective + MP3 probe."
           />
           <ArrPanelBody>
             {status ? (
