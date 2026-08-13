@@ -26,15 +26,6 @@ import {
   verdictBadgeVariant,
 } from "./library-audit-utils";
 
-export function StatBox({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-border bg-background/50 px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-semibold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
 function formatEvidence(evidence: unknown): string {
   if (evidence == null) return "No evidence recorded.";
   if (typeof evidence === "string") return evidence;

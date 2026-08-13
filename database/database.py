@@ -241,7 +241,7 @@ def get_library_audit_db() -> Generator[Session]:
     """Dependency for FastAPI to get library audit database session.
 
     Creates the audit DB lazily. Callers that require the feature to be enabled
-    should check LIBRARY_AUDIT_ENABLED before using this dependency.
+    should check that the library_audit command is enabled before using this dependency.
     """
     manager = get_database_manager()
     yield from manager.get_library_audit_session()

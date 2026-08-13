@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.2-dev] - TBD
 
 ### Features
-- **Library Maintenance**:
+- **Library Audit**: Optional command to inventory a mounted music library and analyze common formats (FLAC authenticity via FLAC Detective; MP3 bitrate/CBR–VBR probe). Review queue with dispositions, Overview pies for library/format/verdict/review stats, immediate single-file reanalyze, and a dedicated audit SQLite DB. Enable via Commands; set the music path under Settings → Music Management.
 
 ### Fixes
 - N/A

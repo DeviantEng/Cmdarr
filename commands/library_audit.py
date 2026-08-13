@@ -17,7 +17,6 @@ from services.library_audit.formats import (
 from services.library_audit.router import get_composite_provider
 from services.library_audit.service import (
     get_music_root,
-    is_feature_enabled,
     run_audit_cycle,
     validate_root,
 )
@@ -58,13 +57,6 @@ class LibraryAuditCommand(BaseCommand):
     async def execute(self) -> bool:
         logger = get_logger(self.get_logger_name())
         self.last_run_stats = {}
-
-        if not is_feature_enabled(config_service.get):
-            self.last_run_stats = {
-                "error": "Library Audit is disabled (LIBRARY_AUDIT_ENABLED=false)"
-            }
-            logger.error(self.last_run_stats["error"])
-            return False
 
         provider = get_composite_provider()
         health = provider.health()

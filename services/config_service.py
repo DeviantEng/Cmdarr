@@ -529,14 +529,7 @@ class ConfigService:
                 "category": "jellyfin",
                 "description": "Disable library caching (slower playlist sync)",
             },
-            # Library Audit (FLAC authenticity / future analyzers)
-            {
-                "key": "LIBRARY_AUDIT_ENABLED",
-                "default_value": "false",
-                "data_type": "bool",
-                "category": "library_audit",
-                "description": "Enable Library Audit (requires music library mounted read-only)",
-            },
+            # Library Audit (enable/disable via Commands → Library Audit)
             {
                 "key": "LIBRARY_AUDIT_ROOT",
                 "default_value": "/music",
