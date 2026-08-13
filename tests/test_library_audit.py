@@ -26,6 +26,7 @@ from services.library_audit.service import (
     analyze_file,
     clear_current_review,
     create_review,
+    effective_verdict,
     queue_reanalyze,
     reanalyze_file_now,
     recover_stale_analyzing,
@@ -205,8 +206,8 @@ def test_analysis_and_review_bind_to_content_hash(audit_env):
     assert row.current_analysis_id
     assert row.artist == "Test Artist"
 
-    review = create_review(session, row.id, "ACCEPTED", note="ok for now")
-    assert review.disposition == "ACCEPTED"
+    review = create_review(session, row.id, "FALSE_POSITIVE", note="analyzer wrong")
+    assert review.disposition == "FALSE_POSITIVE"
     assert review.content_hash == row.content_hash
     session.refresh(row)
     assert row.current_review_id == review.id
@@ -255,6 +256,23 @@ def test_clear_current_review(audit_env):
     clear_current_review(session, row.id)
     session.refresh(row)
     assert row.current_review_id is None
+
+
+def test_create_review_maps_legacy_accepted(audit_env):
+    session = audit_env["session"]
+    music = audit_env["music"]
+    run_inventory(session, music, extensions=[".flac"])
+    row = session.query(LibraryAuditFile).first()
+    analyze_file(session, row, music, FakeProvider())
+    review = create_review(session, row.id, "ACCEPTED")
+    assert review.disposition == "FALSE_POSITIVE"
+
+
+def test_false_positive_overrides_effective_verdict():
+    assert effective_verdict("FAKE_CERTAIN", "FALSE_POSITIVE") == "AUTHENTIC"
+    assert effective_verdict("FAKE_CERTAIN", "ACCEPTED") == "AUTHENTIC"
+    assert effective_verdict("FAKE_CERTAIN", "IGNORE") == "FAKE_CERTAIN"
+    assert effective_verdict("WARNING", None) == "WARNING"
 
 
 def test_retention_deletes_old_missing(audit_env):
@@ -436,3 +454,94 @@ def test_mp3_probe_on_synthetic_file(tmp_path: Path):
     assert result.verdict in {"AUTHENTIC", "WARNING", "SUSPICIOUS", "INCONCLUSIVE"}
     assert result.evidence.get("bitrate_kbps") is not None
     assert MP3(out).info.bitrate > 0
+
+
+def test_spectrum_curve_on_flac(audit_env):
+    from services.library_audit.spectrum import compute_spectrum_curve
+
+    curve = compute_spectrum_curve(audit_env["f1"], cutoff_hz=18000)
+    assert curve is not None
+    assert len(curve["freqs_hz"]) == len(curve["norm"]) >= 2
+    assert curve["nyquist_hz"] > 0
+    assert curve["cutoff_hz"] == 18000.0
+
+
+def test_spectrum_resolve_under_root(audit_env):
+    """Pieces used by GET /files/{id}/spectrum."""
+    from services.library_audit.paths import resolve_under_root
+    from services.library_audit.spectrum import compute_spectrum_curve
+
+    abs_path = resolve_under_root(audit_env["music"], "Artist/Album/01 - Track.flac")
+    curve = compute_spectrum_curve(abs_path)
+    assert curve is not None
+    assert curve["nyquist_hz"] == pytest.approx(22050.0)
+
+
+def test_flac_authentic_skips_second_pass(monkeypatch, audit_env):
+    calls: list[tuple[float, bool]] = []
+
+    class FakeAnalyzer:
+        def __init__(self, sample_duration: float = 30.0, deep: bool = False):
+            self.sample_duration = sample_duration
+            self.deep = deep
+
+        def analyze_file(self, path):
+            calls.append((self.sample_duration, self.deep))
+            return {"verdict": "AUTHENTIC", "score": 5, "cutoff_freq": 21000, "reason": "ok"}
+
+    monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
+    from services.library_audit.flac_detective import FlacDetectiveProvider
+
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]))
+    assert calls == [(30.0, False)]
+    assert result.verdict == "AUTHENTIC"
+    assert result.evidence.get("analysis_pass") == "standard"
+    assert "spectrum_curve" not in result.evidence
+
+
+def test_flac_flagged_triggers_second_pass(monkeypatch, audit_env):
+    calls: list[tuple[float, bool]] = []
+
+    class FakeAnalyzer:
+        def __init__(self, sample_duration: float = 30.0, deep: bool = False):
+            self.sample_duration = sample_duration
+            self.deep = deep
+
+        def analyze_file(self, path):
+            calls.append((self.sample_duration, self.deep))
+            if not self.deep:
+                return {
+                    "verdict": "FAKE_CERTAIN",
+                    "score": 90,
+                    "cutoff_freq": 19750,
+                    "reason": "fast fake",
+                }
+            return {
+                "verdict": "WARNING",
+                "score": 40,
+                "cutoff_freq": 19750,
+                "reason": "deep softer",
+                "residual_floor_db": -40.0,
+            }
+
+    monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
+    monkeypatch.setattr(
+        "services.library_audit.flac_detective.compute_spectrum_curve",
+        lambda path, cutoff_hz=None: {
+            "freqs_hz": [0.0, 1000.0],
+            "norm": [1.0, 0.5],
+            "nyquist_hz": 22050.0,
+            "cutoff_hz": cutoff_hz,
+        },
+    )
+    from services.library_audit.flac_detective import FlacDetectiveProvider
+
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]))
+    assert calls == [(30.0, False), (60.0, True)]
+    assert result.verdict == "WARNING"
+    assert result.provider_mode == "deep"
+    assert result.evidence.get("analysis_pass") == "deep"
+    assert result.evidence.get("first_pass_verdict") == "FAKE_CERTAIN"
+    assert result.evidence.get("spectrum_curve") is not None
+    assert result.evidence.get("residual_floor_db") == -40.0
+    assert "Second pass" in (result.summary or "")

@@ -49,7 +49,7 @@ NEEDS_REVIEW_VERDICTS = frozenset(
 )
 DISPOSITIONS = frozenset(
     {
-        "ACCEPTED",
+        "FALSE_POSITIVE",
         "BEST_AVAILABLE",
         "CONFIRMED_TRANSCODE",
         "REPLACE",
@@ -57,6 +57,22 @@ DISPOSITIONS = frozenset(
         "UNSURE",
     }
 )
+# Legacy disposition stored before rename
+_LEGACY_DISPOSITION_MAP = {"ACCEPTED": "FALSE_POSITIVE"}
+
+
+def normalize_disposition(disposition: str | None) -> str | None:
+    if not disposition:
+        return None
+    upper = disposition.upper()
+    return _LEGACY_DISPOSITION_MAP.get(upper, upper)
+
+
+def effective_verdict(scan_verdict: str | None, disposition: str | None) -> str | None:
+    """Human disposition can clear a false-positive scan result for display/stats."""
+    if normalize_disposition(disposition) == "FALSE_POSITIVE":
+        return "AUTHENTIC"
+    return scan_verdict
 
 
 @dataclass
@@ -421,7 +437,7 @@ def create_review(
     note: str | None = None,
     reviewed_by: str | None = None,
 ) -> LibraryAuditReview:
-    disposition = (disposition or "").upper()
+    disposition = normalize_disposition(disposition) or ""
     if disposition not in DISPOSITIONS:
         raise ValueError(f"Invalid disposition: {disposition}")
     row = session.get(LibraryAuditFile, file_id)
@@ -564,13 +580,20 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         analysis = session.get(LibraryAuditAnalysis, row.current_analysis_id)
         if not analysis:
             continue
-        key = analysis.verdict.lower()
+        disposition = None
+        if row.current_review_id:
+            rev = session.get(LibraryAuditReview, row.current_review_id)
+            if rev and not (
+                rev.content_hash and row.content_hash and rev.content_hash != row.content_hash
+            ):
+                disposition = rev.disposition
+        key = (effective_verdict(analysis.verdict, disposition) or "").lower()
         if key in verdict_counts:
             verdict_counts[key] += 1
 
     review_counts = {
         "needs_review": count_needs_review(session),
-        "accepted": 0,
+        "false_positive": 0,
         "best_available": 0,
         "confirmed_transcode": 0,
         "replace": 0,
@@ -590,7 +613,7 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         # Only count if review still matches current content hash
         if rev.content_hash and row.content_hash and rev.content_hash != row.content_hash:
             continue
-        d = rev.disposition.lower()
+        d = (normalize_disposition(rev.disposition) or "").lower()
         if d == "ignore":
             review_counts["ignored"] += 1
         elif d in review_counts:
