@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Housekeeping
-- N/A
+- **Security (Docker / Trivy)**: Bump Chainguard Python builder/runtime digests to clear HIGH Go stdlib findings **CVE-2026-39821** and **CVE-2026-46600** (stdlib v1.26.5 → fixed in 1.26.6+).
 
 ## [0.4.1] - 2026-08-11
 

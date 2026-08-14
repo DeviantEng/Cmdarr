@@ -8,8 +8,8 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
-# Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python@sha256:b08980b41611a3887dfca3823286a84b2b8557c70ec7f151265c1d53fd67c68e AS python-builder
+# Locked Python: digest bump 2026-08-14 (Go stdlib CVE-2026-39821 / CVE-2026-46600)
+FROM cgr.dev/chainguard/python@sha256:eca6b0e5d6456bc248bdf730f9495f1bf2e79cd3777ad41e4739a37abd827e0c AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -26,7 +26,7 @@ RUN python -m venv /app/venv \
     && rm -rf /root/.cache/pip
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python@sha256:b08980b41611a3887dfca3823286a84b2b8557c70ec7f151265c1d53fd67c68e AS runtime-assembler
+FROM cgr.dev/chainguard/python@sha256:eca6b0e5d6456bc248bdf730f9495f1bf2e79cd3777ad41e4739a37abd827e0c AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -46,8 +46,8 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
-# Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python@sha256:e2554b2ab18fc6d3a22f249245f8a8cf866687441b38273ffd5e0f3e37009e00
+# Locked Python: digest bump 2026-08-14 (Go stdlib CVE-2026-39821 / CVE-2026-46600)
+FROM cgr.dev/chainguard/python@sha256:fe9ad068be9f8b9417ffebc049c852c43c03897c364146b9823944cdd7e70b94
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
