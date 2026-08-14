@@ -683,14 +683,27 @@ class CommandExecutor:
                 f"changed={inv.get('changed_files', 0)}, "
                 f"missing={inv.get('missing_files', 0)}"
             )
-        an = stats.get("analysis") or {}
-        parts.append(
-            f"analyzed {an.get('completed', 0)}/{an.get('attempted', 0)} "
-            f"(auth={an.get('authentic', 0)}, warn={an.get('warning', 0)}, "
-            f"sus={an.get('suspicious', 0)}, fake={an.get('fake_certain', 0)}, "
-            f"err={an.get('errors', 0)})"
-        )
+        triage = stats.get("triage") or {}
+        deep = stats.get("deep") or {}
+        if triage or deep:
+            parts.append(f"triage {triage.get('completed', 0)}/{triage.get('attempted', 0)}")
+            if deep.get("skipped"):
+                parts.append(f"deep skipped ({deep.get('skip_reason') or 'prefer_triage_first'})")
+            else:
+                parts.append(f"deep {deep.get('completed', 0)}/{deep.get('attempted', 0)}")
+            if stats.get("triage_progress_pct") is not None:
+                parts.append(f"triage_progress={float(stats['triage_progress_pct']):.1f}%")
+        else:
+            an = stats.get("analysis") or {}
+            parts.append(
+                f"analyzed {an.get('completed', 0)}/{an.get('attempted', 0)} "
+                f"(auth={an.get('authentic', 0)}, warn={an.get('warning', 0)}, "
+                f"sus={an.get('suspicious', 0)}, fake={an.get('fake_certain', 0)}, "
+                f"err={an.get('errors', 0)})"
+            )
         parts.append(f"pending={stats.get('pending_queue', 0)}")
+        if stats.get("pending_deep") is not None:
+            parts.append(f"pending_deep={stats.get('pending_deep', 0)}")
         parts.append(f"needs_review={stats.get('needs_review', 0)}")
         return " • ".join(parts)
 

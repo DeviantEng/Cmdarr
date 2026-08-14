@@ -766,3 +766,46 @@ def test_prefer_triage_first_skips_deep_below_80(audit_env):
     assert total >= 10
     assert pct < 80.0
     assert done >= 1
+
+
+def test_legacy_provider_mode_standard_uses_triage_pipeline(audit_env):
+    """Saved provider_mode=standard must not force deep-only (deep_batch_size) runs."""
+    from services.library_audit.service import run_audit_cycle
+
+    class CountingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(verdict="AUTHENTIC", score=5.0)
+            self.modes: list[str] = []
+
+        def analyze(self, absolute_path: str, mode: str = "standard") -> ProviderAnalysisResult:
+            self.modes.append(mode)
+            return super().analyze(absolute_path, mode=mode)
+
+    session = audit_env["session"]
+    run_inventory(
+        session,
+        audit_env["music"],
+        extensions=[".flac"],
+        analysis_extensions=[".flac"],
+    )
+    provider = CountingProvider()
+    summary = run_audit_cycle(
+        session,
+        audit_env["music"],
+        triage_batch_size=25,
+        deep_batch_size=10,
+        force_inventory=False,
+        inventory_interval_hours=168,
+        analysis_extensions=[".flac"],
+        inventory_extensions=[".flac"],
+        provider=provider,
+        provider_mode="standard",
+        prefer_triage_first=True,
+        deep_after_triage_pct=80.0,
+    )
+    assert summary.triage.attempted >= 1
+    assert all(m == "triage" for m in provider.modes)
+    # Prefer triage first + fresh library → deep skipped after triage clears authentic
+    assert (
+        summary.deep.attempted == 0 or summary.deep_skipped or summary.triage_progress_pct >= 80.0
+    )

@@ -131,7 +131,10 @@ class LibraryAuditCommand(BaseCommand):
         else:
             analysis_extensions = list(DEFAULT_ANALYSIS_EXTENSIONS)
         retention = _int_cfg(cj.get("missing_retention_days", 90), 90, 1, 3650)
-        mode = str(cj.get("provider_mode") or "triage")
+        # Legacy "standard" meant single-pass analysis; map to triage pipeline.
+        # Only explicit "deep" forces deep-only (skips triage batch).
+        raw_mode = str(cj.get("provider_mode") or "triage").lower().strip()
+        mode = "deep" if raw_mode == "deep" else "triage"
 
         manager = get_database_manager()
         session = manager.get_library_audit_session_sync()

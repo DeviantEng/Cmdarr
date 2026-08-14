@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Library Audit**: Optional command to inventory a mounted music library and analyze common formats (FLAC authenticity via FLAC Detective; MP3 bitrate/CBR–VBR probe). Triage then deep analysis queues (Fake Certain only after deep confirmation), review queue with dispositions (including False Positive overrides), folder-grouped multi-select bulk actions, Overview pies for library/format/verdict/review/integrity stats, immediate single-file reanalyze, spectrum curves for flagged FLACs, and a dedicated audit SQLite DB. Enable via Commands; set the music path under Settings → Music Management.
 
 ### Fixes
-- N/A
+- **Library Audit**: Legacy command `provider_mode: "standard"` no longer forces a deep-only batch (which ignored triage size and looked like “only 10 files per run”). Standard now uses the triage → deep pipeline; run summaries show triage/deep counts separately.
 
 ### Housekeeping
 - **Security (Docker / Trivy)**: Bump Chainguard Python builder/runtime digests to clear HIGH Go stdlib findings **CVE-2026-39821** and **CVE-2026-46600** (stdlib v1.26.5 → fixed in 1.26.6+).
