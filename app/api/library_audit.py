@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from database.database import get_library_audit_db
@@ -157,6 +158,126 @@ def _serialize_review(r: LibraryAuditReview) -> dict[str, Any]:
     }
 
 
+_VERDICT_SEVERITY = {
+    "FAKE_CERTAIN": 0,
+    "SUSPICIOUS": 1,
+    "WARNING": 2,
+    "INCONCLUSIVE": 3,
+    "ERROR": 4,
+    "AUTHENTIC": 5,
+}
+
+SortBy = Literal[
+    "path",
+    "verdict",
+    "score",
+    "state",
+    "disposition",
+    "folder_pending_deep",
+]
+
+
+def _folder_stats_map(db: Session) -> dict[str | None, dict[str, int]]:
+    """Present-file counts and PENDING_DEEP counts keyed by parent_path."""
+    rows = (
+        db.query(
+            LibraryAuditFile.parent_path,
+            func.count(LibraryAuditFile.id).label("present_count"),
+            func.sum(
+                case(
+                    (LibraryAuditFile.analysis_state == "PENDING_DEEP", 1),
+                    else_=0,
+                )
+            ).label("pending_deep_count"),
+        )
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .group_by(LibraryAuditFile.parent_path)
+        .all()
+    )
+    return {
+        row.parent_path: {
+            "present_count": int(row.present_count or 0),
+            "pending_deep_count": int(row.pending_deep_count or 0),
+        }
+        for row in rows
+    }
+
+
+def _attach_folder_stats(
+    items: list[dict[str, Any]], folder_stats: dict[str | None, dict[str, int]]
+) -> None:
+    for item in items:
+        stats = folder_stats.get(item.get("parent_path")) or {
+            "present_count": 0,
+            "pending_deep_count": 0,
+        }
+        item["folder_present_count"] = stats["present_count"]
+        item["folder_pending_deep_count"] = stats["pending_deep_count"]
+
+
+def _sort_file_items(
+    items: list[dict[str, Any]],
+    *,
+    sort_by: str,
+    sort_dir: str,
+) -> None:
+    """In-place sort for paginated file list responses."""
+    descending = sort_dir.lower() == "desc"
+
+    def path_key(item: dict[str, Any]) -> tuple:
+        return (item.get("relative_path") or "",)
+
+    def verdict_key(item: dict[str, Any]) -> tuple:
+        a = item.get("analysis") or {}
+        return (
+            _VERDICT_SEVERITY.get(str(a.get("verdict") or "").upper(), 9),
+            a.get("completed_at") or "",
+            item.get("relative_path") or "",
+        )
+
+    def state_key(item: dict[str, Any]) -> tuple:
+        return (item.get("analysis_state") or "", item.get("relative_path") or "")
+
+    def disposition_key(item: dict[str, Any]) -> tuple:
+        review = item.get("review") or {}
+        return (review.get("disposition") or "", item.get("relative_path") or "")
+
+    def folder_pending_deep_key(item: dict[str, Any]) -> tuple:
+        pending = int(item.get("folder_pending_deep_count") or 0)
+        present = int(item.get("folder_present_count") or 0)
+        ratio = (pending / present) if present > 0 else 0.0
+        # Sort folders together: count, then ratio (full albums), then path
+        return (
+            pending,
+            ratio,
+            item.get("parent_path") or "",
+            item.get("relative_path") or "",
+        )
+
+    if sort_by == "score":
+        # Keep missing scores last regardless of direction.
+        items.sort(
+            key=lambda item: (
+                (item.get("analysis") or {}).get("score") is None,
+                -(float((item.get("analysis") or {}).get("score") or 0.0))
+                if descending
+                else float((item.get("analysis") or {}).get("score") or 0.0),
+                item.get("relative_path") or "",
+            )
+        )
+        return
+
+    key_fn = {
+        "path": path_key,
+        "verdict": verdict_key,
+        "state": state_key,
+        "disposition": disposition_key,
+        "folder_pending_deep": folder_pending_deep_key,
+    }.get(sort_by, path_key)
+
+    items.sort(key=key_fn, reverse=descending)
+
+
 @router.get("/status")
 async def library_audit_status():
     """Command enablement + root + provider status (safe when command disabled)."""
@@ -229,6 +350,14 @@ async def list_files(
     needs_review: bool | None = Query(None),
     parent_path: str | None = Query(None, description="Exact album/folder relative path"),
     q: str | None = Query(None, description="Path search"),
+    sort_by: SortBy | None = Query(
+        None,
+        description=(
+            "path | verdict | score | state | disposition | folder_pending_deep. "
+            "Defaults to verdict (severity) for needs_review, else path."
+        ),
+    ),
+    sort_dir: Literal["asc", "desc"] = Query("asc"),
 ):
     _require_enabled()
     query = db.query(LibraryAuditFile)
@@ -291,28 +420,31 @@ async def list_files(
 
         items.append(_serialize_file(row, analysis, applicable_review))
 
-    # Sort needs_review queue by severity then oldest analysis
-    if needs_review is True:
-        severity = {
-            "FAKE_CERTAIN": 0,
-            "SUSPICIOUS": 1,
-            "WARNING": 2,
-            "INCONCLUSIVE": 3,
-            "ERROR": 4,
-        }
+    folder_stats = _folder_stats_map(db)
+    _attach_folder_stats(items, folder_stats)
 
-        def sort_key(item: dict[str, Any]):
-            a = item.get("analysis") or {}
-            return (
-                severity.get(a.get("verdict"), 9),
-                a.get("completed_at") or "",
-            )
-
-        items.sort(key=sort_key)
+    effective_sort = sort_by or ("verdict" if needs_review is True else "path")
+    effective_dir = sort_dir
+    if sort_by is None and needs_review is True:
+        effective_dir = "asc"
+    elif sort_by is None:
+        effective_dir = "asc"
+    _sort_file_items(
+        items,
+        sort_by=effective_sort,
+        sort_dir=effective_dir,
+    )
 
     total = len(items)
     page = items[offset : offset + limit]
-    return {"total": total, "limit": limit, "offset": offset, "items": page}
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "sort_by": effective_sort,
+        "sort_dir": effective_dir,
+        "items": page,
+    }
 
 
 @router.get("/files/{file_id}")

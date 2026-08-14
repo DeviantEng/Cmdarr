@@ -809,3 +809,55 @@ def test_legacy_provider_mode_standard_uses_triage_pipeline(audit_env):
     assert (
         summary.deep.attempted == 0 or summary.deep_skipped or summary.triage_progress_pct >= 80.0
     )
+
+
+def test_sort_file_items_folder_pending_deep_and_score():
+    from app.api.library_audit import _attach_folder_stats, _sort_file_items
+
+    items = [
+        {
+            "relative_path": "B/2.flac",
+            "parent_path": "B",
+            "analysis": {"verdict": "WARNING", "score": 10},
+            "analysis_state": "PENDING_DEEP",
+            "review": None,
+        },
+        {
+            "relative_path": "A/1.flac",
+            "parent_path": "A",
+            "analysis": {"verdict": "FAKE_CERTAIN", "score": 90},
+            "analysis_state": "ANALYZED",
+            "review": None,
+        },
+        {
+            "relative_path": "A/2.flac",
+            "parent_path": "A",
+            "analysis": {"verdict": "WARNING", "score": None},
+            "analysis_state": "PENDING_DEEP",
+            "review": None,
+        },
+        {
+            "relative_path": "C/1.flac",
+            "parent_path": "C",
+            "analysis": {"verdict": "SUSPICIOUS", "score": 50},
+            "analysis_state": "PENDING_DEEP",
+            "review": None,
+        },
+    ]
+    _attach_folder_stats(
+        items,
+        {
+            "A": {"present_count": 10, "pending_deep_count": 10},
+            "B": {"present_count": 12, "pending_deep_count": 1},
+            "C": {"present_count": 8, "pending_deep_count": 8},
+        },
+    )
+    _sort_file_items(items, sort_by="folder_pending_deep", sort_dir="desc")
+    assert [i["parent_path"] for i in items] == ["A", "A", "C", "B"]
+
+    _sort_file_items(items, sort_by="verdict", sort_dir="asc")
+    assert items[0]["analysis"]["verdict"] == "FAKE_CERTAIN"
+
+    _sort_file_items(items, sort_by="score", sort_dir="desc")
+    assert items[0]["analysis"]["score"] == 90
+    assert items[-1]["analysis"]["score"] is None
