@@ -35,6 +35,7 @@ function asEvidenceRecord(evidence: unknown): Record<string, unknown> | null {
 }
 
 function formatHz(value: unknown): string | null {
+  if (value == null || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return null;
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 1 : 2)} kHz`;
@@ -42,8 +43,9 @@ function formatHz(value: unknown): string | null {
 }
 
 function formatKbps(value: unknown): string | null {
+  if (value == null || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n)) return null;
+  if (!Number.isFinite(n) || n <= 0) return null;
   return `${Math.round(n)} kbps`;
 }
 
@@ -126,6 +128,7 @@ export function LibraryAuditFileDetailDialog({
 
   const handleReanalyze = async () => {
     if (fileId == null) return;
+    const wasPendingDeep = file?.analysis_state === "PENDING_DEEP";
     setSubmitting("reanalyze");
     try {
       const next = await libraryAuditApi.reanalyze(fileId);
@@ -133,11 +136,17 @@ export function LibraryAuditFileDetailDialog({
       setNote(next.review?.note ?? "");
       const verdict = next.analysis?.verdict;
       toast.success(
-        verdict ? `Reanalysis complete: ${formatVerdict(verdict)}` : "Reanalysis complete"
+        verdict
+          ? `${wasPendingDeep ? "Deep scan" : "Reanalysis"} complete: ${formatVerdict(verdict)}`
+          : wasPendingDeep
+            ? "Deep scan complete"
+            : "Reanalysis complete"
       );
       onChanged?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Reanalysis failed");
+      toast.error(
+        e instanceof Error ? e.message : wasPendingDeep ? "Deep scan failed" : "Reanalysis failed"
+      );
     } finally {
       setSubmitting(null);
     }
@@ -166,6 +175,9 @@ export function LibraryAuditFileDetailDialog({
   const containerBitrate = formatKbps(evidence?.container_bitrate_kbps);
   const analysisPass = typeof evidence?.analysis_pass === "string" ? evidence.analysis_pass : null;
   const integrity = asEvidenceRecord(evidence?.integrity);
+  const pendingDeep = file?.analysis_state === "PENDING_DEEP";
+  const triageVerdict =
+    typeof evidence?.triage_verdict === "string" ? evidence.triage_verdict : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,17 +206,32 @@ export function LibraryAuditFileDetailDialog({
               ) : null}
               {file.review?.disposition ? (
                 <Badge variant="secondary">{formatDisposition(file.review.disposition)}</Badge>
-              ) : file.analysis_state === "PENDING_DEEP" ? (
-                <Badge variant="outline">Pending deep</Badge>
+              ) : pendingDeep ? (
+                <Badge variant="secondary">Awaiting deep scan</Badge>
               ) : (
                 <Badge variant="outline">Needs review</Badge>
               )}
               <Badge variant={file.is_present ? "default" : "secondary"}>
                 {file.is_present ? "Present" : "Missing"}
               </Badge>
-              <Badge variant="outline">{file.analysis_state}</Badge>
-              {analysisPass ? <Badge variant="outline">Pass: {analysisPass}</Badge> : null}
+              {!pendingDeep ? <Badge variant="outline">{file.analysis_state}</Badge> : null}
+              {pendingDeep ? (
+                <Badge variant="outline">
+                  Last pass: triage
+                  {triageVerdict ? ` (${formatVerdict(triageVerdict)})` : ""}
+                </Badge>
+              ) : analysisPass ? (
+                <Badge variant="outline">Last pass: {analysisPass}</Badge>
+              ) : null}
             </div>
+
+            {pendingDeep ? (
+              <p className="text-sm text-muted-foreground">
+                Quick triage flagged this file. A deeper scan is queued for a later command run, or
+                run <span className="font-medium text-foreground">Deep scan</span> now to confirm
+                the result immediately.
+              </p>
+            ) : null}
 
             {(cutoffLabel || estimatedBitrate || containerBitrate) && (
               <div className="flex flex-wrap gap-2">
@@ -317,19 +344,37 @@ export function LibraryAuditFileDetailDialog({
         )}
 
         <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={fileId == null || submitting != null}
-            onClick={() => void handleReanalyze()}
-          >
-            {submitting === "reanalyze" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <div className="flex flex-wrap gap-2">
+            {pendingDeep ? (
+              <Button
+                variant="default"
+                size="sm"
+                disabled={fileId == null || submitting != null}
+                onClick={() => void handleReanalyze()}
+              >
+                {submitting === "reanalyze" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Deep scan
+              </Button>
             ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={fileId == null || submitting != null}
+                onClick={() => void handleReanalyze()}
+              >
+                {submitting === "reanalyze" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Reanalyze
+              </Button>
             )}
-            Reanalyze
-          </Button>
+          </div>
           <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>
