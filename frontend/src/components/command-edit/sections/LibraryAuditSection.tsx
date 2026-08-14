@@ -1,6 +1,7 @@
 import type { CommandEditRenderContext } from "../types";
 import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/NumericInput";
+import { Switch } from "@/components/ui/switch";
 import { commandUiCopy } from "@/command-spec";
 
 const la = commandUiCopy.libraryAudit;
@@ -9,15 +10,28 @@ export function LibraryAuditSection({ ctx }: { ctx: CommandEditRenderContext }) 
   const { editForm, setEditForm } = ctx;
   return (
     <>
+      <div className="flex items-start justify-between gap-4 space-y-0 rounded-md border border-border p-3">
+        <div className="space-y-1">
+          <Label htmlFor="edit-la-prefer-triage">{la.preferTriageFirst}</Label>
+          <p className="text-xs text-muted-foreground">{la.preferTriageFirstHelp}</p>
+        </div>
+        <Switch
+          id="edit-la-prefer-triage"
+          checked={editForm.prefer_triage_first ?? true}
+          onCheckedChange={(checked) =>
+            setEditForm((f) => ({ ...f, prefer_triage_first: checked }))
+          }
+        />
+      </div>
       <div className="space-y-2">
         <Label htmlFor="edit-la-triage-batch">{la.triageBatchSize}</Label>
         <NumericInput
           id="edit-la-triage-batch"
-          value={editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 100}
-          onChange={(v) => setEditForm((f) => ({ ...f, triage_batch_size: v ?? 100 }))}
-          min={1}
+          value={editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 150}
+          onChange={(v) => setEditForm((f) => ({ ...f, triage_batch_size: v ?? 150 }))}
+          min={25}
           max={500}
-          defaultValue={100}
+          defaultValue={150}
         />
         <p className="text-xs text-muted-foreground">{la.triageBatchSizeHelp}</p>
       </div>
@@ -25,11 +39,11 @@ export function LibraryAuditSection({ ctx }: { ctx: CommandEditRenderContext }) 
         <Label htmlFor="edit-la-deep-batch">{la.deepBatchSize}</Label>
         <NumericInput
           id="edit-la-deep-batch"
-          value={editForm.deep_batch_size ?? 15}
-          onChange={(v) => setEditForm((f) => ({ ...f, deep_batch_size: v ?? 15 }))}
-          min={1}
-          max={200}
-          defaultValue={15}
+          value={editForm.deep_batch_size ?? 10}
+          onChange={(v) => setEditForm((f) => ({ ...f, deep_batch_size: v ?? 10 }))}
+          min={0}
+          max={50}
+          defaultValue={10}
         />
         <p className="text-xs text-muted-foreground">{la.deepBatchSizeHelp}</p>
       </div>

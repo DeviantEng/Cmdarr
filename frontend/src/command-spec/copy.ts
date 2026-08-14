@@ -110,12 +110,14 @@ export const commandUiCopy = {
       "After a successful fetch for an artist, wait this many days before they are due again (1–365).",
   },
   libraryAudit: {
+    preferTriageFirst: "Prefer triage first",
+    preferTriageFirstHelp:
+      "When on (default), skip deep analysis until at least 80% of FLAC/MP3 files have been triaged. Turn off to run deep every cycle.",
     triageBatchSize: "Triage batch size",
-    triageBatchSizeHelp:
-      "Max files for the quick triage pass per run (1–500). Clears confident Authentic; queues suspects for deep.",
+    triageBatchSizeHelp: "Max files for the quick triage pass per run (25–500). Default 150.",
     deepBatchSize: "Deep batch size",
     deepBatchSizeHelp:
-      "Max files for the in-depth pass per run (1–200). Slower (60s+/file); Fake Certain only after this pass.",
+      "Max files for the in-depth pass per run (0–50). Default 10. Set 0 to disable deep.",
     triageSampleSeconds: "Triage sample (seconds)",
     triageSampleSecondsHelp: "Audio sample length for triage (5–120). Default 20.",
     deepSampleSeconds: "Deep sample (seconds)",

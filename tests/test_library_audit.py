@@ -670,3 +670,99 @@ def test_triage_batch_queues_pending_deep(audit_env):
     assert rows
     assert all(r.analysis_state == "PENDING_DEEP" for r in rows)
     assert all(r.current_analysis_id is not None for r in rows)
+
+
+def test_prefer_triage_first_skips_deep_below_80(audit_env):
+    from services.library_audit.service import (
+        run_audit_cycle,
+        should_run_deep_batch,
+        triage_progress,
+    )
+
+    assert should_run_deep_batch(
+        deep_batch_size=10,
+        prefer_triage_first=True,
+        triage_progress_pct=50.0,
+    ) == (False, "triage_below_threshold")
+    assert should_run_deep_batch(
+        deep_batch_size=10,
+        prefer_triage_first=True,
+        triage_progress_pct=80.0,
+    ) == (True, None)
+    assert should_run_deep_batch(
+        deep_batch_size=10,
+        prefer_triage_first=False,
+        triage_progress_pct=10.0,
+    ) == (True, None)
+    assert should_run_deep_batch(
+        deep_batch_size=0,
+        prefer_triage_first=False,
+        triage_progress_pct=100.0,
+    ) == (False, "deep_batch_size_zero")
+
+    class FlagProvider(FakeProvider):
+        def analyze(self, absolute_path: str, mode: str = "standard") -> ProviderAnalysisResult:
+            self.calls.append(mode)
+            if mode == "triage":
+                return ProviderAnalysisResult(
+                    provider="fake",
+                    provider_version="0.0.1",
+                    provider_mode=mode,
+                    verdict="WARNING",
+                    score=90.0,
+                    evidence={"needs_deep": True},
+                    raw_result={},
+                    metadata={},
+                )
+            return ProviderAnalysisResult(
+                provider="fake",
+                provider_version="0.0.1",
+                provider_mode=mode,
+                verdict="SUSPICIOUS",
+                score=70.0,
+                evidence={"needs_deep": False},
+                raw_result={},
+                metadata={},
+            )
+
+    session = audit_env["session"]
+    music = audit_env["music"]
+    album = music / "Artist" / "Album"
+    for i in range(10):
+        path = album / f"{i:02d} - Extra.flac"
+        if not path.exists():
+            sr = 44100
+            t = np.linspace(0, 0.1, int(sr * 0.1), endpoint=False)
+            tone = (0.1 * np.sin(2 * np.pi * 440 * t)).astype(np.float64)
+            sf.write(path, np.column_stack([tone, tone]), sr, format="FLAC")
+
+    run_inventory(
+        session,
+        music,
+        extensions=[".flac"],
+        analysis_extensions=[".flac"],
+    )
+    provider = FlagProvider()
+    # Triage only 1 file → progress stays well under 80% → deep skipped
+    summary = run_audit_cycle(
+        session,
+        music,
+        triage_batch_size=1,
+        deep_batch_size=10,
+        force_inventory=False,
+        inventory_interval_hours=168,
+        analysis_extensions=[".flac"],
+        inventory_extensions=[".flac"],
+        provider=provider,
+        prefer_triage_first=True,
+        deep_after_triage_pct=80.0,
+    )
+    assert summary.triage.attempted == 1
+    assert summary.deep_skipped is True
+    assert summary.deep_skip_reason == "triage_below_threshold"
+    assert summary.deep.attempted == 0
+    assert "deep" not in provider.calls
+    pct, done, total = triage_progress(session, [".flac"])
+    assert total >= 10
+    assert pct < 80.0
+    assert done >= 1

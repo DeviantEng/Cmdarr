@@ -640,14 +640,15 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
           : 25,
       triage_batch_size:
         typeof cfg.triage_batch_size === "number"
-          ? Math.min(500, Math.max(1, cfg.triage_batch_size))
+          ? Math.min(500, Math.max(25, cfg.triage_batch_size))
           : typeof cfg.analysis_batch_size === "number"
-            ? Math.min(500, Math.max(1, cfg.analysis_batch_size))
-            : 100,
+            ? Math.min(500, Math.max(25, cfg.analysis_batch_size))
+            : 150,
       deep_batch_size:
         typeof cfg.deep_batch_size === "number"
-          ? Math.min(200, Math.max(1, cfg.deep_batch_size))
-          : 15,
+          ? Math.min(50, Math.max(0, cfg.deep_batch_size))
+          : 10,
+      prefer_triage_first: cfg.prefer_triage_first !== false,
       triage_sample_seconds:
         typeof cfg.triage_sample_seconds === "number"
           ? Math.min(120, Math.max(5, cfg.triage_sample_seconds))
@@ -1141,11 +1142,13 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                         triage_batch_size: Math.min(
                           500,
                           Math.max(
-                            1,
-                            editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 100
+                            25,
+                            editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 150
                           )
                         ),
-                        deep_batch_size: Math.min(200, Math.max(1, editForm.deep_batch_size ?? 15)),
+                        deep_batch_size: Math.min(50, Math.max(0, editForm.deep_batch_size ?? 10)),
+                        prefer_triage_first: editForm.prefer_triage_first !== false,
+                        deep_after_triage_pct: 80,
                         triage_sample_seconds: Math.min(
                           120,
                           Math.max(5, editForm.triage_sample_seconds ?? 20)

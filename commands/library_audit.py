@@ -99,12 +99,14 @@ class LibraryAuditCommand(BaseCommand):
 
         # Prefer split batch sizes; legacy analysis_batch_size maps to triage.
         triage_batch = _int_cfg(
-            cj.get("triage_batch_size", cj.get("analysis_batch_size", 100)),
-            100,
-            1,
+            cj.get("triage_batch_size", cj.get("analysis_batch_size", 150)),
+            150,
+            25,
             500,
         )
-        deep_batch = _int_cfg(cj.get("deep_batch_size", 15), 15, 1, 200)
+        deep_batch = _int_cfg(cj.get("deep_batch_size", 10), 10, 0, 50)
+        prefer_triage_first = bool(cj.get("prefer_triage_first", True))
+        deep_after_triage_pct = _float_cfg(cj.get("deep_after_triage_pct"), 80.0, 0.0, 100.0)
         inventory_hours = _int_cfg(cj.get("inventory_interval_hours", 24), 24, 1, 168)
         # Prefer inventory_extensions. Legacy "extensions": [".flac"] was the old
         # default — expand to all inventory formats. Custom legacy lists are kept.
@@ -149,6 +151,8 @@ class LibraryAuditCommand(BaseCommand):
                 deep_sample_seconds=flac_options.deep_sample_seconds,
                 short_track_seconds=flac_options.short_track_seconds,
                 require_deep_for_fake_certain=flac_options.require_deep_for_fake_certain,
+                prefer_triage_first=prefer_triage_first,
+                deep_after_triage_pct=deep_after_triage_pct,
             )
             inv = summary.inventory
             an = summary.analysis
@@ -183,7 +187,11 @@ class LibraryAuditCommand(BaseCommand):
                     "attempted": summary.deep.attempted,
                     "completed": summary.deep.completed,
                     "fake_certain": summary.deep.fake_certain,
+                    "skipped": summary.deep_skipped,
+                    "skip_reason": summary.deep_skip_reason,
                 },
+                "triage_progress_pct": summary.triage_progress_pct,
+                "prefer_triage_first": prefer_triage_first,
                 "retention_deleted": summary.retention_deleted,
                 "pending_queue": summary.pending_queue,
                 "pending_deep": summary.pending_deep,
@@ -194,10 +202,16 @@ class LibraryAuditCommand(BaseCommand):
             if inv is not None and inv.status == "FAILED":
                 logger.error(f"Inventory failed: {inv.error_message}")
                 return False
+            deep_msg = (
+                f"deep skipped ({summary.deep_skip_reason})"
+                if summary.deep_skipped
+                else f"deep {summary.deep.completed}/{summary.deep.attempted}"
+            )
             logger.info(
                 "Library Audit completed: "
                 f"triage {summary.triage.completed}/{summary.triage.attempted}, "
-                f"deep {summary.deep.completed}/{summary.deep.attempted}, "
+                f"{deep_msg}, "
+                f"triage_progress={summary.triage_progress_pct:.1f}%, "
                 f"pending={summary.pending_queue}, pending_deep={summary.pending_deep}, "
                 f"needs_review={summary.needs_review}"
             )

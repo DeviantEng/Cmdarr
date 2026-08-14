@@ -98,8 +98,10 @@ def init_default_commands():
             "timeout_minutes": 120,
             "command_type": None,
             "config_json": {
-                "triage_batch_size": 100,
-                "deep_batch_size": 15,
+                "triage_batch_size": 150,
+                "deep_batch_size": 10,
+                "prefer_triage_first": True,
+                "deep_after_triage_pct": 80,
                 "triage_sample_seconds": 20,
                 "deep_sample_seconds": 60,
                 "short_track_seconds": 10,

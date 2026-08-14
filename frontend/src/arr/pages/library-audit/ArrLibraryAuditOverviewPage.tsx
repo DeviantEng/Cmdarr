@@ -218,26 +218,35 @@ export function ArrLibraryAuditOverviewPage() {
                     {stats.integrity.corrupted} corrupted).
                   </p>
                 ) : null}
-                {(stats.last_inventory_run || stats.last_analysis_run) && (
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    {stats.last_inventory_run ? (
-                      <p>
-                        Last inventory: {stats.last_inventory_run.status}
-                        {stats.last_inventory_run.completed_at
-                          ? ` · ${new Date(stats.last_inventory_run.completed_at).toLocaleString()}`
-                          : ""}
-                      </p>
-                    ) : null}
-                    {stats.last_analysis_run ? (
-                      <p>
-                        Last analysis batch: {stats.last_analysis_run.status}
-                        {stats.last_analysis_run.completed_at
-                          ? ` · ${new Date(stats.last_analysis_run.completed_at).toLocaleString()}`
-                          : ""}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  {stats.library.triage_progress_pct != null ? (
+                    <p>
+                      Triage progress: {stats.library.triage_progress_pct.toFixed(1)}%
+                      {stats.library.triage_done != null && stats.library.triage_total != null
+                        ? ` (${stats.library.triage_done.toLocaleString()} / ${stats.library.triage_total.toLocaleString()} analyzable)`
+                        : ""}
+                      {stats.library.triage_progress_pct < 80
+                        ? " · deep analysis waits until 80%"
+                        : ""}
+                    </p>
+                  ) : null}
+                  {stats.last_inventory_run ? (
+                    <p>
+                      Last inventory: {stats.last_inventory_run.status}
+                      {stats.last_inventory_run.completed_at
+                        ? ` · ${new Date(stats.last_inventory_run.completed_at).toLocaleString()}`
+                        : ""}
+                    </p>
+                  ) : null}
+                  {stats.last_analysis_run ? (
+                    <p>
+                      Last analysis batch: {stats.last_analysis_run.status}
+                      {stats.last_analysis_run.completed_at
+                        ? ` · ${new Date(stats.last_analysis_run.completed_at).toLocaleString()}`
+                        : ""}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">

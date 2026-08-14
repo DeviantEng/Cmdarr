@@ -102,6 +102,9 @@ class AuditRunSummary:
     pending_queue: int = 0
     pending_deep: int = 0
     needs_review: int = 0
+    triage_progress_pct: float | None = None
+    deep_skipped: bool = False
+    deep_skip_reason: str | None = None
 
 
 def is_feature_enabled(_config_get=None) -> bool:
@@ -440,6 +443,58 @@ def count_pending_deep(session: Session) -> int:
     )
 
 
+DEFAULT_DEEP_AFTER_TRIAGE_PCT = 80.0
+
+
+def triage_progress(
+    session: Session,
+    analysis_extensions: list[str] | None = None,
+) -> tuple[float, int, int]:
+    """Return (percent, triaged_count, analyzable_present_count).
+
+    A file is "triaged" once it is no longer waiting for the first pass
+    (not PENDING / ERROR / STALE / ANALYZING). PENDING_DEEP and ANALYZED both count.
+    """
+    analyzable = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
+    total = (
+        session.query(func.count(LibraryAuditFile.id))
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditFile.extension.in_(analyzable))
+        .scalar()
+        or 0
+    )
+    if total <= 0:
+        return 100.0, 0, 0
+    still_pending = (
+        session.query(func.count(LibraryAuditFile.id))
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditFile.extension.in_(analyzable))
+        .filter(LibraryAuditFile.analysis_state.in_(["PENDING", "ERROR", "STALE", "ANALYZING"]))
+        .scalar()
+        or 0
+    )
+    triaged = max(0, total - still_pending)
+    pct = 100.0 * float(triaged) / float(total)
+    return pct, triaged, total
+
+
+def should_run_deep_batch(
+    *,
+    deep_batch_size: int,
+    prefer_triage_first: bool,
+    triage_progress_pct: float,
+    deep_after_triage_pct: float = DEFAULT_DEEP_AFTER_TRIAGE_PCT,
+) -> tuple[bool, str | None]:
+    """Decide whether this cycle should run the deep batch."""
+    if deep_batch_size <= 0:
+        return False, "deep_batch_size_zero"
+    if not prefer_triage_first:
+        return True, None
+    if triage_progress_pct + 1e-9 >= deep_after_triage_pct:
+        return True, None
+    return False, "triage_below_threshold"
+
+
 def count_needs_review(session: Session, threshold: str = "WARNING") -> int:
     threshold_rank = REVIEW_THRESHOLD_ORDER.get((threshold or "WARNING").upper(), 1)
     # Files with analysis at/above threshold and no applicable current review
@@ -568,6 +623,7 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
     )
     pending = count_pending(session)
     pending_deep = count_pending_deep(session)
+    triage_pct, triage_done, triage_total = triage_progress(session)
     unsupported = (
         session.query(func.count(LibraryAuditFile.id))
         .filter(LibraryAuditFile.is_present.is_(True))
@@ -699,6 +755,9 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
             "pending_deep": pending_deep,
             "unsupported": unsupported,
             "errors": errors,
+            "triage_progress_pct": round(triage_pct, 1),
+            "triage_done": triage_done,
+            "triage_total": triage_total,
         },
         "formats": {
             "by_kind": by_format_kind,
@@ -756,8 +815,8 @@ def run_audit_cycle(
     root: Path,
     *,
     analysis_batch_size: int | None = None,
-    triage_batch_size: int = 100,
-    deep_batch_size: int = 15,
+    triage_batch_size: int = 150,
+    deep_batch_size: int = 10,
     inventory_interval_hours: int = 24,
     inventory_extensions: list[str] | None = None,
     analysis_extensions: list[str] | None = None,
@@ -770,10 +829,15 @@ def run_audit_cycle(
     deep_sample_seconds: float = 60.0,
     short_track_seconds: float = 10.0,
     require_deep_for_fake_certain: bool = True,
+    prefer_triage_first: bool = True,
+    deep_after_triage_pct: float = DEFAULT_DEEP_AFTER_TRIAGE_PCT,
 ) -> AuditRunSummary:
-    """Run inventory (if due), triage batch, then deep batch.
+    """Run inventory (if due), triage batch, then deep batch when allowed.
 
-    ``analysis_batch_size`` is a legacy alias for triage_batch_size when triage is unset.
+    When ``prefer_triage_first`` is True (default), deep is skipped until triage
+    progress reaches ``deep_after_triage_pct`` (default 80). Set
+    ``prefer_triage_first=False`` to force a deep batch every run.
+    ``deep_batch_size=0`` disables deep entirely.
     """
     from services.library_audit.flac_detective import FlacAnalysisOptions
 
@@ -791,8 +855,8 @@ def run_audit_cycle(
     an_exts = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
 
     # Legacy single batch size → triage
-    if analysis_batch_size is not None and triage_batch_size == 100:
-        triage_batch_size = max(1, int(analysis_batch_size))
+    if analysis_batch_size is not None and triage_batch_size == 150:
+        triage_batch_size = max(1, min(500, int(analysis_batch_size)))
 
     do_inventory = force_inventory or inventory_due(session, inventory_interval_hours)
     if do_inventory:
@@ -805,7 +869,7 @@ def run_audit_cycle(
     else:
         summary.inventory_skipped = True
 
-    # Triage first (clear confident Authentic), then deep queue
+    # Triage first (clear confident Authentic), then deep queue when allowed
     triage_mode = "triage"
     if (provider_mode or "").lower() in {"deep", "standard"}:
         # Force deep-only cycle when operator sets provider_mode=deep
@@ -815,31 +879,46 @@ def run_audit_cycle(
         summary.triage = run_analysis_batch(
             session,
             root,
-            limit=max(1, int(triage_batch_size)),
+            limit=max(1, min(500, int(triage_batch_size))),
             provider=provider,
             mode="triage",
             analysis_extensions=an_exts,
             states=["PENDING", "ERROR", "STALE"],
         )
-        summary.deep = run_analysis_batch(
-            session,
-            root,
-            limit=max(1, int(deep_batch_size)),
-            provider=provider,
-            mode="deep",
-            analysis_extensions=an_exts,
-            states=["PENDING_DEEP"],
+        pct, _, _ = triage_progress(session, an_exts)
+        summary.triage_progress_pct = pct
+        run_deep, skip_reason = should_run_deep_batch(
+            deep_batch_size=int(deep_batch_size),
+            prefer_triage_first=prefer_triage_first,
+            triage_progress_pct=pct,
+            deep_after_triage_pct=deep_after_triage_pct,
         )
+        if run_deep:
+            summary.deep = run_analysis_batch(
+                session,
+                root,
+                limit=max(1, min(50, int(deep_batch_size))),
+                provider=provider,
+                mode="deep",
+                analysis_extensions=an_exts,
+                states=["PENDING_DEEP"],
+            )
+        else:
+            summary.deep_skipped = True
+            summary.deep_skip_reason = skip_reason
     else:
+        deep_limit = int(deep_batch_size) if int(deep_batch_size) > 0 else int(triage_batch_size)
         summary.deep = run_analysis_batch(
             session,
             root,
-            limit=max(1, int(deep_batch_size or triage_batch_size)),
+            limit=max(1, min(50, deep_limit)),
             provider=provider,
             mode="deep",
             analysis_extensions=an_exts,
             states=["PENDING", "PENDING_DEEP", "ERROR", "STALE"],
         )
+        pct, _, _ = triage_progress(session, an_exts)
+        summary.triage_progress_pct = pct
 
     # Combined rollup for command stats / last analysis run (deep run is latest)
     summary.analysis = AnalysisBatchResult(
@@ -862,4 +941,7 @@ def run_audit_cycle(
     summary.pending_queue = count_pending(session)
     summary.pending_deep = count_pending_deep(session)
     summary.needs_review = count_needs_review(session)
+    if summary.triage_progress_pct is None:
+        pct, _, _ = triage_progress(session, an_exts)
+        summary.triage_progress_pct = pct
     return summary

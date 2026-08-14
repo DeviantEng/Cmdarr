@@ -76,6 +76,7 @@ export type CommandEditFormState = {
   analysis_batch_size?: number;
   triage_batch_size?: number;
   deep_batch_size?: number;
+  prefer_triage_first?: boolean;
   triage_sample_seconds?: number;
   deep_sample_seconds?: number;
   short_track_seconds?: number;

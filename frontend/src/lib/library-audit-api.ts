@@ -166,6 +166,9 @@ export type LibraryAuditStats = LibraryAuditStatus & {
     pending_deep?: number;
     unsupported?: number;
     errors: number;
+    triage_progress_pct?: number;
+    triage_done?: number;
+    triage_total?: number;
   };
   formats?: {
     by_kind: {
