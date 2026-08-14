@@ -96,8 +96,11 @@ class AuditRunSummary:
     inventory: InventoryResult | None = None
     inventory_skipped: bool = False
     analysis: AnalysisBatchResult = field(default_factory=AnalysisBatchResult)
+    triage: AnalysisBatchResult = field(default_factory=AnalysisBatchResult)
+    deep: AnalysisBatchResult = field(default_factory=AnalysisBatchResult)
     retention_deleted: int = 0
     pending_queue: int = 0
+    pending_deep: int = 0
     needs_review: int = 0
 
 
@@ -175,12 +178,19 @@ def recover_stale_analyzing(session: Session, stale_minutes: int = ANALYZING_STA
         if marker.tzinfo is None:
             marker = marker.replace(tzinfo=UTC)
         if marker < cutoff or queued < cutoff:
-            row.analysis_state = "PENDING"
+            # Prefer PENDING_DEEP if a prior triage analysis asked for deep.
+            prior_needs_deep = False
+            if row.current_analysis_id:
+                prior = session.get(LibraryAuditAnalysis, row.current_analysis_id)
+                ev = (prior.evidence_json if prior else None) or {}
+                if isinstance(ev, dict) and ev.get("needs_deep"):
+                    prior_needs_deep = True
+            row.analysis_state = "PENDING_DEEP" if prior_needs_deep else "PENDING"
             row.analysis_queued_at = datetime.now(UTC)
             recovered += 1
     if recovered:
         session.commit()
-        _log().info(f"Recovered {recovered} stale ANALYZING file(s) to PENDING")
+        _log().info(f"Recovered {recovered} stale ANALYZING file(s)")
     return recovered
 
 
@@ -188,13 +198,16 @@ def select_pending_files(
     session: Session,
     limit: int,
     analysis_extensions: list[str] | None = None,
+    *,
+    states: list[str] | None = None,
 ) -> list[LibraryAuditFile]:
     limit = max(1, int(limit))
     analyzable = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
+    state_list = states or ["PENDING", "ERROR", "STALE"]
     return (
         session.query(LibraryAuditFile)
         .filter(LibraryAuditFile.is_present.is_(True))
-        .filter(LibraryAuditFile.analysis_state.in_(["PENDING", "ERROR", "STALE"]))
+        .filter(LibraryAuditFile.analysis_state.in_(state_list))
         .filter(LibraryAuditFile.extension.in_(analyzable))
         .order_by(
             LibraryAuditFile.analysis_queued_at.asc().nullsfirst(),
@@ -295,7 +308,12 @@ def analyze_file(
         session.flush()
 
         row.current_analysis_id = analysis.id
-        row.analysis_state = "ANALYZED"
+        needs_deep = bool((result.evidence or {}).get("needs_deep"))
+        if (mode or "").lower() == "triage" and needs_deep:
+            row.analysis_state = "PENDING_DEEP"
+            row.analysis_queued_at = datetime.now(UTC)
+        else:
+            row.analysis_state = "ANALYZED"
         row.last_analysis_error = None
         # Previous disposition only applies while content hash is unchanged
         if previous_hash and previous_hash != content_hash:
@@ -334,10 +352,14 @@ def run_analysis_batch(
     provider: AnalyzerProvider | None = None,
     mode: str = "standard",
     analysis_extensions: list[str] | None = None,
+    *,
+    states: list[str] | None = None,
 ) -> AnalysisBatchResult:
     provider = provider or get_composite_provider()
     recover_stale_analyzing(session)
-    files = select_pending_files(session, limit, analysis_extensions=analysis_extensions)
+    files = select_pending_files(
+        session, limit, analysis_extensions=analysis_extensions, states=states
+    )
     started = datetime.now(UTC)
     try:
         health = provider.health()
@@ -366,6 +388,7 @@ def run_analysis_batch(
             result.errors += 1
             continue
         result.completed += 1
+        # Count final stored verdict; triage→PENDING_DEEP still stores provisional verdict
         v = analysis.verdict
         if v == "AUTHENTIC":
             result.authentic += 1
@@ -402,6 +425,16 @@ def count_pending(session: Session) -> int:
         session.query(func.count(LibraryAuditFile.id))
         .filter(LibraryAuditFile.is_present.is_(True))
         .filter(LibraryAuditFile.analysis_state.in_(["PENDING", "ERROR", "STALE", "ANALYZING"]))
+        .scalar()
+        or 0
+    )
+
+
+def count_pending_deep(session: Session) -> int:
+    return (
+        session.query(func.count(LibraryAuditFile.id))
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditFile.analysis_state == "PENDING_DEEP")
         .scalar()
         or 0
     )
@@ -495,7 +528,8 @@ def reanalyze_file_now(
     if not row.is_present:
         raise ValueError("File is marked missing; run inventory first")
     provider = provider or get_composite_provider()
-    analysis = analyze_file(session, row, Path(root), provider, mode=mode)
+    # Immediate UI reanalyze uses deep path for accuracy
+    analysis = analyze_file(session, row, Path(root), provider, mode="deep")
     session.refresh(row)
     return row, analysis
 
@@ -533,6 +567,7 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         or 0
     )
     pending = count_pending(session)
+    pending_deep = count_pending_deep(session)
     unsupported = (
         session.query(func.count(LibraryAuditFile.id))
         .filter(LibraryAuditFile.is_present.is_(True))
@@ -569,11 +604,18 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         "inconclusive": 0,
         "error": 0,
     }
-    # Latest analysis per present analyzed file
+    integrity_counts = {
+        "duration_mismatch": 0,
+        "corrupted": 0,
+        "any": 0,
+    }
+    # Latest analysis per present analyzed file (exclude PENDING_DEEP provisional from verdict pies?
+    # Include them as warning/etc so progress is visible; Fake Certain only after deep.)
     rows = (
         session.query(LibraryAuditFile)
         .filter(LibraryAuditFile.is_present.is_(True))
         .filter(LibraryAuditFile.current_analysis_id.isnot(None))
+        .filter(LibraryAuditFile.analysis_state.in_(["ANALYZED", "PENDING_DEEP"]))
         .all()
     )
     for row in rows:
@@ -587,9 +629,21 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
                 rev.content_hash and row.content_hash and rev.content_hash != row.content_hash
             ):
                 disposition = rev.disposition
+        # PENDING_DEEP must not inflate Fake Certain — use stored (already demoted) verdict
         key = (effective_verdict(analysis.verdict, disposition) or "").lower()
         if key in verdict_counts:
             verdict_counts[key] += 1
+        ev = analysis.evidence_json if isinstance(analysis.evidence_json, dict) else {}
+        integ = ev.get("integrity") if isinstance(ev.get("integrity"), dict) else {}
+        hit = False
+        if integ.get("duration_mismatch"):
+            integrity_counts["duration_mismatch"] += 1
+            hit = True
+        if integ.get("is_corrupted") or ev.get("is_corrupted"):
+            integrity_counts["corrupted"] += 1
+            hit = True
+        if hit:
+            integrity_counts["any"] += 1
 
     review_counts = {
         "needs_review": count_needs_review(session),
@@ -642,6 +696,7 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
             "missing": missing,
             "analyzed": analyzed,
             "pending": pending,
+            "pending_deep": pending_deep,
             "unsupported": unsupported,
             "errors": errors,
         },
@@ -650,6 +705,7 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
             "by_extension": dict(sorted(by_extension.items(), key=lambda kv: (-kv[1], kv[0]))),
         },
         "verdicts": verdict_counts,
+        "integrity": integrity_counts,
         "review": review_counts,
         "last_inventory_run": _serialize_inventory_run(last_inv) if last_inv else None,
         "last_analysis_run": _serialize_analysis_run(last_an) if last_an else None,
@@ -699,22 +755,44 @@ def run_audit_cycle(
     session: Session,
     root: Path,
     *,
-    analysis_batch_size: int = 25,
+    analysis_batch_size: int | None = None,
+    triage_batch_size: int = 100,
+    deep_batch_size: int = 15,
     inventory_interval_hours: int = 24,
     inventory_extensions: list[str] | None = None,
     analysis_extensions: list[str] | None = None,
     extensions: list[str] | None = None,  # legacy alias for inventory_extensions
     missing_retention_days: int = 90,
-    provider_mode: str = "standard",
+    provider_mode: str = "triage",
     force_inventory: bool = False,
     provider: AnalyzerProvider | None = None,
+    triage_sample_seconds: float = 20.0,
+    deep_sample_seconds: float = 60.0,
+    short_track_seconds: float = 10.0,
+    require_deep_for_fake_certain: bool = True,
 ) -> AuditRunSummary:
+    """Run inventory (if due), triage batch, then deep batch.
+
+    ``analysis_batch_size`` is a legacy alias for triage_batch_size when triage is unset.
+    """
+    from services.library_audit.flac_detective import FlacAnalysisOptions
+
     summary = AuditRunSummary()
-    provider = provider or get_composite_provider()
+    flac_options = FlacAnalysisOptions(
+        triage_sample_seconds=triage_sample_seconds,
+        deep_sample_seconds=deep_sample_seconds,
+        short_track_seconds=short_track_seconds,
+        require_deep_for_fake_certain=require_deep_for_fake_certain,
+    )
+    provider = provider or get_composite_provider(flac_options=flac_options)
 
     inv_exts = inventory_extensions if inventory_extensions is not None else extensions
     inv_exts = normalize_extensions(inv_exts, DEFAULT_INVENTORY_EXTENSIONS)
     an_exts = normalize_extensions(analysis_extensions, DEFAULT_ANALYSIS_EXTENSIONS)
+
+    # Legacy single batch size → triage
+    if analysis_batch_size is not None and triage_batch_size == 100:
+        triage_batch_size = max(1, int(analysis_batch_size))
 
     do_inventory = force_inventory or inventory_due(session, inventory_interval_hours)
     if do_inventory:
@@ -727,15 +805,61 @@ def run_audit_cycle(
     else:
         summary.inventory_skipped = True
 
-    summary.analysis = run_analysis_batch(
-        session,
-        root,
-        limit=analysis_batch_size,
-        provider=provider,
-        mode=provider_mode,
-        analysis_extensions=an_exts,
+    # Triage first (clear confident Authentic), then deep queue
+    triage_mode = "triage"
+    if (provider_mode or "").lower() in {"deep", "standard"}:
+        # Force deep-only cycle when operator sets provider_mode=deep
+        triage_mode = "deep"
+
+    if triage_mode == "triage":
+        summary.triage = run_analysis_batch(
+            session,
+            root,
+            limit=max(1, int(triage_batch_size)),
+            provider=provider,
+            mode="triage",
+            analysis_extensions=an_exts,
+            states=["PENDING", "ERROR", "STALE"],
+        )
+        summary.deep = run_analysis_batch(
+            session,
+            root,
+            limit=max(1, int(deep_batch_size)),
+            provider=provider,
+            mode="deep",
+            analysis_extensions=an_exts,
+            states=["PENDING_DEEP"],
+        )
+    else:
+        summary.deep = run_analysis_batch(
+            session,
+            root,
+            limit=max(1, int(deep_batch_size or triage_batch_size)),
+            provider=provider,
+            mode="deep",
+            analysis_extensions=an_exts,
+            states=["PENDING", "PENDING_DEEP", "ERROR", "STALE"],
+        )
+
+    # Combined rollup for command stats / last analysis run (deep run is latest)
+    summary.analysis = AnalysisBatchResult(
+        run_id=summary.deep.run_id or summary.triage.run_id,
+        attempted=summary.triage.attempted + summary.deep.attempted,
+        completed=summary.triage.completed + summary.deep.completed,
+        authentic=summary.triage.authentic + summary.deep.authentic,
+        warning=summary.triage.warning + summary.deep.warning,
+        suspicious=summary.triage.suspicious + summary.deep.suspicious,
+        fake_certain=summary.triage.fake_certain + summary.deep.fake_certain,
+        inconclusive=summary.triage.inconclusive + summary.deep.inconclusive,
+        errors=summary.triage.errors + summary.deep.errors,
+        duration_seconds=(summary.triage.duration_seconds or 0)
+        + (summary.deep.duration_seconds or 0),
+        provider=summary.deep.provider or summary.triage.provider,
+        provider_version=summary.deep.provider_version or summary.triage.provider_version,
     )
+
     summary.retention_deleted = cleanup_missing_records(session, missing_retention_days)
     summary.pending_queue = count_pending(session)
+    summary.pending_deep = count_pending_deep(session)
     summary.needs_review = count_needs_review(session)
     return summary

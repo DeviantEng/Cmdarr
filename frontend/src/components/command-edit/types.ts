@@ -74,6 +74,11 @@ export type CommandEditFormState = {
   settle_seconds?: number;
   sort_by?: string;
   analysis_batch_size?: number;
+  triage_batch_size?: number;
+  deep_batch_size?: number;
+  triage_sample_seconds?: number;
+  deep_sample_seconds?: number;
+  short_track_seconds?: number;
   inventory_interval_hours?: number;
   missing_retention_days?: number;
 };

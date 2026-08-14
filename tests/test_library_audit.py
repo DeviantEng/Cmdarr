@@ -486,7 +486,7 @@ def test_spectrum_resolve_under_root(audit_env):
     assert curve["nyquist_hz"] == pytest.approx(22050.0)
 
 
-def test_flac_authentic_skips_second_pass(monkeypatch, audit_env):
+def test_flac_triage_authentic(monkeypatch, audit_env):
     calls: list[tuple[float, bool]] = []
 
     class FakeAnalyzer:
@@ -501,14 +501,15 @@ def test_flac_authentic_skips_second_pass(monkeypatch, audit_env):
     monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
     from services.library_audit.flac_detective import FlacDetectiveProvider
 
-    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]))
-    assert calls == [(30.0, False)]
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]), mode="triage")
+    assert calls == [(20.0, False)]
     assert result.verdict == "AUTHENTIC"
-    assert result.evidence.get("analysis_pass") == "standard"
+    assert result.evidence.get("analysis_pass") == "triage"
+    assert result.evidence.get("needs_deep") is False
     assert "spectrum_curve" not in result.evidence
 
 
-def test_flac_flagged_triggers_second_pass(monkeypatch, audit_env):
+def test_flac_triage_fake_is_provisional(monkeypatch, audit_env):
     calls: list[tuple[float, bool]] = []
 
     class FakeAnalyzer:
@@ -518,19 +519,43 @@ def test_flac_flagged_triggers_second_pass(monkeypatch, audit_env):
 
         def analyze_file(self, path):
             calls.append((self.sample_duration, self.deep))
-            if not self.deep:
-                return {
-                    "verdict": "FAKE_CERTAIN",
-                    "score": 90,
-                    "cutoff_freq": 19750,
-                    "reason": "fast fake",
-                }
             return {
-                "verdict": "WARNING",
-                "score": 40,
-                "cutoff_freq": 19750,
-                "reason": "deep softer",
-                "residual_floor_db": -40.0,
+                "verdict": "FAKE_CERTAIN",
+                "score": 90,
+                "cutoff_freq": 16000,
+                "reason": "cassette rip suspected",
+            }
+
+    monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
+    from services.library_audit.flac_detective import FlacDetectiveProvider
+
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]), mode="triage")
+    assert calls == [(20.0, False)]
+    assert result.verdict == "WARNING"
+    assert result.evidence.get("needs_deep") is True
+    assert result.evidence.get("triage_verdict") == "FAKE_CERTAIN"
+    assert result.evidence.get("fake_certain_promoted") is False
+    assert "spectrum_curve" not in result.evidence
+
+
+def test_flac_deep_promotes_fake_certain(monkeypatch, audit_env):
+    calls: list[tuple[float, bool]] = []
+
+    class FakeAnalyzer:
+        def __init__(self, sample_duration: float = 30.0, deep: bool = False):
+            self.sample_duration = sample_duration
+            self.deep = deep
+
+        def analyze_file(self, path):
+            calls.append((self.sample_duration, self.deep))
+            return {
+                "verdict": "FAKE_CERTAIN",
+                "score": 95,
+                "cutoff_freq": 16000,
+                "reason": "mp3 transcode signature",
+                "estimated_mp3_bitrate": 192,
+                "residual_floor_db": -72.0,
+                "duration_real": 200.0,
             }
 
     monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
@@ -545,12 +570,103 @@ def test_flac_flagged_triggers_second_pass(monkeypatch, audit_env):
     )
     from services.library_audit.flac_detective import FlacDetectiveProvider
 
-    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]))
-    assert calls == [(30.0, False), (60.0, True)]
-    assert result.verdict == "WARNING"
-    assert result.provider_mode == "deep"
-    assert result.evidence.get("analysis_pass") == "deep"
-    assert result.evidence.get("first_pass_verdict") == "FAKE_CERTAIN"
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]), mode="deep")
+    assert calls == [(60.0, True)]
+    assert result.verdict == "FAKE_CERTAIN"
+    assert result.evidence.get("fake_certain_promoted") is True
     assert result.evidence.get("spectrum_curve") is not None
-    assert result.evidence.get("residual_floor_db") == -40.0
-    assert "Second pass" in (result.summary or "")
+
+
+def test_flac_deep_demotes_cassette_alone(monkeypatch, audit_env):
+    class FakeAnalyzer:
+        def __init__(self, sample_duration: float = 30.0, deep: bool = False):
+            pass
+
+        def analyze_file(self, path):
+            return {
+                "verdict": "FAKE_CERTAIN",
+                "score": 90,
+                "cutoff_freq": 15000,
+                "reason": "cassette tape rip protection",
+                "duration_real": 180.0,
+            }
+
+    monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
+    monkeypatch.setattr(
+        "services.library_audit.flac_detective.compute_spectrum_curve",
+        lambda path, cutoff_hz=None: None,
+    )
+    from services.library_audit.flac_detective import FlacDetectiveProvider
+
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]), mode="deep")
+    assert result.verdict == "WARNING"
+    assert result.evidence.get("fake_certain_blocked_reason") == "cassette_alone"
+    assert result.evidence.get("fake_certain_promoted") is False
+
+
+def test_flac_deep_demotes_short_track(monkeypatch, audit_env):
+    class FakeAnalyzer:
+        def __init__(self, sample_duration: float = 30.0, deep: bool = False):
+            pass
+
+        def analyze_file(self, path):
+            return {
+                "verdict": "FAKE_CERTAIN",
+                "score": 90,
+                "cutoff_freq": 16000,
+                "reason": "mp3 transcode",
+                "estimated_mp3_bitrate": 128,
+                "residual_floor_db": -70.0,
+                "duration_real": 4.0,
+            }
+
+    monkeypatch.setattr("flac_detective.FLACAnalyzer", FakeAnalyzer)
+    monkeypatch.setattr(
+        "services.library_audit.flac_detective.compute_spectrum_curve",
+        lambda path, cutoff_hz=None: None,
+    )
+    from services.library_audit.flac_detective import FlacDetectiveProvider
+
+    result = FlacDetectiveProvider().analyze(str(audit_env["f1"]), mode="deep")
+    assert result.verdict == "WARNING"
+    assert result.evidence.get("fake_certain_blocked_reason") == "short_track"
+
+
+def test_triage_batch_queues_pending_deep(audit_env):
+    """Flagged triage results land in PENDING_DEEP, not Needs Review as Fake Certain."""
+
+    class FlagProvider(FakeProvider):
+        def analyze(self, absolute_path: str, mode: str = "standard") -> ProviderAnalysisResult:
+            self.calls.append(absolute_path)
+            return ProviderAnalysisResult(
+                provider="fake",
+                provider_version="0.0.1",
+                provider_mode=mode,
+                verdict="WARNING",
+                score=90.0,
+                summary="provisional",
+                evidence={"needs_deep": True, "triage_verdict": "FAKE_CERTAIN"},
+                raw_result={"verdict": "FAKE_CERTAIN"},
+                metadata={},
+            )
+
+    session = audit_env["session"]
+    run_inventory(
+        session,
+        audit_env["music"],
+        extensions=[".flac"],
+        analysis_extensions=[".flac"],
+    )
+    provider = FlagProvider()
+    run_analysis_batch(
+        session,
+        audit_env["music"],
+        limit=10,
+        provider=provider,
+        mode="triage",
+        analysis_extensions=[".flac"],
+    )
+    rows = session.query(LibraryAuditFile).all()
+    assert rows
+    assert all(r.analysis_state == "PENDING_DEEP" for r in rows)
+    assert all(r.current_analysis_id is not None for r in rows)

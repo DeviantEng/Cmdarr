@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import {
   Dialog,
@@ -26,6 +26,26 @@ import {
   verdictBadgeVariant,
 } from "./library-audit-utils";
 import { LibraryAuditSpectrumPanel } from "./library-audit-spectrum";
+
+function asEvidenceRecord(evidence: unknown): Record<string, unknown> | null {
+  if (evidence && typeof evidence === "object" && !Array.isArray(evidence)) {
+    return evidence as Record<string, unknown>;
+  }
+  return null;
+}
+
+function formatHz(value: unknown): string | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 1 : 2)} kHz`;
+  return `${Math.round(n)} Hz`;
+}
+
+function formatKbps(value: unknown): string | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  return `${Math.round(n)} kbps`;
+}
 
 function formatEvidence(evidence: unknown): string {
   if (evidence == null) return "No evidence recorded.";
@@ -140,6 +160,12 @@ export function LibraryAuditFileDetailDialog({
   };
 
   const analysis = file?.analysis;
+  const evidence = asEvidenceRecord(analysis?.evidence);
+  const cutoffLabel = formatHz(analysis?.cutoff_hz ?? evidence?.cutoff_freq);
+  const estimatedBitrate = formatKbps(evidence?.estimated_mp3_bitrate ?? evidence?.bitrate_kbps);
+  const containerBitrate = formatKbps(evidence?.container_bitrate_kbps);
+  const analysisPass = typeof evidence?.analysis_pass === "string" ? evidence.analysis_pass : null;
+  const integrity = asEvidenceRecord(evidence?.integrity);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -168,6 +194,8 @@ export function LibraryAuditFileDetailDialog({
               ) : null}
               {file.review?.disposition ? (
                 <Badge variant="secondary">{formatDisposition(file.review.disposition)}</Badge>
+              ) : file.analysis_state === "PENDING_DEEP" ? (
+                <Badge variant="outline">Pending deep</Badge>
               ) : (
                 <Badge variant="outline">Needs review</Badge>
               )}
@@ -175,7 +203,28 @@ export function LibraryAuditFileDetailDialog({
                 {file.is_present ? "Present" : "Missing"}
               </Badge>
               <Badge variant="outline">{file.analysis_state}</Badge>
+              {analysisPass ? <Badge variant="outline">Pass: {analysisPass}</Badge> : null}
             </div>
+
+            {(cutoffLabel || estimatedBitrate || containerBitrate) && (
+              <div className="flex flex-wrap gap-2">
+                {cutoffLabel ? <Badge variant="secondary">Cutoff {cutoffLabel}</Badge> : null}
+                {estimatedBitrate ? (
+                  <Badge variant="secondary">Est. {estimatedBitrate}</Badge>
+                ) : null}
+                {containerBitrate ? (
+                  <Badge variant="secondary">Container {containerBitrate}</Badge>
+                ) : null}
+              </div>
+            )}
+
+            {integrity?.duration_mismatch || integrity?.is_corrupted ? (
+              <p className="text-xs text-destructive">
+                Integrity:
+                {integrity.is_corrupted ? " corrupted" : ""}
+                {integrity.duration_mismatch ? " duration mismatch" : ""}
+              </p>
+            ) : null}
 
             {analysis?.verdict_overridden && analysis.scan_verdict ? (
               <p className="text-xs text-muted-foreground">
@@ -392,6 +441,17 @@ export function LibraryAuditFileTable({
     onSelectedIdsChange(next);
   };
 
+  const colSpan = 5 + (selectable ? 1 : 0) + (onSelectFolder ? 1 : 0);
+
+  // Group consecutive files by parent_path (API already sorts by path).
+  const groups: { folder: string; files: LibraryAuditFile[] }[] = [];
+  for (const file of files) {
+    const folder = file.parent_path || "(root)";
+    const last = groups[groups.length - 1];
+    if (last && last.folder === folder) last.files.push(file);
+    else groups.push({ folder, files: [file] });
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="arr-table w-full">
@@ -422,71 +482,84 @@ export function LibraryAuditFileTable({
           </tr>
         </thead>
         <tbody>
-          {files.map((file) => {
-            const checked = selectable ? selectedIds!.has(file.id) : false;
-            return (
-              <tr
-                key={file.id}
-                className={cn(
-                  "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
-                  loading && "opacity-70",
-                  checked && "bg-muted/40"
-                )}
-                onClick={() => onSelect(file)}
-              >
-                {selectable ? (
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={checked}
-                      onChange={(e) => toggleOne(file.id, e.target.checked)}
-                      aria-label={`Select ${file.file_name}`}
-                    />
-                  </td>
-                ) : null}
+          {groups.map((group) => (
+            <Fragment key={`folder-${group.folder}`}>
+              <tr className="bg-muted/20">
                 <td
-                  className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
-                  title={file.relative_path}
+                  colSpan={colSpan}
+                  className="px-3 py-1.5 font-mono text-[11px] text-muted-foreground"
                 >
-                  {file.relative_path}
+                  {group.folder}
+                  <span className="ml-2 tabular-nums opacity-70">({group.files.length})</span>
                 </td>
-                <td className="px-3 py-2">
-                  <Badge
-                    variant={verdictBadgeVariant(file.analysis?.verdict)}
-                    className="text-[10px]"
-                  >
-                    {formatVerdict(file.analysis?.verdict)}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                  {file.analysis?.score ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {formatDisposition(file.review?.disposition)}
-                </td>
-                {onSelectFolder ? (
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!file.parent_path || selectingFolderId === file.id}
-                      onClick={() => onSelectFolder(file)}
-                      title={file.parent_path || "No folder path"}
-                    >
-                      {selectingFolderId === file.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        "Select folder"
-                      )}
-                    </Button>
-                  </td>
-                ) : null}
               </tr>
-            );
-          })}
+              {group.files.map((file) => {
+                const checked = selectable ? selectedIds!.has(file.id) : false;
+                return (
+                  <tr
+                    key={file.id}
+                    className={cn(
+                      "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
+                      loading && "opacity-70",
+                      checked && "bg-muted/40"
+                    )}
+                    onClick={() => onSelect(file)}
+                  >
+                    {selectable ? (
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={checked}
+                          onChange={(e) => toggleOne(file.id, e.target.checked)}
+                          aria-label={`Select ${file.file_name}`}
+                        />
+                      </td>
+                    ) : null}
+                    <td
+                      className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
+                      title={file.relative_path}
+                    >
+                      {file.file_name || file.relative_path}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge
+                        variant={verdictBadgeVariant(file.analysis?.verdict)}
+                        className="text-[10px]"
+                      >
+                        {formatVerdict(file.analysis?.verdict)}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                      {file.analysis?.score ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {formatDisposition(file.review?.disposition)}
+                    </td>
+                    {onSelectFolder ? (
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!file.parent_path || selectingFolderId === file.id}
+                          onClick={() => onSelectFolder(file)}
+                          title={file.parent_path || "No folder path"}
+                        >
+                          {selectingFolderId === file.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            "Select folder"
+                          )}
+                        </Button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 # Inventory covers common audio containers. Analysis is separate per extension.
+# Non-audio sidecars (.jpg, .nfo, .cue, …) are never inventoried.
 DEFAULT_INVENTORY_EXTENSIONS = [
     ".flac",
     ".wav",
@@ -21,6 +22,15 @@ DEFAULT_INVENTORY_EXTENSIONS = [
     ".opus",
     ".wma",
     ".m4b",
+    # Additional lossless / lossy audio often found in libraries
+    ".tak",
+    ".mpc",
+    ".mp2",
+    ".ac3",
+    ".dts",
+    ".mka",
+    ".webm",
+    ".oga",
 ]
 
 # MVP analyzers: FLAC Detective (authenticity) + mutagen MP3 probe (bitrate/CBR-VBR)
@@ -37,6 +47,7 @@ LOSSLESS_EXTENSIONS = frozenset(
         ".wv",
         ".dsf",
         ".dff",
+        ".tak",
     }
 )
 
@@ -48,11 +59,17 @@ LOSSY_EXTENSIONS = frozenset(
         ".opus",
         ".wma",
         ".m4b",
+        ".mpc",
+        ".mp2",
+        ".ac3",
+        ".dts",
+        ".webm",
+        ".oga",
     }
 )
 
-# .m4a can be ALAC or AAC — treat as unknown without probing
-UNKNOWN_EXTENSIONS = frozenset({".m4a"})
+# .m4a / .mka can be ALAC or AAC / various codecs — treat as unknown without probing
+UNKNOWN_EXTENSIONS = frozenset({".m4a", ".mka"})
 
 
 def normalize_extensions(extensions: list[str] | None, fallback: list[str]) -> list[str]:
@@ -80,8 +97,8 @@ def format_kind_for_extension(extension: str | None) -> str:
         return "lossless"
     if ext in LOSSY_EXTENSIONS:
         return "lossy"
-    if ext == ".m4a":
-        return "unknown"  # may be ALAC or AAC
+    if ext in UNKNOWN_EXTENSIONS:
+        return "unknown"
     return "unknown"
 
 

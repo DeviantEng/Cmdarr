@@ -34,6 +34,7 @@ const PRESENT_OPTIONS = [
 const ANALYSIS_STATE_OPTIONS = [
   { value: "all", label: "Any state" },
   { value: "PENDING", label: "Pending" },
+  { value: "PENDING_DEEP", label: "Pending deep" },
   { value: "ANALYZING", label: "Analyzing" },
   { value: "ANALYZED", label: "Analyzed" },
   { value: "UNSUPPORTED", label: "Unsupported" },

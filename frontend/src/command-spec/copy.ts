@@ -110,9 +110,19 @@ export const commandUiCopy = {
       "After a successful fetch for an artist, wait this many days before they are due again (1–365).",
   },
   libraryAudit: {
-    batchSize: "Analysis batch size",
-    batchSizeHelp:
-      "Max files to analyze per command run (1–500). Inventory is separate and may skip if recently completed.",
+    triageBatchSize: "Triage batch size",
+    triageBatchSizeHelp:
+      "Max files for the quick triage pass per run (1–500). Clears confident Authentic; queues suspects for deep.",
+    deepBatchSize: "Deep batch size",
+    deepBatchSizeHelp:
+      "Max files for the in-depth pass per run (1–200). Slower (60s+/file); Fake Certain only after this pass.",
+    triageSampleSeconds: "Triage sample (seconds)",
+    triageSampleSecondsHelp: "Audio sample length for triage (5–120). Default 20.",
+    deepSampleSeconds: "Deep sample (seconds)",
+    deepSampleSecondsHelp: "Audio sample length for deep analysis (15–180). Default 60.",
+    shortTrackSeconds: "Short-track floor (seconds)",
+    shortTrackSecondsHelp:
+      "Tracks shorter than this cannot become Fake Certain (1–60). Default 10.",
     inventoryInterval: "Inventory interval (hours)",
     inventoryIntervalHelp:
       "Minimum hours between full filesystem inventory walks (1–168). Default 24.",

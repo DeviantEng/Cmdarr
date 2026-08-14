@@ -142,6 +142,7 @@ def run_inventory(
                         changed_files += 1
                     elif not can_analyze and row.analysis_state in (
                         "PENDING",
+                        "PENDING_DEEP",
                         "ERROR",
                         "STALE",
                         "ANALYZING",

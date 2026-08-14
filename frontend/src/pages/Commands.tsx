@@ -638,6 +638,28 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
         typeof cfg.analysis_batch_size === "number"
           ? Math.min(500, Math.max(1, cfg.analysis_batch_size))
           : 25,
+      triage_batch_size:
+        typeof cfg.triage_batch_size === "number"
+          ? Math.min(500, Math.max(1, cfg.triage_batch_size))
+          : typeof cfg.analysis_batch_size === "number"
+            ? Math.min(500, Math.max(1, cfg.analysis_batch_size))
+            : 100,
+      deep_batch_size:
+        typeof cfg.deep_batch_size === "number"
+          ? Math.min(200, Math.max(1, cfg.deep_batch_size))
+          : 15,
+      triage_sample_seconds:
+        typeof cfg.triage_sample_seconds === "number"
+          ? Math.min(120, Math.max(5, cfg.triage_sample_seconds))
+          : 20,
+      deep_sample_seconds:
+        typeof cfg.deep_sample_seconds === "number"
+          ? Math.min(180, Math.max(15, cfg.deep_sample_seconds))
+          : 60,
+      short_track_seconds:
+        typeof cfg.short_track_seconds === "number"
+          ? Math.min(60, Math.max(1, cfg.short_track_seconds))
+          : 10,
       inventory_interval_hours:
         typeof cfg.inventory_interval_hours === "number"
           ? Math.min(168, Math.max(1, cfg.inventory_interval_hours))
@@ -1116,10 +1138,27 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                       ...buildSchedulePayload(editForm),
                       config_json: {
                         ...(editingCommand.config_json || {}),
-                        analysis_batch_size: Math.min(
+                        triage_batch_size: Math.min(
                           500,
-                          Math.max(1, editForm.analysis_batch_size ?? 25)
+                          Math.max(
+                            1,
+                            editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 100
+                          )
                         ),
+                        deep_batch_size: Math.min(200, Math.max(1, editForm.deep_batch_size ?? 15)),
+                        triage_sample_seconds: Math.min(
+                          120,
+                          Math.max(5, editForm.triage_sample_seconds ?? 20)
+                        ),
+                        deep_sample_seconds: Math.min(
+                          180,
+                          Math.max(15, editForm.deep_sample_seconds ?? 60)
+                        ),
+                        short_track_seconds: Math.min(
+                          60,
+                          Math.max(1, editForm.short_track_seconds ?? 10)
+                        ),
+                        require_deep_for_fake_certain: true,
                         inventory_interval_hours: Math.min(
                           168,
                           Math.max(1, editForm.inventory_interval_hours ?? 24)

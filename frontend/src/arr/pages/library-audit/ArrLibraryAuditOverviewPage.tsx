@@ -192,6 +192,11 @@ export function ArrLibraryAuditOverviewPage() {
                           color: "oklch(72% 0.13 85)",
                         },
                         {
+                          label: "Pending deep",
+                          value: stats.library.pending_deep ?? 0,
+                          color: "oklch(64% 0.15 45)",
+                        },
+                        {
                           label: "Unsupported",
                           value: stats.library.unsupported ?? 0,
                           color: "oklch(52% 0.08 280)",
@@ -205,6 +210,14 @@ export function ArrLibraryAuditOverviewPage() {
                     />
                   </div>
                 </div>
+                {stats.integrity && stats.integrity.any > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Integrity: {stats.integrity.any.toLocaleString()} file
+                    {stats.integrity.any === 1 ? "" : "s"} with issues (
+                    {stats.integrity.duration_mismatch} duration mismatch,{" "}
+                    {stats.integrity.corrupted} corrupted).
+                  </p>
+                ) : null}
                 {(stats.last_inventory_run || stats.last_analysis_run) && (
                   <div className="space-y-1 text-xs text-muted-foreground">
                     {stats.last_inventory_run ? (
@@ -286,7 +299,7 @@ export function ArrLibraryAuditOverviewPage() {
         <ArrContentPanel>
           <ArrSectionHeader
             title="Scan Verdicts"
-            description="Latest outcomes for scanned files. False-positive dispositions count as authentic."
+            description="Latest outcomes for scanned files. Fake Certain only after deep confirmation. False-positive dispositions count as authentic."
           />
           <ArrPanelBody>
             {stats ? (
