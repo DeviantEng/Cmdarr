@@ -161,6 +161,8 @@ class Mp3ProbeProvider:
             {
                 "bitrate_kbps": bitrate_kbps,
                 "bitrate_mode": bitrate_mode,
+                "container_bitrate_kbps": bitrate_kbps,
+                "estimated_mp3_bitrate": bitrate_kbps,
                 "sample_rate": sample_rate_i,
                 "channels": channels_i,
                 "duration_seconds": duration,
@@ -169,6 +171,14 @@ class Mp3ProbeProvider:
                 "encoder_info": str(encoder_info) if encoder_info else None,
                 "warning_below_kbps": _WARNING_BELOW_KBPS,
                 "suspicious_below_kbps": _SUSPICIOUS_BELOW_KBPS,
+                "analysis_pass": (mode or "standard").lower(),
+                "needs_deep": False,
+                "integrity": {
+                    "duration_mismatch": False,
+                    "is_corrupted": False,
+                    "duration_real": duration,
+                    "duration_metadata": duration,
+                },
             }
         )
         metadata = to_jsonable(

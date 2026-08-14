@@ -19,6 +19,7 @@ export type LibraryAuditVerdict =
 
 export type LibraryAuditAnalysisState =
   | "PENDING"
+  | "PENDING_DEEP"
   | "ANALYZING"
   | "ANALYZED"
   | "ERROR"
@@ -162,8 +163,12 @@ export type LibraryAuditStats = LibraryAuditStatus & {
     missing: number;
     analyzed: number;
     pending: number;
+    pending_deep?: number;
     unsupported?: number;
     errors: number;
+    triage_progress_pct?: number;
+    triage_done?: number;
+    triage_total?: number;
   };
   formats?: {
     by_kind: {
@@ -180,6 +185,11 @@ export type LibraryAuditStats = LibraryAuditStatus & {
     fake_certain: number;
     inconclusive: number;
     error: number;
+  };
+  integrity?: {
+    duration_mismatch: number;
+    corrupted: number;
+    any: number;
   };
   review: {
     needs_review: number;

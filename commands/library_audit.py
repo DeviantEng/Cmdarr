@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Library Audit command — inventory audio files + batched FLAC/MP3 analysis."""
+"""Library Audit command — inventory audio files + triage/deep FLAC/MP3 analysis."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from commands.command_base import BaseCommand
 from commands.config_adapter import Config as ConfigAdapter
 from database.database import get_database_manager
 from services.config_service import config_service
+from services.library_audit.flac_detective import FlacAnalysisOptions
 from services.library_audit.formats import (
     DEFAULT_ANALYSIS_EXTENSIONS,
     DEFAULT_INVENTORY_EXTENSIONS,
@@ -34,6 +35,20 @@ def _parse_ext_list(value: Any, fallback: list[str]) -> list[str]:
     return list(fallback)
 
 
+def _float_cfg(value: Any, default: float, lo: float, hi: float) -> float:
+    try:
+        return max(lo, min(hi, float(value)))
+    except TypeError, ValueError:
+        return default
+
+
+def _int_cfg(value: Any, default: int, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(value)))
+    except TypeError, ValueError:
+        return default
+
+
 class LibraryAuditCommand(BaseCommand):
     """Scheduled/manual Library Audit: inventory due files and analyze a FLAC/MP3 batch."""
 
@@ -43,8 +58,8 @@ class LibraryAuditCommand(BaseCommand):
 
     def get_description(self) -> str:
         return (
-            "Inventory audio files; analyze FLACs (authenticity) and MP3s (bitrate/CBR-VBR); "
-            "other formats are inventoried only until analyzers exist"
+            "Inventory audio files; triage then deep-analyze FLACs (authenticity) and MP3s "
+            "(bitrate/CBR-VBR); other formats are inventoried only until analyzers exist"
         )
 
     def get_logger_name(self) -> str:
@@ -58,7 +73,14 @@ class LibraryAuditCommand(BaseCommand):
         logger = get_logger(self.get_logger_name())
         self.last_run_stats = {}
 
-        provider = get_composite_provider()
+        cj = self._get_config_json()
+        flac_options = FlacAnalysisOptions(
+            triage_sample_seconds=_float_cfg(cj.get("triage_sample_seconds"), 20.0, 5.0, 120.0),
+            deep_sample_seconds=_float_cfg(cj.get("deep_sample_seconds"), 60.0, 15.0, 180.0),
+            short_track_seconds=_float_cfg(cj.get("short_track_seconds"), 10.0, 1.0, 60.0),
+            require_deep_for_fake_certain=bool(cj.get("require_deep_for_fake_certain", True)),
+        )
+        provider = get_composite_provider(flac_options=flac_options)
         health = provider.health()
         if not health.healthy:
             self.last_run_stats = {
@@ -75,9 +97,17 @@ class LibraryAuditCommand(BaseCommand):
             logger.error(msg)
             return False
 
-        cj = self._get_config_json()
-        batch_size = max(1, min(500, int(cj.get("analysis_batch_size", 25))))
-        inventory_hours = max(1, min(168, int(cj.get("inventory_interval_hours", 24))))
+        # Prefer split batch sizes; legacy analysis_batch_size maps to triage.
+        triage_batch = _int_cfg(
+            cj.get("triage_batch_size", cj.get("analysis_batch_size", 150)),
+            150,
+            25,
+            500,
+        )
+        deep_batch = _int_cfg(cj.get("deep_batch_size", 10), 10, 0, 50)
+        prefer_triage_first = bool(cj.get("prefer_triage_first", True))
+        deep_after_triage_pct = _float_cfg(cj.get("deep_after_triage_pct"), 80.0, 0.0, 100.0)
+        inventory_hours = _int_cfg(cj.get("inventory_interval_hours", 24), 24, 1, 168)
         # Prefer inventory_extensions. Legacy "extensions": [".flac"] was the old
         # default — expand to all inventory formats. Custom legacy lists are kept.
         if "inventory_extensions" in cj:
@@ -100,8 +130,8 @@ class LibraryAuditCommand(BaseCommand):
                 analysis_extensions = list(DEFAULT_ANALYSIS_EXTENSIONS)
         else:
             analysis_extensions = list(DEFAULT_ANALYSIS_EXTENSIONS)
-        retention = max(1, min(3650, int(cj.get("missing_retention_days", 90))))
-        mode = str(cj.get("provider_mode") or "standard")
+        retention = _int_cfg(cj.get("missing_retention_days", 90), 90, 1, 3650)
+        mode = str(cj.get("provider_mode") or "triage")
 
         manager = get_database_manager()
         session = manager.get_library_audit_session_sync()
@@ -109,13 +139,20 @@ class LibraryAuditCommand(BaseCommand):
             summary = run_audit_cycle(
                 session,
                 root,
-                analysis_batch_size=batch_size,
+                triage_batch_size=triage_batch,
+                deep_batch_size=deep_batch,
                 inventory_interval_hours=inventory_hours,
                 inventory_extensions=inventory_extensions,
                 analysis_extensions=analysis_extensions,
                 missing_retention_days=retention,
                 provider_mode=mode,
                 provider=provider,
+                triage_sample_seconds=flac_options.triage_sample_seconds,
+                deep_sample_seconds=flac_options.deep_sample_seconds,
+                short_track_seconds=flac_options.short_track_seconds,
+                require_deep_for_fake_certain=flac_options.require_deep_for_fake_certain,
+                prefer_triage_first=prefer_triage_first,
+                deep_after_triage_pct=deep_after_triage_pct,
             )
             inv = summary.inventory
             an = summary.analysis
@@ -142,8 +179,22 @@ class LibraryAuditCommand(BaseCommand):
                     "inconclusive": an.inconclusive,
                     "errors": an.errors,
                 },
+                "triage": {
+                    "attempted": summary.triage.attempted,
+                    "completed": summary.triage.completed,
+                },
+                "deep": {
+                    "attempted": summary.deep.attempted,
+                    "completed": summary.deep.completed,
+                    "fake_certain": summary.deep.fake_certain,
+                    "skipped": summary.deep_skipped,
+                    "skip_reason": summary.deep_skip_reason,
+                },
+                "triage_progress_pct": summary.triage_progress_pct,
+                "prefer_triage_first": prefer_triage_first,
                 "retention_deleted": summary.retention_deleted,
                 "pending_queue": summary.pending_queue,
+                "pending_deep": summary.pending_deep,
                 "needs_review": summary.needs_review,
                 "provider": health.provider,
                 "provider_version": health.provider_version,
@@ -151,10 +202,18 @@ class LibraryAuditCommand(BaseCommand):
             if inv is not None and inv.status == "FAILED":
                 logger.error(f"Inventory failed: {inv.error_message}")
                 return False
+            deep_msg = (
+                f"deep skipped ({summary.deep_skip_reason})"
+                if summary.deep_skipped
+                else f"deep {summary.deep.completed}/{summary.deep.attempted}"
+            )
             logger.info(
                 "Library Audit completed: "
-                f"analyzed {an.completed}/{an.attempted}, "
-                f"pending={summary.pending_queue}, needs_review={summary.needs_review}"
+                f"triage {summary.triage.completed}/{summary.triage.attempted}, "
+                f"{deep_msg}, "
+                f"triage_progress={summary.triage_progress_pct:.1f}%, "
+                f"pending={summary.pending_queue}, pending_deep={summary.pending_deep}, "
+                f"needs_review={summary.needs_review}"
             )
             return True
         except Exception as exc:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from services.library_audit.flac_detective import get_default_provider
+from services.library_audit.flac_detective import FlacAnalysisOptions, get_default_provider
 from services.library_audit.mp3_probe import get_mp3_provider
 from services.library_audit.provider import (
     AnalyzerProvider,
@@ -22,8 +22,9 @@ class CompositeAnalyzerProvider:
         self,
         flac: AnalyzerProvider | None = None,
         mp3: AnalyzerProvider | None = None,
+        flac_options: FlacAnalysisOptions | None = None,
     ):
-        self.flac = flac or get_default_provider()
+        self.flac = flac or get_default_provider(options=flac_options)
         self.mp3 = mp3 or get_mp3_provider()
 
     def health(self) -> ProviderHealth:
@@ -62,7 +63,7 @@ class CompositeAnalyzerProvider:
         flac_caps = self.flac.capabilities()
         return ProviderCapabilities(
             provider="composite",
-            modes=["standard", "deep"],
+            modes=["triage", "deep", "standard"],
             extensions=[".flac", ".mp3"],
             supports_spectrum=bool(flac_caps.supports_spectrum),
             supports_spectrogram=False,
@@ -80,5 +81,7 @@ class CompositeAnalyzerProvider:
         return self.provider_for_path(absolute_path).analyze(absolute_path, mode=mode)
 
 
-def get_composite_provider() -> CompositeAnalyzerProvider:
-    return CompositeAnalyzerProvider()
+def get_composite_provider(
+    flac_options: FlacAnalysisOptions | None = None,
+) -> CompositeAnalyzerProvider:
+    return CompositeAnalyzerProvider(flac_options=flac_options)

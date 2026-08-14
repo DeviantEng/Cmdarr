@@ -1,6 +1,7 @@
 import type { CommandEditRenderContext } from "../types";
 import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/NumericInput";
+import { Switch } from "@/components/ui/switch";
 import { commandUiCopy } from "@/command-spec";
 
 const la = commandUiCopy.libraryAudit;
@@ -9,17 +10,78 @@ export function LibraryAuditSection({ ctx }: { ctx: CommandEditRenderContext }) 
   const { editForm, setEditForm } = ctx;
   return (
     <>
-      <div className="space-y-2">
-        <Label htmlFor="edit-la-batch">{la.batchSize}</Label>
-        <NumericInput
-          id="edit-la-batch"
-          value={editForm.analysis_batch_size ?? 25}
-          onChange={(v) => setEditForm((f) => ({ ...f, analysis_batch_size: v ?? 25 }))}
-          min={1}
-          max={500}
-          defaultValue={25}
+      <div className="flex items-start justify-between gap-4 space-y-0 rounded-md border border-border p-3">
+        <div className="space-y-1">
+          <Label htmlFor="edit-la-prefer-triage">{la.preferTriageFirst}</Label>
+          <p className="text-xs text-muted-foreground">{la.preferTriageFirstHelp}</p>
+        </div>
+        <Switch
+          id="edit-la-prefer-triage"
+          checked={editForm.prefer_triage_first ?? true}
+          onCheckedChange={(checked) =>
+            setEditForm((f) => ({ ...f, prefer_triage_first: checked }))
+          }
         />
-        <p className="text-xs text-muted-foreground">{la.batchSizeHelp}</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-la-triage-batch">{la.triageBatchSize}</Label>
+        <NumericInput
+          id="edit-la-triage-batch"
+          value={editForm.triage_batch_size ?? editForm.analysis_batch_size ?? 150}
+          onChange={(v) => setEditForm((f) => ({ ...f, triage_batch_size: v ?? 150 }))}
+          min={25}
+          max={500}
+          defaultValue={150}
+        />
+        <p className="text-xs text-muted-foreground">{la.triageBatchSizeHelp}</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-la-deep-batch">{la.deepBatchSize}</Label>
+        <NumericInput
+          id="edit-la-deep-batch"
+          value={editForm.deep_batch_size ?? 10}
+          onChange={(v) => setEditForm((f) => ({ ...f, deep_batch_size: v ?? 10 }))}
+          min={0}
+          max={50}
+          defaultValue={10}
+        />
+        <p className="text-xs text-muted-foreground">{la.deepBatchSizeHelp}</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-la-triage-sample">{la.triageSampleSeconds}</Label>
+        <NumericInput
+          id="edit-la-triage-sample"
+          value={editForm.triage_sample_seconds ?? 20}
+          onChange={(v) => setEditForm((f) => ({ ...f, triage_sample_seconds: v ?? 20 }))}
+          min={5}
+          max={120}
+          defaultValue={20}
+        />
+        <p className="text-xs text-muted-foreground">{la.triageSampleSecondsHelp}</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-la-deep-sample">{la.deepSampleSeconds}</Label>
+        <NumericInput
+          id="edit-la-deep-sample"
+          value={editForm.deep_sample_seconds ?? 60}
+          onChange={(v) => setEditForm((f) => ({ ...f, deep_sample_seconds: v ?? 60 }))}
+          min={15}
+          max={180}
+          defaultValue={60}
+        />
+        <p className="text-xs text-muted-foreground">{la.deepSampleSecondsHelp}</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-la-short">{la.shortTrackSeconds}</Label>
+        <NumericInput
+          id="edit-la-short"
+          value={editForm.short_track_seconds ?? 10}
+          onChange={(v) => setEditForm((f) => ({ ...f, short_track_seconds: v ?? 10 }))}
+          min={1}
+          max={60}
+          defaultValue={10}
+        />
+        <p className="text-xs text-muted-foreground">{la.shortTrackSecondsHelp}</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="edit-la-inv">{la.inventoryInterval}</Label>
