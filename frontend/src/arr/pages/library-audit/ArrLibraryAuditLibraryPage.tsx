@@ -16,6 +16,8 @@ import {
   libraryAuditApi,
   type LibraryAuditDisposition,
   type LibraryAuditFile,
+  type LibraryAuditFileSortBy,
+  type LibraryAuditSortDir,
 } from "@/lib/library-audit-api";
 import {
   LibraryAuditBulkBar,
@@ -67,6 +69,8 @@ export function ArrLibraryAuditLibraryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectingFolderId, setSelectingFolderId] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [sortBy, setSortBy] = useState<LibraryAuditFileSortBy>("path");
+  const [sortDir, setSortDir] = useState<LibraryAuditSortDir>("asc");
 
   const baseQuery = useCallback(
     () => ({
@@ -74,8 +78,10 @@ export function ArrLibraryAuditLibraryPage() {
       present: present === "all" ? undefined : present === "true",
       analysis_state: analysisState === "all" ? undefined : analysisState,
       verdict: verdict === "all" ? undefined : verdict,
+      sort_by: sortBy,
+      sort_dir: sortDir,
     }),
-    [q, present, analysisState, verdict]
+    [q, present, analysisState, verdict, sortBy, sortDir]
   );
 
   const load = useCallback(
@@ -100,6 +106,11 @@ export function ArrLibraryAuditLibraryPage() {
     },
     [baseQuery]
   );
+
+  const handleSortChange = (nextBy: LibraryAuditFileSortBy, nextDir: LibraryAuditSortDir) => {
+    setSortBy(nextBy);
+    setSortDir(nextDir);
+  };
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -280,6 +291,9 @@ export function ArrLibraryAuditLibraryPage() {
               onSelectedIdsChange={setSelectedIds}
               onSelectFolder={(file) => void selectFolder(file)}
               selectingFolderId={selectingFolderId}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={handleSortChange}
               onSelect={(file) => {
                 setSelectedId(file.id);
                 setDetailOpen(true);

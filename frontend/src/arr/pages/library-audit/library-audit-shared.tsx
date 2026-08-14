@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,8 @@ import {
   libraryAuditApi,
   type LibraryAuditDisposition,
   type LibraryAuditFile,
+  type LibraryAuditFileSortBy,
+  type LibraryAuditSortDir,
 } from "@/lib/library-audit-api";
 import {
   DISPOSITION_ACTIONS,
@@ -438,7 +440,65 @@ type FileTableProps = {
   onSelectedIdsChange?: (next: Set<number>) => void;
   onSelectFolder?: (file: LibraryAuditFile) => void;
   selectingFolderId?: number | null;
+  sortBy?: LibraryAuditFileSortBy;
+  sortDir?: LibraryAuditSortDir;
+  onSortChange?: (sortBy: LibraryAuditFileSortBy, sortDir: LibraryAuditSortDir) => void;
 };
+
+const DEFAULT_SORT_DIR: Record<LibraryAuditFileSortBy, LibraryAuditSortDir> = {
+  path: "asc",
+  verdict: "asc",
+  score: "desc",
+  state: "asc",
+  disposition: "asc",
+  folder_pending_deep: "desc",
+};
+
+function SortableTh({
+  label,
+  column,
+  sortBy,
+  sortDir,
+  onSortChange,
+  className,
+  title,
+}: {
+  label: string;
+  column: LibraryAuditFileSortBy;
+  sortBy?: LibraryAuditFileSortBy;
+  sortDir?: LibraryAuditSortDir;
+  onSortChange?: (sortBy: LibraryAuditFileSortBy, sortDir: LibraryAuditSortDir) => void;
+  className?: string;
+  title?: string;
+}) {
+  if (!onSortChange) {
+    return <th className={cn("px-3 py-2 text-left text-sm font-medium", className)}>{label}</th>;
+  }
+  const active = sortBy === column;
+  const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={cn("px-3 py-2 text-left text-sm font-medium", className)}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-sm hover:text-foreground",
+          active ? "text-foreground" : "text-muted-foreground"
+        )}
+        title={title || `Sort by ${label}`}
+        onClick={() => {
+          if (active) {
+            onSortChange(column, sortDir === "asc" ? "desc" : "asc");
+          } else {
+            onSortChange(column, DEFAULT_SORT_DIR[column]);
+          }
+        }}
+      >
+        {label}
+        <Icon className="h-3.5 w-3.5 opacity-70" aria-hidden />
+      </button>
+    </th>
+  );
+}
 
 export function LibraryAuditFileTable({
   files,
@@ -449,6 +509,9 @@ export function LibraryAuditFileTable({
   onSelectedIdsChange,
   onSelectFolder,
   selectingFolderId,
+  sortBy,
+  sortDir,
+  onSortChange,
 }: FileTableProps) {
   const selectable = Boolean(selectedIds && onSelectedIdsChange);
   const pageIds = files.map((f) => f.id);
@@ -488,7 +551,8 @@ export function LibraryAuditFileTable({
 
   const colSpan = 5 + (selectable ? 1 : 0) + (onSelectFolder ? 1 : 0);
 
-  // Group consecutive files by parent_path (API already sorts by path).
+  // Group consecutive files by parent_path (API sorts keep folders together for path /
+  // folder_pending_deep; other sorts may split a folder across multiple headers).
   const groups: { folder: string; files: LibraryAuditFile[] }[] = [];
   for (const file of files) {
     const folder = file.parent_path || "(root)";
@@ -516,95 +580,145 @@ export function LibraryAuditFileTable({
                 />
               </th>
             ) : null}
-            <th className="px-3 py-2 text-left text-sm font-medium">Path</th>
-            <th className="px-3 py-2 text-left text-sm font-medium">Verdict</th>
-            <th className="px-3 py-2 text-left text-sm font-medium">Score</th>
-            <th className="px-3 py-2 text-left text-sm font-medium">State</th>
-            <th className="px-3 py-2 text-left text-sm font-medium">Disposition</th>
+            <SortableTh
+              label="Path"
+              column="path"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
+            <SortableTh
+              label="Verdict"
+              column="verdict"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
+            <SortableTh
+              label="Score"
+              column="score"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
+            <SortableTh
+              label="State"
+              column="state"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
+            <SortableTh
+              label="Disposition"
+              column="disposition"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
             {onSelectFolder ? (
-              <th className="px-3 py-2 text-left text-sm font-medium">Folder</th>
+              <SortableTh
+                label="Folder"
+                column="folder_pending_deep"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSortChange={onSortChange}
+                title="Sort by pending deep count in folder"
+              />
             ) : null}
           </tr>
         </thead>
         <tbody>
-          {groups.map((group) => (
-            <Fragment key={`folder-${group.folder}`}>
-              <tr className="bg-muted/20">
-                <td
-                  colSpan={colSpan}
-                  className="px-3 py-1.5 font-mono text-[11px] text-muted-foreground"
-                >
-                  {group.folder}
-                  <span className="ml-2 tabular-nums opacity-70">({group.files.length})</span>
-                </td>
-              </tr>
-              {group.files.map((file) => {
-                const checked = selectable ? selectedIds!.has(file.id) : false;
-                return (
-                  <tr
-                    key={file.id}
-                    className={cn(
-                      "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
-                      loading && "opacity-70",
-                      checked && "bg-muted/40"
-                    )}
-                    onClick={() => onSelect(file)}
+          {groups.map((group, groupIndex) => {
+            const sample = group.files[0];
+            const pendingDeep = sample?.folder_pending_deep_count;
+            const present = sample?.folder_present_count;
+            const hasFolderStats =
+              typeof pendingDeep === "number" && typeof present === "number";
+            return (
+              <Fragment key={`folder-${groupIndex}-${group.folder}`}>
+                <tr className="bg-muted/20">
+                  <td
+                    colSpan={colSpan}
+                    className="px-3 py-1.5 font-mono text-[11px] text-muted-foreground"
                   >
-                    {selectable ? (
-                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={checked}
-                          onChange={(e) => toggleOne(file.id, e.target.checked)}
-                          aria-label={`Select ${file.file_name}`}
-                        />
-                      </td>
-                    ) : null}
-                    <td
-                      className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
-                      title={file.relative_path}
+                    {group.folder}
+                    <span className="ml-2 tabular-nums opacity-70">
+                      ({group.files.length}
+                      {hasFolderStats
+                        ? ` on page · ${pendingDeep} pending deep / ${present} tracks`
+                        : ""}
+                      )
+                    </span>
+                  </td>
+                </tr>
+                {group.files.map((file) => {
+                  const checked = selectable ? selectedIds!.has(file.id) : false;
+                  return (
+                    <tr
+                      key={file.id}
+                      className={cn(
+                        "cursor-pointer border-b last:border-b-0 hover:bg-muted/30",
+                        loading && "opacity-70",
+                        checked && "bg-muted/40"
+                      )}
+                      onClick={() => onSelect(file)}
                     >
-                      {file.file_name || file.relative_path}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge
-                        variant={verdictBadgeVariant(file.analysis?.verdict)}
-                        className="text-[10px]"
+                      {selectable ? (
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={checked}
+                            onChange={(e) => toggleOne(file.id, e.target.checked)}
+                            aria-label={`Select ${file.file_name}`}
+                          />
+                        </td>
+                      ) : null}
+                      <td
+                        className="max-w-[28rem] truncate px-3 py-2 font-mono text-xs"
+                        title={file.relative_path}
                       >
-                        {formatVerdict(file.analysis?.verdict)}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                      {file.analysis?.score ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {formatDisposition(file.review?.disposition)}
-                    </td>
-                    {onSelectFolder ? (
-                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={!file.parent_path || selectingFolderId === file.id}
-                          onClick={() => onSelectFolder(file)}
-                          title={file.parent_path || "No folder path"}
-                        >
-                          {selectingFolderId === file.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            "Select folder"
-                          )}
-                        </Button>
+                        {file.file_name || file.relative_path}
                       </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-            </Fragment>
-          ))}
+                      <td className="px-3 py-2">
+                        <Badge
+                          variant={verdictBadgeVariant(file.analysis?.verdict)}
+                          className="text-[10px]"
+                        >
+                          {formatVerdict(file.analysis?.verdict)}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                        {file.analysis?.score ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{file.analysis_state}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {formatDisposition(file.review?.disposition)}
+                      </td>
+                      {onSelectFolder ? (
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!file.parent_path || selectingFolderId === file.id}
+                            onClick={() => onSelectFolder(file)}
+                            title={file.parent_path || "No folder path"}
+                          >
+                            {selectingFolderId === file.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Select folder"
+                            )}
+                          </Button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

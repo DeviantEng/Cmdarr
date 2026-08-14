@@ -108,7 +108,21 @@ export type LibraryAuditFile = {
   last_seen_at: string | null;
   analysis: LibraryAuditAnalysis | null;
   review: LibraryAuditReview | null;
+  /** Present files in the same parent folder (from list API). */
+  folder_present_count?: number;
+  /** PENDING_DEEP files in the same parent folder (from list API). */
+  folder_pending_deep_count?: number;
 };
+
+export type LibraryAuditFileSortBy =
+  | "path"
+  | "verdict"
+  | "score"
+  | "state"
+  | "disposition"
+  | "folder_pending_deep";
+
+export type LibraryAuditSortDir = "asc" | "desc";
 
 export type LibraryAuditProviderStatus = {
   name: string | null;
@@ -239,6 +253,8 @@ export type LibraryAuditFilesQuery = {
   needs_review?: boolean | null;
   parent_path?: string | null;
   q?: string | null;
+  sort_by?: LibraryAuditFileSortBy | null;
+  sort_dir?: LibraryAuditSortDir | null;
 };
 
 export type LibraryAuditBulkResult = {
@@ -277,6 +293,8 @@ export const libraryAuditApi = {
       needs_review: query.needs_review ?? undefined,
       parent_path: query.parent_path ?? undefined,
       q: query.q ?? undefined,
+      sort_by: query.sort_by ?? undefined,
+      sort_dir: query.sort_dir ?? undefined,
     });
     return api.request<LibraryAuditFilesResponse>(`/api/library-audit/files${qs}`);
   },

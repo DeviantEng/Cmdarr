@@ -8,6 +8,8 @@ import {
   libraryAuditApi,
   type LibraryAuditDisposition,
   type LibraryAuditFile,
+  type LibraryAuditFileSortBy,
+  type LibraryAuditSortDir,
 } from "@/lib/library-audit-api";
 import {
   LibraryAuditBulkBar,
@@ -27,30 +29,43 @@ export function ArrLibraryAuditReviewPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectingFolderId, setSelectingFolderId] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [sortBy, setSortBy] = useState<LibraryAuditFileSortBy>("verdict");
+  const [sortDir, setSortDir] = useState<LibraryAuditSortDir>("asc");
 
-  const load = useCallback(async (nextOffset: number) => {
-    setLoading(true);
-    try {
-      const res = await libraryAuditApi.listFiles({
-        needs_review: true,
-        limit: PAGE_SIZE,
-        offset: nextOffset,
-      });
-      setFiles(res.items);
-      setTotal(res.total);
-      setOffset(res.offset);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load review queue");
-      setFiles([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (nextOffset: number) => {
+      setLoading(true);
+      try {
+        const res = await libraryAuditApi.listFiles({
+          needs_review: true,
+          limit: PAGE_SIZE,
+          offset: nextOffset,
+          sort_by: sortBy,
+          sort_dir: sortDir,
+        });
+        setFiles(res.items);
+        setTotal(res.total);
+        setOffset(res.offset);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to load review queue");
+        setFiles([]);
+        setTotal(0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sortBy, sortDir]
+  );
 
   useEffect(() => {
     void load(0);
   }, [load]);
+
+  const handleSortChange = (nextBy: LibraryAuditFileSortBy, nextDir: LibraryAuditSortDir) => {
+    setSortBy(nextBy);
+    setSortDir(nextDir);
+    setOffset(0);
+  };
 
   const selectFolder = async (file: LibraryAuditFile) => {
     if (!file.parent_path) {
@@ -131,7 +146,7 @@ export function ArrLibraryAuditReviewPage() {
     <div>
       <ArrPageHeader
         title="Review"
-        description="Files with warning or suspicious verdicts that still need a disposition. Select a folder to action a whole album at once."
+        description="Files with warning or suspicious verdicts that still need a disposition. Select a folder to action a whole album at once. Click column headers to sort."
         actions={
           <Button
             variant="secondary"
@@ -170,6 +185,9 @@ export function ArrLibraryAuditReviewPage() {
             onSelectedIdsChange={setSelectedIds}
             onSelectFolder={(file) => void selectFolder(file)}
             selectingFolderId={selectingFolderId}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={handleSortChange}
             onSelect={(file) => {
               setSelectedId(file.id);
               setDetailOpen(true);
