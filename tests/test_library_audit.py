@@ -861,4 +861,3 @@ def test_sort_file_items_folder_pending_deep_and_score():
     _sort_file_items(items, sort_by="score", sort_dir="desc")
     assert items[0]["analysis"]["score"] == 90
     assert items[-1]["analysis"]["score"] is None
-

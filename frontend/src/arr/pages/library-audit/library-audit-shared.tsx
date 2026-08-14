@@ -632,8 +632,7 @@ export function LibraryAuditFileTable({
             const sample = group.files[0];
             const pendingDeep = sample?.folder_pending_deep_count;
             const present = sample?.folder_present_count;
-            const hasFolderStats =
-              typeof pendingDeep === "number" && typeof present === "number";
+            const hasFolderStats = typeof pendingDeep === "number" && typeof present === "number";
             return (
               <Fragment key={`folder-${groupIndex}-${group.folder}`}>
                 <tr className="bg-muted/20">
