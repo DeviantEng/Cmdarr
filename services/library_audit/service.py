@@ -869,13 +869,13 @@ def run_audit_cycle(
     else:
         summary.inventory_skipped = True
 
-    # Triage first (clear confident Authentic), then deep queue when allowed
-    triage_mode = "triage"
-    if (provider_mode or "").lower() in {"deep", "standard"}:
-        # Force deep-only cycle when operator sets provider_mode=deep
-        triage_mode = "deep"
+    # Triage first (clear confident Authentic), then deep queue when allowed.
+    # Legacy provider_mode "standard" must NOT force deep-only — that was the old
+    # single-pass mode and is still present in many saved command configs.
+    mode_l = (provider_mode or "triage").lower().strip()
+    deep_only = mode_l == "deep"
 
-    if triage_mode == "triage":
+    if not deep_only:
         summary.triage = run_analysis_batch(
             session,
             root,

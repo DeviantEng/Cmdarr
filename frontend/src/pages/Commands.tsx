@@ -1149,6 +1149,7 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                         deep_batch_size: Math.min(50, Math.max(0, editForm.deep_batch_size ?? 10)),
                         prefer_triage_first: editForm.prefer_triage_first !== false,
                         deep_after_triage_pct: 80,
+                        provider_mode: "triage",
                         triage_sample_seconds: Math.min(
                           120,
                           Math.max(5, editForm.triage_sample_seconds ?? 20)
