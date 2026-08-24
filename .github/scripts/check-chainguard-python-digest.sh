@@ -10,9 +10,9 @@ set -euo pipefail
 DOCKERFILE="${1:-Dockerfile}"
 IMAGE="chainguard/python"
 
-pinned_runtime=$(grep -E '^FROM cgr.dev/chainguard/python@sha256:' "$DOCKERFILE" | grep -v ' AS ' \
+pinned_runtime=$(grep -E '^FROM cgr.dev/chainguard/python(:[A-Za-z0-9._-]+)?@sha256:' "$DOCKERFILE" | grep -v ' AS ' \
   | sed -E 's/.*@sha256:([a-f0-9]+).*/\1/' | head -1)
-pinned_builder=$(grep -E 'FROM cgr.dev/chainguard/python@sha256:.* AS python-builder' "$DOCKERFILE" \
+pinned_builder=$(grep -E 'FROM cgr.dev/chainguard/python(:[A-Za-z0-9._-]+)?@sha256:.* AS python-builder' "$DOCKERFILE" \
   | sed -E 's/.*@sha256:([a-f0-9]+).*/\1/')
 
 tok=$(curl -s "https://cgr.dev/token?scope=repository:${IMAGE}:pull" | jq -r .token)

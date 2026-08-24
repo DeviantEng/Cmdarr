@@ -1,9 +1,9 @@
 name: Scheduled image rebuild (develop + main, no cache)
 
-# Refreshes images without touching Dockerfile digests — forces a full Docker build so
-# Chainguard/Wolfi base layers are rebuilt with current upstream patches.
-#
-# Renovate proposes digest bumps separately (weekly grouped PR → develop).
+# No-cache rebuild of the currently pinned base digests (app layers / Buildx cache).
+# Wolfi/OpenSSL packages do not change until Dockerfile FROM digests change —
+# Renovate opens those PRs to develop; a green :develop publish then opens a
+# Dockerfile-only PR to main (no app version bump).
 
 on:
   schedule:

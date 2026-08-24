@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Housekeeping
 - **Security (Docker / Trivy)**: Bump Chainguard Python builder/runtime digests to clear HIGH Go stdlib findings **CVE-2026-39821** and **CVE-2026-46600** (stdlib v1.26.5 → fixed in 1.26.6+).
+- **Security (Docker / Trivy)**: Pin Chainguard `FROM` lines as `python:latest-dev` / `python:latest` plus digest (Renovate cannot track digest-only images with no tag); bump to current `:latest` / `:latest-dev` for **CVE-2026-14456** (`libcrypto3` / `libssl3` 3.6.3-r5). Self-hosted Renovate workflow opens digest PRs to develop; a green `:develop` publish opens a Dockerfile-only PR to main so prod tags can move without an app version bump.
 
 ## [0.4.1] - 2026-08-11
 

@@ -57,6 +57,12 @@ flowchart LR
 
 Main should only receive changes that have been validated on develop (including Trivy).
 
+### Base image digest updates (no app release)
+
+Wolfi/Chainguard packages are frozen by the digest on each `Dockerfile` `FROM` line. There is no `apt upgrade` in the distroless runtime. Renovate (`.github/workflows/renovate.yml`) opens digest PRs against **develop**. After `:develop` publishes successfully (Trivy included), CI opens a **Dockerfile-only** PR to **main**. Merging that PR republishes the current prod tags (`latest`, `v0`, `v0.x`, patch) without bumping `__version__.py`. Discord release notify already skips when the version is unchanged.
+
+Do not merge `develop` into `main` for these updates, and do not merge `main` back into `develop` afterward. Public `cgr.dev/chainguard/python` only publishes `:latest` / `:latest-dev` (no `3.14` tag); keep those tags on the `FROM` lines so Renovate can see digest updates.
+
 ### Dev-Time Commands
 
 | Command | Purpose |
