@@ -10,6 +10,6 @@
 # Verify after digest bumps:
 #   trivy image --severity HIGH,CRITICAL ghcr.io/devianteng/cmdarr:develop
 #
-# No CVE ignores currently (Wolfi python digest bump 2026-08-14 for Go stdlib
-# CVE-2026-39821 / CVE-2026-46600; verify after publish:
+# No CVE ignores currently (Wolfi python digest bump 2026-08-24 for OpenSSL
+# CVE-2026-14456; verify after publish:
 #   trivy image --severity HIGH,CRITICAL …:develop).

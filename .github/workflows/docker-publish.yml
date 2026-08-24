@@ -184,6 +184,27 @@ jobs:
           cache-to: type=gha,mode=max
           no-cache: ${{ github.event.inputs.no_cache == 'true' }}
 
+  promote-digests-to-main:
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Open Dockerfile digest PR against main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/promote-dockerfile-digests.sh
+
   notify-discord:
     needs: [build-and-push]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
