@@ -87,15 +87,14 @@ EOF
 
 git push --force-with-lease -u "$REMOTE" "$BRANCH"
 
-existing="$(gh pr list --base "$BASE" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
-if [[ -n "$existing" ]]; then
-  echo "Updated existing PR #${existing}"
-  exit 0
+repo="${GITHUB_REPOSITORY:-}"
+if [[ -z "$repo" ]]; then
+  repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 fi
+server="${GITHUB_SERVER_URL:-https://github.com}"
+compare_url="${server}/${repo}/compare/${BASE}...${BRANCH}?expand=1"
 
-gh pr create --base "$BASE" --head "$BRANCH" \
-  --title "ci: promote Dockerfile base digests (no app version bump)" \
-  --body "$(cat <<'EOF'
+pr_body="$(cat <<'EOF'
 ## Summary
 - Copies `Dockerfile` `FROM` pins (tag + digest) from `develop` onto `main` after the `:develop` image published successfully (including Trivy).
 - No app version bump, changelog section, or git tag. Discord release notify already skips when `__version__.py` is unchanged.
@@ -106,3 +105,46 @@ gh pr create --base "$BASE" --head "$BRANCH" \
 - [ ] Merge and confirm `docker-publish` on `main` passes Trivy before push
 EOF
 )"
+
+write_manual_pr_help() {
+  local err="$1"
+  echo "$err"
+  echo "::warning::GITHUB_TOKEN cannot open PRs until this is enabled: Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests. Branch ${BRANCH} is already pushed; open ${compare_url}"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+## Dockerfile digest PR not opened
+
+GitHub blocked \`gh pr create\` (\`GitHub Actions is not permitted to create or approve pull requests\`).
+
+1. Repo **Settings → Actions → General → Workflow permissions**
+2. Enable **Allow GitHub Actions to create and approve pull requests**
+3. Re-run this job, or open the PR now: ${compare_url}
+EOF
+  fi
+}
+
+existing="$(gh pr list --base "$BASE" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+if [[ -n "$existing" ]]; then
+  echo "Updated existing PR #${existing}"
+  exit 0
+fi
+
+set +e
+create_out="$(gh pr create --base "$BASE" --head "$BRANCH" \
+  --title "ci: promote Dockerfile base digests (no app version bump)" \
+  --body "$pr_body" 2>&1)"
+create_rc=$?
+set -e
+
+if [[ "$create_rc" -eq 0 ]]; then
+  echo "$create_out"
+  exit 0
+fi
+
+if echo "$create_out" | grep -q 'not permitted to create or approve pull requests'; then
+  write_manual_pr_help "$create_out"
+  exit 0
+fi
+
+echo "$create_out" >&2
+exit "$create_rc"
