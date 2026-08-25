@@ -9,7 +9,7 @@ RUN npm run build
 
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
 # Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python@sha256:b08980b41611a3887dfca3823286a84b2b8557c70ec7f151265c1d53fd67c68e AS python-builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:14acabef9a759e7d07bf647afec92bc28cbe0f89c978fe426411c85035121c14 AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -26,7 +26,7 @@ RUN python -m venv /app/venv \
     && rm -rf /root/.cache/pip
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python@sha256:b08980b41611a3887dfca3823286a84b2b8557c70ec7f151265c1d53fd67c68e AS runtime-assembler
+FROM cgr.dev/chainguard/python:latest-dev@sha256:14acabef9a759e7d07bf647afec92bc28cbe0f89c978fe426411c85035121c14 AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -47,7 +47,7 @@ RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
 # Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python@sha256:e2554b2ab18fc6d3a22f249245f8a8cf866687441b38273ffd5e0f3e37009e00
+FROM cgr.dev/chainguard/python:latest@sha256:d812438658b47b73cb4c089f4cca09bca1ba50f6cd1843133864ee074d9ec49b
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
