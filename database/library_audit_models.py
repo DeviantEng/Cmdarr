@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -24,6 +25,12 @@ class LibraryAuditFile(LibraryAuditBase):
     """One inventory row per observed relative path."""
 
     __tablename__ = "library_audit_file"
+    __table_args__ = (
+        Index("ix_library_audit_file_present_state", "is_present", "analysis_state"),
+        Index("ix_library_audit_file_parent_path", "parent_path"),
+        Index("ix_library_audit_file_current_analysis_id", "current_analysis_id"),
+        Index("ix_library_audit_file_current_review_id", "current_review_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     relative_path = Column(Text, unique=True, nullable=False, index=True)

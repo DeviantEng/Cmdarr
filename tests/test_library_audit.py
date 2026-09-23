@@ -861,3 +861,93 @@ def test_sort_file_items_folder_pending_deep_and_score():
     _sort_file_items(items, sort_by="score", sort_dir="desc")
     assert items[0]["analysis"]["score"] == 90
     assert items[-1]["analysis"]["score"] is None
+
+
+def test_build_stats_and_list_files_scale_with_sql(audit_env, monkeypatch):
+    """Stats/list must use SQL aggregates/pagination — not load every row into Python."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from database.library_audit_models import LibraryAuditAnalysis
+    from services.library_audit.service import build_stats, count_needs_review
+
+    session = audit_env["session"]
+    now = datetime.now(UTC)
+    n = 400
+    warning_every = 5
+
+    for i in range(n):
+        row = LibraryAuditFile(
+            relative_path=f"Scale Artist/Album/track_{i:04d}.flac",
+            file_name=f"track_{i:04d}.flac",
+            parent_path="Scale Artist/Album",
+            extension=".flac",
+            size_bytes=1000 + i,
+            mtime_ns=1_000_000 + i,
+            content_hash=f"{i:064x}",
+            is_present=True,
+            analysis_state="PENDING_DEEP" if i % 11 == 0 else "ANALYZED",
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        session.add(row)
+        session.flush()
+        analysis = LibraryAuditAnalysis(
+            file_id=row.id,
+            provider="test",
+            provider_version="0",
+            provider_mode="triage",
+            verdict="WARNING" if i % warning_every == 0 else "AUTHENTIC",
+            score=float(i % 100),
+            file_size_bytes=row.size_bytes,
+            file_mtime_ns=row.mtime_ns,
+            content_hash=row.content_hash,
+            evidence_json={
+                "integrity": {
+                    "duration_mismatch": i == 3,
+                    "is_corrupted": i == 7,
+                }
+            },
+            completed_at=now,
+        )
+        session.add(analysis)
+        session.flush()
+        row.current_analysis_id = analysis.id
+    session.commit()
+
+    stats = build_stats(session)
+    assert stats["library"]["present"] == n
+    assert stats["formats"]["by_extension"][".flac"] == n
+    assert stats["verdicts"]["warning"] == n // warning_every
+    assert stats["verdicts"]["authentic"] == n - (n // warning_every)
+    assert stats["integrity"]["duration_mismatch"] == 1
+    assert stats["integrity"]["corrupted"] == 1
+    assert stats["integrity"]["any"] == 2
+    assert count_needs_review(session) == n // warning_every
+
+    monkeypatch.setattr(
+        "app.api.library_audit.is_feature_enabled",
+        lambda *_args, **_kwargs: True,
+    )
+    from app.api.library_audit import list_files
+
+    result = asyncio.run(
+        list_files(
+            db=session,
+            limit=50,
+            offset=0,
+            present=True,
+            analysis_state=None,
+            verdict=None,
+            disposition=None,
+            needs_review=None,
+            parent_path=None,
+            q="Scale Artist",
+            sort_by="path",
+            sort_dir="asc",
+        )
+    )
+    assert result["total"] == n
+    assert len(result["items"]) == 50
+    assert result["items"][0]["folder_present_count"] == n
+    assert result["items"][0]["analysis"]["evidence"] is None  # list omits heavy payloads

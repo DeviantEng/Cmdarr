@@ -279,7 +279,7 @@ export const libraryAuditApi = {
   },
 
   getStats() {
-    return api.request<LibraryAuditStats>("/api/library-audit/stats");
+    return api.request<LibraryAuditStats>("/api/library-audit/stats", { timeout: 120_000 });
   },
 
   listFiles(query: LibraryAuditFilesQuery = {}) {
@@ -296,7 +296,9 @@ export const libraryAuditApi = {
       sort_by: query.sort_by ?? undefined,
       sort_dir: query.sort_dir ?? undefined,
     });
-    return api.request<LibraryAuditFilesResponse>(`/api/library-audit/files${qs}`);
+    return api.request<LibraryAuditFilesResponse>(`/api/library-audit/files${qs}`, {
+      timeout: 120_000,
+    });
   },
 
   getFile(id: number) {
