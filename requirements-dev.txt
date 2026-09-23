@@ -5,4 +5,5 @@ pytest>=9.1.1
 pytest-asyncio>=1.4.0
 pytest-cov>=7.1.0
 coverage>=7.15.0
-httpx2>=2.0.0
+# Explicit floor: GHSA-8xx6-hgc6-gc2m, GHSA-h4x7-gw46-3wm6, GHSA-pf96-p4fj-6566 fixed in httpx2>=2.12.0
+httpx2>=2.13.1

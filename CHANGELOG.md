@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Housekeeping
 - **Security (Docker / Trivy)**: Bump Chainguard Python builder/runtime digests to clear HIGH Go stdlib findings **CVE-2026-39821** and **CVE-2026-46600** (stdlib v1.26.5 → fixed in 1.26.6+).
 - **Security (Docker / Trivy)**: Pin Chainguard `FROM` lines as `python:latest-dev` / `python:latest` plus digest (Renovate cannot track digest-only images with no tag); bump to current `:latest` / `:latest-dev` for **CVE-2026-14456** (`libcrypto3` / `libssl3` 3.6.3-r5). Self-hosted Renovate workflow opens digest PRs to develop; a green `:develop` publish opens a Dockerfile-only PR to main so prod tags can move without an app version bump.
+- **Security (images and packages)**: Bump `node:24-trixie-slim` and Chainguard Python digests to **3.14.7_git20260918-r0**. Raise floors for **aiohttp** **3.14.3** (GHSA-cq5v-8q36-5273, GHSA-mfx4-hv73-q22v, GHSA-mq44-7p77-q5h7), **anyio** **4.15.1** (GHSA-3w57-8xmc-8v26, GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6), **soupsieve** **2.9.2** (GHSA-gjv8-xp57-g29c, GHSA-j934-xhv5-fg8f), and **httpx2** **2.13.1** (GHSA-8xx6-hgc6-gc2m, GHSA-h4x7-gw46-3wm6, GHSA-pf96-p4fj-6566). Override transitive **browserslist** **4.29.0** (GHSA-73wf-gq98-2v4g, GHSA-c83g-rgw3-j3cx) and **baseline-browser-mapping** **2.11.25** (GHSA-w5vr-8v7q-w6rv).
 
 ## [0.4.1] - 2026-08-11
 
