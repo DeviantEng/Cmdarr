@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, not_, or_
 from sqlalchemy.orm import Session
 
 from database.library_audit_models import (
@@ -496,26 +496,39 @@ def should_run_deep_batch(
 
 
 def count_needs_review(session: Session, threshold: str = "WARNING") -> int:
+    """Count present files with elevated scan verdict and no applicable disposition."""
     threshold_rank = REVIEW_THRESHOLD_ORDER.get((threshold or "WARNING").upper(), 1)
-    # Files with analysis at/above threshold and no applicable current review
-    q = (
-        session.query(LibraryAuditFile)
-        .filter(LibraryAuditFile.is_present.is_(True))
-        .filter(LibraryAuditFile.analysis_state == "ANALYZED")
-        .filter(LibraryAuditFile.current_analysis_id.isnot(None))
-        .filter(LibraryAuditFile.current_review_id.is_(None))
-        .all()
+    verdicts = [
+        v for v in NEEDS_REVIEW_VERDICTS if REVIEW_THRESHOLD_ORDER.get(v, 0) >= threshold_rank
+    ]
+    if not verdicts:
+        return 0
+
+    applicable = and_(
+        LibraryAuditReview.id.isnot(None),
+        or_(
+            LibraryAuditReview.content_hash.is_(None),
+            LibraryAuditFile.content_hash.is_(None),
+            LibraryAuditReview.content_hash == LibraryAuditFile.content_hash,
+        ),
     )
-    count = 0
-    for row in q:
-        analysis = session.get(LibraryAuditAnalysis, row.current_analysis_id)
-        if not analysis:
-            continue
-        if analysis.verdict not in NEEDS_REVIEW_VERDICTS:
-            continue
-        if REVIEW_THRESHOLD_ORDER.get(analysis.verdict, 0) >= threshold_rank:
-            count += 1
-    return count
+    return (
+        session.query(func.count(LibraryAuditFile.id))
+        .select_from(LibraryAuditFile)
+        .outerjoin(
+            LibraryAuditAnalysis,
+            LibraryAuditFile.current_analysis_id == LibraryAuditAnalysis.id,
+        )
+        .outerjoin(
+            LibraryAuditReview,
+            LibraryAuditFile.current_review_id == LibraryAuditReview.id,
+        )
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditAnalysis.verdict.in_(verdicts))
+        .filter(not_(applicable))
+        .scalar()
+        or 0
+    )
 
 
 def create_review(
@@ -641,16 +654,18 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
 
     by_extension: dict[str, int] = {}
     by_format_kind = {"lossless": 0, "lossy": 0, "unknown": 0}
-    present_rows = (
-        session.query(LibraryAuditFile.extension)
+    ext_rows = (
+        session.query(LibraryAuditFile.extension, func.count(LibraryAuditFile.id))
         .filter(LibraryAuditFile.is_present.is_(True))
+        .group_by(LibraryAuditFile.extension)
         .all()
     )
-    for (ext,) in present_rows:
+    for ext, count in ext_rows:
         key = (ext or "unknown").lower()
-        by_extension[key] = by_extension.get(key, 0) + 1
+        n = int(count or 0)
+        by_extension[key] = n
         kind = format_kind_for_extension(ext)
-        by_format_kind[kind] = by_format_kind.get(kind, 0) + 1
+        by_format_kind[kind] = by_format_kind.get(kind, 0) + n
 
     verdict_counts = {
         "authentic": 0,
@@ -665,41 +680,84 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         "corrupted": 0,
         "any": 0,
     }
-    # Latest analysis per present analyzed file (exclude PENDING_DEEP provisional from verdict pies?
-    # Include them as warning/etc so progress is visible; Fake Certain only after deep.)
-    rows = (
-        session.query(LibraryAuditFile)
+
+    review_applicable = and_(
+        LibraryAuditReview.id.isnot(None),
+        or_(
+            LibraryAuditReview.content_hash.is_(None),
+            LibraryAuditFile.content_hash.is_(None),
+            LibraryAuditReview.content_hash == LibraryAuditFile.content_hash,
+        ),
+    )
+    is_fp = and_(
+        review_applicable,
+        func.upper(LibraryAuditReview.disposition).in_(["FALSE_POSITIVE", "ACCEPTED"]),
+    )
+    display_verdict = case((is_fp, "AUTHENTIC"), else_=LibraryAuditAnalysis.verdict)
+
+    verdict_rows = (
+        session.query(func.lower(display_verdict), func.count(LibraryAuditFile.id))
+        .select_from(LibraryAuditFile)
+        .outerjoin(
+            LibraryAuditAnalysis,
+            LibraryAuditFile.current_analysis_id == LibraryAuditAnalysis.id,
+        )
+        .outerjoin(
+            LibraryAuditReview,
+            LibraryAuditFile.current_review_id == LibraryAuditReview.id,
+        )
         .filter(LibraryAuditFile.is_present.is_(True))
         .filter(LibraryAuditFile.current_analysis_id.isnot(None))
         .filter(LibraryAuditFile.analysis_state.in_(["ANALYZED", "PENDING_DEEP"]))
+        .group_by(func.lower(display_verdict))
         .all()
     )
-    for row in rows:
-        analysis = session.get(LibraryAuditAnalysis, row.current_analysis_id)
-        if not analysis:
-            continue
-        disposition = None
-        if row.current_review_id:
-            rev = session.get(LibraryAuditReview, row.current_review_id)
-            if rev and not (
-                rev.content_hash and row.content_hash and rev.content_hash != row.content_hash
-            ):
-                disposition = rev.disposition
-        # PENDING_DEEP must not inflate Fake Certain — use stored (already demoted) verdict
-        key = (effective_verdict(analysis.verdict, disposition) or "").lower()
+    for key, count in verdict_rows:
         if key in verdict_counts:
-            verdict_counts[key] += 1
-        ev = analysis.evidence_json if isinstance(analysis.evidence_json, dict) else {}
-        integ = ev.get("integrity") if isinstance(ev.get("integrity"), dict) else {}
-        hit = False
-        if integ.get("duration_mismatch"):
-            integrity_counts["duration_mismatch"] += 1
-            hit = True
-        if integ.get("is_corrupted") or ev.get("is_corrupted"):
-            integrity_counts["corrupted"] += 1
-            hit = True
-        if hit:
-            integrity_counts["any"] += 1
+            verdict_counts[key] = int(count or 0)
+
+    # Integrity flags via SQLite json_extract (evidence_json is JSON text)
+    integrity_base = (
+        session.query(LibraryAuditFile.id)
+        .select_from(LibraryAuditFile)
+        .join(
+            LibraryAuditAnalysis,
+            LibraryAuditFile.current_analysis_id == LibraryAuditAnalysis.id,
+        )
+        .filter(LibraryAuditFile.is_present.is_(True))
+        .filter(LibraryAuditFile.analysis_state.in_(["ANALYZED", "PENDING_DEEP"]))
+    )
+    duration_flag = (
+        func.coalesce(
+            func.json_extract(LibraryAuditAnalysis.evidence_json, "$.integrity.duration_mismatch"),
+            0,
+        )
+        != 0
+    )
+    corrupted_flag = or_(
+        func.coalesce(
+            func.json_extract(LibraryAuditAnalysis.evidence_json, "$.integrity.is_corrupted"),
+            0,
+        )
+        != 0,
+        func.coalesce(
+            func.json_extract(LibraryAuditAnalysis.evidence_json, "$.is_corrupted"),
+            0,
+        )
+        != 0,
+    )
+    integrity_counts["duration_mismatch"] = (
+        integrity_base.filter(duration_flag).with_entities(func.count()).scalar() or 0
+    )
+    integrity_counts["corrupted"] = (
+        integrity_base.filter(corrupted_flag).with_entities(func.count()).scalar() or 0
+    )
+    integrity_counts["any"] = (
+        integrity_base.filter(or_(duration_flag, corrupted_flag))
+        .with_entities(func.count())
+        .scalar()
+        or 0
+    )
 
     review_counts = {
         "needs_review": count_needs_review(session),
@@ -710,24 +768,28 @@ def build_stats(session: Session, provider: AnalyzerProvider | None = None) -> d
         "ignored": 0,
         "unsure": 0,
     }
-    reviewed = (
-        session.query(LibraryAuditFile)
+    disposition_expr = case(
+        (func.upper(LibraryAuditReview.disposition) == "ACCEPTED", "FALSE_POSITIVE"),
+        else_=func.upper(LibraryAuditReview.disposition),
+    )
+    disposition_rows = (
+        session.query(disposition_expr, func.count(LibraryAuditFile.id))
+        .select_from(LibraryAuditFile)
+        .join(
+            LibraryAuditReview,
+            LibraryAuditFile.current_review_id == LibraryAuditReview.id,
+        )
         .filter(LibraryAuditFile.is_present.is_(True))
-        .filter(LibraryAuditFile.current_review_id.isnot(None))
+        .filter(review_applicable)
+        .group_by(disposition_expr)
         .all()
     )
-    for row in reviewed:
-        rev = session.get(LibraryAuditReview, row.current_review_id)
-        if not rev:
-            continue
-        # Only count if review still matches current content hash
-        if rev.content_hash and row.content_hash and rev.content_hash != row.content_hash:
-            continue
-        d = (normalize_disposition(rev.disposition) or "").lower()
+    for raw, count in disposition_rows:
+        d = (normalize_disposition(raw) or "").lower()
         if d == "ignore":
-            review_counts["ignored"] += 1
+            review_counts["ignored"] = int(count or 0)
         elif d in review_counts:
-            review_counts[d] += 1
+            review_counts[d] = int(count or 0)
 
     last_inv = (
         session.query(LibraryAuditInventoryRun)

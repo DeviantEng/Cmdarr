@@ -67,6 +67,8 @@ def _serialize_file(
     row: LibraryAuditFile,
     analysis: LibraryAuditAnalysis | None = None,
     review: LibraryAuditReview | None = None,
+    *,
+    include_heavy: bool = True,
 ) -> dict[str, Any]:
     disposition = review.disposition if review else None
     # Stale review (content changed) must not override the scan verdict
@@ -77,6 +79,7 @@ def _serialize_file(
         and review.content_hash != row.content_hash
     ):
         disposition = None
+        review = None
     return {
         "id": row.id,
         "relative_path": row.relative_path,
@@ -107,15 +110,24 @@ def _serialize_file(
         "duration_seconds": row.duration_seconds,
         "first_seen_at": row.first_seen_at.isoformat() if row.first_seen_at else None,
         "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
-        "analysis": _serialize_analysis(analysis, disposition) if analysis else None,
+        "analysis": (
+            _serialize_analysis(analysis, disposition, include_heavy=include_heavy)
+            if analysis
+            else None
+        ),
         "review": _serialize_review(review) if review else None,
     }
 
 
-def _serialize_analysis(a: LibraryAuditAnalysis, disposition: str | None = None) -> dict[str, Any]:
+def _serialize_analysis(
+    a: LibraryAuditAnalysis,
+    disposition: str | None = None,
+    *,
+    include_heavy: bool = True,
+) -> dict[str, Any]:
     scan_verdict = a.verdict
     display_verdict = effective_verdict(scan_verdict, disposition)
-    return {
+    payload: dict[str, Any] = {
         "id": a.id,
         "file_id": a.file_id,
         "provider": a.provider,
@@ -133,8 +145,6 @@ def _serialize_analysis(a: LibraryAuditAnalysis, disposition: str | None = None)
         "cutoff_hz": a.cutoff_hz,
         "is_hires_suspect": a.is_hires_suspect,
         "summary": a.summary,
-        "evidence": a.evidence_json,
-        "raw_result": a.raw_result_json,
         "content_hash": a.content_hash,
         "file_size_bytes": a.file_size_bytes,
         "file_mtime_ns": a.file_mtime_ns,
@@ -142,6 +152,13 @@ def _serialize_analysis(a: LibraryAuditAnalysis, disposition: str | None = None)
         "completed_at": a.completed_at.isoformat() if a.completed_at else None,
         "duration_seconds": a.duration_seconds,
     }
+    if include_heavy:
+        payload["evidence"] = a.evidence_json
+        payload["raw_result"] = a.raw_result_json
+    else:
+        payload["evidence"] = None
+        payload["raw_result"] = None
+    return payload
 
 
 def _serialize_review(r: LibraryAuditReview) -> dict[str, Any]:
@@ -167,6 +184,8 @@ _VERDICT_SEVERITY = {
     "AUTHENTIC": 5,
 }
 
+_FALSE_POSITIVE_DISPOSITIONS = ("FALSE_POSITIVE", "ACCEPTED")
+
 SortBy = Literal[
     "path",
     "verdict",
@@ -177,11 +196,45 @@ SortBy = Literal[
 ]
 
 
-def _folder_stats_map(db: Session) -> dict[str | None, dict[str, int]]:
-    """Present-file counts and PENDING_DEEP counts keyed by parent_path."""
-    rows = (
+def _review_is_applicable_expr():
+    """SQL: current review still applies to the file's current content hash."""
+    from sqlalchemy import and_, or_
+
+    return and_(
+        LibraryAuditReview.id.isnot(None),
+        or_(
+            LibraryAuditReview.content_hash.is_(None),
+            LibraryAuditFile.content_hash.is_(None),
+            LibraryAuditReview.content_hash == LibraryAuditFile.content_hash,
+        ),
+    )
+
+
+def _display_verdict_expr():
+    """SQL display verdict (False Positive disposition overrides to AUTHENTIC)."""
+    from sqlalchemy import and_
+
+    applicable = _review_is_applicable_expr()
+    is_fp = and_(
+        applicable,
+        func.upper(LibraryAuditReview.disposition).in_(_FALSE_POSITIVE_DISPOSITIONS),
+    )
+    return case((is_fp, "AUTHENTIC"), else_=LibraryAuditAnalysis.verdict)
+
+
+def _normalized_disposition_expr():
+    """SQL disposition when review is applicable; else NULL."""
+
+    applicable = _review_is_applicable_expr()
+    raw = func.upper(LibraryAuditReview.disposition)
+    normalized = case((raw == "ACCEPTED", "FALSE_POSITIVE"), else_=raw)
+    return case((applicable, normalized), else_=None)
+
+
+def _folder_stats_subquery(db: Session):
+    return (
         db.query(
-            LibraryAuditFile.parent_path,
+            LibraryAuditFile.parent_path.label("folder_parent_path"),
             func.count(LibraryAuditFile.id).label("present_count"),
             func.sum(
                 case(
@@ -192,8 +245,29 @@ def _folder_stats_map(db: Session) -> dict[str | None, dict[str, int]]:
         )
         .filter(LibraryAuditFile.is_present.is_(True))
         .group_by(LibraryAuditFile.parent_path)
-        .all()
+        .subquery()
     )
+
+
+def _folder_stats_map(
+    db: Session, parent_paths: set[str | None] | None = None
+) -> dict[str | None, dict[str, int]]:
+    """Present-file counts and PENDING_DEEP counts keyed by parent_path."""
+    query = db.query(
+        LibraryAuditFile.parent_path,
+        func.count(LibraryAuditFile.id).label("present_count"),
+        func.sum(
+            case(
+                (LibraryAuditFile.analysis_state == "PENDING_DEEP", 1),
+                else_=0,
+            )
+        ).label("pending_deep_count"),
+    ).filter(LibraryAuditFile.is_present.is_(True))
+    if parent_paths is not None:
+        if not parent_paths:
+            return {}
+        query = query.filter(LibraryAuditFile.parent_path.in_(list(parent_paths)))
+    rows = query.group_by(LibraryAuditFile.parent_path).all()
     return {
         row.parent_path: {
             "present_count": int(row.present_count or 0),
@@ -221,7 +295,7 @@ def _sort_file_items(
     sort_by: str,
     sort_dir: str,
 ) -> None:
-    """In-place sort for paginated file list responses."""
+    """In-place sort for paginated file list responses (unit tests / fallback)."""
     descending = sort_dir.lower() == "desc"
 
     def path_key(item: dict[str, Any]) -> tuple:
@@ -246,7 +320,6 @@ def _sort_file_items(
         pending = int(item.get("folder_pending_deep_count") or 0)
         present = int(item.get("folder_present_count") or 0)
         ratio = (pending / present) if present > 0 else 0.0
-        # Sort folders together: count, then ratio (full albums), then path
         return (
             pending,
             ratio,
@@ -255,7 +328,6 @@ def _sort_file_items(
         )
 
     if sort_by == "score":
-        # Keep missing scores last regardless of direction.
         items.sort(
             key=lambda item: (
                 (item.get("analysis") or {}).get("score") is None,
@@ -276,6 +348,120 @@ def _sort_file_items(
     }.get(sort_by, path_key)
 
     items.sort(key=key_fn, reverse=descending)
+
+
+def _apply_list_filters(
+    query,
+    *,
+    present: bool | None,
+    analysis_state: str | None,
+    verdict: str | None,
+    disposition: str | None,
+    needs_review: bool | None,
+    parent_path: str | None,
+    q: str | None,
+):
+    from sqlalchemy import and_, not_
+
+    if present is not None:
+        query = query.filter(LibraryAuditFile.is_present.is_(present))
+    if analysis_state:
+        query = query.filter(LibraryAuditFile.analysis_state == analysis_state.upper())
+    if parent_path is not None and parent_path != "":
+        query = query.filter(LibraryAuditFile.parent_path == parent_path)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(LibraryAuditFile.relative_path.ilike(like))
+
+    applicable = _review_is_applicable_expr()
+    display_verdict = _display_verdict_expr()
+    normalized_disposition = _normalized_disposition_expr()
+
+    if verdict:
+        query = query.filter(func.upper(display_verdict) == verdict.upper())
+    if disposition:
+        wanted = normalize_disposition(disposition) or disposition.upper()
+        query = query.filter(normalized_disposition == wanted)
+    if needs_review is True:
+        query = query.filter(
+            and_(
+                not_(applicable),
+                LibraryAuditAnalysis.verdict.in_(
+                    {
+                        "WARNING",
+                        "SUSPICIOUS",
+                        "FAKE_CERTAIN",
+                        "INCONCLUSIVE",
+                        "ERROR",
+                    }
+                ),
+            )
+        )
+
+    return query
+
+
+def _order_list_query(query, *, sort_by: str, sort_dir: str, folder_stats_sq=None):
+    descending = sort_dir.lower() == "desc"
+    path_col = LibraryAuditFile.relative_path
+    path_order = path_col.desc() if descending and sort_by == "path" else path_col.asc()
+
+    if sort_by == "path":
+        return query.order_by(path_col.desc() if descending else path_col.asc())
+
+    if sort_by == "state":
+        state_col = LibraryAuditFile.analysis_state
+        return query.order_by(
+            state_col.desc() if descending else state_col.asc(),
+            path_col.asc(),
+        )
+
+    if sort_by == "disposition":
+        disp = _normalized_disposition_expr()
+        return query.order_by(disp.desc() if descending else disp.asc(), path_col.asc())
+
+    if sort_by == "score":
+        score = LibraryAuditAnalysis.score
+        nulls_last = case((score.is_(None), 1), else_=0)
+        return query.order_by(
+            nulls_last.asc(),
+            score.desc() if descending else score.asc(),
+            path_col.asc(),
+        )
+
+    if sort_by == "verdict":
+        display = _display_verdict_expr()
+        severity = case(
+            (func.upper(display) == "FAKE_CERTAIN", 0),
+            (func.upper(display) == "SUSPICIOUS", 1),
+            (func.upper(display) == "WARNING", 2),
+            (func.upper(display) == "INCONCLUSIVE", 3),
+            (func.upper(display) == "ERROR", 4),
+            (func.upper(display) == "AUTHENTIC", 5),
+            else_=9,
+        )
+        completed = LibraryAuditAnalysis.completed_at
+        return query.order_by(
+            severity.desc() if descending else severity.asc(),
+            completed.desc() if descending else completed.asc(),
+            path_col.asc(),
+        )
+
+    if sort_by == "folder_pending_deep" and folder_stats_sq is not None:
+        pending = func.coalesce(folder_stats_sq.c.pending_deep_count, 0)
+        present = func.coalesce(folder_stats_sq.c.present_count, 0)
+        ratio = case(
+            (present > 0, pending * 1.0 / present),
+            else_=0.0,
+        )
+        return query.order_by(
+            pending.desc() if descending else pending.asc(),
+            ratio.desc() if descending else ratio.asc(),
+            LibraryAuditFile.parent_path.asc(),
+            path_col.asc(),
+        )
+
+    return query.order_by(path_order)
 
 
 @router.get("/status")
@@ -360,90 +546,68 @@ async def list_files(
     sort_dir: Literal["asc", "desc"] = Query("asc"),
 ):
     _require_enabled()
-    query = db.query(LibraryAuditFile)
-    if present is not None:
-        query = query.filter(LibraryAuditFile.is_present.is_(present))
-    if analysis_state:
-        query = query.filter(LibraryAuditFile.analysis_state == analysis_state.upper())
-    if parent_path is not None and parent_path != "":
-        query = query.filter(LibraryAuditFile.parent_path == parent_path)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(LibraryAuditFile.relative_path.ilike(like))
-
-    rows = query.order_by(LibraryAuditFile.relative_path.asc()).all()
-
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        analysis = (
-            db.get(LibraryAuditAnalysis, row.current_analysis_id)
-            if row.current_analysis_id
-            else None
-        )
-        review = (
-            db.get(LibraryAuditReview, row.current_review_id) if row.current_review_id else None
-        )
-        # Invalidate stale review for filtering if content hash mismatch
-        applicable_review = review
-        if (
-            review
-            and review.content_hash
-            and row.content_hash
-            and review.content_hash != row.content_hash
-        ):
-            applicable_review = None
-
-        disposition_value = applicable_review.disposition if applicable_review else None
-        if verdict:
-            display = effective_verdict(analysis.verdict if analysis else None, disposition_value)
-            if not display or display.upper() != verdict.upper():
-                continue
-        if disposition:
-            wanted = normalize_disposition(disposition) or disposition.upper()
-            have = normalize_disposition(disposition_value) if disposition_value else None
-            if have != wanted:
-                continue
-        if needs_review is True:
-            if applicable_review is not None:
-                continue
-            if not analysis or analysis.verdict not in {
-                "WARNING",
-                "SUSPICIOUS",
-                "FAKE_CERTAIN",
-                "INCONCLUSIVE",
-                "ERROR",
-            }:
-                continue
-        if needs_review is False:
-            # no extra filter
-            pass
-
-        items.append(_serialize_file(row, analysis, applicable_review))
-
-    folder_stats = _folder_stats_map(db)
-    _attach_folder_stats(items, folder_stats)
-
     effective_sort = sort_by or ("verdict" if needs_review is True else "path")
     effective_dir = sort_dir
-    if sort_by is None and needs_review is True:
-        effective_dir = "asc"
-    elif sort_by is None:
-        effective_dir = "asc"
-    _sort_file_items(
-        items,
-        sort_by=effective_sort,
-        sort_dir=effective_dir,
+
+    folder_stats_sq = (
+        _folder_stats_subquery(db) if effective_sort == "folder_pending_deep" else None
     )
 
-    total = len(items)
-    page = items[offset : offset + limit]
+    def _base_query():
+        q_base = (
+            db.query(LibraryAuditFile, LibraryAuditAnalysis, LibraryAuditReview)
+            .outerjoin(
+                LibraryAuditAnalysis,
+                LibraryAuditFile.current_analysis_id == LibraryAuditAnalysis.id,
+            )
+            .outerjoin(
+                LibraryAuditReview,
+                LibraryAuditFile.current_review_id == LibraryAuditReview.id,
+            )
+        )
+        if folder_stats_sq is not None:
+            q_base = q_base.outerjoin(
+                folder_stats_sq,
+                LibraryAuditFile.parent_path == folder_stats_sq.c.folder_parent_path,
+            )
+        return _apply_list_filters(
+            q_base,
+            present=present,
+            analysis_state=analysis_state,
+            verdict=verdict,
+            disposition=disposition,
+            needs_review=needs_review,
+            parent_path=parent_path,
+            q=q,
+        )
+
+    filtered = _base_query()
+    total = filtered.with_entities(func.count(LibraryAuditFile.id)).scalar() or 0
+
+    page_query = _order_list_query(
+        _base_query(),
+        sort_by=effective_sort,
+        sort_dir=effective_dir,
+        folder_stats_sq=folder_stats_sq,
+    )
+    rows = page_query.offset(offset).limit(limit).all()
+
+    items: list[dict[str, Any]] = []
+    parent_paths: set[str | None] = set()
+    for row, analysis, review in rows:
+        parent_paths.add(row.parent_path)
+        items.append(_serialize_file(row, analysis, review, include_heavy=False))
+
+    folder_stats = _folder_stats_map(db, parent_paths=parent_paths)
+    _attach_folder_stats(items, folder_stats)
+
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
         "sort_by": effective_sort,
         "sort_dir": effective_dir,
-        "items": page,
+        "items": items,
     }
 
 
