@@ -1,8 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
   CalendarDays,
+  ClipboardCheck,
   Cog,
   Disc3,
+  FileSearch,
   Gauge,
   History,
   Import,
@@ -12,6 +14,7 @@ import {
   Plus,
   Radio,
   Settings2,
+  ShieldAlert,
   Timer,
   Zap,
   BarChart3,
@@ -86,6 +89,11 @@ export const arrSystemNav: ArrNavLink[] = [
   { path: "/system/lidarr-maintenance", label: "Lidarr Maintenance", icon: Wrench },
 ];
 
+export const arrLibraryAuditNav: ArrNavLink[] = [
+  { path: "/library-audit/review", label: "Review", icon: ShieldAlert },
+  { path: "/library-audit/library", label: "Library", icon: FileSearch },
+];
+
 export const arrNavSections: ArrNavSection[] = [
   {
     id: "commands",
@@ -104,6 +112,15 @@ export const arrNavSections: ArrNavSection[] = [
     indexEnd: true,
     icon: Radio,
     items: arrDiscoveryNav,
+  },
+  {
+    id: "library-audit",
+    label: "Library Audit",
+    pathPrefix: "/library-audit",
+    indexPath: "/library-audit",
+    indexEnd: true,
+    icon: ClipboardCheck,
+    items: arrLibraryAuditNav,
   },
   {
     id: "settings",
@@ -133,7 +150,7 @@ function settingsSectionDescription(slug: string): string {
     "music-sources": "Last.fm, Spotify, Deezer, MusicBrainz, ListenBrainz, and related API keys.",
     "event-sources": "Ticketmaster, SeatGeek, Deezer events, and artist event refresh.",
     "media-servers": "Plex and Jellyfin connection settings.",
-    "music-management": "Lidarr integration and library paths.",
+    "music-management": "Lidarr integration and Library Audit.",
     performance: "Cache, library sync, and command execution tuning.",
     scheduler: "Background job scheduling intervals.",
   };
@@ -150,6 +167,11 @@ export function arrPageTitle(pathname: string): string {
 
   const systemMatch = arrSystemNav.find((item) => pathname.startsWith(item.path));
   if (systemMatch) return systemMatch.label;
+
+  if (pathname === "/library-audit" || pathname === "/library-audit/") return "Library Audit";
+  const libraryAuditMatch = arrLibraryAuditNav.find((item) => pathname.startsWith(item.path));
+  if (libraryAuditMatch) return libraryAuditMatch.label;
+  if (pathname.startsWith("/library-audit")) return "Library Audit";
 
   if (pathname === "/discovery" || pathname === "/discovery/") return "Discovery";
   if (pathname.startsWith("/discovery/lastfm")) return "Last.fm";

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-09-23
+
+### Features
+- **Library Audit**: Optional command to inventory a mounted music library and analyze common formats (FLAC authenticity via FLAC Detective; MP3 bitrate/CBR–VBR probe). Triage then deep analysis queues (Fake Certain only after deep confirmation), review queue with dispositions (including False Positive overrides), folder-grouped multi-select bulk actions, Overview pies for library/format/verdict/review/integrity stats, immediate single-file reanalyze, spectrum curves for flagged FLACs, and a dedicated audit SQLite DB. Enable via Commands; set the music path under Settings → Music Management.
+
+### Fixes
+- **Library Audit**: Fix Overview/Library/Review timeouts on large libraries by pushing file-list filters/sort/pagination into SQL (with joins), computing Overview stats via aggregates instead of loading every row, adding helpful indexes, and omitting heavy analysis payloads from list responses.
+
+### Housekeeping
+- **Security (Docker / Trivy)**: Bump Chainguard Python builder/runtime digests to clear HIGH Go stdlib findings **CVE-2026-39821** and **CVE-2026-46600** (stdlib v1.26.5 → fixed in 1.26.6+).
+- **Security (Docker / Trivy)**: Pin Chainguard `FROM` lines as `python:latest-dev` / `python:latest` plus digest (Renovate cannot track digest-only images with no tag); bump to current `:latest` / `:latest-dev` for **CVE-2026-14456** (`libcrypto3` / `libssl3` 3.6.3-r5). Self-hosted Renovate workflow opens digest PRs to develop; a green `:develop` publish opens a Dockerfile-only PR to main so prod tags can move without an app version bump.
+- **Security (images and packages)**: Bump `node:24-trixie-slim` and Chainguard Python digests to **3.14.7_git20260918-r0**. Raise floors for **aiohttp** **3.14.3** (GHSA-cq5v-8q36-5273, GHSA-mfx4-hv73-q22v, GHSA-mq44-7p77-q5h7), **anyio** **4.15.1** (GHSA-3w57-8xmc-8v26, GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6), **soupsieve** **2.9.2** (GHSA-gjv8-xp57-g29c, GHSA-j934-xhv5-fg8f), and **httpx2** **2.13.1** (GHSA-8xx6-hgc6-gc2m, GHSA-h4x7-gw46-3wm6, GHSA-pf96-p4fj-6566). Override transitive **browserslist** **4.29.0** (GHSA-73wf-gq98-2v4g, GHSA-c83g-rgw3-j3cx) and **baseline-browser-mapping** **2.11.25** (GHSA-w5vr-8v7q-w6rv).
+
 ## [0.4.1] - 2026-08-11
 
 ### Features

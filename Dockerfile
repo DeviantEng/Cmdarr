@@ -1,5 +1,5 @@
 # Stage 1: Build React frontend (static assets only — not in final Trivy scan)
-FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:4f2b45e32dc7d2caf66b6dbd59fac50e32f8077769efe0ef4d4c3f114672537d AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -8,8 +8,9 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
-# Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python:latest-dev@sha256:14acabef9a759e7d07bf647afec92bc28cbe0f89c978fe426411c85035121c14 AS python-builder
+# Tag+digest required so Renovate can follow :latest-dev. Digest bump 2026-09-23
+# (Python 3.14.7_git20260918-r0).
+FROM cgr.dev/chainguard/python:latest-dev@sha256:0b39915a883dc2dbbe6c43be2ef82a37126409818cb66f5919e84cfa3e394ea5 AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -26,7 +27,7 @@ RUN python -m venv /app/venv \
     && rm -rf /root/.cache/pip
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python:latest-dev@sha256:14acabef9a759e7d07bf647afec92bc28cbe0f89c978fe426411c85035121c14 AS runtime-assembler
+FROM cgr.dev/chainguard/python:latest-dev@sha256:0b39915a883dc2dbbe6c43be2ef82a37126409818cb66f5919e84cfa3e394ea5 AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -46,8 +47,9 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
-# Locked Python: 3.14.7-r0 (digest pinned 2026-08-11)
-FROM cgr.dev/chainguard/python:latest@sha256:d812438658b47b73cb4c089f4cca09bca1ba50f6cd1843133864ee074d9ec49b
+# Tag+digest required so Renovate can follow :latest. Digest bump 2026-09-23
+# (Python 3.14.7_git20260918-r0).
+FROM cgr.dev/chainguard/python:latest@sha256:46e5b974e33be50d512688480df92f0e258ea849a562d9e63b701f8b080ea660
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}

@@ -529,6 +529,14 @@ class ConfigService:
                 "category": "jellyfin",
                 "description": "Disable library caching (slower playlist sync)",
             },
+            # Library Audit (enable/disable via Commands → Library Audit)
+            {
+                "key": "LIBRARY_AUDIT_ROOT",
+                "default_value": "/music",
+                "data_type": "string",
+                "category": "library_audit",
+                "description": "Path to music library inside the container (mount read-only)",
+            },
             # Playlist Sync Configuration
             # Note: Target configuration is handled at the command level
             {

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import {
   arrNavSections,
@@ -7,6 +8,7 @@ import {
   type ArrNavSection,
 } from "@/arr/arr-nav";
 import { useAppVersion } from "@/hooks/useAppVersion";
+import { libraryAuditApi } from "@/lib/library-audit-api";
 import { cn } from "@/lib/utils";
 
 function SidebarLink({ item, nested = false }: { item: ArrNavLink; nested?: boolean }) {
@@ -86,11 +88,29 @@ function ArrBrandMark() {
 
 export function ArrSidebar({ className }: { className?: string }) {
   const version = useAppVersion();
+  const [libraryAuditEnabled, setLibraryAuditEnabled] = useState(false);
   const commandsSection = arrNavSections.find((section) => section.id === "commands");
   const discoverySection = arrNavSections.find((section) => section.id === "discovery");
-  const secondaryNavSections = arrNavSections.filter(
-    (section) => section.id !== "commands" && section.id !== "discovery"
-  );
+  const secondaryNavSections = arrNavSections.filter((section) => {
+    if (section.id === "commands" || section.id === "discovery") return false;
+    if (section.id === "library-audit") return libraryAuditEnabled;
+    return true;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void libraryAuditApi
+      .getStatus()
+      .then((status) => {
+        if (!cancelled) setLibraryAuditEnabled(status.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setLibraryAuditEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <aside

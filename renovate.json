@@ -11,18 +11,19 @@
   "timezone": "Etc/UTC",
   "schedule": ["before 8am every monday"],
   "labels": ["dependencies"],
-  "automerge": true,
-  "automergeType": "pr",
-  "platformAutomerge": true,
-  "internalChecksFilter": "strict",
+  "automerge": false,
   "prHourlyLimit": 0,
   "prConcurrentLimit": 2,
   "packageRules": [
     {
-      "description": "One weekly PR combining Dockerfile digest bumps + pinned GitHub Actions",
-      "matchManagers": ["dockerfile", "github-actions"],
-      "groupName": "deps: Docker pins + Actions SHAs",
-      "groupSlug": "docker-actions-digests"
+      "description": "Dockerfile digest bumps — any time, visible PRs to develop (no automerge; human merge triggers docker-publish)",
+      "matchManagers": ["dockerfile"],
+      "groupName": "deps: Dockerfile digests",
+      "groupSlug": "dockerfile-digests",
+      "pinDigests": true,
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 days",
+      "internalChecksFilter": "none"
     },
     {
       "description": "No semver tag bumps for Docker images — digest-only for pinned FROM lines",
@@ -30,6 +31,12 @@
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["major", "minor", "patch"],
       "enabled": false
+    },
+    {
+      "description": "Pinned GitHub Actions SHAs — weekly grouped PR to develop",
+      "matchManagers": ["github-actions"],
+      "groupName": "deps: GitHub Actions SHAs",
+      "groupSlug": "github-actions-shas"
     },
     {
       "description": "No semver major bumps for pinned actions (prefer SHA churn on existing tag)",
