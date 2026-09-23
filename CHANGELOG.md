@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.2-dev] - TBD
+## [0.4.2] - 2026-09-23
 
 ### Features
 - **Library Audit**: Optional command to inventory a mounted music library and analyze common formats (FLAC authenticity via FLAC Detective; MP3 bitrate/CBR–VBR probe). Triage then deep analysis queues (Fake Certain only after deep confirmation), review queue with dispositions (including False Positive overrides), folder-grouped multi-select bulk actions, Overview pies for library/format/verdict/review/integrity stats, immediate single-file reanalyze, spectrum curves for flagged FLACs, and a dedicated audit SQLite DB. Enable via Commands; set the music path under Settings → Music Management.
