@@ -3,14 +3,14 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests",
-    ":dependencyDashboard",
-    ":disableDependencyDashboardAutoclose"
+    ":dependencyDashboard"
   ],
   "enabledManagers": ["dockerfile", "github-actions"],
   "baseBranches": ["develop"],
   "timezone": "Etc/UTC",
   "schedule": ["before 8am every monday"],
   "labels": ["dependencies"],
+  "dependencyDashboardAutoclose": false,
   "automerge": false,
   "prHourlyLimit": 0,
   "prConcurrentLimit": 2,
