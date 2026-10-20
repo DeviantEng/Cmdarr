@@ -1270,6 +1270,24 @@ class JellyfinClient(BaseAPIClient):
             self.logger.debug(f"Playlist {playlist_id} not found: {e}")
             return None
 
+    def update_playlist_name(self, playlist_id: str, title: str) -> bool:
+        """Rename a playlist. Loads the item first so other fields stay intact."""
+        try:
+            item = self.get_playlist_by_id(playlist_id)
+            if not item:
+                return False
+            item["Name"] = title
+            headers = {"X-Emby-Token": self.token, "Content-Type": "application/json"}
+            response = self._session.post(
+                f"{self.base_url}/Items/{playlist_id}", json=item, headers=headers, timeout=30
+            )
+            response.raise_for_status()
+            self.logger.info(f"Renamed playlist {playlist_id} to '{title}'")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to rename playlist {playlist_id}: {e}")
+            return False
+
     def delete_playlist_sync(self, playlist_id: str) -> bool:
         """Delete a playlist by ID using synchronous requests"""
         try:
