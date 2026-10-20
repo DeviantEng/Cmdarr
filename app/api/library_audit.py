@@ -34,8 +34,37 @@ from services.library_audit.service import (
     validate_root,
 )
 from services.library_audit.spectrum import compute_spectrum_curve
+from utils.logger import get_logger
 
 router = APIRouter()
+logger = get_logger("cmdarr.api.library_audit")
+
+
+def _bulk_client_error(exc: Exception) -> str | None:
+    """Map expected bulk failures to a fixed client message.
+
+    Unexpected exceptions return None so callers can log them without echoing
+    exception text (CodeQL py/stack-trace-exposure).
+    """
+    if isinstance(exc, KeyError):
+        return "File not found"
+    if isinstance(exc, ValueError):
+        text = str(exc)
+        if text.startswith("Invalid disposition"):
+            return "Invalid disposition"
+        if text.startswith("No analyzer available"):
+            return "No analyzer available for this file"
+    return None
+
+
+def _record_bulk_error(
+    errors: list[dict[str, Any]], file_id: int, exc: Exception, action: str
+) -> None:
+    message = _bulk_client_error(exc)
+    if message is None:
+        logger.exception("Library audit %s failed for file_id=%s", action, file_id)
+        message = "Request failed"
+    errors.append({"file_id": file_id, "error": message})
 
 
 def _require_enabled() -> None:
@@ -765,7 +794,7 @@ async def bulk_review(
             )
             updated += 1
         except Exception as exc:
-            errors.append({"file_id": fid, "error": str(exc)})
+            _record_bulk_error(errors, fid, exc, "bulk review")
     return {"success": True, "updated": updated, "errors": errors}
 
 
@@ -781,7 +810,7 @@ async def bulk_reanalyze(
             queue_reanalyze(db, fid)
             updated += 1
         except Exception as exc:
-            errors.append({"file_id": fid, "error": str(exc)})
+            _record_bulk_error(errors, fid, exc, "bulk reanalyze")
     return {"success": True, "updated": updated, "errors": errors}
 
 
