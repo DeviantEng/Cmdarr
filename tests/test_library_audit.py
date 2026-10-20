@@ -951,3 +951,17 @@ def test_build_stats_and_list_files_scale_with_sql(audit_env, monkeypatch):
     assert len(result["items"]) == 50
     assert result["items"][0]["folder_present_count"] == n
     assert result["items"][0]["analysis"]["evidence"] is None  # list omits heavy payloads
+
+
+def test_bulk_client_error_hides_unexpected_exception_text():
+    from app.api.library_audit import _bulk_client_error
+
+    assert _bulk_client_error(KeyError("File 9 not found")) == "File not found"
+    assert _bulk_client_error(ValueError("Invalid disposition: nope")) == "Invalid disposition"
+    assert (
+        _bulk_client_error(ValueError("No analyzer available for extension .wav yet"))
+        == "No analyzer available for this file"
+    )
+    boom = RuntimeError("secret traceback /tmp/library/album.flac")
+    assert _bulk_client_error(boom) is None
+    assert "secret" not in (_bulk_client_error(boom) or "")
