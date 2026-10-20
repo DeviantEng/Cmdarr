@@ -41,6 +41,12 @@ export const commandUiCopy = {
     syncModeLabel: "Sync Mode",
     syncModeFull: "Full Sync",
     syncModeAppend: "Append Only",
+    useCustomPlaylistName: "Use custom playlist name",
+    customPlaylistNameLabel: "Custom playlist name",
+    customPlaylistPlaceholder: "e.g. Nice Tunes",
+    customPlaylistNameHelper:
+      "Replaces the source playlist name. The Spotify or Deezer prefix is still applied when one is set.",
+    autoNameHelp: "Uses the source playlist name, plus the global prefix when one is set.",
     targetLabel: "Target",
     artistDiscovery: {
       checkboxLabel: "Add new artists",

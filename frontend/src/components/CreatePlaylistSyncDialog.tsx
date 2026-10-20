@@ -149,6 +149,8 @@ export function CreatePlaylistSyncDialog({
     sync_to_multiple_plex_users: false,
     plex_account_ids: [] as string[],
     sync_mode: "full",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
     enabled: true,
     weekly_exploration_keep: 3,
     weekly_jams_keep: 3,
@@ -402,6 +404,8 @@ export function CreatePlaylistSyncDialog({
       sync_to_multiple_plex_users: false,
       plex_account_ids: [],
       sync_mode: "full",
+      use_custom_playlist_name: false,
+      custom_playlist_name: "",
       enabled: true,
       weekly_exploration_keep: 3,
       weekly_jams_keep: 3,
@@ -2939,6 +2943,44 @@ export function CreatePlaylistSyncDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {playlistType === "other" && (
+                <>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.use_custom_playlist_name}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          use_custom_playlist_name: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-input"
+                    />
+                    <span className="text-sm">{ps.useCustomPlaylistName}</span>
+                  </label>
+                  {formData.use_custom_playlist_name && (
+                    <div className="space-y-2">
+                      <Label>{ps.customPlaylistNameLabel}</Label>
+                      <Input
+                        value={formData.custom_playlist_name}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            custom_playlist_name: e.target.value,
+                          }))
+                        }
+                        placeholder={ps.customPlaylistPlaceholder}
+                      />
+                      <p className="text-xs text-muted-foreground">{ps.customPlaylistNameHelper}</p>
+                    </div>
+                  )}
+                  {!formData.use_custom_playlist_name && (
+                    <p className="text-xs text-muted-foreground">{ps.autoNameHelp}</p>
+                  )}
+                </>
+              )}
 
               <CreateCommandScheduleExpiryBlock
                 idPrefix="create-ext"

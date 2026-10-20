@@ -734,12 +734,16 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
         typeof cfg.max_tracks_per_artist === "number" ? cfg.max_tracks_per_artist : 25,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
-      use_custom_playlist_name: Boolean(
-        cfg.use_custom_playlist_name ??
-        (cfg.playlist_name && (cfg.playlist_name as string) !== "Mood Playlist")
-      ),
+      use_custom_playlist_name: command.command_name.startsWith("mood_playlist_")
+        ? Boolean(
+            cfg.use_custom_playlist_name ??
+            (cfg.playlist_name && (cfg.playlist_name as string) !== "Mood Playlist")
+          )
+        : Boolean(cfg.use_custom_playlist_name),
       custom_playlist_name:
-        (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
+        command.command_name.startsWith("playlist_sync_") && cfg.playlist_url != null
+          ? ((cfg.custom_playlist_name as string) ?? "")
+          : ((cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? ""),
       moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
       exclude_last_run: cfg.exclude_last_run !== false,
       limit_by_year: !!cfg.limit_by_year || !!cfg.min_year_enabled,
@@ -1223,6 +1227,12 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                       cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
                       cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
                       cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
+                    }
+                    if ((editingCommand.config_json?.source as string) !== "listenbrainz") {
+                      cfg.use_custom_playlist_name = editForm.use_custom_playlist_name ?? false;
+                      cfg.custom_playlist_name = editForm.use_custom_playlist_name
+                        ? (editForm.custom_playlist_name ?? "").trim()
+                        : "";
                     }
                     if (
                       (editingCommand.config_json?.source as string) !== "listenbrainz" &&
