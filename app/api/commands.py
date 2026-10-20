@@ -395,10 +395,20 @@ async def update_command(
             elif (
                 command_name.startswith("playlist_sync_")
                 and (request.config_json.get("source") or "") != "listenbrainz"
-                and (request.config_json.get("target") or "").lower() == "plex"
             ):
-                plex_account_ids = request.config_json.get("plex_account_ids") or []
-                if isinstance(plex_account_ids, list) and len(plex_account_ids) > 0:
+                from commands.playlist_sync_titles import (
+                    external_playlist_display_name,
+                    playlist_sync_title_from_config,
+                )
+
+                merged = dict(command.config_json or {})
+                user_names: list[str] = []
+                plex_account_ids = merged.get("plex_account_ids") or []
+                if (
+                    str(merged.get("target") or "").lower() == "plex"
+                    and isinstance(plex_account_ids, list)
+                    and len(plex_account_ids) > 0
+                ):
                     from commands.config_adapter import Config
 
                     config = Config()
@@ -406,18 +416,14 @@ async def update_command(
 
                     pc = PlexClient(config)
                     accounts = pc.get_accounts()
-                    source = (request.config_json.get("source") or "unknown").title()
-                    playlist_name = request.config_json.get("playlist_name") or "playlist"
-                    names = []
                     for aid in plex_account_ids:
                         acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
-                        names.append(acc["name"] if acc else str(aid))
-                    user_bracket = f" [{', '.join(names)}] "
-                else:
-                    source = (request.config_json.get("source") or "unknown").title()
-                    playlist_name = request.config_json.get("playlist_name") or "playlist"
-                    user_bracket = " "
-                command.display_name = f"[{source}]{user_bracket}{playlist_name} → Plex"
+                        user_names.append(acc["name"] if acc else str(aid))
+                command.display_name = external_playlist_display_name(
+                    playlist_sync_title_from_config(merged),
+                    user_names=user_names,
+                    target=str(merged.get("target") or "plex"),
+                )
             elif command_name.startswith("xmplaylist_"):
                 from commands.playlist_generator_xmplaylist import _build_xmplaylist_display_name
 
@@ -2024,11 +2030,19 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
 
         from commands.playlist_sync_titles import (
-            build_playlist_sync_title,
-            load_prefix_for_source,
+            external_playlist_display_name,
+            playlist_sync_title_from_config,
         )
 
-        playlist_title = build_playlist_sync_title(playlist_name, load_prefix_for_source(source))
+        use_custom_playlist_name = bool(request.get("use_custom_playlist_name", False))
+        custom_playlist_name = (request.get("custom_playlist_name") or "").strip()
+        naming_config = {
+            "source": source,
+            "playlist_name": playlist_name,
+            "use_custom_playlist_name": use_custom_playlist_name,
+            "custom_playlist_name": custom_playlist_name if use_custom_playlist_name else "",
+        }
+        playlist_title = playlist_sync_title_from_config(naming_config)
 
         # Multi-user Plex: build display name with [USER] format
         plex_account_ids = request.get("plex_account_ids") or []
@@ -2041,10 +2055,12 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             for aid in plex_account_ids:
                 acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
                 names.append(acc["name"] if acc else str(aid))
-            user_suffix = f" [{', '.join(names)}]"
+            user_names = names
         else:
-            user_suffix = ""
-        display_name = f"{playlist_title}{user_suffix} → {target.title()}"
+            user_names = []
+        display_name = external_playlist_display_name(
+            playlist_title, user_names=user_names, target=target
+        )
 
         # Create command config
         try:
@@ -2054,6 +2070,8 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
                 "unique_id": f"{next_id:05d}",
                 "playlist_url": playlist_url,
                 "playlist_name": playlist_name,
+                "use_custom_playlist_name": use_custom_playlist_name,
+                "custom_playlist_name": custom_playlist_name if use_custom_playlist_name else "",
                 "target": target,
                 "sync_mode": sync_mode,
                 "enable_artist_discovery": enable_artist_discovery,

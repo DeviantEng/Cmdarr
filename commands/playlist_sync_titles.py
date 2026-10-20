@@ -56,3 +56,29 @@ def build_playlist_sync_title(playlist_name: str | None, prefix: str | None) -> 
     if cleaned_prefix and name:
         return f"{cleaned_prefix} {name}"
     return cleaned_prefix or name
+
+
+def playlist_name_for_sync(config: dict) -> str:
+    """Name placed after the prefix. A custom name replaces the source playlist name."""
+    use_custom = bool(config.get("use_custom_playlist_name"))
+    custom = str(config.get("custom_playlist_name") or "").strip()
+    if use_custom and custom:
+        return custom
+    return str(config.get("playlist_name") or "").strip()
+
+
+def playlist_sync_title_from_config(config: dict) -> str:
+    """Title for an external playlist sync command, including the global prefix."""
+    return build_playlist_sync_title(
+        playlist_name_for_sync(config),
+        load_prefix_for_source(config.get("source")),
+    )
+
+
+def external_playlist_display_name(
+    playlist_title: str, *, user_names: list[str] | None, target: str
+) -> str:
+    """Command list label: playlist title, optional Plex users, then the target."""
+    names = [str(name).strip() for name in (user_names or []) if str(name).strip()]
+    user_suffix = f" [{', '.join(names)}]" if names else ""
+    return f"{playlist_title}{user_suffix} → {(target or 'plex').strip().title()}"

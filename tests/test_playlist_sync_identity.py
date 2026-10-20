@@ -6,7 +6,10 @@ import logging
 from commands.playlist_sync import PlaylistSyncCommand
 from commands.playlist_sync_titles import (
     build_playlist_sync_title,
+    external_playlist_display_name,
     is_append_sync_mode,
+    playlist_name_for_sync,
+    playlist_sync_title_from_config,
     prefix_for_source,
 )
 
@@ -17,6 +20,36 @@ def test_prefix_empty_disables_and_custom_replaces_default():
     assert prefix_for_source("spotify", "[S]") == "[S]"
     assert build_playlist_sync_title("Nice Tunes", "[Spotify]") == "[Spotify] Nice Tunes"
     assert build_playlist_sync_title("Nice Tunes", "") == "Nice Tunes"
+
+
+def test_custom_playlist_name_replaces_source_name_and_keeps_prefix(monkeypatch):
+    monkeypatch.setattr(
+        "commands.playlist_sync_titles.load_prefix_for_source",
+        lambda source: "[Spotify]" if source == "spotify" else "",
+    )
+    source_only = {
+        "source": "spotify",
+        "playlist_name": "Discover Weekly",
+        "use_custom_playlist_name": False,
+        "custom_playlist_name": "Ignored",
+    }
+    custom = {
+        "source": "spotify",
+        "playlist_name": "Discover Weekly",
+        "use_custom_playlist_name": True,
+        "custom_playlist_name": "  Nice Tunes  ",
+    }
+    blank_custom = {**custom, "custom_playlist_name": "  "}
+    assert playlist_name_for_sync(source_only) == "Discover Weekly"
+    assert playlist_name_for_sync(custom) == "Nice Tunes"
+    assert playlist_name_for_sync(blank_custom) == "Discover Weekly"
+    assert playlist_sync_title_from_config(custom) == "[Spotify] Nice Tunes"
+    assert (
+        external_playlist_display_name(
+            playlist_sync_title_from_config(custom), user_names=["Ada"], target="plex"
+        )
+        == "[Spotify] Nice Tunes [Ada] → Plex"
+    )
 
 
 def test_append_aliases():

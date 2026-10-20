@@ -15,11 +15,7 @@ from utils.library_cache_manager import get_library_cache_manager
 from utils.plex_user import get_account_name, get_accounts, get_token_for_user
 
 from .command_base import BaseCommand
-from .playlist_sync_titles import (
-    build_playlist_sync_title,
-    is_append_sync_mode,
-    load_prefix_for_source,
-)
+from .playlist_sync_titles import is_append_sync_mode, playlist_sync_title_from_config
 
 
 class PlaylistSyncCommand(BaseCommand):
@@ -166,7 +162,6 @@ class PlaylistSyncCommand(BaseCommand):
             )
             if multi_user:
                 success, sync_stats = await self._sync_multi_user_plex(
-                    playlist_name=playlist_name,
                     playlist_summary=playlist_summary,
                     tracks=tracks,
                     sync_mode=sync_mode,
@@ -174,9 +169,7 @@ class PlaylistSyncCommand(BaseCommand):
                     library_key=library_key,
                 )
             else:
-                playlist_title = build_playlist_sync_title(
-                    playlist_name, load_prefix_for_source(config.get("source"))
-                )
+                playlist_title = playlist_sync_title_from_config(config)
                 sync_result = await self._sync_one(
                     playlist_title=playlist_title,
                     tracks=tracks,
@@ -542,7 +535,6 @@ class PlaylistSyncCommand(BaseCommand):
 
     async def _sync_multi_user_plex(
         self,
-        playlist_name: str,
         playlist_summary: str,
         tracks: list[dict[str, Any]],
         sync_mode: str,
@@ -564,9 +556,7 @@ class PlaylistSyncCommand(BaseCommand):
             f"Resolved {len(resolved_tracks)}/{len(tracks)} tracks for {len(self.config_json.get('plex_account_ids', []))} users"
         )
 
-        playlist_title = build_playlist_sync_title(
-            playlist_name, load_prefix_for_source(self.config_json.get("source"))
-        )
+        playlist_title = playlist_sync_title_from_config(self.config_json or {})
 
         for user_id in self.config_json.get("plex_account_ids", []):
             user_id_str = str(user_id)
