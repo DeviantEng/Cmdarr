@@ -12,7 +12,7 @@ env:
 
 jobs:
   ruff:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -35,7 +35,7 @@ jobs:
         run: ruff format --check .
 
   unit-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -57,7 +57,7 @@ jobs:
         run: pytest tests/ -v --cov=utils --cov=tests --cov-report=term-missing --cov-fail-under=70
 
   frontend-lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
@@ -82,7 +82,7 @@ jobs:
         run: npm run lint
 
   frontend-format:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
@@ -107,7 +107,7 @@ jobs:
         run: npm run format:check
 
   frontend-typecheck:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
@@ -132,7 +132,7 @@ jobs:
         run: npx tsc --noEmit
 
   npm-audit:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
@@ -157,7 +157,7 @@ jobs:
         run: npm audit --audit-level=high
 
   pip-audit:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -180,7 +180,7 @@ jobs:
         run: pip-audit -r requirements.txt
 
   zizmor:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -202,7 +202,7 @@ jobs:
 
   zap-full-scan:
     name: ZAP Full Scan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
