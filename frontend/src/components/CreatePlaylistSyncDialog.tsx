@@ -1001,7 +1001,9 @@ export function CreatePlaylistSyncDialog({
       ) : null}
 
       {step === "type" ? (
-        <div className={embedded ? "arr-panel-body arr-create-type-grid" : "grid gap-3 py-4"}>
+        <div
+          className={embedded ? "arr-panel-body arr-create-type-grid px-4 py-4" : "grid gap-3 py-4"}
+        >
           <div
             className={
               embedded
@@ -1328,7 +1330,7 @@ export function CreatePlaylistSyncDialog({
           })()}
         </div>
       ) : (
-        <div className={embedded ? "arr-panel-body space-y-4" : "space-y-4 py-4"}>
+        <div className={embedded ? "arr-panel-body space-y-4 px-4 py-4" : "space-y-4 py-4"}>
           {playlistType === "listenbrainz" ? (
             <>
               {/* Playlist Types */}
