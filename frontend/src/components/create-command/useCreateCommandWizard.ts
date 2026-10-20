@@ -1,0 +1,871 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { commandUiCopy } from "@/command-spec";
+import { toExpiresAtIso } from "@/lib/expiration";
+import {
+  DEFAULT_DAYLIST_TIME_PERIODS,
+  hoursFromRange,
+  type CreatePlaylistSyncDialogProps,
+  type PlaylistType,
+  type PlaylistValidation,
+  type XmplaylistStationRow,
+} from "./shared";
+
+export function useCreateCommandWizard({
+  open,
+  onOpenChange,
+  onSuccess,
+  embedded = false,
+}: CreatePlaylistSyncDialogProps) {
+  const isActive = open || embedded;
+  const [step, setStep] = useState<"type" | "form">("type");
+  const [playlistType, setPlaylistType] = useState<PlaylistType>("other");
+  const [formData, setFormData] = useState({
+    playlist_url: "",
+    playlist_types: [] as string[],
+    target: "plex",
+    sync_to_multiple_plex_users: false,
+    plex_account_ids: [] as string[],
+    sync_mode: "full",
+    enabled: true,
+    weekly_exploration_keep: 3,
+    weekly_jams_keep: 3,
+    daily_jams_keep: 3,
+    cleanup_enabled: true,
+    enable_artist_discovery: false,
+    artist_discovery_max_per_run: 2,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+  const [validation, setValidation] = useState<PlaylistValidation>({
+    isValidating: false,
+    isValid: false,
+    error: "",
+    metadata: null,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [plexAccounts, setPlexAccounts] = useState<{ id: string; name: string }[]>([]);
+  const [daylistUsedIds, setDaylistUsedIds] = useState<Set<string>>(new Set());
+  const [localDiscoveryUsedIds, setLocalDiscoveryUsedIds] = useState<Set<string>>(new Set());
+  const [daylistForm, setDaylistForm] = useState({
+    plex_history_account_id: "",
+    schedule_minute: 0,
+    enabled: true,
+    exclude_played_days: 3,
+    history_lookback_days: 45,
+    max_tracks: 50,
+    sonic_similar_limit: 10,
+    sonic_similarity_limit: 50,
+    sonic_similarity_distance: 0.8,
+    historical_ratio: 0.3,
+    timezone: "",
+    time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS } as Record<
+      string,
+      { start: number; end: number }
+    >,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+    use_primary_mood: false,
+  });
+
+  const [localDiscoveryForm, setLocalDiscoveryForm] = useState({
+    plex_history_account_id: "",
+    lookback_days: 90,
+    exclude_played_days: 3,
+    top_artists_count: 10,
+    artist_pool_size: 20,
+    max_tracks: 50,
+    sonic_similar_limit: 15,
+    sonic_similarity_distance: 0.25,
+    historical_ratio: 0.3,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [topTracksForm, setTopTracksForm] = useState({
+    artists: "",
+    top_x: 5,
+    source: "plex" as "plex" | "lastfm",
+    target: "plex" as "plex" | "jellyfin",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [lfmSimilarForm, setLfmSimilarForm] = useState({
+    seed_artists: "",
+    similar_per_seed: 5,
+    max_artists: 25,
+    include_seeds: true,
+    top_x: 5,
+    target: "plex" as "plex" | "jellyfin",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [setlistfmForm, setSetlistfmForm] = useState({
+    artists: "",
+    max_tracks_per_artist: 25,
+    target: "plex" as "plex" | "jellyfin",
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+
+  const [moodPlaylistForm, setMoodPlaylistForm] = useState({
+    moods: [] as string[],
+    use_custom_playlist_name: false,
+    custom_playlist_name: "",
+    max_tracks: 50,
+    exclude_last_run: true,
+    limit_by_year: false,
+    min_year: undefined as number | undefined,
+    max_year: undefined as number | undefined,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+  const [moodsList, setMoodsList] = useState<string[]>([]);
+
+  const [xmplaylistForm, setXmplaylistForm] = useState({
+    station_deeplink: "",
+    station_display_name: "",
+    station_label: "",
+    playlist_kind: "newest" as "newest" | "most_heard",
+    most_heard_days: 30 as 1 | 7 | 14 | 30 | 60,
+    max_tracks: 50,
+    target: "plex" as "plex" | "jellyfin",
+    sync_to_multiple_plex_users: false,
+    plex_account_ids: [] as string[],
+    enable_artist_discovery: false,
+    artist_discovery_max_per_run: 2,
+    schedule_cron: "0 6 * * *",
+    schedule_override: false,
+    enabled: true,
+    expires_at_enabled: false,
+    expires_at: "",
+    expires_at_delete_playlist: true,
+  });
+  const [xmplaylistStations, setXmplaylistStations] = useState<XmplaylistStationRow[]>([]);
+  const [xmplaylistStationsLoading, setXmplaylistStationsLoading] = useState(false);
+  const [xmplaylistStationFilter, setXmplaylistStationFilter] = useState("");
+
+  const [lidarrUpdateAllForm, setLidarrUpdateAllForm] = useState({
+    schedule_cron: "0 4 * * 0",
+    schedule_override: false,
+    enabled: true,
+  });
+
+  const [lidarrWantedSearchForm, setLidarrWantedSearchForm] = useState({
+    top_x: 10,
+    ignore_days: 14,
+    settle_seconds: 30,
+    sort_by: "oldest_release_date" as
+      | "oldest_release_date"
+      | "newest_release_date"
+      | "artist_name_asc"
+      | "album_title_asc",
+    album_types: ["album"] as string[],
+    schedule_cron: "0 5 * * *",
+    schedule_override: false,
+    enabled: true,
+  });
+
+  const [singletonAvailability, setSingletonAvailability] = useState<
+    Record<string, { available: boolean; reason?: string | null }>
+  >({});
+
+  const filteredXmStations = useMemo(() => {
+    const q = xmplaylistStationFilter.trim().toLowerCase();
+    if (!q) return xmplaylistStations;
+    return xmplaylistStations.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.deeplink.includes(q) ||
+        (s.number != null && String(s.number).includes(q))
+    );
+  }, [xmplaylistStations, xmplaylistStationFilter]);
+
+  const fetchPlexAccounts = () =>
+    api
+      .request<{
+        accounts: { id: string; name: string }[];
+        daylist_used_ids?: string[];
+        local_discovery_used_ids?: string[];
+      }>("/api/commands/plex-accounts")
+      .then((r) => {
+        setPlexAccounts(r.accounts || []);
+        setDaylistUsedIds(new Set(r.daylist_used_ids || []));
+        setLocalDiscoveryUsedIds(new Set(r.local_discovery_used_ids || []));
+      })
+      .catch(() => {
+        setPlexAccounts([]);
+        setDaylistUsedIds(new Set());
+        setLocalDiscoveryUsedIds(new Set());
+      });
+
+  // Fetch mood playlist moods, plex accounts, and singleton availability when dialog opens
+  useEffect(() => {
+    if (!isActive) return;
+    api
+      .request<{ moods: string[] }>("/api/commands/mood-playlist/moods")
+      .then((r) => setMoodsList(r.moods || []))
+      .catch(() => setMoodsList([]));
+    fetchPlexAccounts();
+    api
+      .request<{
+        singletons?: Record<string, { available: boolean; reason?: string | null }>;
+      }>("/api/commands/create-availability")
+      .then((r) => setSingletonAvailability(r.singletons || {}))
+      .catch(() => setSingletonAvailability({}));
+  }, [isActive]);
+
+  // Refetch plex accounts when showing Daylist or Local Discovery form (ensures used_ids are current)
+  useEffect(() => {
+    if (!isActive) return;
+    if (step === "form" && (playlistType === "daylist" || playlistType === "local_discovery")) {
+      fetchPlexAccounts();
+    }
+  }, [isActive, step, playlistType]);
+
+  useEffect(() => {
+    if (!isActive || step !== "form" || playlistType !== "xmplaylist") return;
+    setXmplaylistStationsLoading(true);
+    api
+      .request<{ stations: XmplaylistStationRow[] }>("/api/commands/xmplaylist/stations")
+      .then((r) => setXmplaylistStations(r.stations || []))
+      .catch(() => {
+        setXmplaylistStations([]);
+        toast.error("Could not load stations from xmplaylist.com");
+      })
+      .finally(() => setXmplaylistStationsLoading(false));
+  }, [isActive, step, playlistType]);
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (embedded || open) return;
+    setStep("type");
+    setPlaylistType("other");
+    setFormData({
+      playlist_url: "",
+      playlist_types: [],
+      target: "plex",
+      sync_to_multiple_plex_users: false,
+      plex_account_ids: [],
+      sync_mode: "full",
+      enabled: true,
+      weekly_exploration_keep: 3,
+      weekly_jams_keep: 3,
+      daily_jams_keep: 3,
+      cleanup_enabled: true,
+      enable_artist_discovery: false,
+      artist_discovery_max_per_run: 2,
+      schedule_cron: "0 6 * * *",
+      schedule_override: false,
+      expires_at_enabled: false,
+      expires_at: "",
+      expires_at_delete_playlist: true,
+    });
+    setDaylistForm({
+      plex_history_account_id: "",
+      schedule_minute: 0,
+      enabled: true,
+      exclude_played_days: 3,
+      history_lookback_days: 45,
+      max_tracks: 50,
+      sonic_similar_limit: 10,
+      sonic_similarity_limit: 50,
+      sonic_similarity_distance: 0.8,
+      historical_ratio: 0.3,
+      timezone: "",
+      time_periods: { ...DEFAULT_DAYLIST_TIME_PERIODS },
+      expires_at_enabled: false,
+      expires_at: "",
+      expires_at_delete_playlist: true,
+      use_primary_mood: false,
+    });
+    setValidation({
+      isValidating: false,
+      isValid: false,
+      error: "",
+      metadata: null,
+    });
+    setLocalDiscoveryForm({
+      plex_history_account_id: "",
+      lookback_days: 90,
+      exclude_played_days: 3,
+      top_artists_count: 10,
+      artist_pool_size: 20,
+      max_tracks: 50,
+      sonic_similar_limit: 15,
+      sonic_similarity_distance: 0.25,
+      historical_ratio: 0.3,
+      schedule_cron: "0 6 * * *",
+      schedule_override: false,
+      enabled: true,
+      expires_at_enabled: false,
+      expires_at: "",
+      expires_at_delete_playlist: true,
+    });
+    setMoodPlaylistForm({
+      moods: [],
+      use_custom_playlist_name: false,
+      custom_playlist_name: "",
+      max_tracks: 50,
+      exclude_last_run: true,
+      limit_by_year: false,
+      min_year: undefined,
+      max_year: undefined,
+      schedule_cron: "0 6 * * *",
+      schedule_override: false,
+      enabled: true,
+      expires_at_enabled: false,
+      expires_at: "",
+      expires_at_delete_playlist: true,
+    });
+    setXmplaylistForm({
+      station_deeplink: "",
+      station_display_name: "",
+      station_label: "",
+      playlist_kind: "newest",
+      most_heard_days: 30,
+      max_tracks: 50,
+      target: "plex",
+      sync_to_multiple_plex_users: false,
+      plex_account_ids: [],
+      enable_artist_discovery: false,
+      artist_discovery_max_per_run: 2,
+      schedule_cron: "0 6 * * *",
+      schedule_override: false,
+      enabled: true,
+      expires_at_enabled: false,
+      expires_at: "",
+      expires_at_delete_playlist: true,
+    });
+    setXmplaylistStationFilter("");
+    setXmplaylistStations([]);
+    setLidarrUpdateAllForm({
+      schedule_cron: "0 4 * * 0",
+      schedule_override: false,
+      enabled: true,
+    });
+    setLidarrWantedSearchForm({
+      top_x: 10,
+      ignore_days: 14,
+      settle_seconds: 30,
+      sort_by: "oldest_release_date",
+      album_types: ["album"],
+      schedule_cron: "0 5 * * *",
+      schedule_override: false,
+      enabled: true,
+    });
+  }, [embedded, open]);
+
+  const validatePlaylistUrl = useCallback(async () => {
+    if (!formData.playlist_url) return;
+
+    setValidation((prev) => ({ ...prev, isValidating: true, error: "" }));
+
+    try {
+      const response = await api.request<{
+        valid: boolean;
+        error?: string;
+        metadata?: unknown;
+      }>(
+        `/api/commands/playlist-sync/validate-url?url=${encodeURIComponent(formData.playlist_url)}`
+      );
+
+      setValidation({
+        isValidating: false,
+        isValid: response.valid,
+        error: response.error || "",
+        metadata: response.metadata || null,
+      });
+    } catch {
+      setValidation({
+        isValidating: false,
+        isValid: false,
+        error: "Failed to validate URL",
+        metadata: null,
+      });
+    }
+  }, [formData.playlist_url]);
+
+  // Debounced URL validation
+  useEffect(() => {
+    if (playlistType !== "other" || !formData.playlist_url) {
+      setValidation({
+        isValidating: false,
+        isValid: false,
+        error: "",
+        metadata: null,
+      });
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      validatePlaylistUrl();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.playlist_url, playlistType, validatePlaylistUrl]);
+
+  const handleSelectType = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    if (avail && avail.available === false) return;
+    setPlaylistType(type);
+    setStep("form");
+    if (type === "listenbrainz") {
+      setFormData((prev) => ({
+        ...prev,
+        playlist_types: ["weekly_exploration"],
+      }));
+    }
+  };
+
+  const singletonCardProps = (type: PlaylistType) => {
+    const avail = singletonAvailability[type];
+    const blocked = avail?.available === false;
+    const reason = avail?.reason || commandUiCopy.lidarrMaintenance.singletonOnlyOne;
+    return { blocked, reason };
+  };
+
+  const handleTogglePlaylistType = (type: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      playlist_types: prev.playlist_types.includes(type)
+        ? prev.playlist_types.filter((t) => t !== type)
+        : [...prev.playlist_types, type],
+    }));
+  };
+
+  const handleToggleMood = (mood: string) => {
+    setMoodPlaylistForm((prev) => ({
+      ...prev,
+      moods: prev.moods.includes(mood)
+        ? prev.moods.filter((m) => m !== mood)
+        : [...prev.moods, mood],
+    }));
+  };
+
+  const canSubmit = () => {
+    if (playlistType === "listenbrainz") {
+      if (formData.playlist_types.length === 0) return false;
+      if (formData.expires_at_enabled && !formData.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "daylist") {
+      if (!daylistForm.plex_history_account_id) return false;
+      if (daylistForm.expires_at_enabled && !daylistForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "top_tracks") {
+      if (
+        topTracksForm.artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
+        return false;
+      if (topTracksForm.expires_at_enabled && !topTracksForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "lfm_similar") {
+      if (
+        lfmSimilarForm.seed_artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
+        return false;
+      if (lfmSimilarForm.expires_at_enabled && !lfmSimilarForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "setlistfm") {
+      if (
+        setlistfmForm.artists
+          .trim()
+          .split("\n")
+          .filter((a) => a.trim()).length === 0
+      )
+        return false;
+      if (setlistfmForm.expires_at_enabled && !setlistfmForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "mood_playlist") {
+      if (moodPlaylistForm.moods.length === 0) return false;
+      if (moodPlaylistForm.expires_at_enabled && !moodPlaylistForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "local_discovery") {
+      if (!localDiscoveryForm.plex_history_account_id) return false;
+      if (localDiscoveryForm.expires_at_enabled && !localDiscoveryForm.expires_at) return false;
+      return true;
+    }
+    if (playlistType === "xmplaylist") {
+      if (!xmplaylistForm.station_deeplink.trim()) return false;
+      if (xmplaylistForm.expires_at_enabled && !xmplaylistForm.expires_at) return false;
+      if (
+        xmplaylistForm.target === "plex" &&
+        xmplaylistForm.sync_to_multiple_plex_users &&
+        xmplaylistForm.plex_account_ids.length === 0
+      ) {
+        return false;
+      }
+      return true;
+    }
+    if (playlistType === "lidarr_update_all") {
+      return true;
+    }
+    if (playlistType === "lidarr_wanted_search") {
+      if ((lidarrWantedSearchForm.album_types ?? []).length === 0) return false;
+      return true;
+    }
+    if (
+      playlistType === "other" &&
+      formData.target === "plex" &&
+      formData.sync_to_multiple_plex_users &&
+      formData.plex_account_ids.length === 0
+    ) {
+      return false;
+    }
+    if (!validation.isValid) return false;
+    if (formData.expires_at_enabled && !formData.expires_at) return false;
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!canSubmit()) {
+      toast.error("Please complete all required fields");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      if (playlistType === "top_tracks") {
+        const payload: Record<string, unknown> = {
+          artists: topTracksForm.artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
+          top_x: topTracksForm.top_x,
+          source: topTracksForm.source,
+          target: topTracksForm.target,
+          use_custom_playlist_name: topTracksForm.use_custom_playlist_name,
+          custom_playlist_name: topTracksForm.custom_playlist_name,
+          schedule_cron: topTracksForm.schedule_override ? topTracksForm.schedule_cron : undefined,
+          enabled: topTracksForm.enabled,
+        };
+        if (topTracksForm.expires_at_enabled && topTracksForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(topTracksForm.expires_at);
+          payload.expires_at_delete_playlist = topTracksForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/top-tracks/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Artist Essentials command created");
+      } else if (playlistType === "lfm_similar") {
+        const payload: Record<string, unknown> = {
+          seed_artists: lfmSimilarForm.seed_artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
+          similar_per_seed: lfmSimilarForm.similar_per_seed,
+          max_artists: lfmSimilarForm.max_artists,
+          include_seeds: lfmSimilarForm.include_seeds,
+          top_x: lfmSimilarForm.top_x,
+          target: lfmSimilarForm.target,
+          use_custom_playlist_name: lfmSimilarForm.use_custom_playlist_name,
+          custom_playlist_name: lfmSimilarForm.custom_playlist_name,
+          schedule_cron: lfmSimilarForm.schedule_override
+            ? lfmSimilarForm.schedule_cron
+            : undefined,
+          enabled: lfmSimilarForm.enabled,
+        };
+        if (lfmSimilarForm.expires_at_enabled && lfmSimilarForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(lfmSimilarForm.expires_at);
+          payload.expires_at_delete_playlist = lfmSimilarForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lfm-similar/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Last.fm Similar command created");
+      } else if (playlistType === "setlistfm") {
+        const payload: Record<string, unknown> = {
+          artists: setlistfmForm.artists
+            .trim()
+            .split("\n")
+            .filter((a) => a.trim()),
+          max_tracks_per_artist: Math.max(3, Math.min(30, setlistfmForm.max_tracks_per_artist)),
+          target: setlistfmForm.target,
+          use_custom_playlist_name: setlistfmForm.use_custom_playlist_name,
+          custom_playlist_name: setlistfmForm.custom_playlist_name,
+          schedule_cron: setlistfmForm.schedule_override ? setlistfmForm.schedule_cron : undefined,
+          enabled: setlistfmForm.enabled,
+        };
+        if (setlistfmForm.expires_at_enabled && setlistfmForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(setlistfmForm.expires_at);
+          payload.expires_at_delete_playlist = setlistfmForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/setlistfm/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Setlist.fm command created");
+      } else if (playlistType === "daylist") {
+        const time_periods: Record<string, number[]> = {};
+        for (const [period, { start, end }] of Object.entries(daylistForm.time_periods)) {
+          time_periods[period] = hoursFromRange(start, end);
+        }
+        const daylistPayload: Record<string, unknown> = {
+          plex_history_account_id: daylistForm.plex_history_account_id,
+          schedule_minute: daylistForm.schedule_minute,
+          enabled: daylistForm.enabled,
+          exclude_played_days: daylistForm.exclude_played_days,
+          history_lookback_days: daylistForm.history_lookback_days,
+          max_tracks: daylistForm.max_tracks,
+          sonic_similar_limit: daylistForm.sonic_similar_limit,
+          sonic_similarity_limit: daylistForm.sonic_similarity_limit,
+          sonic_similarity_distance: daylistForm.sonic_similarity_distance,
+          historical_ratio: daylistForm.historical_ratio,
+          timezone: daylistForm.timezone || undefined,
+          time_periods,
+          use_primary_mood: daylistForm.use_primary_mood,
+        };
+        if (daylistForm.expires_at_enabled && daylistForm.expires_at) {
+          daylistPayload.expires_at = toExpiresAtIso(daylistForm.expires_at);
+          daylistPayload.expires_at_delete_playlist =
+            daylistForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string }>("/api/commands/daylist/create", {
+          method: "POST",
+          body: JSON.stringify(daylistPayload),
+        });
+        toast.success(response.message || "Daylist command created successfully");
+      } else if (playlistType === "mood_playlist") {
+        const payload: Record<string, unknown> = {
+          moods: moodPlaylistForm.moods,
+          use_custom_playlist_name: moodPlaylistForm.use_custom_playlist_name,
+          custom_playlist_name: moodPlaylistForm.custom_playlist_name,
+          max_tracks: moodPlaylistForm.max_tracks,
+          exclude_last_run: moodPlaylistForm.exclude_last_run,
+          limit_by_year: moodPlaylistForm.limit_by_year,
+          min_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.min_year : undefined,
+          max_year: moodPlaylistForm.limit_by_year ? moodPlaylistForm.max_year : undefined,
+          schedule_cron: moodPlaylistForm.schedule_override
+            ? moodPlaylistForm.schedule_cron
+            : undefined,
+          enabled: moodPlaylistForm.enabled,
+        };
+        if (moodPlaylistForm.expires_at_enabled && moodPlaylistForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(moodPlaylistForm.expires_at);
+          payload.expires_at_delete_playlist = moodPlaylistForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/mood-playlist/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Mood Playlist command created");
+      } else if (playlistType === "local_discovery") {
+        const payload: Record<string, unknown> = {
+          plex_history_account_id: localDiscoveryForm.plex_history_account_id,
+          lookback_days: localDiscoveryForm.lookback_days,
+          exclude_played_days: localDiscoveryForm.exclude_played_days,
+          top_artists_count: localDiscoveryForm.top_artists_count,
+          artist_pool_size: localDiscoveryForm.artist_pool_size,
+          max_tracks: localDiscoveryForm.max_tracks,
+          sonic_similar_limit: localDiscoveryForm.sonic_similar_limit,
+          sonic_similarity_distance: localDiscoveryForm.sonic_similarity_distance,
+          historical_ratio: localDiscoveryForm.historical_ratio,
+          schedule_cron: localDiscoveryForm.schedule_override
+            ? localDiscoveryForm.schedule_cron
+            : undefined,
+          enabled: localDiscoveryForm.enabled,
+        };
+        if (localDiscoveryForm.expires_at_enabled && localDiscoveryForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(localDiscoveryForm.expires_at);
+          payload.expires_at_delete_playlist =
+            localDiscoveryForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string }>(
+          "/api/commands/local-discovery/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Local Discovery command created");
+      } else if (playlistType === "xmplaylist") {
+        const payload: Record<string, unknown> = {
+          station_deeplink: xmplaylistForm.station_deeplink.trim(),
+          station_display_name:
+            xmplaylistForm.station_display_name.trim() || xmplaylistForm.station_deeplink.trim(),
+          playlist_kind: xmplaylistForm.playlist_kind,
+          most_heard_days:
+            xmplaylistForm.playlist_kind === "most_heard" ? xmplaylistForm.most_heard_days : 30,
+          max_tracks: xmplaylistForm.max_tracks,
+          target: xmplaylistForm.target,
+          enable_artist_discovery: xmplaylistForm.enable_artist_discovery,
+          artist_discovery_max_per_run: xmplaylistForm.artist_discovery_max_per_run,
+          schedule_cron: xmplaylistForm.schedule_override
+            ? xmplaylistForm.schedule_cron
+            : undefined,
+          enabled: xmplaylistForm.enabled,
+        };
+        if (
+          xmplaylistForm.target === "plex" &&
+          xmplaylistForm.sync_to_multiple_plex_users &&
+          xmplaylistForm.plex_account_ids.length > 0
+        ) {
+          payload.plex_account_ids = xmplaylistForm.plex_account_ids;
+        }
+        if (xmplaylistForm.expires_at_enabled && xmplaylistForm.expires_at) {
+          payload.expires_at = toExpiresAtIso(xmplaylistForm.expires_at);
+          payload.expires_at_delete_playlist = xmplaylistForm.expires_at_delete_playlist ?? true;
+        }
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/xmplaylist/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "XM Playlist command created");
+      } else if (playlistType === "lidarr_update_all") {
+        const payload = {
+          schedule_cron: lidarrUpdateAllForm.schedule_override
+            ? lidarrUpdateAllForm.schedule_cron
+            : undefined,
+          enabled: lidarrUpdateAllForm.enabled,
+        };
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lidarr-update-all/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Lidarr Update All command created");
+      } else if (playlistType === "lidarr_wanted_search") {
+        const payload = {
+          top_x: lidarrWantedSearchForm.top_x,
+          ignore_days: lidarrWantedSearchForm.ignore_days,
+          settle_seconds: lidarrWantedSearchForm.settle_seconds,
+          sort_by: lidarrWantedSearchForm.sort_by,
+          album_types: lidarrWantedSearchForm.album_types,
+          schedule_cron: lidarrWantedSearchForm.schedule_override
+            ? lidarrWantedSearchForm.schedule_cron
+            : undefined,
+          enabled: lidarrWantedSearchForm.enabled,
+        };
+        const response = await api.request<{ message: string; command_name: string }>(
+          "/api/commands/lidarr-wanted-search/create",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        toast.success(response.message || "Lidarr Wanted Search command created");
+      } else {
+        const payload: Record<string, unknown> = {
+          ...formData,
+          playlist_type: playlistType,
+          schedule_cron: formData.schedule_override ? formData.schedule_cron : undefined,
+          plex_account_ids: formData.sync_to_multiple_plex_users ? formData.plex_account_ids : [],
+        };
+        delete payload.sync_to_multiple_plex_users;
+        if (formData.expires_at_enabled && formData.expires_at) {
+          payload.expires_at = toExpiresAtIso(formData.expires_at);
+          payload.expires_at_delete_playlist = formData.expires_at_delete_playlist ?? true;
+        } else {
+          delete payload.expires_at;
+          delete payload.expires_at_delete_playlist;
+        }
+        const response = await api.request<{ message: string }>(
+          "/api/commands/playlist-sync/create",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }
+        );
+        toast.success(response.message || "Playlist sync command created successfully");
+      }
+      onSuccess();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create command");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  return {
+    embedded,
+    open,
+    onOpenChange,
+    onSuccess,
+    step,
+    setStep,
+    playlistType,
+    setPlaylistType,
+    formData,
+    setFormData,
+    validation,
+    setValidation,
+    isSubmitting,
+    setIsSubmitting,
+    plexAccounts,
+    daylistUsedIds,
+    localDiscoveryUsedIds,
+    daylistForm,
+    setDaylistForm,
+    localDiscoveryForm,
+    setLocalDiscoveryForm,
+    topTracksForm,
+    setTopTracksForm,
+    lfmSimilarForm,
+    setLfmSimilarForm,
+    setlistfmForm,
+    setSetlistfmForm,
+    moodPlaylistForm,
+    setMoodPlaylistForm,
+    moodsList,
+    xmplaylistForm,
+    setXmplaylistForm,
+    xmplaylistStations,
+    xmplaylistStationsLoading,
+    xmplaylistStationFilter,
+    setXmplaylistStationFilter,
+    filteredXmStations,
+    lidarrUpdateAllForm,
+    setLidarrUpdateAllForm,
+    lidarrWantedSearchForm,
+    setLidarrWantedSearchForm,
+    handleSelectType,
+    singletonCardProps,
+    handleTogglePlaylistType,
+    handleToggleMood,
+    canSubmit,
+    handleSubmit,
+  };
+}
+
+export type CreateCommandWizard = ReturnType<typeof useCreateCommandWizard>;
