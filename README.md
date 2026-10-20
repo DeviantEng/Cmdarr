@@ -110,11 +110,9 @@ services:
     container_name: cmdarr
     ports:
       - "8080:8080"
-    # OWASP Docker: limit capabilities, prevent privilege escalation
-    cap_drop:
-      - ALL
-    security_opt:
-      - no_new_privileges: true
+    # Do not set cap_drop: [ALL] or security_opt no-new-privileges.
+    # The entrypoint uses gosu to switch to PUID:PGID, and those options
+    # fail that switch with "operation not permitted".
     volumes:
       - ./cmdarr-data:/app/data
     environment:
