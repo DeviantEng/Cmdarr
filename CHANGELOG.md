@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixes
 - **Library Audit**: Bulk review and bulk reanalyze no longer return raw exception text to the client. Known failures use a fixed message; unexpected failures are logged on the server.
+- **UI**: Sticky page toolbar, and padding around the Add New command type list and form. Thanks to [viki53](https://github.com/viki53).
 
 ### Housekeeping
 - **Security (npm)**: Override transitive `source-map-js` to **1.2.2** (GHSA-68fv-2mgg-jv7q, CVE-2026-93749) and `brace-expansion` to **5.0.12** (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
+- **Docker**: Bump `node:24-trixie-slim` to `7f486ca` and Chainguard Python dev/runtime digests to `493521f` / `702c7df`.
+- **CI**: Run GitHub Actions on `ubuntu-26.04`. `ubuntu-latest` moves to Ubuntu 26 through November 2026.
 
 ## [0.4.2] - 2026-09-23
 
