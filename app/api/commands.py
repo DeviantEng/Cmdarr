@@ -2023,6 +2023,13 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             get_commands_logger().error(f"Failed to generate unique command ID: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate unique command ID")
 
+        from commands.playlist_sync_titles import (
+            build_playlist_sync_title,
+            load_prefix_for_source,
+        )
+
+        playlist_title = build_playlist_sync_title(playlist_name, load_prefix_for_source(source))
+
         # Multi-user Plex: build display name with [USER] format
         plex_account_ids = request.get("plex_account_ids") or []
         if target == "plex" and isinstance(plex_account_ids, list) and len(plex_account_ids) > 0:
@@ -2034,10 +2041,10 @@ async def create_external_playlist_sync(request: dict, db: Session = Depends(get
             for aid in plex_account_ids:
                 acc = next((a for a in accounts if str(a.get("id", "")) == str(aid)), None)
                 names.append(acc["name"] if acc else str(aid))
-            user_bracket = f" [{', '.join(names)}] "
+            user_suffix = f" [{', '.join(names)}]"
         else:
-            user_bracket = " "
-        display_name = f"[{source.title()}]{user_bracket}{playlist_name} → {target.title()}"
+            user_suffix = ""
+        display_name = f"{playlist_title}{user_suffix} → {target.title()}"
 
         # Create command config
         try:

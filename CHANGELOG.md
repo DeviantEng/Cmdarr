@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.3-dev] - 2026-10-20
 
+### Features
+- **Playlist sync**: Global Spotify and Deezer prefix settings (`PLAYLIST_SYNC_PREFIX_SPOTIFY`, `PLAYLIST_SYNC_PREFIX_DEEZER`). Leave a prefix empty to use the source playlist name only. Cmdarr still writes that title on each run.
+- **Playlist sync**: Track the Plex or Jellyfin playlist by id (per Plex user when a command targets several accounts). A rename on the server is found again and set back to the Cmdarr title.
+
 ### Fixes
+- **Playlist sync**: Append mode adds missing tracks and leaves the playlist in place. The create form stored `append` while sync only treated `additive` as append, so Append Only replaced the playlist and dropped tracks added in Plex or Jellyfin.
 - **Library Audit**: Bulk review and bulk reanalyze no longer return raw exception text to the client. Known failures use a fixed message; unexpected failures are logged on the server.
 - **UI**: Sticky page toolbar, and padding around the Add New command type list and form. Thanks to [viki53](https://github.com/viki53).
 

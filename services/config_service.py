@@ -546,6 +546,26 @@ class ConfigService:
                 "category": "playlist_sync",
                 "description": "Age threshold in days for removing stale discovery entries",
             },
+            {
+                "key": "PLAYLIST_SYNC_PREFIX_SPOTIFY",
+                "default_value": "[Spotify]",
+                "data_type": "string",
+                "category": "spotify",
+                "description": (
+                    "Prefix for Spotify playlist sync titles in Plex and Jellyfin. "
+                    "Leave empty to use the source playlist name with no prefix."
+                ),
+            },
+            {
+                "key": "PLAYLIST_SYNC_PREFIX_DEEZER",
+                "default_value": "[Deezer]",
+                "data_type": "string",
+                "category": "deezer",
+                "description": (
+                    "Prefix for Deezer playlist sync titles in Plex and Jellyfin. "
+                    "Leave empty to use the source playlist name with no prefix."
+                ),
+            },
             # Output Configuration
             {
                 "key": "LISTENBRAINZ_OUTPUT_FILE",
