@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI**: Sticky page toolbar, and padding around the Add New command type list and form. Thanks to [viki53](https://github.com/viki53).
 
 ### Housekeeping
+- **UI**: Split the Add New command wizard into a shell and one section per command type. Behavior is unchanged, including external playlist custom names and the padded embedded form.
 - **Security (npm)**: Override transitive `source-map-js` to **1.2.2** (GHSA-68fv-2mgg-jv7q, CVE-2026-93749) and `brace-expansion` to **5.0.12** (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
 - **Security (npm)**: Bump devDependency `vite` from **8.0.16** to **8.3.5**. **8.0.0–8.1.5** is high (GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm, GHSA-9jrq-w75r-8gcw, GHSA-rq7h-c2jc-7f22).
 - **Docker**: Bump `node:24-trixie-slim` to `7f486ca` and Chainguard Python dev/runtime digests to `493521f` / `702c7df`.
