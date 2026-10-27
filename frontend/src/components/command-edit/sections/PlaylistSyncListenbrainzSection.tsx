@@ -2,6 +2,7 @@ import type { CommandEditRenderContext } from "../types";
 import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/NumericInput";
 import { commandUiCopy } from "@/command-spec";
+import { PlaylistSyncModeField } from "../PlaylistSyncModeField";
 
 const lb = commandUiCopy.listenbrainz;
 
@@ -9,6 +10,10 @@ export function PlaylistSyncListenbrainzSection({ ctx }: { ctx: CommandEditRende
   const { editForm, setEditForm } = ctx;
   return (
     <>
+      <PlaylistSyncModeField
+        value={editForm.sync_mode}
+        onChange={(sync_mode) => setEditForm((f) => ({ ...f, sync_mode }))}
+      />
       <div className="space-y-2">
         <Label>{lb.retentionHeading}</Label>
         <div className="grid grid-cols-3 gap-4">

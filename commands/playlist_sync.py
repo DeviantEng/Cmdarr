@@ -15,6 +15,7 @@ from utils.library_cache_manager import get_library_cache_manager
 from utils.plex_user import get_account_name, get_accounts, get_token_for_user
 
 from .command_base import BaseCommand
+from .playlist_sync_titles import is_append_sync_mode, playlist_sync_title_from_config
 
 
 class PlaylistSyncCommand(BaseCommand):
@@ -130,7 +131,6 @@ class PlaylistSyncCommand(BaseCommand):
 
             self.logger.info(f"Found {total_tracks} tracks in source playlist")
 
-            source_label = config.get("source", "Unknown").title()
             playlist_summary = (
                 f"Synced from {config.get('source', 'unknown')} playlist: {playlist_name}"
             )
@@ -162,8 +162,6 @@ class PlaylistSyncCommand(BaseCommand):
             )
             if multi_user:
                 success, sync_stats = await self._sync_multi_user_plex(
-                    source_label=source_label,
-                    playlist_name=playlist_name,
                     playlist_summary=playlist_summary,
                     tracks=tracks,
                     sync_mode=sync_mode,
@@ -171,16 +169,15 @@ class PlaylistSyncCommand(BaseCommand):
                     library_key=library_key,
                 )
             else:
-                # Single sync (admin token or Jellyfin)
-                playlist_title = f"[{source_label}] {playlist_name}"
-                if sync_mode == "additive":
-                    sync_result = await self._sync_additive(
-                        playlist_title, tracks, playlist_summary, cached_data, library_key
-                    )
-                else:
-                    sync_result = await self._sync_full(
-                        playlist_title, tracks, playlist_summary, cached_data, library_key
-                    )
+                playlist_title = playlist_sync_title_from_config(config)
+                sync_result = await self._sync_one(
+                    playlist_title=playlist_title,
+                    tracks=tracks,
+                    summary=playlist_summary,
+                    cached_data=cached_data,
+                    library_key=library_key,
+                    sync_mode=sync_mode,
+                )
                 if isinstance(sync_result, dict):
                     success = sync_result.get("success", False)
                     sync_stats = sync_result
@@ -538,8 +535,6 @@ class PlaylistSyncCommand(BaseCommand):
 
     async def _sync_multi_user_plex(
         self,
-        source_label: str,
-        playlist_name: str,
         playlist_summary: str,
         tracks: list[dict[str, Any]],
         sync_mode: str,
@@ -561,7 +556,7 @@ class PlaylistSyncCommand(BaseCommand):
             f"Resolved {len(resolved_tracks)}/{len(tracks)} tracks for {len(self.config_json.get('plex_account_ids', []))} users"
         )
 
-        playlist_title = f"[{source_label}] {playlist_name}"
+        playlist_title = playlist_sync_title_from_config(self.config_json or {})
 
         for user_id in self.config_json.get("plex_account_ids", []):
             user_id_str = str(user_id)
@@ -585,14 +580,15 @@ class PlaylistSyncCommand(BaseCommand):
             orig_client = self.target_client
             self.target_client = plex_client
             try:
-                if sync_mode == "additive":
-                    sync_result = await self._sync_additive(
-                        playlist_title, resolved_tracks, playlist_summary, cached_data, library_key
-                    )
-                else:
-                    sync_result = await self._sync_full(
-                        playlist_title, resolved_tracks, playlist_summary, cached_data, library_key
-                    )
+                sync_result = await self._sync_one(
+                    playlist_title=playlist_title,
+                    tracks=resolved_tracks,
+                    summary=playlist_summary,
+                    cached_data=cached_data,
+                    library_key=library_key,
+                    sync_mode=sync_mode,
+                    account_id=user_id_str,
+                )
                 if isinstance(sync_result, dict):
                     ok = sync_result.get("success", False)
                 else:
@@ -621,6 +617,152 @@ class PlaylistSyncCommand(BaseCommand):
                 sync_stats["unmatched_tracks"] = last["stats"].get("unmatched_tracks", [])
         return all_success, sync_stats
 
+    def _stored_playlist_id(self, account_id: str | None = None) -> str | None:
+        cfg = self.config_json or {}
+        if account_id:
+            stored = cfg.get("last_playlist_ids") or {}
+            if isinstance(stored, dict):
+                value = stored.get(str(account_id))
+                return str(value) if value else None
+            return None
+        value = cfg.get("last_playlist_id")
+        return str(value) if value else None
+
+    def _find_tracked_playlist(
+        self, playlist_title: str, account_id: str | None = None
+    ) -> dict[str, Any] | None:
+        """Find the playlist Cmdarr already owns: stored id, then previous title, then current title."""
+        client = self.target_client
+        stored_id = self._stored_playlist_id(account_id)
+        if stored_id and hasattr(client, "get_playlist_by_id"):
+            found = client.get_playlist_by_id(stored_id)
+            if found:
+                return found
+
+        last_title = str((self.config_json or {}).get("last_playlist_title") or "")
+        if last_title and last_title != playlist_title and hasattr(client, "find_playlist_by_name"):
+            found = client.find_playlist_by_name(last_title)
+            if found:
+                return found
+
+        if hasattr(client, "find_playlist_by_name"):
+            return client.find_playlist_by_name(playlist_title)
+        return None
+
+    @staticmethod
+    def _playlist_key(playlist: dict[str, Any]) -> str:
+        return str(playlist.get("ratingKey") or playlist.get("Id") or "")
+
+    @staticmethod
+    def _playlist_label(playlist: dict[str, Any]) -> str:
+        return str(playlist.get("title") or playlist.get("Name") or "")
+
+    def _enforce_playlist_title(self, playlist: dict[str, Any], desired_title: str) -> None:
+        """Rename a tracked playlist so the Cmdarr title stays the name on the server."""
+        current = self._playlist_label(playlist)
+        if not current or current == desired_title:
+            return
+        key = self._playlist_key(playlist)
+        if not key:
+            return
+        client = self.target_client
+        updated = False
+        if hasattr(client, "update_playlist_metadata"):
+            updated = bool(client.update_playlist_metadata(key, title=desired_title))
+        elif hasattr(client, "update_playlist_name"):
+            updated = bool(client.update_playlist_name(key, desired_title))
+        if not updated:
+            self.logger.warning(f"Could not rename playlist '{current}' to '{desired_title}'")
+            return
+        if "title" in playlist:
+            playlist["title"] = desired_title
+        if "Name" in playlist:
+            playlist["Name"] = desired_title
+        self.logger.info(f"Renamed playlist '{current}' to '{desired_title}'")
+
+    def _remember_playlist(
+        self, playlist_title: str, playlist_id: str | None, account_id: str | None = None
+    ) -> None:
+        if not playlist_id:
+            return
+        cfg = self.config_json
+        cfg["last_playlist_title"] = playlist_title
+        if account_id:
+            stored = dict(cfg.get("last_playlist_ids") or {})
+            stored[str(account_id)] = str(playlist_id)
+            cfg["last_playlist_ids"] = stored
+        else:
+            cfg["last_playlist_id"] = str(playlist_id)
+        self._persist_playlist_identity()
+
+    def _persist_playlist_identity(self) -> None:
+        command_name = str((self.config_json or {}).get("command_name") or "")
+        if not command_name.startswith("playlist_sync_"):
+            return
+        try:
+            from database.config_models import CommandConfig
+            from database.database import get_database_manager
+
+            db = get_database_manager()
+            session = db.get_config_session_sync()
+            try:
+                cmd = (
+                    session.query(CommandConfig)
+                    .filter(CommandConfig.command_name == command_name)
+                    .first()
+                )
+                if not cmd:
+                    return
+                stored = dict(cmd.config_json or {})
+                for key in ("last_playlist_title", "last_playlist_id", "last_playlist_ids"):
+                    if key in self.config_json:
+                        stored[key] = self.config_json[key]
+                cmd.config_json = stored
+                session.commit()
+            finally:
+                session.close()
+        except Exception as e:
+            self.logger.warning(f"Could not persist playlist identity: {e}")
+
+    async def _sync_one(
+        self,
+        playlist_title: str,
+        tracks: list[dict[str, Any]],
+        summary: str,
+        cached_data: dict[str, Any] | None,
+        library_key: str | None,
+        sync_mode: str,
+        account_id: str | None = None,
+    ) -> dict[str, Any]:
+        existing = self._find_tracked_playlist(playlist_title, account_id)
+        existing_id = self._playlist_key(existing) if existing else None
+        if existing:
+            self._enforce_playlist_title(existing, playlist_title)
+
+        if is_append_sync_mode(sync_mode):
+            result = await self._sync_additive(
+                playlist_title,
+                tracks,
+                summary,
+                cached_data,
+                library_key,
+                existing_playlist=existing,
+            )
+        else:
+            result = await self._sync_full(
+                playlist_title,
+                tracks,
+                summary,
+                cached_data,
+                library_key,
+                existing_playlist_id=existing_id or None,
+            )
+
+        if isinstance(result, dict) and result.get("success"):
+            new_id = result.get("playlist_id") or existing_id
+            self._remember_playlist(playlist_title, str(new_id) if new_id else None, account_id)
+        return result
+
     async def _sync_full(
         self,
         playlist_title: str,
@@ -628,8 +770,9 @@ class PlaylistSyncCommand(BaseCommand):
         summary: str,
         cached_data: dict[str, Any] | None,
         library_key: str | None = None,
+        existing_playlist_id: str | None = None,
     ) -> dict[str, Any]:
-        """Sync playlist using full sync mode (delete and recreate)"""
+        """Sync playlist using full sync mode (replace contents; may recreate the playlist)."""
         try:
             self.logger.info(f"Performing full sync for playlist '{playlist_title}'")
 
@@ -639,6 +782,7 @@ class PlaylistSyncCommand(BaseCommand):
                 summary=summary,
                 library_cache_manager=self.library_cache_manager,
                 library_key=library_key,
+                existing_playlist_id=existing_playlist_id,
             )
 
             if result.get("success"):
@@ -671,16 +815,13 @@ class PlaylistSyncCommand(BaseCommand):
         summary: str,
         cached_data: dict[str, Any] | None,
         library_key: str | None = None,
+        existing_playlist: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Sync playlist using additive mode (only add new tracks)"""
+        """Add source tracks that are missing. Never deletes or recreates an existing playlist."""
         try:
             self.logger.info(f"Performing additive sync for playlist '{playlist_title}'")
 
-            # Check if playlist exists
-            existing_playlist = self.target_client.find_playlist_by_name(playlist_title)
-
             if not existing_playlist:
-                # Playlist doesn't exist, create it with all tracks
                 self.logger.info(
                     f"Playlist '{playlist_title}' doesn't exist, creating with all tracks"
                 )
@@ -730,6 +871,8 @@ class PlaylistSyncCommand(BaseCommand):
                 return {
                     "success": True,
                     "action": "additive_sync",
+                    "playlist_id": str(playlist_rating_key) if playlist_rating_key else None,
+                    "playlist_title": playlist_title,
                     "total_tracks": len(tracks),
                     "found_tracks": len(existing_track_keys),
                     "added_tracks": 0,
@@ -746,6 +889,8 @@ class PlaylistSyncCommand(BaseCommand):
                 return {
                     "success": True,
                     "action": "additive_sync",
+                    "playlist_id": str(playlist_rating_key) if playlist_rating_key else None,
+                    "playlist_title": playlist_title,
                     "total_tracks": len(tracks),
                     "found_tracks": len(existing_track_keys) + len(tracks_to_add),
                     "added_tracks": len(tracks_to_add),

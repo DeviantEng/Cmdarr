@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-10-27
+
+### Features
+- **Playlist sync**: Spotify and Deezer prefix settings (`PLAYLIST_SYNC_PREFIX_SPOTIFY`, `PLAYLIST_SYNC_PREFIX_DEEZER`; leave blank for the source name only) and an optional custom playlist name. The prefix still applies to a custom name, and Cmdarr writes that title on each run. The source playlist name stays on the command.
+- **Playlist sync**: Track the Plex or Jellyfin playlist by id (per Plex user when a command targets several accounts). A rename on the server is found again and set back to the Cmdarr title. Existing syncs show Full Sync or Append Only in the commands list and the edit dialog, where the mode can be changed.
+
+### Fixes
+- **Docker**: Drop `cap_drop` and `security_opt` from the Compose example. Those options block `gosu` from switching to `PUID`/`PGID`. Thanks to [atomheartother](https://github.com/atomheartother).
+- **Playlist sync**: Append Only adds missing tracks and leaves the playlist in place. It previously replaced the playlist and dropped tracks added in Plex or Jellyfin.
+- **Library Audit**: Bulk review and bulk reanalyze return a fixed error message. Unexpected failures are logged on the server.
+- **UI**: Sticky page toolbar, and padding around the Add New command type list and form. Thanks to [viki53](https://github.com/viki53).
+
+### Housekeeping
+- **UI**: Split the Add New command wizard into a shell and one section per command type. Behavior is unchanged.
+- **Security (npm)**: Bump `vite` to **8.3.5** (8.0.0–8.1.5: GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm, GHSA-9jrq-w75r-8gcw, GHSA-rq7h-c2jc-7f22). Override `source-map-js` **1.2.2** (GHSA-68fv-2mgg-jv7q), `brace-expansion` **5.0.12** (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p), and `zod` **4.6.7** (GHSA-mrhx-c7xc-m3w5).
+- **Docker**: Bump `node:24-trixie-slim` to `43b9ba1` and Chainguard Python dev/runtime digests to `73d5f1d` / `8ed5fe9`.
+- **CI**: Run GitHub Actions on `ubuntu-26.04`.
+
 ## [0.4.2] - 2026-09-23
 
 ### Features

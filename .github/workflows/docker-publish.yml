@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -46,7 +46,7 @@ jobs:
 
   build-and-push:
     needs: [unit-tests]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
@@ -187,7 +187,7 @@ jobs:
   promote-digests-to-main:
     needs: [build-and-push]
     if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -208,7 +208,7 @@ jobs:
   notify-discord:
     needs: [build-and-push]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:

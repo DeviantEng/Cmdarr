@@ -51,6 +51,10 @@ import {
   buildSchedulePayload,
 } from "@/components/command-edit/saveHelpers";
 import type { CommandEditFormState, XmplaylistStationRow } from "@/components/command-edit/types";
+import {
+  playlistSyncModeFromConfig,
+  playlistSyncModeLabel,
+} from "@/components/command-edit/playlistSyncMode";
 
 type SortField = "name" | "status" | "type" | "schedule" | "last_run";
 type SortDirection = "asc" | "desc";
@@ -252,6 +256,11 @@ type CommandsListBodyProps = {
   handleDelete: (commandName: string) => void;
 };
 
+function commandPlaylistSyncModeLabel(command: CommandConfig): string | null {
+  if (!command.command_name.startsWith("playlist_sync_")) return null;
+  return playlistSyncModeLabel(command.config_json?.sync_mode);
+}
+
 function CommandsListBody({
   filteredCommands,
   sortField,
@@ -282,6 +291,9 @@ function CommandsListBody({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                 {command.command_type ? (
                   <span className="truncate">{formatCommandTypeLabel(command.command_type)}</span>
+                ) : null}
+                {commandPlaylistSyncModeLabel(command) ? (
+                  <span>{commandPlaylistSyncModeLabel(command)}</span>
                 ) : null}
                 <span className="font-mono">
                   {command.schedule_override && command.schedule_cron
@@ -392,6 +404,11 @@ function CommandsListBody({
                     <div className="font-medium">{command.display_name}</div>
                     {command.description ? (
                       <div className="text-xs text-muted-foreground">{command.description}</div>
+                    ) : null}
+                    {commandPlaylistSyncModeLabel(command) ? (
+                      <div className="text-xs text-muted-foreground">
+                        {commandPlaylistSyncModeLabel(command)}
+                      </div>
                     ) : null}
                   </div>
                 </td>
@@ -734,12 +751,16 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
         typeof cfg.max_tracks_per_artist === "number" ? cfg.max_tracks_per_artist : 25,
       source: (cfg.source as string) || "plex",
       target: (cfg.target as string) || "plex",
-      use_custom_playlist_name: Boolean(
-        cfg.use_custom_playlist_name ??
-        (cfg.playlist_name && (cfg.playlist_name as string) !== "Mood Playlist")
-      ),
+      use_custom_playlist_name: command.command_name.startsWith("mood_playlist_")
+        ? Boolean(
+            cfg.use_custom_playlist_name ??
+            (cfg.playlist_name && (cfg.playlist_name as string) !== "Mood Playlist")
+          )
+        : Boolean(cfg.use_custom_playlist_name),
       custom_playlist_name:
-        (cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? "",
+        command.command_name.startsWith("playlist_sync_") && cfg.playlist_url != null
+          ? ((cfg.custom_playlist_name as string) ?? "")
+          : ((cfg.custom_playlist_name as string) ?? (cfg.playlist_name as string) ?? ""),
       moods: Array.isArray(cfg.moods) ? (cfg.moods as string[]) : [],
       exclude_last_run: cfg.exclude_last_run !== false,
       limit_by_year: !!cfg.limit_by_year || !!cfg.min_year_enabled,
@@ -766,6 +787,7 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
       weekly_jams_keep: typeof cfg.weekly_jams_keep === "number" ? cfg.weekly_jams_keep : 3,
       daily_jams_keep: typeof cfg.daily_jams_keep === "number" ? cfg.daily_jams_keep : 3,
       cleanup_enabled: cfg.cleanup_enabled !== false,
+      sync_mode: playlistSyncModeFromConfig(cfg.sync_mode),
       playlist_types: Array.isArray(cfg.playlist_types) ? cfg.playlist_types : [],
       sync_to_multiple_plex_users: syncMultiPlex,
       plex_account_ids: plexAccountIdsList,
@@ -1213,6 +1235,7 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                   onClick={() => {
                     const cfg: Record<string, unknown> = {
                       ...(editingCommand.config_json || {}),
+                      sync_mode: editForm.sync_mode === "append" ? "append" : "full",
                       enable_artist_discovery: editForm.enable_artist_discovery ?? false,
                       artist_discovery_max_per_run:
                         editForm.artist_discovery_max_per_run ??
@@ -1223,6 +1246,12 @@ export function CommandsPage({ showExecutions = true }: CommandsPageProps) {
                       cfg.weekly_jams_keep = editForm.weekly_jams_keep ?? 3;
                       cfg.daily_jams_keep = editForm.daily_jams_keep ?? 3;
                       cfg.cleanup_enabled = editForm.cleanup_enabled ?? true;
+                    }
+                    if ((editingCommand.config_json?.source as string) !== "listenbrainz") {
+                      cfg.use_custom_playlist_name = editForm.use_custom_playlist_name ?? false;
+                      cfg.custom_playlist_name = editForm.use_custom_playlist_name
+                        ? (editForm.custom_playlist_name ?? "").trim()
+                        : "";
                     }
                     if (
                       (editingCommand.config_json?.source as string) !== "listenbrainz" &&

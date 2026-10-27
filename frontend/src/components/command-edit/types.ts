@@ -62,6 +62,8 @@ export type CommandEditFormState = {
   weekly_jams_keep?: number;
   daily_jams_keep?: number;
   cleanup_enabled?: boolean;
+  /** playlist sync: `full` replaces contents; `append` only adds missing tracks */
+  sync_mode?: "full" | "append";
   playlist_types?: string[];
   plex_account_ids?: string[];
   sync_to_multiple_plex_users?: boolean;

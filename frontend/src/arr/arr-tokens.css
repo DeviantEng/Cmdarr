@@ -184,6 +184,9 @@
 
 .arr-shell[data-ui-shell="arr"] .arr-page-toolbar-panel {
   margin-bottom: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .arr-shell[data-ui-shell="arr"] .arr-content-panel .arr-table thead {

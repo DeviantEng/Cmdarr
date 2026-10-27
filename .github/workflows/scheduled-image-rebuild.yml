@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   dispatch-rebuild:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       actions: write
     strategy:
