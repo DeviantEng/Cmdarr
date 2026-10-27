@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Playlist sync**: Global Spotify and Deezer prefix settings (`PLAYLIST_SYNC_PREFIX_SPOTIFY`, `PLAYLIST_SYNC_PREFIX_DEEZER`). Leave a prefix empty to use the source playlist name only. Cmdarr still writes that title on each run.
 - **Playlist sync**: Optional custom playlist name on Spotify and Deezer sync commands, using the same `use_custom_playlist_name` / `custom_playlist_name` fields as other playlist commands. The global prefix is still applied. The source playlist name stays on the command.
 - **Playlist sync**: Track the Plex or Jellyfin playlist by id (per Plex user when a command targets several accounts). A rename on the server is found again and set back to the Cmdarr title.
+- **Playlist sync**: The edit dialog shows Full Sync or Append Only for an existing sync and saves a change. The commands list shows that mode on each playlist sync.
 
 ### Fixes
 - **Docker**: Remove `cap_drop` and `security_opt` from the Compose example. `no_new_privileges: true` is not a valid `security_opt` string, and dropping all capabilities blocks `gosu` from switching to `PUID`/`PGID`. Thanks to [atomheartother](https://github.com/atomheartother).

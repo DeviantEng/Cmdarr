@@ -2,6 +2,7 @@ import type { CommandEditRenderContext } from "../types";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { commandUiCopy } from "@/command-spec";
+import { PlaylistSyncModeField } from "../PlaylistSyncModeField";
 
 export function PlaylistSyncUrlSection({ ctx }: { ctx: CommandEditRenderContext }) {
   const { editingCommand, editForm, setEditForm } = ctx;
@@ -16,6 +17,10 @@ export function PlaylistSyncUrlSection({ ctx }: { ctx: CommandEditRenderContext 
           className="font-mono text-sm"
         />
       </div>
+      <PlaylistSyncModeField
+        value={editForm.sync_mode}
+        onChange={(sync_mode) => setEditForm((f) => ({ ...f, sync_mode }))}
+      />
       <label className="flex items-center space-x-2">
         <input
           type="checkbox"
