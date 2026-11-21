@@ -10,7 +10,7 @@ RUN npm run build
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
 # Tag+digest required so Renovate can follow :latest-dev. Digest bump 2026-09-23
 # (Python 3.14.7_git20260918-r0).
-FROM cgr.dev/chainguard/python:latest-dev@sha256:2f258a1671792c59c234e3a9b25b3cc3f58503be4a7350872c6c950614c941a4 AS python-builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:c047e6d1e47b09144a771bfde6595a00c49dc8571caa7dd62df88634e84304ae AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -27,7 +27,7 @@ RUN python -m venv /app/venv \
     && rm -rf /root/.cache/pip
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python:latest-dev@sha256:2f258a1671792c59c234e3a9b25b3cc3f58503be4a7350872c6c950614c941a4 AS runtime-assembler
+FROM cgr.dev/chainguard/python:latest-dev@sha256:c047e6d1e47b09144a771bfde6595a00c49dc8571caa7dd62df88634e84304ae AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -49,7 +49,7 @@ RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
 # Tag+digest required so Renovate can follow :latest. Digest bump 2026-09-23
 # (Python 3.14.7_git20260918-r0).
-FROM cgr.dev/chainguard/python:latest@sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2
+FROM cgr.dev/chainguard/python:latest@sha256:f6e5c2e056393d48fa8afa1ea58a1394db4cd5de1a8f0f48105c8e88fcd4f9d3
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
