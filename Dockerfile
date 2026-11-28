@@ -1,5 +1,5 @@
 # Stage 1: Build React frontend (static assets only — not in final Trivy scan)
-FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:4d00acb4bcc42c454c4eb801526f7ad7f772ea3bd4fd168c5cc2e384abcbb9d4 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ RUN npm run build
 # Stage 2: Python dependencies (Chainguard dev image — not in final runtime)
 # Tag+digest required so Renovate can follow :latest-dev. Digest bump 2026-09-23
 # (Python 3.14.7_git20260918-r0).
-FROM cgr.dev/chainguard/python:latest-dev@sha256:c047e6d1e47b09144a771bfde6595a00c49dc8571caa7dd62df88634e84304ae AS python-builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:a940d25c3807f523fc5b9bd6e9af0b95f04483d60c7434cd365cdb6fece39cd5 AS python-builder
 USER root
 WORKDIR /app
 RUN apk add --no-cache gosu
@@ -27,7 +27,7 @@ RUN python -m venv /app/venv \
     && rm -rf /root/.cache/pip
 
 # Stage 3: Assemble runtime tree (dev image — shell/apk for mkdir/chown only)
-FROM cgr.dev/chainguard/python:latest-dev@sha256:c047e6d1e47b09144a771bfde6595a00c49dc8571caa7dd62df88634e84304ae AS runtime-assembler
+FROM cgr.dev/chainguard/python:latest-dev@sha256:a940d25c3807f523fc5b9bd6e9af0b95f04483d60c7434cd365cdb6fece39cd5 AS runtime-assembler
 USER root
 WORKDIR /app
 
@@ -49,7 +49,7 @@ RUN mkdir -p /app/data/logs && chown -R 1000:1000 /app/data
 # Stage 4: Distroless Wolfi runtime (COPY only — no RUN)
 # Tag+digest required so Renovate can follow :latest. Digest bump 2026-09-23
 # (Python 3.14.7_git20260918-r0).
-FROM cgr.dev/chainguard/python:latest@sha256:f6e5c2e056393d48fa8afa1ea58a1394db4cd5de1a8f0f48105c8e88fcd4f9d3
+FROM cgr.dev/chainguard/python:latest@sha256:f166d50e3c50e03e7648641203735fabb68d9f762e6739a15d4e2bde4ae2f24f
 
 ARG IMAGE_TAG=latest
 ENV CMDARR_IMAGE_TAG=${IMAGE_TAG}
